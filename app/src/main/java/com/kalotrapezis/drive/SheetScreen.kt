@@ -227,6 +227,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     val history = remember { SheetHistory() }
     var version by remember { mutableIntStateOf(0) }
     var draft by remember { mutableStateOf<TextFieldValue?>(null) }
+    var draftRuns by remember { mutableStateOf<List<DocRun>?>(null) } // the typed words' looks, a part bold (`SheetRich`); null: one look
     var saving by remember { mutableStateOf(false) }
     // The working copy after rows or columns were inserted or deleted (null: the file itself, with edits in memory);
     // copies in the app's cache, gone when the screen is.
@@ -371,6 +372,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val (r, c) = chosen(s)
         if (history.locked(b, s, Sheet.key(r, c))) { message = PROTECTED; focusManager.clearFocus(); WriterLog.i("Sheets: a protected cell not typed in"); return }
         val t = SheetInput.text(s[r, c], lookAt(s, r, c).second, b.format)
+        draftRuns = s[r, c]?.rich?.takeIf { s[r, c]?.formula == null }
         draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)); view.reveal++
     }
 
@@ -400,12 +402,15 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         val d = draft ?: return; val b = book ?: return; val s = sheet ?: return
         val (r, c) = chosen(s)
         val (look, format) = lookAt(s, r, c)
-        if (d.text != SheetInput.text(s[r, c], format, b.format)) {
+        // a part's own look typed (SheetRich): kept as the cell's runs while they are its words and say something
+        val runs = draftRuns?.takeIf { rs -> !d.text.startsWith("=") && rs.joinToString("") { it.text } == d.text && SheetRich.any(rs) }
+        draftRuns = null
+        if (d.text != SheetInput.text(s[r, c], format, b.format) || runs != s[r, c]?.rich) {
             // a drop-down list's cell takes only its values (Excel's stop)
             val list = s.listAt(r, c)?.items.orEmpty()
             if (d.text.isNotEmpty() && list.isNotEmpty() && list.none { it.equals(d.text.trim(), true) }) {
                 message = "This cell takes one of its list's values: ${list.joinToString(", ")}"; draft = null; WriterLog.i("Sheets: a value not in the list refused"); return }
-            history.apply(b, index, mapOf(Sheet.key(r, c) to SheetInput.cell(d.text, s[r, c], look, format, b.format)))
+            history.apply(b, index, mapOf(Sheet.key(r, c) to SheetInput.cell(d.text, s[r, c], look, format, b.format).let { cell -> if (runs != null && cell.kind == SheetKind.Text) cell.copy(runs = runs) else cell }))
             version++
         }
         draft = null
@@ -1587,8 +1592,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     if (editing) {
                         val (r, c) = chosen(s)
                         EditBar(Sheets.colName(c) + (r + 1), version.let { SheetInput.text(s[r, c], lookAt(s, r, c).second, book!!.format) }, draft, barFocus,
-                            change = { draft = it }, start = ::startTyping, commit = { commit(true) },
-                            cancel = { draft = null; focusManager.clearFocus() })
+                            change = { v -> draft?.text?.let { was -> draftRuns = draftRuns?.let { SheetRich.edited(it, was, v.text) } }; draft = v }, start = ::startTyping, commit = { commit(true) },
+                            runs = draftRuns,
+                            cancel = { draft = null; draftRuns = null; focusManager.clearFocus() })
                     } else CellBar(s, view, ::follow) { text -> copy(context, "Cell", text); WriterLog.i("Sheets: a cell copied") }
                 }
                 if (pins.isNotEmpty() || filters.isNotEmpty() || sort != null) ToolChips(view)
@@ -1729,8 +1735,16 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                 if (changed.isNotEmpty()) { history.apply(b, index, changed); version++; WriterLog.i("Sheets: ${changed.size} cells formatted from the keyboard bar") }
             }
             Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
-                KeyboardBar(islandContentColor(), now.bold, now.italic, now.underline,
-                    { look { it.copy(bold = !now.bold) } }, { look { it.copy(italic = !now.italic) } }, { look { it.copy(underline = !now.underline) } },
+                // letters chosen in the typed words (not a formula): the look on them alone (Excel's), else on the cell
+                val sel = d?.selection?.takeIf { !it.collapsed && !d.text.startsWith("=") }
+                fun part(test: (DocRun) -> Boolean, set: (DocRun, Boolean) -> DocRun) { val dd = d ?: return; val sl = sel ?: return
+                    val rs = draftRuns ?: listOf(DocRun(dd.text)); val on = SheetRich.all(rs, sl.min, sl.max, test)
+                    draftRuns = SheetRich.styled(rs, sl.min, sl.max) { set(it, !on) }; WriterLog.i("Sheets: part of a cell's words formatted") }
+                fun partOn(test: (DocRun) -> Boolean) = sel?.let { sl -> SheetRich.all(draftRuns ?: listOf(DocRun(d?.text.orEmpty())), sl.min, sl.max, test) }
+                KeyboardBar(islandContentColor(), partOn { it.bold } ?: now.bold, partOn { it.italic } ?: now.italic, partOn { it.underline } ?: now.underline,
+                    { if (sel != null) part({ it.bold }) { r, v -> r.copy(bold = v) } else look { it.copy(bold = !now.bold) } },
+                    { if (sel != null) part({ it.italic }) { r, v -> r.copy(italic = v) } else look { it.copy(italic = !now.italic) } },
+                    { if (sel != null) part({ it.underline }) { r, v -> r.copy(underline = v) } else look { it.copy(underline = !now.underline) } },
                     { c -> look { it.copy(fill = c?.let { (it.value shr 32).toInt() }) } },
                     { said?.invoke() ?: run { message = "This phone has no voice typing" } }, { commit(false); focusManager.clearFocus() }, { keyboard?.hide() })
             }
@@ -2411,7 +2425,8 @@ private fun FilterDialog(sheet: Sheet, col: Int, view: SheetView, close: () -> U
  * typing in it changes the cell when Done is pressed (the next cell below is chosen, as Excel's Enter), ✕ leaves it.
  */
 @Composable
-private fun EditBar(name: String, shown: String, draft: TextFieldValue?, focus: FocusRequester, change: (TextFieldValue) -> Unit, start: () -> Unit, commit: () -> Unit, cancel: () -> Unit) {
+private fun EditBar(name: String, shown: String, draft: TextFieldValue?, focus: FocusRequester, change: (TextFieldValue) -> Unit, start: () -> Unit, commit: () -> Unit, cancel: () -> Unit,
+                    /** the typed words' looks (a part bold), shown in the field */ runs: List<DocRun>? = null) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
         Text("fx", style = MaterialTheme.typography.labelLarge, color = islandContentColor().copy(alpha = 0.6f), fontFamily = FontFamily.Serif, modifier = Modifier.padding(end = 10.dp))
@@ -2419,6 +2434,13 @@ private fun EditBar(name: String, shown: String, draft: TextFieldValue?, focus: 
             BasicTextField(draft ?: TextFieldValue(shown), { if (draft == null) start(); change(it) }, singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = islandContentColor()), cursorBrush = SolidColor(islandContentColor()),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { commit() }),
+                // a part bold, italic, underlined or struck shows so in the field (the letters as typed, their looks laid over them)
+                visualTransformation = { t -> androidx.compose.ui.text.input.TransformedText(buildAnnotatedString { append(t.text)
+                    if (runs != null && runs.joinToString("") { it.text } == t.text) { var at = 0
+                        for (r in runs) { val end = at + r.text.length
+                            if (r.bold || r.italic || r.underline || r.strike) addStyle(SpanStyle(fontWeight = if (r.bold) FontWeight.Bold else null, fontStyle = if (r.italic) androidx.compose.ui.text.font.FontStyle.Italic else null,
+                                textDecoration = androidx.compose.ui.text.style.TextDecoration.combine(listOfNotNull(androidx.compose.ui.text.style.TextDecoration.Underline.takeIf { r.underline }, androidx.compose.ui.text.style.TextDecoration.LineThrough.takeIf { r.strike }))), at, end)
+                            at = end } } }, androidx.compose.ui.text.input.OffsetMapping.Identity) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp).focusRequester(focus)
                     .onFocusChanged { if (it.isFocused && draft == null) start() })
         }

@@ -826,3 +826,37 @@ internal object SheetEvaluate {
         return SheetCalc.steps(f, ctx)
     }
 }
+
+/**
+ * Part of a cell's words in a look of its own, typed (Excel's: letters chosen while typing in a cell, then Bold): the runs kept
+ * beside the typed words — re-cut as the words change (kept letters keep their looks, typed ones take the look of the letter
+ * before them, as Words), and a part's look changed.
+ */
+internal object SheetRich {
+    private fun looks(runs: List<DocRun>) = runs.flatMap { r -> List(r.text.length) { r.copy(text = "") } }
+    /** [looks] one a letter of [text], joined into runs where they are alike. */
+    private fun joined(text: String, looks: List<DocRun>): List<DocRun> {
+        val out = ArrayList<DocRun>()
+        looks.forEachIndexed { i, l -> val last = out.lastOrNull()
+            if (last != null && last.copy(text = "") == l) out[out.lastIndex] = last.copy(text = last.text + text[i]) else out += l.copy(text = text[i].toString()) }
+        return out
+    }
+    /** [runs] (the words [old]) for the words now [new]. */
+    fun edited(runs: List<DocRun>, old: String, new: String): List<DocRun> {
+        if (runs.joinToString("") { it.text } != old) return listOf(DocRun(new))
+        var pre = 0; while (pre < old.length && pre < new.length && old[pre] == new[pre]) pre++
+        var suf = 0; while (suf < old.length - pre && suf < new.length - pre && old[old.length - 1 - suf] == new[new.length - 1 - suf]) suf++
+        val was = looks(runs)
+        val typed = was.getOrNull(pre - 1) ?: was.getOrNull(pre) ?: DocRun("")
+        return joined(new, was.take(pre) + List(new.length - pre - suf) { typed } + was.takeLast(suf))
+    }
+    /** [runs] with letters [from] until [to] changed by [change]. */
+    fun styled(runs: List<DocRun>, from: Int, to: Int, change: (DocRun) -> DocRun): List<DocRun> {
+        val text = runs.joinToString("") { it.text }
+        return joined(text, looks(runs).mapIndexed { i, l -> if (i in from until to) change(l) else l })
+    }
+    /** Whether every letter from [from] until [to] has [test]. */
+    fun all(runs: List<DocRun>, from: Int, to: Int, test: (DocRun) -> Boolean) = looks(runs).subList(from.coerceAtLeast(0), to.coerceAtMost(looks(runs).size)).all(test)
+    /** Whether the runs say anything (a letter bold, italic, underlined or struck): else the cell's own look is enough. */
+    fun any(runs: List<DocRun>) = runs.any { it.bold || it.italic || it.underline || it.strike }
+}

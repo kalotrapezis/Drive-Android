@@ -266,6 +266,20 @@ class SheetEditTest {
             "=IF(TRUE,'big ''3',-A1)", "=IF(TRUE,'big ''3',-2)", "='big ''3'").map(::q), SheetEvaluate.steps(b, 0, Sheet.key(1, 0)))
     }
 
+    @Test fun `part of a cell's words bold while typing`() {
+        val plain = listOf(DocRun("Hello world"))
+        val bold = SheetRich.styled(plain, 6, 11) { it.copy(bold = true) }
+        assertEquals(listOf(DocRun("Hello "), DocRun("world", bold = true)), bold)
+        assertTrue(SheetRich.all(bold, 6, 11) { it.bold }); assertFalse(SheetRich.all(bold, 4, 8) { it.bold })
+        // typed at the end: the bold goes on; typed at the start: the first letter's look
+        assertEquals(listOf(DocRun("Hello "), DocRun("worlds", bold = true)), SheetRich.edited(bold, "Hello world", "Hello worlds"))
+        assertEquals(listOf(DocRun("Oh Hello "), DocRun("world", bold = true)), SheetRich.edited(bold, "Hello world", "Oh Hello world"))
+        // a letter taken out of the bold part, and words that no longer match the runs: one look
+        assertEquals(listOf(DocRun("Hello "), DocRun("wold", bold = true)), SheetRich.edited(bold, "Hello world", "Hello wold"))
+        assertEquals(listOf(DocRun("x")), SheetRich.edited(bold, "something else", "x"))
+        assertTrue(SheetRich.any(bold)); assertFalse(SheetRich.any(plain))
+    }
+
     @Test fun `text pasted from another app`() {
         assertEquals(listOf(listOf("Name", "Score"), listOf("Αλεξίου", "10,5")), SheetPaste.table("Name\tScore\r\nΑλεξίου\t10,5\r\n"))
         assertEquals(listOf(listOf("two\nlines", "say \"hi\""), listOf("", "x")), SheetPaste.table("\"two\nlines\"\t\"say \"\"hi\"\"\"\n\tx"))

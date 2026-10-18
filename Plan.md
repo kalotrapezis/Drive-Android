@@ -106,7 +106,7 @@ How to write here:
 - (office-F, 18 Oct, 05:00) **Office's last big pieces — which first, or later?** Words, Slides and Tables' lines in this plan are now
   done or marked later, except these, each a day or more: (1) Slides › File › Save as the other format (.pptx ⇄ .odp: a whole-deck
   writer for each) [done 18 Oct: the deck rebuilt in the other format, see B › File]; (2) copying slides between decks (PowerPoint's Reuse slides) [done 18 Oct]; (3) editing the slide master [done 18 Oct: things on every slide; a Slide Master view later]; (4) View › Zoom on the
-  slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides [audio done 18 Oct; Online video 17 Oct]; (6) rich text typed in a Tables cell (part bold) [done 18 Oct, 0c6f13b];
+  slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides [done 18 Oct: audio, a film's Trim; Online video 17 Oct]; (6) rich text typed in a Tables cell (part bold) [done 18 Oct, 0c6f13b];
   (7) character spacing in all three (the shared engine) [done 18 Oct]. The "later"s with evidence (none of the 29 decks uses them): slide tables'
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
   Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
@@ -702,6 +702,11 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       PowerPoint's (p:pic with a:audioFile and p14:media, the audio relationship) and Impress's (draw:plugin with the sound's type —
       audio/x-wav for a WAV, LibreOffice's name: with audio/wav its .pptx leaves the sound out). `a sound put on saved` (both formats,
       LibreOffice's conversions). Emulator: a tone picked from Music, saved, read back as a sound, played. Online video was done 17 Oct.
+      A film's start and end done 18 Oct (office-F): the Video tab's Trim (PowerPoint's Trim Video) — a range over the film's length,
+      to a tenth of a second; it plays from that start and stops at that end, editing and in a show (the player seeks to the very frame,
+      not the keyframe before it). Kept as PowerPoint's p14:trim in the film's p14:media (ms left out at the start and at the end), on a
+      film just put on or one already in the file; read back. Only in a .pptx: LibreOffice has no trim (the button is not shown on an
+      .odp, nor for online videos). `a film trimmed`. Emulator: an 8-second counting film trimmed to 3–6 s, saved, reopened, played 3→6.
 - Not planned: Designer and Copilot (need Microsoft's cloud), co-authoring and @mentions (no cloud), online pictures
   (no network services), Cameo, translate, compare presentations. (YouTube: now wanted, see Video above.)
 

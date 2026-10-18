@@ -82,7 +82,10 @@ internal object OfficeVideo {
     }
 
     /** Where a video's picture is (points, on its page or slide), [turn] degrees about its middle, and its [film]. */
-    class Spot(val film: String, val x: Float, val y: Float, val w: Float, val h: Float, val turn: Float = 0f)
+    class Spot(val film: String, val x: Float, val y: Float, val w: Float, val h: Float, val turn: Float = 0f, /** ms left out at its start and end */ val trim: List<Int>? = null)
+
+    /** A film's length in ms (blocking), else null. */
+    fun length(film: String): Int? = runCatching { android.media.MediaMetadataRetriever().run { try { setDataSource(film); extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toIntOrNull() } finally { release() } } }.getOrNull()
 
     /** A play mark in the middle of a video's picture (round, so a turn does not matter). */
     fun mark(c: android.graphics.Canvas, x: Float, y: Float, w: Float, h: Float) {
@@ -105,7 +108,7 @@ internal object OfficeVideo {
 /** A video played in its own frame on the page or slide (asked 17 Oct: "like an html embedding a frame"), filling [modifier]'s box:
  *  a film in Android's player with its controls, an online one in a web frame (YouTube's own player, as Word's Online Video plays it); ✕ stops it. */
 @Composable
-internal fun VideoFrame(film: String, modifier: Modifier, close: () -> Unit) = Box(modifier.background(Color.Black)) {
+internal fun VideoFrame(film: String, modifier: Modifier, trim: List<Int>? = null, close: () -> Unit) = Box(modifier.background(Color.Black)) {
     androidx.compose.ui.viewinterop.AndroidView({ c ->
         if (film.startsWith("http")) android.webkit.WebView(c).apply {
             settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.mediaPlaybackRequiresUserGesture = false
@@ -117,7 +120,15 @@ internal fun VideoFrame(film: String, modifier: Modifier, close: () -> Unit) = B
                 "text/html", "utf-8", null) } ?: loadUrl(film)
         } else android.widget.VideoView(c).apply {
             setMediaController(android.widget.MediaController(c).also { it.setAnchorView(this) })
-            setVideoPath(film); setOnPreparedListener { start() }
+            setVideoPath(film)
+            // a trimmed film: from its start, paused at its end (PowerPoint's Trim Video)
+            setOnPreparedListener { p -> val from = trim?.getOrNull(0) ?: 0; val cut = trim?.getOrNull(1) ?: 0
+                // to the very frame, not the keyframe before it (a film may have one only at its start)
+                if (from > 0) p.seekTo(from.toLong(), android.media.MediaPlayer.SEEK_CLOSEST); start()
+                if (cut > 0) { val end = p.duration - cut
+                    val watch = object : Runnable { override fun run() { if (!isAttachedToWindow) return
+                        if (currentPosition >= end) pause() else postDelayed(this, 100) } }
+                    postDelayed(watch, 100) } }
         }
     }, Modifier.matchParentSize(), onRelease = { v -> (v as? android.webkit.WebView)?.destroy(); (v as? android.widget.VideoView)?.stopPlayback() })
     Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color.Black.copy(alpha = 0.6f)).clickable(onClickLabel = "Stop the video", onClick = close),

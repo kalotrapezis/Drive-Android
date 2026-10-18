@@ -490,6 +490,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var savingAs by remember { mutableStateOf(false) } // File › Save as: the new name
     var renaming by remember { mutableStateOf(false) } // File › Rename
     var inspecting by remember { mutableStateOf(false) } // File › Inspect: notes and comments taken out before sharing
+    var trimming by remember { mutableStateOf<Pair<List<Int>, Int>?>(null) } // Video › Trim: the film's start and end left out (ms) and its length
     var rehearsing by remember { mutableStateOf(false) } // Slide show › Rehearse timings: the show running with a timer
     var rehearsed by remember { mutableStateOf<Map<Int, Long>?>(null) } // …and the times it took, to keep or not
     var finding by remember { mutableStateOf(false) } // Find and Replace across the slides (Words' bar)
@@ -1113,7 +1114,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     onClick = { turning = false; restyle { it.copy(vert = v) }; WriterLog.i("Slides: text direction $v") }) }
                         } } }
                     // a video: played in its frame on the slide
-                    it0.media?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { scope.launch { filmOf(m)?.let { f -> chosen?.let { c -> filming = c to OfficeVideo.Spot(f, it0.x, it0.y, it0.w, it0.h, it0.rotation) } } ?: run { message = "Its film could not be found" } } } }
+                    it0.media?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { scope.launch { filmOf(m)?.let { f -> chosen?.let { c -> filming = c to OfficeVideo.Spot(f, it0.x, it0.y, it0.w, it0.h, it0.rotation, it0.trim) } } ?: run { message = "Its film could not be found" } } } }
+                    // PowerPoint's Trim Video: a film in the deck from a later start to an earlier end (kept in a .pptx; LibreOffice has no such thing)
+                    it0.media?.takeIf { m -> !odp && !m.startsWith("http") && !OfficeVideo.audio(m) }?.let { m -> RibbonButton("Trim", w, R.drawable.ic_content_cut, on = it0.trim != null) { scope.launch {
+                        val len = filmOf(m)?.let { f -> withContext(Dispatchers.IO) { OfficeVideo.length(f) } }
+                        if (len == null || len <= 0) message = "Its film could not be read" else trimming = (it0.trim ?: listOf(0, 0)) to len } } }
                     // a picture's crop (Words' crop editor, the whole picture shown) and Reset (the whole picture again)
                     // Words' Save picture as: into the phone's Pictures/Tetra
                     if (it0 is SlideItem.Picture && it0.media == null) RibbonButton("Save picture as", w, R.drawable.ic_save) { scope.launch {
@@ -1831,7 +1836,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             drawCircle(Color.White, 9.dp.toPx(), c); drawCircle(POWERPOINT_ORANGE, 7.dp.toPx(), c)
                         } }
                         filming?.takeIf { it.first == i }?.second?.let { v -> androidx.compose.foundation.layout.BoxWithConstraints(Modifier.matchParentSize()) { val k = maxWidth / d.width
-                            VideoFrame(v.film, Modifier.offset(k * v.x, k * v.y).size(k * v.w, k * v.h).rotate(v.turn)) { filming = null } } }
+                            VideoFrame(v.film, Modifier.offset(k * v.x, k * v.y).size(k * v.w, k * v.h).rotate(v.turn), v.trim) { filming = null } } }
                         // Gridlines: the grid, faint, and the slide's middle lines
                         if (grid && editing) Canvas(Modifier.matchParentSize()) {
                             val k = size.width / d.width; val step = gridStep() * k
@@ -2501,6 +2506,21 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             dismissButton = { androidx.compose.material3.TextButton(onClick = { savingAs = false; renaming = false }) { Text("Cancel") } })
     }
     // PowerPoint's Inspect Document, the part that matters before sharing: the speaker notes and the comments taken out
+    trimming?.let { (was, len) ->
+        var range by remember { mutableStateOf(was[0].toFloat()..(len - was[1]).toFloat()) }
+        fun time(ms: Float) = "%d:%04.1f".format((ms / 60000).toInt(), ms % 60000 / 1000)
+        androidx.compose.material3.AlertDialog(onDismissRequest = { trimming = null }, title = { Text("Trim") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.RangeSlider(range, { range = it }, valueRange = 0f..len.toFloat())
+                Row { Text("Start ${time(range.start)}", Modifier.weight(1f)); Text("End ${time(range.endInclusive)}") }
+                Text("The film plays from its start to its end, in Slides and in PowerPoint. Its whole length is kept in the file.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { trimming = null
+                // to the tenth of a second the dialog shows
+                fun tenth(ms: Float) = Math.round(ms / 100) * 100
+                restyle { it.copy(trim = listOf(tenth(range.start), (len - tenth(range.endInclusive)).coerceAtLeast(0))) }; WriterLog.i("Slides: film trimmed ${range.start.toInt()}–${range.endInclusive.toInt()} of $len") }) { Text("OK") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { trimming = null }) { Text("Cancel") } })
+    }
     if (inspecting) edit?.let { e ->
         val v = view?.slides.orEmpty()
         val notes = v.count { it.notes.isNotBlank() }; val comments = v.sumOf { it.comments.size }
@@ -2621,7 +2641,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
         val k = minOf(w / deck.width, h / deck.height); val px = (x - (w - deck.width * k) / 2) / k; val py = (y - (h - deck.height * k) / 2) / k
         // a video tapped: played in its frame, as PowerPoint plays one on the slide
         slide(page).items.lastOrNull { it.media != null && px in it.x..it.x + it.w && py in it.y..it.y + it.h }?.let { v -> val p = page
-            scope.launch { film(v.media!!)?.let { f -> filmPlaying = p to OfficeVideo.Spot(f, v.x, v.y, v.w, v.h, v.rotation) } }; WriterLog.i("Slides: a video played"); return true }
+            scope.launch { film(v.media!!)?.let { f -> filmPlaying = p to OfficeVideo.Spot(f, v.x, v.y, v.w, v.h, v.rotation, v.trim) } }; WriterLog.i("Slides: a video played"); return true }
         // an object linked (a picture, a shape: asked 17 Oct, maps that zoom in), else words with a link in a box
         val obj = slide(page).items.lastOrNull { it.link != null && px in it.x..it.x + it.w && py in it.y..it.y + it.h }
         val box = if (obj != null) null else slide(page).items.filterIsInstance<SlideItem.Shape>().lastOrNull { px in it.x..it.x + it.w && py in it.y..it.y + it.h && it.text?.paras?.any { p -> p.runs.any { r -> r.link != null } } == true }
@@ -2864,7 +2884,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
                         drawCircle(Color(0x55FF1744), size.width / 60, p); drawCircle(Color(0xFFFF1744), size.width / 140, p) }
                 }
                 filmPlaying?.takeIf { it.first == page }?.second?.let { v -> androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) { val k = maxWidth / deck.width
-                    VideoFrame(v.film, Modifier.offset(k * v.x, k * v.y).size(k * v.w, k * v.h).rotate(v.turn)) { filmPlaying = null } } }
+                    VideoFrame(v.film, Modifier.offset(k * v.x, k * v.y).size(k * v.w, k * v.h).rotate(v.turn), v.trim) { filmPlaying = null } } }
             }
             } }
             val presenter: @Composable (Modifier) -> Unit = { m -> PresenterNotes(s.notes, page, paused, m) {

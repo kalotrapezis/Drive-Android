@@ -102,6 +102,8 @@ internal sealed class SlideItem(val x: Float, val y: Float, val w: Float, val h:
     var link: String? = null
     /** A video (Insert › Video, asked 17 Oct): a part of the file (its path), a copy on the phone, or a web address — this item its picture, played when tapped in a show. */
     var media: String? = null
+    /** A film's start and end (PowerPoint's Trim Video, p14:trim): ms left out at its start and at its end; null: all of it. */
+    var trim: List<Int>? = null
     class Shape(x: Float, y: Float, w: Float, h: Float, rotation: Float, val shape: ShapePicture?, val text: SlideText?,
         val paths: List<SlidePath> = emptyList(), val flipH: Boolean = false, val flipV: Boolean = false, val gradient: SlideGradient? = null,
         /** The slide's own shape's id (cNvPr id), its words editable; null: the master's or layout's. */ val id: String? = null,
@@ -516,6 +518,7 @@ internal object Slides {
                         val flips = e.kid("spPr")?.kid("xfrm")
                         // a video's picture: its film embedded (PowerPoint 2010's p14:media) or linked (a:videoFile: a part, or a web address)
                         val nv = e.kid("nvPicPr")?.kid("nvPr")
+                        val trim = nv?.below("media")?.firstOrNull()?.kid("trim")?.let { t -> listOf(t.attr("st")?.toDoubleOrNull()?.toInt() ?: 0, t.attr("end")?.toDoubleOrNull()?.toInt() ?: 0) }?.takeIf { it.any { v -> v > 0 } }
                         val film = nv?.below("media")?.firstOrNull()?.rid("embed")?.let(rels::get) ?: (nv?.kid("videoFile") ?: nv?.kid("audioFile"))?.rid("link")?.let(rels::get)
                         // its style and transparency: the blip's alphaModFix, the outline, the outer shadow, a rounded rectangle
                         val sp = e.kid("spPr"); val ln = sp?.kid("ln")
@@ -523,7 +526,7 @@ internal object Slides {
                             ln?.kid("solidFill")?.kid("srgbClr")?.attr("val")?.toIntOrNull(16), ln?.attr("w")?.toFloatOrNull()?.div(EMU) ?: 0f,
                             sp?.kid("effectLst")?.kid("outerShdw") != null, if (sp?.kid("prstGeom")?.attr("prst") == "roundRect") ROUND else 0f)
                         out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot, crop, flipH = flips?.attr("flipH") == "1", flipV = flips?.attr("flipV") == "1") { part(p) }
-                            .also { it.media = film; it.pic = look.takeIf { l -> l != PictureLook() } }
+                            .also { it.media = film; it.trim = trim; it.pic = look.takeIf { l -> l != PictureLook() } }
                     }
                     "graphicFrame" -> {
                         e.below("chart").firstOrNull()?.rid("id")?.let(rels::get)?.let(part)?.let(OfficeCharts::readDrawingml)?.let { out += SlideItem.Chart(box[0], box[1], box[2], box[3], it) }

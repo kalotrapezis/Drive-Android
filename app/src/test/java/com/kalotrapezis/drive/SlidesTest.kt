@@ -973,6 +973,29 @@ class SlidesTest {
         }
     }
 
+    /** Video › Trim: a film's start and end kept as PowerPoint's p14:trim (on one just put on, and on one already in the file), read back, and taken off. */
+    @Test fun `a film trimmed`() {
+        val dir = scratchDir("trim")
+        val poster = File(dir, "poster.png").apply { writeBytes(Slides.read(File("src/test/resources/slides.pptx")).slides[2].items.filterIsInstance<SlideItem.Picture>().first().bytes()!!) }
+        val film = File(dir, "film.mp4").apply { writeBytes(ByteArray(2048) { (it % 251).toByte() }) }
+        val src = File("src/test/resources/slides.pptx"); val deck = Slides.read(src)
+        val e = SlidesEdit.start(deck).copy(added = mapOf(1 to listOf(SlidesEdit.Added("9420", 100f, 100f, 320f, 180f, image = poster.path, video = film.path))),
+            looks = mapOf((1 to "9420") to SlidesEdit.Look(trim = listOf(1500, 2000))))
+        assertEquals(listOf(1500, 2000), SlidesEdit.view(deck, e).slides[1].items.single { it.media != null }.trim)
+        val out = File(dir, "trimmed.pptx"); SlidesEdit.save(src, deck, e, out)
+        val d2 = Slides.read(out); val f2 = d2.slides[1].items.single { it.media != null }
+        assertEquals(listOf(1500, 2000), f2.trim)
+        val xml = java.util.zip.ZipFile(out).use { z -> String(z.getInputStream(z.getEntry(d2.slides[1].part)).readBytes()) }
+        val trimXml = Regex("""<p14:trim\b[^>]*>""").find(xml)?.value.orEmpty()
+        assertTrue(trimXml, """st="1500"""" in trimXml && """end="2000"""" in trimXml)
+        // the film now in the file: its start alone, then all of it again
+        for ((t, want) in listOf(listOf(800, 0) to listOf(800, 0), listOf(0, 0) to null)) {
+            val e2 = SlidesEdit.start(d2).copy(looks = mapOf((1 to f2.anim!!) to SlidesEdit.Look(trim = t)))
+            val out2 = File(dir, "again.pptx"); SlidesEdit.save(out, d2, e2, out2)
+            assertEquals("$t", want, Slides.read(out2).slides[1].items.single { it.media != null }.trim)
+        }
+    }
+
     /** Insert › Drop cap on a slide: the first letter raised (a run of its own, 3 × the words' size, its own colour), and made plain again. */
     @Test fun `a raised first letter saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

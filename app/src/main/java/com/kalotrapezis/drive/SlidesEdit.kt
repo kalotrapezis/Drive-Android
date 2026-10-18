@@ -54,7 +54,8 @@ internal object SlidesEdit {
         /** a text box's Layout: its inner margins (pt: left, top, right, bottom), whether its words wrap, its columns and the room between them */
         val insets: List<Float>? = null, val wrap: Boolean? = null, val cols: Int? = null, val colGap: Float? = null,
         /** the Selection pane: its name ("" none), and hidden or shown again */ val name: String? = null, val hide: Boolean? = null,
-        /** a picture's Transparency (0–1 seen) and Picture style (its outline, shadow and corners; its alpha not used) */ val alpha: Float? = null, val picStyle: PictureLook? = null) {
+        /** a picture's Transparency (0–1 seen) and Picture style (its outline, shadow and corners; its alpha not used) */ val alpha: Float? = null, val picStyle: PictureLook? = null,
+        /** a film's Trim: ms left out at its start and at its end ([0, 0] all of it again) */ val trim: List<Int>? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
             align != null || list != null || spacing != null || scheme != null || para != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null || script != null || insets != null || wrap != null || cols != null || vert != null || letterSpacing != null
@@ -159,7 +160,7 @@ internal object SlidesEdit {
         is SlideItem.Shape -> SlideItem.Shape(item.x, item.y, item.w, item.h, t.deg, item.shape, item.text, item.paths, t.flipH, t.flipV, item.gradient, item.id, item.hint)
         is SlideItem.Picture -> SlideItem.Picture(item.x, item.y, item.w, item.h, t.deg, item.crop, item.math, t.flipH, t.flipV, item.bytes)
         else -> item
-    }.also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
+    }.also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.trim = item.trim; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
     /** [items] in [stack]'s order from the back (the layout's and master's under them all, one not in it on top). */
     fun stacked(items: List<SlideItem>, stack: List<String>?): List<SlideItem> = if (stack == null) items else
         items.sortedBy { i -> i.anim?.let { a -> stack.indexOf(a).let { if (it < 0) Int.MAX_VALUE else it } } ?: -1 }
@@ -216,7 +217,7 @@ internal object SlidesEdit {
             'R' -> if (rows.size > 1 && k in rows.indices) { h -= rows[k]; rows = rows.filterIndexed { i, _ -> i != k }; cells = cells.filterIndexed { i, _ -> i != k } }
             'C' -> if (cols.size > 1 && k in cols.indices) { w -= cols[k]; cols = cols.filterIndexed { i, _ -> i != k }; cells = cells.map { r -> r.filterIndexed { i, _ -> i != k } } }
         }
-        return SlideItem.Table(t.x, t.y, w, h, cols, rows, cells, t.line).also { it.anim = t.anim; it.grouped = t.grouped; it.own = t.own; it.alt = t.alt; it.link = t.link; it.media = t.media; it.name = t.name; it.hidden = t.hidden; it.pic = t.pic }
+        return SlideItem.Table(t.x, t.y, w, h, cols, rows, cells, t.line).also { it.anim = t.anim; it.grouped = t.grouped; it.own = t.own; it.alt = t.alt; it.link = t.link; it.media = t.media; it.trim = t.trim; it.name = t.name; it.hidden = t.hidden; it.pic = t.pic }
     }
     /** PowerPoint's a:tbl in graphicFrame [gf] with [ops] done ([tabled]'s), its frame as big as it now is. */
     private fun tabledXml(gf: Element, ops: List<Pair<Char, Int>>) {
@@ -296,7 +297,7 @@ internal object SlidesEdit {
             is SlideItem.Picture -> SlideItem.Picture(x, y, w, h, item.rotation, item.crop, item.math, item.flipH, item.flipV, item.bytes)
             is SlideItem.Chart -> SlideItem.Chart(x, y, w, h, item.chart)
             is SlideItem.Table -> SlideItem.Table(x, y, w, h, item.cols.map { it * kx }, item.rows.map { it * ky }, item.cells, item.line)
-        }.also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
+        }.also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.trim = item.trim; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
     }
 
     /** The edited slide of [e]: its words as typed (each line a paragraph in the look of the one it replaces). */
@@ -314,7 +315,7 @@ internal object SlidesEdit {
             }
             // a shape given words here (Add text): in its middle, as PowerPoint's
             SlideItem.Shape(item.x, item.y, item.w, item.h, item.rotation, item.shape, old?.let { SlideText(paras, it.anchor, it.insets, it.scale, it.wrap, it.shrink, it.warp, it.cols, it.colGap, it.vert) }
-                ?: SlideText(paras, 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
+                ?: SlideText(paras, 'c', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f)), item.paths, item.flipH, item.flipV, item.gradient, item.id).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.trim = item.trim; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
         }
         // what was put on it: pictures and shapes, over the rest
         fun things(uid: Int) = edit.added[uid].orEmpty().map { a ->
@@ -397,9 +398,10 @@ internal object SlidesEdit {
         l?.name?.let { item.name = it.ifEmpty { null } }; l?.hide?.let { item.hidden = it }
         if (l?.alpha != null || l?.picStyle != null) item.pic = (l.picStyle?.copy(alpha = l.alpha ?: item.pic?.alpha ?: 1f) ?: (item.pic ?: PictureLook()).copy(alpha = l.alpha!!)).takeIf { it != PictureLook() }
         l?.objectLink?.let { item.link = it.ifEmpty { null } }
+        l?.trim?.let { item.trim = it.takeIf { t -> t.any { v -> v > 0 } } }
         if ((l?.crop != null || l?.image != null) && item is SlideItem.Picture) return SlideItem.Picture(item.x, item.y, item.w, item.h, item.rotation,
             l.crop?.toFloatArray()?.takeIf { c -> c.any { it != 0f } } ?: item.crop.takeIf { l.crop == null },
-            item.math, item.flipH, item.flipV, l.image?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } ?: item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
+            item.math, item.flipH, item.flipV, l.image?.let { p -> { runCatching { File(p).readBytes() }.getOrNull() } } ?: item.bytes).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.trim = item.trim; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
         if (l == null || item !is SlideItem.Shape) return item
         val sp = item.shape
         fun pick(chosen: Int?, had: Int?) = if (chosen == null) had else chosen.takeIf { it != NONE }
@@ -408,7 +410,7 @@ internal object SlidesEdit {
         val text = item.text?.let { looked(it, l) }
         // the box grown (or shrunk) to its words, as PowerPoint's "resize shape to fit text"
         val h = if (l.autofit == 'g' && text != null) SlidesText.height(text, item.w) else item.h
-        return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
+        return SlideItem.Shape(item.x, item.y, item.w, h, item.rotation, shape, text, item.paths, item.flipH, item.flipV, item.gradient.takeIf { l.fill == null }, item.id, item.hint).also { it.anim = item.anim; it.grouped = item.grouped; it.own = item.own; it.alt = item.alt; it.link = item.link; it.media = item.media; it.trim = item.trim; it.name = item.name; it.hidden = item.hidden; it.pic = item.pic }
     }
     /** Table tab (Words'): a table put on with an empty row before row [at], the table a row taller (as PowerPoint's Insert Above / Below). */
     fun rowAdded(t: Added, at: Int): Added = t.copy(rows = t.rows + 1, h = t.h + t.h / t.rows.coerceAtLeast(1),
@@ -785,6 +787,12 @@ internal object SlidesEdit {
             if (c.any { it != 0f }) fill.insertBefore(doc.createElementNS(A, "a:srcRect").also { r -> listOf("l", "t", "r", "b").zip(c).forEach { (k, v) -> if (v != 0f) r.setAttribute(k, "${Math.round(v * 100_000)}") } },
                 fill.kids().firstOrNull { it.localName != "blip" })
         } }
+        // a film's Trim, as PowerPoint keeps it: p14:trim in its p14:media (ms left out at the start and at the end)
+        for ((id, l) in looks) l.trim?.let { t -> named(id)?.takeIf { it.localName == "pic" }?.getElementsByTagNameNS("*", "media")?.let { m -> (0 until m.length).map { m.item(it) as Element } }
+            ?.firstOrNull { it.prefix == "p14" || it.namespaceURI?.contains("powerpoint/2010") == true }?.let { media ->
+                media.kids().filter { it.localName == "trim" }.forEach { media.removeChild(it) }
+                if (t.any { it > 0 }) media.insertBefore(doc.createElementNS(media.namespaceURI, "p14:trim").apply { if (t[0] > 0) setAttribute("st", "${t[0]}"); if (t[1] > 0) setAttribute("end", "${t[1]}") }, media.firstChild)
+            } }
         // a picture's Transparency (the blip's alphaModFix) and Picture style (its geometry, outline and outer shadow), as PowerPoint writes them
         for ((id, l) in looks) if (l.alpha != null || l.picStyle != null) named(id)?.takeIf { it.localName == "pic" }?.let { pic ->
             l.alpha?.let { a -> (pic.getElementsByTagNameNS(A, "blip").item(0) as? Element)?.let { blip ->

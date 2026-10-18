@@ -33,6 +33,7 @@ internal object CalendarAlarms {
     private const val ACTION_SNOOZE = "com.kalotrapezis.drive.CALENDAR_SNOOZE"
     private const val ACTION_AGAIN = "com.kalotrapezis.drive.CALENDAR_AGAIN"
     private const val ACTION_DONE = "com.kalotrapezis.drive.CALENDAR_DONE"
+    private const val ACTION_TEST = "com.kalotrapezis.drive.CALENDAR_TEST"
     // shortcut: a reminder set more than 120 days before its event is not rung; a longer look when someone needs it.
     private val LEAD: Duration = Duration.ofDays(120)
     private val MISSED: Duration = Duration.ofDays(1)
@@ -134,9 +135,16 @@ internal object CalendarAlarms {
     }
 
 
-    /** Settings › Calendar's test: a reminder now, as a real one looks (the island, Done, Snooze), nothing written anywhere. */
-    fun test(c: Context) = post(c, 4242, "Test reminder", "Today, now · from Tetra's settings", CalendarFiles.PALETTE[0], "",
-        java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")))
+    /**
+     * Settings › Calendar's test: a reminder in five seconds, as a real one looks (the island, ✕ Done, Snooze), nothing
+     * written anywhere. Five seconds, because HyperOS raises no island for the app in front: time to leave Tetra.
+     */
+    fun test(c: Context) {
+        val am = c.getSystemService(AlarmManager::class.java) ?: return
+        val pi = PendingIntent.getBroadcast(c, 4242, Intent(c, CalendarAlarmReceiver::class.java).setAction(ACTION_TEST), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val at = System.currentTimeMillis() + 5000
+        if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi) else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+    }
 
     /** Snooze: the same reminder again in ten minutes (an alarm of its own; a restart forgets it). */
     fun snooze(c: Context, i: Intent) {
@@ -151,6 +159,7 @@ internal object CalendarAlarms {
 
     fun handle(c: Context, i: Intent) = when (i.action) {
         ACTION_SNOOZE -> snooze(c, i)
+        ACTION_TEST -> post(c, 4242, "Test reminder", "Today, now · from Tetra's settings", CalendarFiles.PALETTE[0], "", java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")))
         ACTION_DONE -> {
             NotificationManagerCompat.from(c).cancel(i.getIntExtra("id", 0))
             i.getStringExtra("occurrence")?.takeIf { it.isNotEmpty() }?.let { k -> prefs(c).edit().putStringSet("done", doneKeys(c) + k).apply() }

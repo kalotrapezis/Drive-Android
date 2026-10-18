@@ -1043,7 +1043,7 @@ internal fun importCalendars(context: Context, uri: android.net.Uri): String {
         }
     }
     RemindersSwitch()
-    TextButton(onClick = { CalendarAlarms.test(context); said = "A test reminder was sent." }) { Text("Send a test reminder") }
+    TextButton(onClick = { CalendarAlarms.test(context); said = "A test reminder comes in 5 seconds: go to the home screen to see it in the island (HyperOS shows none for the app in front)." }) { Text("Send a test reminder") }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch { said = withContext(Dispatchers.IO) { runCatching { importCalendars(context, uri) }.getOrElse { "Not imported: ${it.message}" } } }
     }

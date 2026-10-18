@@ -200,8 +200,9 @@ internal object SlidesOdpEdit {
                 l.highlight?.let { t.setAttributeNS(FO, "fo:background-color", if (it == SlidesEdit.NONE) "transparent" else hex(it)) }
                 // WordArt: hollow letters and a shadow, as LibreOffice has them (no glow on letters)
                 l.effects?.let { fx -> t.setAttributeNS(STYLE, "style:text-outline", "${fx.outline != null}"); t.setAttributeNS(FO, "fo:text-shadow", if (fx.shadow) "1pt 1pt" else "none") }
+                l.letterSpacing?.let { t.setAttributeNS(FO, "fo:letter-spacing", if (it == 0f) "normal" else String.format(Locale.ROOT, "%.2fpt", it)) }
             }
-            val styled = l.font != null || l.size != null || l.bold != null || l.italic != null || l.underline != null || l.strike != null  || l.text != null || l.highlight != null || l.effects != null || l.script != null
+            val styled = l.font != null || l.size != null || l.bold != null || l.italic != null || l.underline != null || l.strike != null  || l.text != null || l.highlight != null || l.effects != null || l.script != null || l.letterSpacing != null
             for (p in paras(h)) {
                 if (l.cleared) {
                     // the letters' own looks gone: the spans' words put back in the paragraph, its own text looks taken off

@@ -657,7 +657,9 @@ internal object Slides {
                     val link = r?.kid("rPr")?.kid("hlinkClick")?.rid("id")?.let { rels[it] }
                     val u = rAttr("u"); val strike = rAttr("strike"); val cap = rAttr("cap")
                     // the letters' looks Words reads from a run's raw settings, in Word's form
-                    val looks = (if (cap == "all") "<w:caps/>" else if (cap == "small") "<w:smallCaps/>" else "") +
+                    // character spacing: PowerPoint's spc (hundredths of a point) as Word's w:spacing (twentieths), which Words' drawing reads
+                    val looks = (rAttr("spc")?.toIntOrNull()?.takeIf { it != 0 }?.let { "<w:spacing w:val=\"${it / 5}\"/>" } ?: "") +
+                        (if (cap == "all") "<w:caps/>" else if (cap == "small") "<w:smallCaps/>" else "") +
                         (if (strike == "dblStrike") "<w:dstrike/>" else "") + (if (u == "dbl") """<w:u w:val="double"/>""" else "") + (if (effects.any) effects.docx() else "")
                     return DocRun(t, bold = boldAll || rAttr("b") == "1", italic = rAttr("i") == "1", underline = u != null && u != "none" && u != "dbl", strike = strike == "sngStrike",
                         sizePt = size, color = (if (link != null && own == null) scheme["hlink"] ?: color else color) and 0xFFFFFF, link = link,

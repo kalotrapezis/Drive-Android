@@ -48,13 +48,14 @@ internal object SlidesEdit {
         /** Replace picture, Edit drawing: the picture now (a copy on the phone, .png or .jpeg) in its place */ val image: String? = null,
         /** Insert › Link on a picture or shape: where a tap on it goes ("slide:uid", a web address, "back"; "" taken off) */ val objectLink: String? = null,
         /** Home's superscript and subscript (Words'): every letter raised (1), lowered (−1) or on the line (0) */ val script: Int? = null,
+        /** Home › Character spacing (Words'): points after each letter, 0 normal */ val letterSpacing: Float? = null,
         /** a text box's Layout: its inner margins (pt: left, top, right, bottom), whether its words wrap, its columns and the room between them */
         val insets: List<Float>? = null, val wrap: Boolean? = null, val cols: Int? = null, val colGap: Float? = null,
         /** the Selection pane: its name ("" none), and hidden or shown again */ val name: String? = null, val hide: Boolean? = null,
         /** a picture's Transparency (0–1 seen) and Picture style (its outline, shadow and corners; its alpha not used) */ val alpha: Float? = null, val picStyle: PictureLook? = null) {
         /** Whether it changes the words (not only the shape's fill and border). */
         val words get() = text != null || font != null || size != null || bold != null || italic != null || underline != null || strike != null || highlight != null ||
-            align != null || list != null || spacing != null || scheme != null || para != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null || script != null || insets != null || wrap != null || cols != null || vert != null
+            align != null || list != null || spacing != null || scheme != null || para != null || anchor != null || autofit != null || cleared || raise != null || drop != null || link != null || effects != null || warp != null || script != null || insets != null || wrap != null || cols != null || vert != null || letterSpacing != null
     }
     /** [p] with its first letter raised as [l] says (a run of its own, bigger, in its own face and colour), or a raised one made plain. */
     private fun raised(p: SlidePara, l: Look): SlidePara {
@@ -91,6 +92,8 @@ internal object SlidesEdit {
                 l.link?.let { k -> r = if (k.isEmpty()) r.copy(link = null) else r.copy(link = k, color = 0x0563C1) }
                 // WordArt's effects in Word's form, which Words' drawing reads (a run's own ones, either form, replaced)
                 l.effects?.let { fx -> r = r.copy(font = r.font.orEmpty().replace(EFFECTS, "") + fx.docx()) }
+                // character spacing in Word's form too (an .odp's own fo:letter-spacing taken off first)
+                l.letterSpacing?.let { pt -> r = LetterLooks.withSpacing(r.copy(font = r.font.orEmpty().replace(Regex("""\s?fo:letter-spacing="[^"]*""""), "")), OfficeKind.Docx, pt) }
                 r
             }
             // a list as PowerPoint's Bullets and Numbering make it: hanging a quarter inch and a bit (marL 342900, indent −342900); none: no indent
@@ -516,6 +519,8 @@ internal object SlidesEdit {
                 l.strike?.let { rPr.setAttribute("strike", if (it) "sngStrike" else "noStrike") }
                 // as PowerPoint's Superscript and Subscript (Font dialog): 30 % up, 25 % down
                 l.script?.let { if (it == 0) rPr.removeAttribute("baseline") else rPr.setAttribute("baseline", if (it > 0) "30000" else "-25000") }
+                // Character spacing: PowerPoint's spc, hundredths of a point
+                l.letterSpacing?.let { if (it == 0f) rPr.removeAttribute("spc") else rPr.setAttribute("spc", "${Math.round(it * 100)}") }
                 l.text?.let { c -> listOf("noFill", "gradFill", "blipFill", "pattFill", "grpFill").forEach { n -> rPr.kids().filter { it.localName == n }.forEach { rPr.removeChild(it) } }; place(rPr, rgb(c, "solidFill"), RPR) }
                 l.highlight?.let { h -> if (h == NONE) rPr.kids().filter { it.localName == "highlight" }.forEach { rPr.removeChild(it) } else place(rPr, rgb(h, "highlight"), RPR) }
                 l.font?.let { f -> place(rPr, a("latin", "typeface" to f), RPR); rPr.kids().filter { it.localName in setOf("ea", "cs") }.forEach { it.setAttribute("typeface", f) } }

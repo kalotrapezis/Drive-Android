@@ -1608,6 +1608,8 @@ internal object OfficePages {
             }
             r.sizePt?.let { span(AbsoluteSizeSpan(Math.round(it * U).coerceAtLeast(1))) }
             if (r.script != 0) { span(if (r.script > 0) SuperscriptSpan() else SubscriptSpan()); span(RelativeSizeSpan(0.65f)) }
+            // Character spacing, after the size is set (only a run that has some: the rest laid out as before)
+            if (letters.spacing != 0f) span(LetterLooks.Spaced(letters.spacing, U))
             (r.color ?: if (web) 0x0563C1 else null)?.let { span(ForegroundColorSpan(0xFF000000.toInt() or it)) }
             r.highlight?.let { span(BackgroundColorSpan(0xFF000000.toInt() or it)) }
             // Tracked changes, as Word shows all markup: inserted underlined, deleted struck through, in the author's colour.

@@ -875,6 +875,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         }
         Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
         Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { col -> restyle { it.copy(highlight = col?.toArgb() ?: SlidesEdit.NONE) } }
+        // PowerPoint's Character Spacing (Words' choices): the box's letters closer or wider
+        Box { var spacing by remember { mutableStateOf(false) }
+            val now = r?.font?.let { LetterLooks.spacingOf(it) } ?: 0f
+            RibbonButton("Spacing", w, R.drawable.ic_format_letter_spacing, on = now != 0f) { spacing = true }
+            DropdownMenu(spacing, { spacing = false }) { CHARACTER_SPACINGS.forEach { (label, pt) ->
+                DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (now == pt) Icon(painterResource(R.drawable.ic_check), null) },
+                    onClick = { spacing = false; restyle { it.copy(letterSpacing = pt) }; WriterLog.i("Slides: character spacing $pt") }) } } }
         // PowerPoint's Text Effects (WordArt's, on any box's words): an outline round the letters, a shadow, a glow (an .odp has none)
         Box {
             var effecting by remember { mutableStateOf(false) }

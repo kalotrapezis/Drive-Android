@@ -155,7 +155,8 @@ internal object SlidesOdp {
                     val looks = listOfNotNull("text-transform".takeIf { textProp(span, it) == "uppercase" }?.let { """ fo:text-transform="uppercase"""" },
                         "font-variant".takeIf { textProp(span, it) == "small-caps" }?.let { """ fo:font-variant="small-caps"""" },
                         "text-line-through-type".takeIf { textProp(span, it) == "double" }?.let { """ style:text-line-through-type="double"""" },
-                        "text-underline-type".takeIf { textProp(span, it) == "double" }?.let { """ style:text-underline-type="double"""" }).joinToString("") + effects.odt()
+                        "text-underline-type".takeIf { textProp(span, it) == "double" }?.let { """ style:text-underline-type="double"""" },
+                        textProp(span, "letter-spacing")?.takeIf { it != "normal" }?.let { """ fo:letter-spacing="$it"""" }).joinToString("") + effects.odt()
                     // "super 58%", "sub", "33% 58%": raised or lowered
                     val position = textProp(span, "text-position")?.substringBefore(' ')
                     return DocRun(t, bold = textProp(span, "font-weight").let { it == "bold" || (it?.toIntOrNull() ?: 400) >= 600 }, italic = textProp(span, "font-style") == "italic",

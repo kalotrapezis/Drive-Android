@@ -107,7 +107,7 @@ How to write here:
   done or marked later, except these, each a day or more: (1) Slides › File › Save as the other format (.pptx ⇄ .odp: a whole-deck
   writer for each); (2) copying slides between decks (PowerPoint's Reuse slides); (3) editing the slide master; (4) View › Zoom on the
   slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold) [done 18 Oct, 0c6f13b];
-  (7) character spacing in all three (the shared engine). The "later"s with evidence (none of the 29 decks uses them): slide tables'
+  (7) character spacing in all three (the shared engine) [done 18 Oct]. The "later"s with evidence (none of the 29 decks uses them): slide tables'
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
   Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
   (1), (5). Change it in the morning if you like; each is a commit of its own, ticked here as it is done.
@@ -596,6 +596,11 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       Text effects done 18 Oct (office-F): Home › Text effects on any box's words — Outline, Shadow, Glow, each on or off (WordArt's,
       already read and written both ways; an .odp has no glow, so none offered). Emulator: arrange.pptx's red words shadowed and glowing.
       Character spacing: later — Words has none either; the shared engine lays letters out without it, so it comes to all three at once.
+      Character spacing done 18 Oct (office-F): in the shared engine (`LetterLooks.spacing`, drawn by `LetterLooks.Spaced` only on a run
+      that has some — Words' fingerprint unchanged); Words' Home › Spacing and Slides' Home › Spacing (Very tight −1.5 pt … Very loose
+      +3 pt), in Word's w:spacing, LibreOffice's fo:letter-spacing and PowerPoint's spc — read, shown in the editor and on the pages,
+      written (`CharacterSpacingTest`: Words' .docx and .odt, Slides' .pptx and .odp, LibreOffice's conversions each way). Tables: none
+      — Excel's and Calc's cells have no character spacing. Emulator: Reading list's "Greek" very loose, saved, on the page.
 - [x] **Transitions**: duration; sound (later); advance on click and/or after a time set here (the file's `advTm`
       is played today, not set); **Morph** (later: the most used modern transition).
       Found done 18 Oct (office-F): Transitions › Options — Fast / Medium / Slow, and Next slide: On click, After 3 / 5 / 10 / 20 s.

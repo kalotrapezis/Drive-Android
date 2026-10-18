@@ -562,7 +562,7 @@ internal object WriterBridge {
                     if (r.color == null) look.color?.takeIf { it != 0 }?.let { marks += RichTextSpanMark.TextColor(range, (STYLE_ALPHA shl 24) or it.toLong()) }
                 }
                 // Capitals, small capitals, double lines: drawn by the editor too (the letters stay as typed).
-                LetterLooks.of(r.font).takeIf { it.any && r.image == null }?.let { marks += RichTextSpanMark.Custom(range, EditorLetters(it)) }
+                LetterLooks.of(r.font).takeIf { it.any && r.image == null }?.let { marks += RichTextSpanMark.Custom(range, EditorLetters(it, r.sizePt ?: look.sizePt ?: 11f)) }
                 if (r.bold) marks += RichTextSpanMark.Bold(range)
                 if (r.italic) marks += RichTextSpanMark.Italic(range)
                 if (r.underline) marks += RichTextSpanMark.Underline(range)
@@ -2356,6 +2356,17 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
         WriterLog.i("font $name on ${to - from} letters")
     }
+    /** Home › Character spacing (Word's Font › Advanced): [pt] after each letter of the chosen words, less than 0 closer, 0 normal. */
+    fun setSpacing(pt: Float) = change {
+        val (from, to) = chosenOrWord()
+        val sel = state.selection
+        val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), from, to)
+        if (spans.isEmpty()) { message = "Choose some words first"; return@change }
+        meta = WriterBridge.restyled(current(), spans) { LetterLooks.withSpacing(it, kind, pt) }
+        dirty = true
+        state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
+        WriterLog.i("character spacing $pt pt on ${to - from} letters")
+    }
     fun paint(look: DocRun, sel: androidx.compose.ui.text.TextRange) {
         change {
             val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), sel.min, sel.max)
@@ -3935,6 +3946,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             } }) }
                         }
                     }
+                    // Character spacing (Word's Font › Advanced › Spacing): the chosen words, or the word at the cursor, closer or wider
+                    Box {
+                        var spacing by remember { mutableStateOf(false) }
+                        RibbonButton("Spacing", w, R.drawable.ic_format_letter_spacing) { spacing = true }
+                        DropdownMenu(spacing, { spacing = false }) { CHARACTER_SPACINGS.forEach { (label, pt) ->
+                            DropdownMenuItem(text = { Text(label) }, onClick = { spacing = false; setSpacing(pt) }) } }
+                    }
                     // Format painter: the look of the letters at the cursor, painted on the next words chosen.
                     Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) { pickPainter() }
                     // Clear formatting: the chosen letters (or, with none chosen, the paragraph) back to their style's look.
@@ -5315,13 +5333,15 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo
 
 /** [LetterLooks] in the editor: capitals through the font's small-capitals feature (the editor keeps the letters as
  * typed; ALL CAPS as small capitals made capital-sized), double lines drawn under or through the letters. */
-internal data class EditorLetters(val looks: LetterLooks) : com.mohamedrejeb.richeditor.model.RichSpanStyle {
+internal data class EditorLetters(val looks: LetterLooks, /** the letters' size (pt): character spacing as a share of it */ val sizePt: Float = 11f) : com.mohamedrejeb.richeditor.model.RichSpanStyle {
     override fun getSpanStyle(richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig) =
         // ALL CAPS: every letter a small capital, drawn about as tall as a capital (the font's small capitals are ~0.77 of it).
         (if (looks.caps) SpanStyle(fontFeatureSettings = "c2sc, smcp", fontSize = 1.3.em)
         else SpanStyle(fontFeatureSettings = if (looks.smallCaps) "smcp" else null))
             // Hidden text is still edited here: grey, with Word's dotted line under it (the pages leave it out).
             .let { if (looks.hidden) it.copy(color = Color(0xFF8A8A8A)) else it }
+            // Character spacing: as a share of the letters' size (Compose's em)
+            .let { if (looks.spacing != 0f) it.copy(letterSpacing = (looks.spacing / sizePt.coerceAtLeast(1f)).em) else it }
     override fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCustomStyle(layoutResult: TextLayoutResult, textRange: androidx.compose.ui.text.TextRange,
         richTextConfig: com.mohamedrejeb.richeditor.model.RichTextConfig, topPadding: Float, startPadding: Float) {
         if (!looks.doubleStrike && !looks.doubleUnder && !looks.hidden) return
@@ -5493,3 +5513,6 @@ internal suspend fun savePictureToPhone(context: android.content.Context, bytes:
     }.isSuccess }
     return if (ok) "Saved in Pictures/Tetra" else "Could not save the picture."
 }
+
+/** Home › Character spacing's choices (Word's Condensed and Expanded by, in points), shared by Words and Slides. */
+internal val CHARACTER_SPACINGS = listOf("Very tight (−1.5 pt)" to -1.5f, "Tight (−0.75 pt)" to -0.75f, "Normal" to 0f, "Loose (+1.5 pt)" to 1.5f, "Very loose (+3 pt)" to 3f)

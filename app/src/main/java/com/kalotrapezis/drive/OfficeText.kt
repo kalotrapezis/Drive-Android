@@ -150,8 +150,15 @@ internal class Block(val height: Float, val pieces: List<LaidPage.Piece>, val bo
  * Letter looks Writer keeps raw in [DocRun.font] and shows (the user's test suite, 2026-10-01: all four looked plain):
  * capitals, small capitals, double strikethrough, double underline — Word's rPr elements, LibreOffice's attributes.
  */
-internal data class LetterLooks(val caps: Boolean, val smallCaps: Boolean, val doubleStrike: Boolean, val doubleUnder: Boolean, val hidden: Boolean = false) {
-    val any get() = caps || smallCaps || doubleStrike || doubleUnder || hidden
+internal data class LetterLooks(val caps: Boolean, val smallCaps: Boolean, val doubleStrike: Boolean, val doubleUnder: Boolean, val hidden: Boolean = false,
+    /** Character spacing (Font › Advanced): points added after each letter, less than 0 closer (Word's w:spacing, LibreOffice's fo:letter-spacing) */ val spacing: Float = 0f) {
+    val any get() = caps || smallCaps || doubleStrike || doubleUnder || hidden || spacing != 0f
+    /** Character spacing drawn: [pt] after each letter, [unit] the layout's units a point (Android's letter spacing is in ems). */
+    class Spaced(val pt: Float, val unit: Float) : android.text.style.MetricAffectingSpan() {
+        private fun on(tp: android.text.TextPaint) { if (tp.textSize > 0f) tp.letterSpacing = pt * unit / tp.textSize }
+        override fun updateMeasureState(tp: android.text.TextPaint) = on(tp)
+        override fun updateDrawState(tp: android.text.TextPaint) = on(tp)
+    }
     /** Two lines (struck through, or under) over its letters, drawn after the line: [drawSecondLines]. */
     class SecondLine(val strike: Boolean)
     companion object {
@@ -162,7 +169,20 @@ internal data class LetterLooks(val caps: Boolean, val smallCaps: Boolean, val d
             on(font, "smallCaps") || "fo:font-variant=\"small-caps\"" in font,
             on(font, "dstrike") || "style:text-line-through-type=\"double\"" in font,
             "<w:u w:val=\"double\"" in font || "style:text-underline-type=\"double\"" in font,
-            on(font, "vanish") || "text:display=\"none\"" in font)
+            on(font, "vanish") || "text:display=\"none\"" in font, spacingOf(font))
+
+        /** A run's character spacing in points: Word's twentieths, or LibreOffice's length ("normal" none). */
+        fun spacingOf(font: String): Float {
+            Regex("""<w:spacing\b[^>]*\bw:val="(-?\d+)"""").find(font)?.let { return it.groupValues[1].toFloat() / 20f }
+            val v = Regex("""fo:letter-spacing="([^"]+)"""").find(font)?.groupValues?.get(1) ?: return 0f
+            val m = Regex("""(-?[\d.]+)\s*(pt|cm|mm|in|pc|px)?""").matchEntire(v.trim()) ?: return 0f
+            val n = m.groupValues[1].toFloatOrNull() ?: return 0f
+            return n * when (m.groupValues[2]) { "cm" -> 28.346457f; "mm" -> 2.8346457f; "in" -> 72f; "pc" -> 12f; "px" -> 0.75f; else -> 1f }
+        }
+        /** [r] with character spacing [pt] (0: none), in the file's own words: Word's w:spacing, LibreOffice's fo:letter-spacing. */
+        fun withSpacing(r: DocRun, kind: OfficeKind, pt: Float): DocRun = r.copy(font = if (kind == OfficeKind.Docx)
+            r.font.orEmpty().replace(Regex("""<w:spacing\b[^>]*/>"""), "") + (if (pt != 0f) """<w:spacing w:val="${Math.round(pt * 20)}"/>""" else "")
+            else r.font.orEmpty().replace(Regex("""\s?fo:letter-spacing="[^"]*""""), "") + (if (pt != 0f) " fo:letter-spacing=\"${String.format(java.util.Locale.ROOT, "%.2fpt", pt)}\"" else ""))
 
         /** The [SecondLine] spans of [layout]'s lines [first]..[last]: two thin lines each, in the text's colour. */
         fun drawSecondLines(canvas: android.graphics.Canvas, layout: android.text.Layout, first: Int, last: Int) {

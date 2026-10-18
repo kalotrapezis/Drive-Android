@@ -103,9 +103,8 @@ How to write here:
 - (office-F, 17 Oct night) **Touch targets** (A's script, details under A › Touch points): the tab row's tabs are 41–43 dp tall and the
   icon-only ribbon buttons 40–46 dp wide, under Android's 48 dp. Make them 48 dp (the ribbon ~5 dp taller; icon buttons' circles
   as now, 8 dp more room round each), or keep the present compact look?
-- (office-F, 18 Oct) **Tables' AutoSave**: Tables' File tab now has AutoSave, sharing Words' own setting — so with it on (it was, on the
-  emulator) a spreadsheet saves itself a few seconds after each change, as a Words document does. Keep it shared, or give Tables its own
-  setting starting off? (Undo now goes back past a save, as Word's — 59c9218 — so AutoSave no longer costs Undo.)
+- [x] (answered 18 Oct) **Tables' AutoSave**: kept shared — the user: AutoSave is one setting in Settings › Office, "the same will
+  apply to all office apps" (Words, Tables, Slides alike).
 - (office-F, 18 Oct, 05:00) **Office's last big pieces — which first, or later?** Words, Slides and Tables' lines in this plan are now
   done or marked later, except these, each a day or more: (1) Slides › File › Save as the other format (.pptx ⇄ .odp: a whole-deck
   writer for each) [done 18 Oct: the deck rebuilt in the other format, see B › File]; (2) copying slides between decks (PowerPoint's Reuse slides) [done 18 Oct]; (3) editing the slide master [done 18 Oct: things on every slide; a Slide Master view later]; (4) View › Zoom on the

@@ -39,6 +39,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +59,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -199,6 +202,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var namesFor by remember { mutableStateOf<SheetRange?>(null) } // Formulas › Names: the cells a new name would stand for
     var allNotes by remember { mutableStateOf(false) } // Review › Show all notes
     var breaks by remember { mutableStateOf(false) } // View › Page break preview
+    var pageLayout by remember { mutableStateOf(false) } // View › Page layout: the sheet as its printed pages
     var traced by remember { mutableStateOf<Set<Long>>(emptySet()) } // Formulas › Trace: the cells marked (precedents, dependents, errors)
     var totalling by remember { mutableStateOf<SheetRange?>(null) } // Data › Subtotal: the cells (the sheet's; headings first)
     var shaping by remember { mutableStateOf(false) } // Insert › Shape: Words' shapes dialog
@@ -1418,6 +1422,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton("100%", w, R.drawable.ic_aspect_ratio) { view.zoom = 1f }
                             // Excel's Zoom to Selection: the chosen cells fill the screen
                             // Excel's Page Break Preview: the pages as they print, outlined over the sheet, what is not printed greyed
+                            // Excel's Page Layout: the sheet as its pages print, with margins, header and footer; a page tapped, back to its cells
+                            RibbonButton("Page layout", w, R.drawable.ic_page_header, on = pageLayout) { pageLayout = !pageLayout; WriterLog.i("Sheets: page layout view ${if (pageLayout) "on" else "off"}") }
                             RibbonButton("Page break preview", w, R.drawable.ic_insert_page_break, on = breaks) { breaks = !breaks; WriterLog.i("Sheets: page break preview ${if (breaks) "on" else "off"}") }
                             RibbonButton("Zoom to selection", w, R.drawable.ic_zoom_in) { view.fitTo = g ?: l.row(cr).takeIf { it >= 0 }?.let { rr -> l.col(cc).takeIf { it >= 0 }?.let { SheetRange(rr, it, rr, it) } } }
                             RibbonDivider(w)
@@ -1599,6 +1605,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                     pending = h.key; showHits = false; failed = null; index = h.sheet
                 }
                 failed != null -> Text(failed!!, color = Color.Black, modifier = Modifier.align(Alignment.Center).padding(24.dp))
+                pageLayout && s != null && b != null && l != null -> SheetPageLayout(s, b.styles, l, version, file?.name.orEmpty()) { r, c ->
+                    pageLayout = false; view.row = r; view.col = c; view.reveal++ }
                 s != null && b != null && l != null -> {
                     SheetGrid(s, b.styles, l, view, SheetMarks(found.toHashSet() + traced, found.getOrNull(current) ?: -1L, allNotes, breaks), formulas, version,
                         column = { col, _ -> header = 'c' to col; group = null }, row = { r, _ -> header = 'r' to r; group = null },
@@ -3405,6 +3413,24 @@ internal class SheetPainter(
             }
             doc.writeTo(out); doc.close()
             return pages.pages.size
+        }
+    }
+}
+
+/** View › Page layout (Excel's): the sheet's pages as they print (Export PDF's), white on grey, one under another; [open] a page's first cell. */
+@Composable
+private fun SheetPageLayout(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayout, version: Int, name: String, open: (Int, Int) -> Unit) {
+    val density = LocalDensity.current.density
+    val (pages, painter) = remember(sheet, layout, version) { sheetPages(sheet, layout) to SheetPainter(sheet, styles, density, layout) }
+    androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().background(Color(0xFFE6E6E6)), contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (pages.pages.isEmpty()) item { Text("Nothing on this sheet to print", color = Color.DarkGray, modifier = Modifier.padding(24.dp)) }
+        items(pages.pages.size) { i -> val p = pages.pages[i]
+            Canvas(Modifier.widthIn(max = 720.dp).fillMaxWidth().aspectRatio(pages.width / pages.height).shadow(2.dp).background(Color.White)
+                .clickable { open(layout.rows[p.rows.first], layout.cols[p.cols.first]) }) {
+                drawIntoCanvas { cv -> val c = cv.nativeCanvas; val k = size.width / pages.width
+                    c.save(); c.scale(k, k); painter.printPage(c, pages, p, sheet.print.grid); SheetPainter.headerFooter(c, pages, sheet, i + 1, pages.pages.size, name); c.restore() }
+            }
         }
     }
 }

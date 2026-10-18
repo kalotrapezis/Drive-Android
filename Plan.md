@@ -1008,7 +1008,7 @@ what is not already above:
       such a cell now takes the thread away too, so Excel shows the note, not the old thread over it (`a threaded comment read
       and a note put in its place`). Not written: replies (none of the user's 29 workbooks has a thread, and no Excel here to
       check one) — later, when asked. Accessibility check: later, as planned.
-- [~] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and
+- [x] **View**: page break preview and page layout view (with Page layout); freeze the first column, and rows and
       columns together; zoom to the chosen cells; show or hide the formula bar, headings, gridlines, sheet tabs.
       Done (office-F session, 18 Oct) but the page views: freezing (above, kept in the file); View › Zoom to selection (the chosen
       cells fill the screen: `SheetPainter.fit`), Formula bar and Sheet tabs shown or hidden (the viewer's, as Excel's View
@@ -1016,6 +1016,8 @@ what is not already above:
       bar and tabs hidden. Not yet: page break preview, page layout view.
       View › Page break preview (Excel's: the pages as `sheetPages` cuts them for printing and PDF — each framed in blue with
       "Page n" across it, what is not printed greyed; a print setting changed shows at once). Emulator: a 120-row sheet, pages 1–2.
+      View › Page layout (Excel's: the sheet as its pages print — Export PDF's pages with margins, header and footer, white on
+      grey one under another; a page tapped goes back to the cells at its first). Emulator: page 2 tapped, A54 chosen.
 - [ ] **Draw**: pen and highlighter over the sheet (Words' Draw tab), saved as ink.
 - [x] **From Words**: AutoSave, Save a copy, Save as, Rename; Find and Replace (above); Format painter (above); the
       keyboard bar while typing in a cell.

@@ -100,9 +100,9 @@ How to write here:
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
-- (office-F, 17 Oct night) **Touch targets** (A's script, details under A › Touch points): the tab row's tabs are 41–43 dp tall and the
-  icon-only ribbon buttons 40–46 dp wide, under Android's 48 dp. Make them 48 dp (the ribbon ~5 dp taller; icon buttons' circles
-  as now, 8 dp more room round each), or keep the present compact look?
+- [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode
+  (Top bottom) is all settings in the Office section". Done: with the tools Normal, the tab row's tabs and the icon-only tools are
+  48 dp (all three apps, ribbon at the top or bottom); Compact (chosen, or By itself with a mouse) keeps the smaller look. See A › Touch points.
 - [x] (answered 18 Oct) **Tables' AutoSave**: kept shared — the user: AutoSave is one setting in Settings › Office, "the same will
   apply to all office apps" (Words, Tables, Slides alike).
 - (office-F, 18 Oct, 05:00) **Office's last big pieces — which first, or later?** Words, Slides and Tables' lines in this plan are now
@@ -140,7 +140,12 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       shared things every time: the tab row's tabs 41–43 dp tall (`OfficeTabRow`); icon-only tools 40–46 dp wide (`Tool` 40 dp, `Swatches`:
       Bold, Italic, Text colour, Fill, Fewer decimals…); the top bar's Undo, Redo, Save, Find 40 dp; Words' References › 1 2 3 35 dp; an
       unnamed 25–41 dp thing at the ribbon's right edge in Words' Home, Layout, Review and Slides' Insert (the edge: Android's back
-      gesture). Not changed: making them 48 dp changes the ribbon's look — asked under Waiting on the user. Hand check: on the tablet.
+      gesture). Done 18 Oct (office-F, the user's answer: the Office settings decide): in Normal size every tab is at least 48 dp tall
+      (`OfficeTabRow`, 2 dp under it so the tools' touch areas do not reach into it), the icon-only tools 48 dp (`LocalToolSize` /
+      `RibbonTools` inside the ribbons and Words' top bar — Notes and the text editor keep 40 dp), a labelled button at least 48 dp
+      across (1 2 3 4, X², H1); Compact is as before. Re-run in Normal (emulator, every tab of all three): Words 0, Tables 2, Slides 2 —
+      those four are the next button cut off where the ribbon line scrolls on (full size once in view). Words' fingerprint unchanged.
+      Before/after shots: touch-targets/ribbon-48dp-before-after.png in the group's notes. Hand check: on the tablet.
 - [ ] **Inconsistencies**: the checklist below, the three apps side by side on the tablet. Each difference is made
       the same or written down as deliberate.
 

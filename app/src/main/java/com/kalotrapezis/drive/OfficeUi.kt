@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 
@@ -122,13 +123,21 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
     }, confirmButton = { TextButton(onClick = dismiss) { Text("Done") } })
 }
 
+/** The round icon-only tools' size ([Tool]): 40 dp, and Android's 48 dp inside an Office ribbon whose tools are Normal size
+ *  (the user, 18 Oct: the Office settings decide — Compact keeps the smaller look). Notes and the text editor keep 40 dp. */
+internal val LocalToolSize = androidx.compose.runtime.staticCompositionLocalOf { 40.dp }
+/** [content] as a ribbon's tools: icon-only tools 48 dp unless the tools are Compact. */
+@Composable internal fun RibbonTools(content: @Composable () -> Unit) =
+    androidx.compose.runtime.CompositionLocalProvider(LocalToolSize provides if (OfficeUi.compact) 40.dp else 48.dp, content = content)
+
 /** The ribbon's tab row, one for Words, Tables and Slides: the chosen tab under a bubble or over a dash (OfficeUi.marker),
  *  scrolled clear of the edge's shade. [contextual] (Picture, Column, …) has a colour of its own; [lead] goes before the tabs. */
 @Composable internal fun <T> OfficeTabRow(tabs: List<T>, shown: T, w: Color, dash: Color, pick: (T) -> Unit, contextual: T? = null,
     // the contextual tab: last, in a lighter tone of the app's colour, in every app (17 Oct)
     contextualColour: Color = androidx.compose.ui.graphics.lerp(dash, Color.White, 0.45f), label: (T) -> String = { it.toString() }, lead: @Composable () -> Unit = {}) {
     val bubble = OfficeUi.marker == "bubble" && !OfficeUi.compact
-    Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Normal size: 2 dp under the tabs, so the tools' touch areas below (48 dp round 40 dp buttons) do not reach into them
+    Row(Modifier.fillMaxWidth().shadedRow().padding(start = 6.dp, end = 6.dp, top = 2.dp, bottom = if (OfficeUi.compact) 0.dp else 2.dp), verticalAlignment = Alignment.CenterVertically) {
         lead()
         tabs.forEach { t ->
             val on = t == shown
@@ -140,10 +149,12 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
             LaunchedEffect(on, wide) { if (on && wide > 0) seen.bringIntoView(Rect(-shade, 0f, wide + shade, 1f)) }
             val m = Modifier.bringIntoViewRequester(seen).onSizeChanged { wide = it.width }
             // the bubble in the app's colour, as its dash (asked 17 Oct); the light contextual colour takes dark letters
-            if (bubble) Text(label(t), color = if (!on) w else if (t == contextual) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1,
-                modifier = m.padding(2.dp).clip(CircleShape).background(if (on) mark else Color.Transparent)
-                    .clickable { pick(t) }.padding(horizontal = 14.dp, vertical = 7.dp))
-            else Column(m.clickable { pick(t) }.padding(horizontal = 10.dp, vertical = if (OfficeUi.compact) 3.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Normal size: each tab 48 dp tall, Android's least for a finger (the user, 18 Oct); Compact as small as before
+            if (bubble) Box(m.heightIn(min = 48.dp).clip(CircleShape).clickable { pick(t) }, contentAlignment = Alignment.Center) {
+                Text(label(t), color = if (!on) w else if (t == contextual) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                    modifier = Modifier.padding(2.dp).clip(CircleShape).background(if (on) mark else Color.Transparent).padding(horizontal = 14.dp, vertical = 7.dp)) }
+            else Column(m.heightIn(min = if (OfficeUi.compact) 0.dp else 48.dp).clickable { pick(t) }.padding(horizontal = 10.dp, vertical = if (OfficeUi.compact) 3.dp else 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text(label(t), style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1)
                 Box(Modifier.padding(top = 3.dp).width(if (on) 24.dp else 0.dp).height(3.dp).background(mark))
             }
@@ -235,7 +246,7 @@ internal const val RIBBON_DIVIDER = "ribbon-divider"
  * that does not fit goes to the next row, its separator left out there (asked 16 Oct: "stacked properly", not cut mid-group).
  */
 @Composable internal fun RibbonRows(modifier: Modifier = Modifier, content: @Composable () -> Unit) =
-    androidx.compose.ui.layout.Layout(content, modifier) { ms, c ->
+    androidx.compose.ui.layout.Layout({ RibbonTools(content) }, modifier) { ms, c ->
         val loose = androidx.compose.ui.unit.Constraints(maxHeight = c.maxHeight)
         val ps = ms.map { it.measure(loose) }
         val divider = ms.map { it.layoutId == RIBBON_DIVIDER }
@@ -263,7 +274,7 @@ internal const val RIBBON_DIVIDER = "ribbon-divider"
 @Composable internal fun RibbonLine(scroll: androidx.compose.foundation.ScrollState, modifier: Modifier = Modifier, content: @Composable () -> Unit) =
     if (ribbonRows()) RibbonRows(Modifier.fillMaxWidth().then(modifier), content)
     else androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().scrollShade(scroll).horizontalScroll(scroll).then(modifier),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp, androidx.compose.ui.Alignment.CenterHorizontally)) { content() }
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp, androidx.compose.ui.Alignment.CenterHorizontally)) { RibbonTools(content) }
 
 /** navigationBarsPadding, plus room for the window's handle: a floating or split window has no navigation bar of its
  *  own, but the system draws its handle over the window's bottom (asked 16 Oct: it sat on the ribbon's tools). */

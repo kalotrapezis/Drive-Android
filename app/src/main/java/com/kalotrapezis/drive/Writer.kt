@@ -3199,6 +3199,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
                         modifier = Modifier.clickable { details = true }.padding(horizontal = 8.dp))
                 }
+                // the top bar's tools as the ribbon's: 48 dp in Normal size
+                RibbonTools {
                 if (reading) {
                     Tool(R.drawable.ic_remove, "Smaller text", w, enabled = readingZoom > 100) { readingZoom -= 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
                     Tool(R.drawable.ic_add, "Bigger text", w, enabled = readingZoom < 260) { readingZoom += 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
@@ -3217,6 +3219,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 Tool(R.drawable.ic_save, "Save", w, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
                 // Done at the far right, back to the pages, as Tables' and Slides' (17 Oct; it was an eye, "Pages", before Find)
                 Tool(R.drawable.ic_check, "Done", w, enabled = loaded) { commitCell(); viewing = true }
+                }
                 }
             }
             if (loaded && meta.unsupported.isNotEmpty()) {
@@ -4419,13 +4422,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             else if (LocalConfiguration.current.screenWidthDp >= 700) Row(
                 rememberScrollState().let { sc -> Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc) }.padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
-            ) { pages.forEachIndexed { i, page -> if (i > 0) RibbonDivider(w); page() } }
+            ) { RibbonTools { pages.forEachIndexed { i, page -> if (i > 0) RibbonDivider(w); page() } } }
             else androidx.compose.runtime.key(tab) {
                 // The tab's tools in one row that scrolls freely, its groups apart by a thin line, faded where there is more
                 // (16 Oct: as Tables' and Slides' rows, in place of pages turned one at a time with dots); a new tab from its start
                 val sc = remember(tab) { androidx.compose.foundation.ScrollState(0) }
                 Row(Modifier.fillMaxWidth().scrollShade(sc).horizontalScroll(sc).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    pages.forEachIndexed { i, group -> if (i > 0) RibbonDivider(w); group() }
+                    RibbonTools { pages.forEachIndexed { i, group -> if (i > 0) RibbonDivider(w); group() } }
                 }
             }
             }
@@ -5199,13 +5202,14 @@ internal fun Modifier.shadedScroll(): Modifier = composed {
 
 /** [outlined]: a thin border, for a button that is a word (Font's name) and would otherwise read as a label. */
 @Composable internal fun RibbonButton(label: String, tint: Color, icon: Int? = null, enabled: Boolean = true, on: Boolean = false, outlined: Boolean = false, click: () -> Unit) = Row(
-    Modifier.height(if (OfficeUi.compact) 32.dp else 40.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
+    // Normal size: at least 48 dp across, so a short one (1, X², H1) is a finger's width too (the user, 18 Oct)
+    Modifier.height(if (OfficeUi.compact) 32.dp else 40.dp).widthIn(min = if (OfficeUi.compact) 0.dp else 48.dp).clip(CircleShape).then(if (on) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
         .then(if (outlined) Modifier.border(1.dp, tint.copy(alpha = 0.5f), CircleShape) else Modifier)
         // Never taking the focus: tapped while a table cell is being typed in, it took it, the keyboard went down, the
         // ribbon moved under the finger and the tap was lost.
         .focusProperties { canFocus = false }
         .clickable(enabled = enabled, onClick = { WriterLog.i("tap $label"); click() }).padding(horizontal = if (OfficeUi.compact) 8.dp else 12.dp),
-    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
 ) {
     val c = if (enabled) tint else tint.copy(alpha = 0.35f)
     icon?.let { Icon(painterResource(it), contentDescription = null, tint = c, modifier = Modifier.size(if (OfficeUi.compact) 16.dp else 18.dp)) }

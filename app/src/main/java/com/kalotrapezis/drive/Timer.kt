@@ -102,10 +102,15 @@ internal object TimerFiles {
     /** The screen holds nine (the user, 18 Oct: "The UI will fit 9 timers"). */
     const val MAX = 9
 
-    /** Written beside, then renamed over: a sync or another device never reads half a timer. */
+    /**
+     * Written beside, then renamed over: a sync or another device never reads half a timer. Each device writes only its
+     * own file of a timer, `<id>.<device>.json` ([TimerRecord.by]), and the highest rev among them is the timer: two
+     * devices never change the same file, so sync never has two versions of one to keep side by side (18 Oct: an OK and
+     * a new start at once made "x (3) (3).json"… on every change).
+     */
     fun write(dir: File, r: TimerRecord): TimerRecord {
         dir.mkdirs()
-        val to = r.file ?: File(dir, "${r.id}.json")
+        val to = File(dir, fileName(r.id, r.by))
         val part = File(dir, ".${to.name}.part")
         part.writeText(r.json())
         check(part.renameTo(to)) { "Could not save the timer." }
@@ -113,17 +118,20 @@ internal object TimerFiles {
     }
 
     /**
-     * A new timer, in the file of one that is over when there is one (its id carried on with a higher rev, which also tells
-     * a device that missed the stop that the old one is over): the folder holds as many files as timers ever ran at once,
+     * A new timer, with the id of one that is over when there is one (its id carried on with a higher rev, which also tells
+     * a device that missed the stop that the old one is over): the folder holds as many files per device as timers ever ran at once,
      * not one per timer ever started.
      */
     fun start(dir: File, seconds: Long, by: String, now: Instant = Instant.now(), label: String = ""): TimerRecord {
         val all = read(dir)
         check(all.count { it.card(now) } < MAX) { "Nine timers at most: stop or delete one first." }
         val free = all.filter { it.free(now) }.minByOrNull { it.file?.name ?: "" }
-        val r = TimerRecord(free?.id ?: newId(), seconds, TimerRecord.RUNNING, now.plusSeconds(seconds), 0.0, (free?.rev ?: 0) + 1, label, by, free?.file)
+        val r = TimerRecord(free?.id ?: newId(), seconds, TimerRecord.RUNNING, now.plusSeconds(seconds), 0.0, (free?.rev ?: 0) + 1, label, by)
         return write(dir, r)
     }
+
+    /** "k3f9a2.24091RPADG.json"; a record with no device (one written by hand) keeps "<id>.json". */
+    fun fileName(id: String, by: String) = by.replace(Regex("[^A-Za-z0-9_-]"), "").let { if (it.isEmpty()) "$id.json" else "$id.$it.json" }
 
     fun newId(): String = java.util.UUID.randomUUID().toString().replace("-", "").take(6)
 }

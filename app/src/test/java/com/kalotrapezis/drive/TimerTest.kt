@@ -21,9 +21,9 @@ class TimerTest {
     }
 
     /** What sync does with a changed file: the other side's copy replaced (both changed: kept both, the second as "x (2)"). */
-    private fun carry(from: File, to: File, conflict: Boolean = false) = from.listFiles()!!.filter { it.name.endsWith(".json") }.forEach { f ->
+    private fun carry(from: File, to: File) = from.listFiles()!!.filter { it.name.endsWith(".json") }.forEach { f ->
         to.mkdirs()
-        f.copyTo(File(to, if (conflict) f.nameWithoutExtension + " (2).json" else f.name), overwrite = true)
+        f.copyTo(File(to, f.name), overwrite = true)
     }
 
     @Test fun timeLeftCountsDownToTheEnd() {
@@ -54,26 +54,34 @@ class TimerTest {
         assertEquals(resumed.copy(file = back.file), back)
     }
 
-    @Test fun stopOnOneDeviceStopsItOnTheOthers() {
+    @Test fun okOnOneDeviceStopsTheRingingOnTheOthers() {
         val started = TimerFiles.start(tablet, 600, "Tablet", t0)
         carry(tablet, computer)
-        assertEquals(started.id, TimerFiles.active(computer, t0).single().id)
-        // OK on the computer (it rang there): the stop comes back to the tablet as an edit of the same file
+        val end = t0.plusSeconds(600)
+        assertTrue(TimerFiles.active(tablet, end).single().ringing(end)) // both ring at the end
+        // OK on the computer: written in the computer's own file, the tablet's left as it was
         TimerFiles.write(computer, TimerFiles.read(computer).single().stop("Computer"))
+        assertEquals(setOf("${started.id}.Tablet.json", "${started.id}.Computer.json"), computer.list()!!.toSet())
         carry(computer, tablet)
-        assertTrue(TimerFiles.active(tablet, t0.plusSeconds(600)).isEmpty())
+        assertTrue(TimerFiles.active(tablet, end.plusSeconds(5)).isEmpty()) // the tablet stops ringing
+        assertTrue(TimerFiles.active(tablet, end.plusSeconds(5)).none { it.ringing(end.plusSeconds(5)) })
     }
 
-    @Test fun twoChangesAtOnceStoppingWins() {
+    @Test fun twoChangesAtOnceMakeNoCopiesAndStoppingWins() {
         TimerFiles.start(tablet, 600, "Tablet", t0)
         carry(tablet, computer)
         TimerFiles.write(tablet, TimerFiles.read(tablet).single().pause(t0.plusSeconds(10), "Tablet")) // rev 2 here
         TimerFiles.write(computer, TimerFiles.read(computer).single().stop("Computer"))           // rev 2 there
-        carry(tablet, computer, conflict = true) // both changed: sync keeps both files
-        assertEquals(2, computer.listFiles()!!.size)
+        carry(tablet, computer); carry(computer, tablet) // each changed only its own file: nothing to keep twice
+        for (d in listOf(tablet, computer)) {
+            assertEquals(2, d.list()!!.size)
+            assertTrue(TimerFiles.active(d, t0.plusSeconds(20)).isEmpty())
+        }
+        // a copy left by the old one-file-per-timer sync ("x (2).json") still reads as the same timer
+        computer.listFiles()!!.first().let { it.copyTo(File(computer, it.nameWithoutExtension + " (2).json")) }
         assertTrue(TimerFiles.active(computer, t0.plusSeconds(20)).isEmpty())
         // a newer change (resumed after the stop was seen) still wins over the old stop
-        val again = TimerFiles.read(computer).single().let { it.copy(state = TimerRecord.RUNNING, ends = t0.plusSeconds(900), rev = it.rev + 1) }
+        val again = TimerFiles.read(computer).single().let { it.copy(state = TimerRecord.RUNNING, ends = t0.plusSeconds(900), rev = it.rev + 1, by = "Phone") }
         TimerFiles.write(computer, again)
         assertEquals(TimerRecord.RUNNING, TimerFiles.active(computer, t0.plusSeconds(20)).single().state)
     }

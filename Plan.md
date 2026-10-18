@@ -1588,10 +1588,11 @@ line, the cards beside — "play is not needed as soon as I set a timer starts";
   bar with beeps on any page.
 - **Folders hidden**: Calendar and Timer are not shown in Files' lists, search or Move on either side; they sync as before.
 
-### The file (one per timer, plain JSON — Claude reads or starts a timer by writing one)
+### The files (plain JSON, one per timer and device — Claude reads or starts a timer by writing one)
 ```
 Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/Timer on a phone)
-  k3f9a2.json   {"id":"k3f9a2","seconds":300,"label":"","state":"running","ends":"2026-10-18T16:05:00Z","left":0,"rev":1,"by":"Tablet","pinned":false}
+  k3f9a2.24091RPADG.json   {"id":"k3f9a2","seconds":300,"label":"","state":"running","ends":"2026-10-18T16:05:00Z","left":0,"rev":1,"by":"24091RPADG","pinned":false}
+  k3f9a2.theologos-82xm.json   {"id":"k3f9a2",…,"state":"stopped","rev":2,"by":"theologos-82xm",…}   ← OK on the computer
 ```
 - `state`: `running` (counts down to `ends`, an ISO instant) · `paused` (`left` seconds remain, `ends` null) · `stopped`.
   `pinned`: the card stays when stopped or done.
@@ -1599,12 +1600,15 @@ Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/T
   second. Each device works out the time left from `ends` and its own clock, in memory.
 - `rev` +1 at each change; the highest wins, equal ones stopped > paused > running (a pause and a stop at once: stopped). So
   clocks a few seconds apart decide nothing; they only show the time left a few seconds apart.
-- A timer changed on two devices between syncs arrives as `x (2).json` beside `x.json` (sync's both-changed rule): the same
-  `id`, read as one, the winner by `rev`.
-- A new timer takes the file of one that is over and not pinned (its `id`, `rev` + 1): the folder holds about as many files
+- **Each device writes only its own file** of a timer, `<id>.<device>.json` (the device = `by`, letters, digits, - and _ kept);
+  all the files of an `id` are one timer, the highest `rev` among them wins. So two devices never change the same file and
+  sync never keeps two versions side by side. (Until 18 Oct evening every device wrote the timer's one file; an OK on the PC
+  and a start on the phone at once made `x (3) (3).json`, `x (3) (4).json`… — copies like these still read as the timer.)
+- A new timer takes the `id` of one that is over and not pinned (`rev` + 1): the folder holds about as many files per device
   as there were timers at once. Ran out and nobody tapped OK: it rings 10 minutes at most, then is over.
 - **Claude starts one** by writing `{"seconds":600,"state":"running","ends":"<now + 10 min, UTC>"}` as any `<name>.json` (the
-  file name is the id when there is none); **stops one** by setting `"state":"stopped"` and `rev` one higher.
+  file name is the id when there is none); **stops one** by writing `<id>.json` with `"state":"stopped"` and `rev` one
+  higher than the highest of its files.
 - The clock opens on the length last started on that device (a local setting, not synced).
 
 ### How the devices keep in step
@@ -1624,6 +1628,10 @@ Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/T
 - [ ] The real pair: start on the tablet, pause on the PC, OK on the phone — on the user's tablet (971f6b37) once the main
       session says it is free; the island's look there (the emulator has no Hyper Island). The user: the sound works on the
       tablet with sync ("it works on sync with the tablet").
+- [x] (18 Oct evening) "when I click ok on finished timer the other devices keep ringing": OK on the PC reached the phone in
+      3 s (it stopped at 17:06:45) but never the tablet, which had lost the network after the reinstall (the PC heard nothing
+      from it after 17:04:58; restarting the hotspot fixed it) — nothing can reach a device that is off the network. Found
+      on the way: every change of a timer made sync copies of its one file; now each device writes its own file (above).
 - [ ] Seen: Tetra already open does not turn to a part asked for by `adb am start -e …APPLET` (the Calendar's too); a
       notification's tap does. Not looked into.
 

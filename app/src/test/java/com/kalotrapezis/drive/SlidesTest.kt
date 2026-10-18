@@ -117,6 +117,36 @@ class SlidesTest {
         }
     }
 
+    /** File › Save as the other format: slides.pptx as an .odp and slides.odp as a .pptx — every slide, its words, looks, pictures, notes, transitions and hidden mark; read back and by LibreOffice. */
+    @Test fun `saved as the other format`() {
+        val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
+        fun words(d: Deck, i: Int) = d.slides[i].items.mapNotNull { (it as? SlideItem.Shape)?.text?.paras?.joinToString(" ") { p -> p.runs.joinToString("") { r -> r.text } }?.filter { c -> !c.isWhitespace() && c != '•' }?.takeIf { w -> w.isNotEmpty() } }.toSet()
+        for ((name, kind) in listOf("slides.pptx" to "odp", "slides.odp" to "pptx")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val out = scratchDir("convert").resolve("converted.$kind")
+            SlidesReuse.convert(src, out, File("src/main/assets/blank.$kind").readBytes(), scratchDir("convert-pics"))
+            fun check(d: Deck, how: String) {
+                assertEquals(how, deck.slides.size, d.slides.size)
+                assertEquals(how, deck.width, d.width, 1f); assertEquals(how, deck.height, d.height, 1f)
+                deck.slides.indices.forEach { i -> assertTrue("$how, slide ${i + 1}: ${words(deck, i)} in ${words(d, i)}", words(d, i).containsAll(words(deck, i))) }
+                assertEquals(how, deck.slides.map { it.notes.trim() }, d.slides.map { it.notes.trim() })
+                assertEquals(how, deck.slides.map { it.hidden }, d.slides.map { it.hidden })
+                assertEquals(how, deck.slides.map { it.transition?.kind }, d.slides.map { it.transition?.kind })
+                assertEquals(how, deck.slides.map { s -> s.items.count { it is SlideItem.Picture && it.media == null } }, d.slides.map { s -> s.items.count { it is SlideItem.Picture } })
+                val red = d.slides[2].items.mapNotNull { it as? SlideItem.Shape }.first { s -> s.text?.paras?.any { p -> p.runs.any { it.text.contains("Bold red") } } == true }.text!!.paras.flatMap { it.runs }.first { it.text.isNotBlank() }
+                assertTrue(how, red.bold); assertEquals(how, 0xC00000, red.color)
+                fun box(dk: Deck) = dk.slides[2].items.mapNotNull { it as? SlideItem.Shape }.first { s -> s.text?.paras?.any { p -> p.runs.any { it.text.startsWith("A rounded box") } } == true }.text!!.let { it.anchor to it.paras.first().para.align }
+                assertEquals(how, box(deck), box(d))
+            }
+            check(Slides.read(out), "saved, $name")
+            if (lo) {
+                val dir = scratchDir("lo"); val conv = if (kind == "odp") "pptx" else "odp"
+                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", conv, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                assertEquals("LibreOffice's $conv of $name", deck.slides.size, Slides.read(dir.listFiles()!!.single { it.extension == conv }).slides.size)
+            }
+        }
+    }
+
     /** Arrange › On every slide: a text box on the slide master (PowerPoint's master, LibreOffice's master page), on every slide when read back and by LibreOffice; then taken off every slide. */
     @Test fun `a thing on every slide`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

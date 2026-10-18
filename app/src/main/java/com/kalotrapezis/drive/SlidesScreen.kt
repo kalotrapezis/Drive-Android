@@ -2450,17 +2450,34 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     if (savingAs || renaming) file?.let { f ->
         var typed by remember { mutableStateOf(if (savingAs) "${f.nameWithoutExtension} (2)" else f.nameWithoutExtension) }
-        fun target() = typed.trim().removeSuffix(".${f.extension}").takeIf { it.isNotEmpty() && '/' !in it }?.let { File(f.parentFile, "$it.${f.extension}") }
+        var kind by remember { mutableStateOf(f.extension.lowercase()) } // Save as: .pptx or .odp (the other format: the deck rebuilt in it)
+        fun target() = typed.trim().removeSuffix(".$kind").takeIf { it.isNotEmpty() && '/' !in it }?.let { File(f.parentFile, "$it.$kind") }
         androidx.compose.material3.AlertDialog(onDismissRequest = { savingAs = false; renaming = false }, title = { Text(if (savingAs) "Save as" else "Rename") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${f.extension}") })
-                if (savingAs) Text("Beside ${f.name}. Slides goes on with the new one.", style = MaterialTheme.typography.bodySmall)
+                androidx.compose.material3.OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${if (savingAs) kind else f.extension}") })
+                if (savingAs) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (k in listOf("pptx", "odp")) androidx.compose.material3.FilterChip(kind == k, { kind = k }, { Text(if (k == "pptx") "PowerPoint" else "LibreOffice") })
+                }
+                if (savingAs) Text("Beside ${f.name}. Slides goes on with the new one." + if (kind != f.extension.lowercase()) " Its slides are rebuilt in the other format on a plain theme; animations and films stay behind." else "", style = MaterialTheme.typography.bodySmall)
             } },
             confirmButton = { androidx.compose.material3.TextButton(onClick = {
                 val t = target() ?: run { message = "That is not a file name."; return@TextButton }
                 if (t == f) { savingAs = false; renaming = false; return@TextButton }
                 if (t.exists()) { message = "${t.name} is already there. Choose another name."; return@TextButton }
-                if (savingAs) { savingAs = false; save(to = t); WriterLog.i("Slides: saved as ${t.name}") }
+                if (savingAs && kind != f.extension.lowercase()) { savingAs = false
+                    // the other format: the deck as it shows saved into a copy, rebuilt from that in the other format, and gone on with
+                    val temp = File(context.cacheDir, "as-${System.nanoTime()}.${f.extension}")
+                    save(to = temp, copy = true, then = { scope.launch {
+                        val got = withContext(Dispatchers.IO) { runCatching {
+                            val pics = File(context.cacheDir, "as-pictures-${System.nanoTime()}")
+                            try { SlidesReuse.convert(temp, t, context.assets.open("blank.$kind").use { it.readBytes() }, pics) to Slides.read(t) } finally { temp.delete(); pics.deleteRecursively() }
+                        }.onFailure { WriterLog.e("Slides: save as .$kind", it); t.delete() }.getOrNull() }
+                        if (got == null) { message = "Could not save it as .$kind."; return@launch }
+                        val (skipped, nd) = got
+                        file = t; deck = nd; edit = SlidesEdit.start(nd); saved = edit; source = null; undos.clear(); redos.clear(); chosen = chosen?.coerceAtMost(nd.slides.lastIndex)
+                        message = "Saved as ${t.name}" + if (skipped > 0) " ($skipped things could not be brought)" else ""; WriterLog.i("Slides: saved as ${t.name}, $skipped left out")
+                    } })
+                } else if (savingAs) { savingAs = false; save(to = t); WriterLog.i("Slides: saved as ${t.name}") }
                 else { renaming = false
                     // the file, its recovery draft and its versions under the new name (as Words renames)
                     scope.launch { val ok = withContext(Dispatchers.IO) { runCatching {

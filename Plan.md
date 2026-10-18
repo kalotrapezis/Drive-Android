@@ -105,7 +105,7 @@ How to write here:
   setting starting off? (Undo now goes back past a save, as Word's — 59c9218 — so AutoSave no longer costs Undo.)
 - (office-F, 18 Oct, 05:00) **Office's last big pieces — which first, or later?** Words, Slides and Tables' lines in this plan are now
   done or marked later, except these, each a day or more: (1) Slides › File › Save as the other format (.pptx ⇄ .odp: a whole-deck
-  writer for each); (2) copying slides between decks (PowerPoint's Reuse slides) [done 18 Oct]; (3) editing the slide master [done 18 Oct: things on every slide; a Slide Master view later]; (4) View › Zoom on the
+  writer for each) [done 18 Oct: the deck rebuilt in the other format, see B › File]; (2) copying slides between decks (PowerPoint's Reuse slides) [done 18 Oct]; (3) editing the slide master [done 18 Oct: things on every slide; a Slide Master view later]; (4) View › Zoom on the
   slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold) [done 18 Oct, 0c6f13b];
   (7) character spacing in all three (the shared engine) [done 18 Oct]. The "later"s with evidence (none of the 29 decks uses them): slide tables'
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
@@ -533,7 +533,7 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       (one put on here), Delete from every slide (each master's copy). `a thing on every slide` (both formats, typed words and their
       colour, LibreOffice's conversions, then taken off). The master's title and body looks change deck-wide through Design's colours
       and fonts. Not yet (later, when asked): a Slide Master view of its own (layouts, the master's placeholders moved or restyled).
-      Emulator: "Olive Co-op" on every slide of arrange.pptx, saved, chosen through the Selection pane and taken off every slide.
+      Emulator: "Olive Co-op" on every slide of arrange.pptx, saved, chosen through the Selection pane and taken off every slide. Full run after it: unit 499, 0 failing, 7 skipped; sweep 349 + 29, none failing.
 - [x] **File**: Find and Replace across slides; export each slide as a picture; Print with handouts; Versions.
       Find and Replace done 17 Oct (office-C session): Words' find bar moved into a shared `FindReplaceBar` (OfficeUi.kt; Words uses it
       as before — checked on the emulator, 1/3 found) and Slides' top bar has it (the search button while editing, Ctrl+F as A planned):
@@ -644,9 +644,15 @@ Slide Show, Record, Review, View — and Microsoft's page comparing PowerPoint o
       Done 18 Oct (office-F): View › Ruler (Words' HorizontalRuler and VerticalRuler round the slide being edited, in Words' unit from
       its top left; a tablet's layout, as Words shows its rulers) and Reading view (the show from the chosen slide — on a phone or
       tablet the screen is its window). Emulator: a 4:3 slide's 25.4 × 19.05 cm; slide 4 shown.
-- [~] **File**: Save as template (.potx, into Tetra's Templates folder, where Design › Themes finds it); Save as
+- [x] **File**: Save as template (.potx, into Tetra's Templates folder, where Design › Themes finds it); Save as
       .odp / .pptx; remove notes and comments before sharing (Inspect); password protection (later).
-      Template and Inspect done 17 Oct (office-C session, with From Words' File above). Not yet: saving as the other format.
+      Template and Inspect done 17 Oct (office-C session, with From Words' File above). Saving as the other format done 18 Oct
+      (office-F): File › Save as has PowerPoint / LibreOffice; the other one rebuilds the deck on Tetra's blank of that kind (assets
+      blank.pptx, and blank.odp — LibreOffice's conversion of it), sized as the deck, every slide as Reuse slides brings one plus its
+      master's and layout's decorations, background picture, transition, hidden mark and notes (`SlidesReuse.convert`); Slides goes
+      on with the new file. `saved as the other format` (both ways, LibreOffice's conversions); the deck sweep now also saves each of
+      the 29 as the other format (all slides, LibreOffice's pages the same). Left behind (said in the dialog): animations, films, a
+      group's insides; placeholders become text boxes on a plain theme. Emulator: arrange.pptx → .odp → .pptx, both read back.
 - [x] **Text**: right-to-left text and text direction (vertical); highlight (planned in Home above).
       Done 18 Oct (office-F): a shape's Text direction — Horizontal, Rotate all text 90°, 270° (PowerPoint's bodyPr vert / vert270;
       LibreOffice's loext:writing-mode tb-rl90 / bt-lr, on the shape's style and its paragraphs', as LibreOffice writes them), read

@@ -73,7 +73,7 @@ class UserDocsSweepTest {
                     if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
                         fun pages(file: File): Int {
                             val dir = scratchDir("lo")
-                            val copy = File(dir, "deck." + f.extension.lowercase()).also { file.copyTo(it) }
+                            val copy = File(dir, "deck." + file.extension.lowercase()).also { file.copyTo(it) }
                             ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, copy.path).redirectErrorStream(true).start().waitFor()
                             return (File(dir, "deck.pdf").takeIf { it.exists() }?.readBytes()?.let { Regex("/Type\\s*/Page[^s]").findAll(String(it, Charsets.ISO_8859_1)).count() } ?: -1)
                                 .also { dir.deleteRecursively() } // a copy of the deck and its PDF: gone at once
@@ -81,6 +81,14 @@ class UserDocsSweepTest {
                         val a = pages(f); val b = pages(out)
                         // a file LibreOffice itself cannot open (Google Slides' emoji halves, 17 Oct): the saved one must open
                         check(b > 0 && (a == b || a < 0)) { "LibreOffice: $a pages from the file, $b from the saved one" }
+                        // File › Save as the other format: every slide there, and LibreOffice opens it with as many pages
+                        val kind = if (f.extension.equals("odp", true)) "pptx" else "odp"
+                        val conv = File.createTempFile("sweep-as", ".$kind"); val pics = scratchDir("sweep-as-pics")
+                        try {
+                            SlidesReuse.convert(f, conv, File("src/main/assets/blank.$kind").readBytes(), pics)
+                            check(Slides.read(conv).slides.size == deck.slides.size) { "saved as .$kind: slides changed" }
+                            val c = pages(conv); check(c > 0 && (a == c || a < 0)) { "LibreOffice: $a pages from the file, $c from its .$kind" }
+                        } finally { conv.delete(); pics.deleteRecursively() }
                     }
                 } finally { out.delete() }
             }.onFailure { failed += "${f.relativeTo(root)}: $it" }

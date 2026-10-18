@@ -1216,6 +1216,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     file?.let { f -> save(to = generateSequence(1) { it + 1 }.map { File(f.parentFile, "${f.nameWithoutExtension} (copy${if (it == 1) "" else " $it"}).${f.extension}") }.first { !it.exists() }, copy = true) } }
                 RibbonButton("AutoSave", w, R.drawable.ic_history, on = autoSave) {
                     autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave; message = if (autoSave) "AutoSave on" else "AutoSave off — Save when you want the file changed" }
+                FavouriteFileButton(file, w) // a phone: the Office home's favourite (a tablet: the heart in the top bar)
                 RibbonButton("Save as", w, R.drawable.ic_save, enabled = file != null) { savingAs = true }
                 RibbonButton("Rename", w, R.drawable.ic_edit, enabled = file != null) { renaming = true }
                 if (!odp) RibbonButton("Save as template", w, R.drawable.ic_palette, enabled = file != null) {
@@ -1571,6 +1572,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     TopInfo(listOfNotNull(chosen?.let { "Slide ${it + 1} of ${v.slides.size}" } ?: "${v.slides.size} slide${if (v.slides.size == 1) "" else "s"}",
                         "$hidden hidden".takeIf { hidden > 0 }, if (editing) saveState(saving, changed) else null, file?.extension?.let { ".$it" }), islandContentColor())
                 }
+                FavouriteHeart(file, islandContentColor()) // a tablet or bigger: the Office home's Favourites (the user, 18 Oct)
                 if (editing) {
                     IconButton(onClick = { finding = true }) { Icon(painterResource(R.drawable.ic_search), contentDescription = "Find and replace") }
                     IconButton(onClick = ::undoEdit, enabled = undos.isNotEmpty()) {

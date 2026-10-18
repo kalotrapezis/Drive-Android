@@ -3216,6 +3216,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
                 // the top bar's tools as the ribbon's: 48 dp in Normal size
                 RibbonTools {
+                // a tablet or bigger: the open document's heart, the Office home's Favourites (the user, 18 Oct)
+                FavouriteHeart(file, w)
                 if (reading) {
                     Tool(R.drawable.ic_remove, "Smaller text", w, enabled = readingZoom > 100) { readingZoom -= 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
                     Tool(R.drawable.ic_add, "Bigger text", w, enabled = readingZoom < 260) { readingZoom += 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
@@ -3883,6 +3885,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
                         message = if (!autoSave) "AutoSave off — Save when you want the file changed" else if (file == null) "AutoSave on — once the document has a name" else if (meta.blocking.isNotEmpty()) "AutoSave on — but this file is saved only as a copy" else "AutoSave on"
                     }
+                    // a phone: the Office home's favourite here (a tablet has the heart in the top bar; the user, 18 Oct)
+                    FavouriteFileButton(file, w)
                 }, {
                     RibbonButton("Save as", w, R.drawable.ic_save, enabled = loaded) { commitCell(); naming = true }
                     RibbonButton("Rename", w, R.drawable.ic_edit, enabled = loaded && file != null) { renaming = true }

@@ -1255,6 +1255,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             if (file != null) RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = !saving) { saveCopy() }
                             if (editing) RibbonButton("AutoSave", w, R.drawable.ic_history, on = autoSave) { autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
                                 message = if (autoSave) "AutoSave on — saved a few seconds after each change" else "AutoSave off — Save when you want the file changed" }
+                            FavouriteFileButton(file, w) // a phone: the Office home's favourite (a tablet: the heart in the top bar)
                             if (file != null) RibbonButton("Save as", w, R.drawable.ic_save, enabled = !saving) { fileNaming = "as" }
                             if (file != null) RibbonButton("Rename", w, R.drawable.ic_edit, enabled = !saving) { fileNaming = "rename" }
                             RibbonDivider(w)
@@ -1596,6 +1597,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             remember(sheet, version) { sheet?.let { sh -> var n = 0; sh.cells.forEach { _, c -> if (c.kind != SheetKind.Empty) n++ }; "%,d cells filled".format(n) } },
                             if (editing) saveState(saving, unsaved || draft != null) else null, file?.extension?.let { ".$it" }), islandContentColor())
                     }
+                    FavouriteHeart(file, islandContentColor()) // a tablet or bigger: the Office home's Favourites (the user, 18 Oct)
                     if (editing) {
                         // Find where Words and Slides have it, before Undo (the tablet walk, 18 Oct)
                         if (sheet != null) IconButton(onClick = { searching = true }) { Icon(painterResource(R.drawable.ic_search), contentDescription = "Search") }

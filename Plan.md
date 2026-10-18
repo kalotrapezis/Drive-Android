@@ -134,12 +134,18 @@ How to write here:
       0 failing, 7 skipped. All on emulator-5554 (tablet 1280×800; the phone size for the strips); the tablet was not touched.
 - [ ] (the user, 18 Oct: "right click otions go in the selection tab in phone and tablet") Words, Slides, Tables: what a right-click
       menu offers is on the Selection tab on a phone and tablet (the ribbon at the bottom); the menu stays for a mouse.
-- [~] (office-strips session, 18 Oct, after 0.5.0 Beta 2 — merged main's 02edcee) The user: "the resents does not update in office when
+- [x] (office-strips session, 18 Oct, after 0.5.0 Beta 2 — merged main's 02edcee) The user: "the resents does not update in office when
       I open a file from picker or Files. In tablet and bigger screens add a heart at the top to go strait to favorites. In phone it does not
       feet place it in the file tab. Do it for all a applets".
       (1) Recents: every file opened in Words, Tables, Slides or PDF — the home's list, the picker, another app, Files — goes on a list of
       its own (`OfficeRecents`); the home lists those first, then the newest of each kind, and reads both again when it shows (a resume,
-      a file opened). Emulator: from another app and from Files, back to the home: the file on top.
+      a file opened). Emulator: from another app and from Files, back to the home: the file on top. (054bd38)
+      (2) The open file's heart, one shared piece (`rememberOfficeFavourite`, Files' favourites as the home's hearts): 600 dp and wider in
+      the top bar of Words, Tables, Slides and PDF, filled when it is one; a phone in the File tab ("Add to favourites" / "Remove …"),
+      the PDF viewer's ⋯. Emulator: arrange.pptx's heart → in the home's Favourites; Words' favourite filled; the phone's File tab.
+      Unit 507, 0 failing, 7 skipped. Not done: a file that is not in Tetra's Files (a PDF opened from another app is read from a copy in
+      the app's cache) has no heart. Seen: opening a file of Tetra's own Documents from another app makes a copy in "From other apps"
+      each time ("Reading list (9).docx") — [ ] open the file itself when it is already in Tetra's Files.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

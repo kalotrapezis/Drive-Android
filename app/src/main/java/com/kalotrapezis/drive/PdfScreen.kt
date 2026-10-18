@@ -271,6 +271,8 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                     }
                     if (Pdf.hasText && doc != null) IconButton(onClick = { finding = !finding; if (!finding) matches = null }) {
                         Icon(painterResource(R.drawable.ic_search), contentDescription = "Find", tint = if (finding) PDF_RED else islandContentColor()) }
+                    FavouriteHeart(file, islandContentColor()) // a tablet or bigger: the Office home's Favourites (the user, 18 Oct)
+                    val fav = rememberOfficeFavourite(file)?.takeIf { !favouriteInTopBar() } // a phone: in ⋯
                     file?.let { f ->
                         IconButton(onClick = { shareDriveFile(context, f) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
                         IconButton(onClick = ::print, enabled = doc != null) { Icon(painterResource(R.drawable.ic_print), contentDescription = "Print") }
@@ -283,6 +285,8 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_copy), contentDescription = null) })
                                 DropdownMenuItem({ Text("Open in another app") }, { more = false; openElsewhere(context, f) },
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_open_with), contentDescription = null) })
+                                fav?.let { h -> DropdownMenuItem({ Text(if (h.on) "Remove from favourites" else "Add to favourites") }, { more = false; h.toggle() },
+                                    leadingIcon = { Icon(painterResource(if (h.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = null) }) }
                             }
                         }
                     }

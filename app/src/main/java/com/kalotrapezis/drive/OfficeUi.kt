@@ -247,12 +247,20 @@ internal val LocalOfficeStrips = androidx.compose.runtime.staticCompositionLocal
         // the ribbon stays composed under the strip (its tools keep the strip's choices fresh), only not placed
         androidx.compose.ui.layout.Layout({
             Box { ribbon() }
-            Box { val st = open ?: last[0]; if (st != null && t > 0f) Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                StripHead(st.title, w) { strips.cancel() }
-                Box(Modifier.weight(1f)) { RibbonLine(androidx.compose.foundation.rememberScrollState()) { st.content(st) } }
-                if (st.ok != null) RibbonTools {
+            Box { val st = open ?: last[0]; if (st != null && t > 0f) {
+                @Composable fun choices(m: Modifier) = Box(m) { RibbonLine(androidx.compose.foundation.rememberScrollState()) { st.content(st) } }
+                @Composable fun okCancel() { if (st.ok != null) RibbonTools {
                     Tool(R.drawable.ic_close, "Cancel", w) { strips.cancel() }
                     Tool(R.drawable.ic_check, "Apply", w, enabled = st.picked != null) { strips.ok() }
+                } }
+                // a phone: the name, × and ✓ where the tabs were, the choices under them (all the width for them)
+                if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 700) Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { StripHead(st.title, w) { strips.cancel() }; Box(Modifier.weight(1f)); okCancel() }
+                    choices(Modifier.fillMaxWidth())
+                } else Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    StripHead(st.title, w) { strips.cancel() }
+                    choices(Modifier.weight(1f))
+                    okCancel()
                 }
             } }
         }, modifier.clipToBounds()) { ms, c ->
@@ -266,8 +274,10 @@ internal val LocalOfficeStrips = androidx.compose.runtime.staticCompositionLocal
     }
 }
 
-/** A choice of a [RibbonMenu]: its words, ✓ when it is the one in use; [opens] a window (More…, Custom…) at the tap. */
-internal class MenuChoice(val label: String, val checked: Boolean = false, val enabled: Boolean = true, val opens: Boolean = false, val act: () -> Unit)
+/** A choice of a [RibbonMenu]: its words, ✓ when it is the one in use; [opens] acts at the tap even in a preset strip (a window:
+ *  More…, Custom…; a removal); [detail] a desktop menu's second line; [icon] its icon. */
+internal class MenuChoice(val label: String, val checked: Boolean = false, val enabled: Boolean = true, val opens: Boolean = false,
+    val detail: String? = null, val icon: Int? = null, val act: () -> Unit)
 
 /**
  * A ribbon tool with a list of choices: a menu under it on a desktop, its own strip on a tablet or phone ([officeStrip]) —
@@ -277,7 +287,7 @@ internal class MenuChoice(val label: String, val checked: Boolean = false, val e
     title: String = label, choices: List<MenuChoice>) {
     val strips = LocalOfficeStrips.current
     val strip = officeStrip(title, ok = if (preset) { s -> choices.firstOrNull { it.label == s.picked }?.act?.invoke() } else null) { s ->
-        choices.forEach { ch -> RibbonButton(ch.label, w, enabled = ch.enabled, on = if (s.picked != null) s.picked == ch.label else ch.checked) {
+        choices.forEach { ch -> RibbonButton(ch.label, w, ch.icon, enabled = ch.enabled, on = if (s.picked != null) s.picked == ch.label else ch.checked) {
             if (preset && !ch.opens) s.picked = ch.label else { strips?.open = null; ch.act() } } }
     }
     if (strip != null) RibbonButton(label, w, icon, enabled = enabled, on = on) { strip() }
@@ -285,7 +295,9 @@ internal class MenuChoice(val label: String, val checked: Boolean = false, val e
         var open by remember { mutableStateOf(false) }
         RibbonButton(label, w, icon, enabled = enabled, on = on) { open = true }
         DropdownMenu(open, { open = false }) {
-            choices.forEach { ch -> DropdownMenuItem(text = { Text(ch.label) }, trailingIcon = { if (ch.checked) Icon(painterResource(R.drawable.ic_check), null) },
+            choices.forEach { ch -> DropdownMenuItem(text = { if (ch.detail == null) Text(ch.label) else Column { Text(ch.label); Text(ch.detail, style = MaterialTheme.typography.bodySmall) } },
+                leadingIcon = ch.icon?.let { i -> { Icon(painterResource(i), null, Modifier.size(20.dp)) } },
+                trailingIcon = { if (ch.checked) Icon(painterResource(R.drawable.ic_check), null, Modifier.size(18.dp)) },
                 enabled = ch.enabled, onClick = { open = false; ch.act() }) }
         }
     }

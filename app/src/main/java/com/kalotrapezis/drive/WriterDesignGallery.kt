@@ -57,8 +57,13 @@ import androidx.compose.ui.window.DialogProperties
  */
 internal enum class DesignGallery(val title: String) {
     StyleSets("Style sets"), Colours("Colours"), Fonts("Fonts"), WordArt("WordArt"), PageNumbers("Page numbers"),
-    HeaderFooter("Header & footer"), Lists("Multilevel list"), Font("Font"), DropCap("Drop cap")
+    HeaderFooter("Header & footer"), Lists("Multilevel list"), Font("Font"), DropCap("Drop cap"), LineNumbers("Line numbers")
 }
+
+/** Layout › Line numbers' choices (Word's; [mode] its restart, null none), cards as Insert › Page numbers' (the user, 18 Oct). */
+internal data class LineNumbering(val mode: String?, val label: String)
+internal val LINE_NUMBERINGS = listOf(LineNumbering(null, "None"), LineNumbering("continuous", "Continuous"), LineNumbering("newPage", "Restart each page"),
+    LineNumbering("newSection", "Restart each section"))
 
 /**
  * Insert › Drop cap's kinds (17 Oct, one strip for Words and Slides, each offering what its file can hold): none; dropped
@@ -132,7 +137,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
     more: (() -> Unit)? = null, glow: Boolean = true, title: String = "", modifier: Modifier = Modifier, fonts: List<String> = emptyList(), now: String? = null,
     drops: List<DropKind> = emptyList(),
     /** Drop cap: how many lines tall (the user, 17 Oct: a setting, as Word's "Lines to drop", 1–10, and LibreOffice's "Lines", 2–9) */
-    dropLines: Int = 3, dropLinesChange: ((Int) -> Unit)? = null) {
+    dropLines: Int = 3, dropLinesChange: ((Int) -> Unit)? = null, lineModes: List<LineNumbering> = LINE_NUMBERINGS) {
     // the last card: a page of its own (Page numbers' "Your own…", Drop cap's "More…" as the user named it)
     val moreLabel = if (what == DesignGallery.DropCap) "More…" else "Your own…"
     fun c(rgb: Int) = Color(0xFF000000 or (rgb.toLong() and 0xFFFFFF))
@@ -263,6 +268,17 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                             repeat(3) { line(0.dp) }
                         }
                     }
+                } }
+                // Line numbers: two small pages, the numbers in their margins as each choice counts them
+                DesignGallery.LineNumbers -> lineModes.forEach { ln -> card(chosen == ln, click = { pick(ln) }, ln.label) {
+                    val bar = Color(0xFFBDC1C6); val ink = Color(0xFF5F6368)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp * k)) { for (page in 0..1) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp * k)) {
+                        for (i in 1..5) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            val n = when (ln.mode) { null -> ""; "continuous" -> "${page * 5 + i}"; "newSection" -> if (page == 1 && i > 2) "${i - 2}" else "${page * 5 + i}"; else -> "$i" }
+                            Text(n, style = TextStyle(fontSize = (7 * k).sp, color = ink), modifier = Modifier.width(10.dp * k))
+                            Box(Modifier.fillMaxWidth().height(4.dp * k).background(if (ln.mode == "newSection" && page == 1 && i == 3) Color(0xFF8AB4F8) else bar))
+                        }
+                    } }
                 } }
                 DesignGallery.PageNumbers -> NUMBER_SPOTS.forEach { spot -> card(chosen == spot, click = { pick(spot) }) {
                     // No words under it (asked 15 Oct): the small page says where the number goes.

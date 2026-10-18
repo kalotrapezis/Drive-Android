@@ -1076,7 +1076,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         Surface(color = Color(0xFF16191A), contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
             androidx.compose.animation.AnimatedContent(group.takeIf { it == "Borders" || it == "Number" || it == "Cell styles" || it == "Format as table" || it == "Conditional formatting" }, label = "ribbon",
                 transitionSpec = { SLIDE_IN togetherWith SLIDE_OUT }) { strip -> if (strip != null) Strip(strip) else
-            Column {
+            OfficeStripFrame(w) { Column {
                 OfficeTabRow(tabs, shown, w, EXCEL_GREEN, { tab = it; group = null }, contextual = ctx) {
                     if (ctx != null || g != null) IconButton(onClick = { header = null; view.range = null; group = null; view.figure = -1 }, modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
                 }
@@ -1090,18 +1090,12 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         RibbonButton("Copy", w, R.drawable.ic_copy) { copyCells(cut = false) }
                         if (editing) RibbonButton("Paste", w, R.drawable.ic_content_paste) { paste() }
                         // Excel's Clear ▾
-                        if (editing) Box { var open by remember { mutableStateOf(false) }
-                            RibbonButton("Clear", w, R.drawable.ic_delete) { open = true }
-                            DropdownMenu(open, { open = false }) {
-                                listOf("Clear all" to "all", "Clear formats" to "formats", "Clear contents" to "contents", "Clear notes" to "notes", "Clear hyperlinks" to "links")
-                                    .forEach { (name, what) -> if (b.kind != "csv" || what == "contents" || what == "all") DropdownMenuItem(text = { Text(name) }, onClick = { open = false; clearCells(what) }) } } }
+                        if (editing) RibbonMenu("Clear", w, R.drawable.ic_delete, preset = false, choices = listOf("Clear all" to "all", "Clear formats" to "formats", "Clear contents" to "contents", "Clear notes" to "notes", "Clear hyperlinks" to "links")
+                            .filter { (_, what) -> b.kind != "csv" || what == "contents" || what == "all" }.map { (name, what) -> MenuChoice(name) { clearCells(what) } })
                         // Excel's Insert ▾ and Delete ▾ cells: the chosen cells, the rest shifted
-                        if (editing) for (insert in listOf(true, false)) Box { var open by remember { mutableStateOf(false) }
-                            RibbonButton(if (insert) "Insert" else "Delete", w, if (insert) R.drawable.ic_add_row_above else R.drawable.ic_delete_row) { open = true }
-                            DropdownMenu(open, { open = false }) {
-                                val d = targets(s, l).let { ks -> if (ks.isEmpty()) null else box(ks) }
-                                listOf(true, false).forEach { rows -> DropdownMenuItem(text = { Text(if (insert) (if (rows) "Shift cells down" else "Shift cells right") else (if (rows) "Shift cells up" else "Shift cells left")) },
-                                    onClick = { open = false; d?.let { shiftCells(it, rows, insert) } }) } } }
+                        if (editing) for (insert in listOf(true, false)) run { val d = targets(s, l).let { ks -> if (ks.isEmpty()) null else box(ks) }
+                            RibbonMenu(if (insert) "Insert" else "Delete", w, if (insert) R.drawable.ic_add_row_above else R.drawable.ic_delete_row, preset = false, title = if (insert) "Insert cells" else "Delete cells",
+                                choices = listOf(true, false).map { rows -> MenuChoice(if (insert) (if (rows) "Shift cells down" else "Shift cells right") else (if (rows) "Shift cells up" else "Shift cells left")) { d?.let { shiftCells(it, rows, insert) } } }) }
                         // Words' Copy formatting / Paste formatting (Home's Format painter in Excel): one cell's look onto the cells chosen
                         if (editing) { RibbonDivider(w)
                             RibbonButton("Copy formatting", w, R.drawable.ic_format_paint) { copiedLook = now; message = "Formatting copied — choose cells, then Paste formatting" }
@@ -1148,11 +1142,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             // Excel's Review › Protect Sheet: its locked cells kept as they are
                             if (b.kind != "csv") RibbonButton(if (s.protected) "Unprotect" else "Protect", w, R.drawable.ic_lock, on = s.protected) {
                                 if (s.protected && !s.guarded) protectSheet(false, "") else protecting = true }
-                            if (b.tabs.any { it.hidden }) Box {
-                                var open by remember { mutableStateOf(false) }
-                                RibbonButton("Unhide", w, R.drawable.ic_visibility) { open = true }
-                                DropdownMenu(open, { open = false }) { b.tabs.forEachIndexed { k, t -> if (t.hidden) DropdownMenuItem(text = { Text(t.name) }, onClick = { open = false; showSheet(k, false) }) } }
-                            }
+                            if (b.tabs.any { it.hidden }) RibbonMenu("Unhide", w, R.drawable.ic_visibility, preset = false, title = "Unhide sheet", choices = b.tabs.withIndex().filter { it.value.hidden }.map { (k, t) -> MenuChoice(t.name) { showSheet(k, false) } })
                         }
                         shown.startsWith("Column") && h != null -> {
                             val col = h.second
@@ -1283,12 +1273,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             // Excel's Page Layout: how the sheet prints (Export PDF and Print use it), kept in the file
                             val p = s.print
                             fun setPrint(change: (SheetPrint) -> SheetPrint) = printStep(change(p))
-                            @Composable fun menu(label: String, icon: Int, choices: List<Pair<String, Boolean>>, pick: (Int) -> Unit) = Box {
-                                var open by remember { mutableStateOf(false) }
-                                RibbonButton(label, w, icon) { open = true }
-                                DropdownMenu(open, { open = false }) { choices.forEachIndexed { k, (name, on) -> DropdownMenuItem(text = { Text(name) }, onClick = { open = false; pick(k) },
-                                    trailingIcon = { if (on) Icon(painterResource(R.drawable.ic_check), null) }) } }
-                            }
+                            // a desktop's menu, a tablet's or phone's strip (the user, 18 Oct); Custom… opens its window at once
+                            @Composable fun menu(label: String, icon: Int, choices: List<Pair<String, Boolean>>, pick: (Int) -> Unit) =
+                                RibbonMenu(label, w, icon, choices = choices.mapIndexed { k, (name, on) -> MenuChoice(name, checked = on, opens = name.endsWith("…")) { pick(k) } })
                             menu("Orientation", if (p.landscape) R.drawable.ic_crop_landscape else R.drawable.ic_crop_portrait, listOf("Portrait" to !p.landscape, "Landscape" to p.landscape)) { k -> setPrint { it.copy(landscape = k == 1) } }
                             menu("Size", R.drawable.ic_fit_page, listOf("A4" to !p.letter, "Letter" to p.letter)) { k -> setPrint { it.copy(letter = k == 1) } }
                             val marginSets = listOf("Normal" to listOf(0.7f, 0.7f, 0.75f, 0.75f), "Wide" to listOf(1f, 1f, 1f, 1f), "Narrow" to listOf(0.25f, 0.25f, 0.75f, 0.75f))
@@ -1314,10 +1301,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         shown == "Formulas" -> {
                             RibbonButton("Insert function", w, R.drawable.ic_functions) { inserting = true }
                             // Excel's Recently Used: the last functions put in, one tapped goes in as Insert function's
-                            Box { var open by remember { mutableStateOf(false) }
-                                val recent = remember(open, inserted, draft == null) { TextEditorStore(context).recentFunctions }
-                                RibbonButton("Recently used", w, R.drawable.ic_history, enabled = recent.isNotEmpty()) { open = true }
-                                DropdownMenu(open, { open = false }) { recent.forEach { f -> DropdownMenuItem(text = { Text(f) }, onClick = { open = false; inserted = f }) } } }
+                            run { val recent = remember(inserted, draft == null) { TextEditorStore(context).recentFunctions }
+                                RibbonMenu("Recently used", w, R.drawable.ic_history, enabled = recent.isNotEmpty(), preset = false, choices = recent.map { f -> MenuChoice(f) { inserted = f } }) }
                             // Excel's Formula Auditing: the cells a formula reads, those reading this one, the errors one by one; marked on the sheet
                             RibbonDivider(w)
                             RibbonButton("Precedents", w, R.drawable.ic_arrow_upward) { traced = SheetTrace.precedents(s, cr, cc, b.names)
@@ -1473,12 +1458,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 RibbonButton("", w, R.drawable.ic_vertical_align_bottom, on = now.valign == SheetVAlign.Bottom) { look { st, _ -> st.copy(valign = SheetVAlign.Bottom) } }
                                 RibbonButton("", w, R.drawable.ic_format_indent_decrease, enabled = now.indent > 0) { look { st, _ -> st.copy(indent = maxOf(0, st.indent - 1)) } }
                                 RibbonButton("", w, R.drawable.ic_format_indent_increase) { look { st, _ -> st.copy(indent = minOf(15, st.indent + 1), align = if (st.align == SheetAlign.Right || st.align == SheetAlign.Left) st.align else SheetAlign.Left) } }
-                                Box { var open by remember { mutableStateOf(false) }
-                                    RibbonButton("Orientation", w, R.drawable.ic_rotate_left, on = now.rotation != 0) { open = true }
-                                    DropdownMenu(open, { open = false }) {
-                                        listOf("Horizontal" to 0, "Angle counterclockwise" to 45, "Angle clockwise" to 135, "Rotate text up" to 90, "Rotate text down" to 180).forEach { (name, r) ->
-                                            DropdownMenuItem(text = { Text(name) }, onClick = { open = false; look { st, _ -> st.copy(rotation = r) } },
-                                                trailingIcon = { if (now.rotation == r) Icon(painterResource(R.drawable.ic_check), null) }) } } }
+                                RibbonMenu("Orientation", w, R.drawable.ic_rotate_left, on = now.rotation != 0, choices =
+                                    listOf("Horizontal" to 0, "Angle counterclockwise" to 45, "Angle clockwise" to 135, "Rotate text up" to 90, "Rotate text down" to 180).map { (name, r) ->
+                                        MenuChoice(name, checked = now.rotation == r) { look { st, _ -> st.copy(rotation = r) } } })
                                 // Excel's Fill ▸ Down and Right: the chosen cells' first row (or column) carried through them, as the fill handle carries it
                                 if (g != null && (g.r2 > g.r1 || g.c2 > g.c1)) {
                                     if (g.r2 > g.r1) RibbonButton("Fill down", w, R.drawable.ic_keyboard_arrow_down) { fillCells(SheetRange(g.r1, g.c1, g.r1, g.c2), g) }
@@ -1505,7 +1487,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         }
                     }
                 }
-            }
+            } }
             }
         }
     }

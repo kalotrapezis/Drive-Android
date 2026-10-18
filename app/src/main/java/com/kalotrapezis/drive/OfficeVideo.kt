@@ -138,13 +138,11 @@ internal fun VideoFrame(film: String, modifier: Modifier, trim: List<Int>? = nul
 /** Insert › Video: From this phone ([phone] null: the file cannot keep one) or Online video, whose address is asked here; [online] gets it. */
 @Composable
 internal fun VideoButton(tint: Color, enabled: Boolean = true, phone: (() -> Unit)?, online: (String) -> Unit) = Box {
-    var choosing by remember { mutableStateOf(false) }
     var addressing by remember { mutableStateOf(false) }
-    RibbonButton("Video", tint, R.drawable.ic_play, enabled = enabled) { if (phone == null) addressing = true else choosing = true }
-    DropdownMenu(choosing, { choosing = false }) {
-        phone?.let { DropdownMenuItem(text = { Text("From this phone") }, onClick = { choosing = false; it() }) }
-        DropdownMenuItem(text = { Text("Online video") }, onClick = { choosing = false; addressing = true })
-    }
+    // a desktop's menu, a tablet's or phone's strip (the user, 18 Oct)
+    if (phone == null) RibbonButton("Video", tint, R.drawable.ic_play, enabled = enabled) { addressing = true }
+    else RibbonMenu("Video", tint, R.drawable.ic_play, enabled = enabled, preset = false, choices = listOf(MenuChoice("From this phone") { phone() },
+        MenuChoice("Online video") { addressing = true }))
     if (addressing) {
         var typed by remember { mutableStateOf("") }
         androidx.compose.material3.AlertDialog(onDismissRequest = { addressing = false }, title = { Text("Online video") },

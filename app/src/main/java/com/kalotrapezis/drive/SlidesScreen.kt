@@ -174,6 +174,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             ?: run { message = "That could not be applied." }
     }
     fun change(to: SlidesEdit.Edit) { edit?.let { undos += it; if (undos.size > 100) undos.removeAt(0) }; redos.clear(); edit = to }
+    // a strip's preset shown at once (Design's themes and backgrounds): ✓ keeps it as one change, × puts the slides back
+    var previewBefore by remember { mutableStateOf<SlidesEdit.Edit?>(null) }
+    fun preview(to: (SlidesEdit.Edit) -> SlidesEdit.Edit) { val b = previewBefore ?: edit ?: return; previewBefore = b; edit = to(b) }
+    fun previewKeep() { val b = previewBefore ?: return; val made = edit; previewBefore = null; edit = b; if (made != null && made != b) change(made) }
+    fun previewDrop() { previewBefore?.let { edit = it }; previewBefore = null }
     /** Save: the edits into the file — or into [to] (Save as: going on with it; [copy], Save a copy: the file and its edits left as they are). */
     fun save(to: File? = null, copy: Boolean = false, then: (() -> Unit)? = null) {
         val e = edit ?: return
@@ -884,17 +889,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             val next = SlidesEdit.grouped(d, e, e.order[c], listOfNotNull(item) + more)
             if (next == e) message = "These cannot be grouped" else { change(next); item = next.groups[e.order[c].uid]?.keys?.lastOrNull(); more = emptyList(); several = false; WriterLog.i("Slides: grouped") }
         }
-        Box {
-            var aligning by remember { mutableStateOf(false) }
-            RibbonButton("Align", w, R.drawable.ic_align_horizontal_center) { aligning = true }
-            // to each other (PowerPoint's Align Selected Objects): to the edge or middle of all of them together
-            DropdownMenu(aligning, { aligning = false }) {
-                listOf("Align left" to { i: SlideItem, a: SlideItem -> listOf(a.x, i.y, i.w, i.h) }, "Align centre" to { i: SlideItem, a: SlideItem -> listOf(a.x + (a.w - i.w) / 2, i.y, i.w, i.h) },
-                    "Align right" to { i: SlideItem, a: SlideItem -> listOf(a.x + a.w - i.w, i.y, i.w, i.h) }, "Align top" to { i: SlideItem, a: SlideItem -> listOf(i.x, a.y, i.w, i.h) },
-                    "Align middle" to { i: SlideItem, a: SlideItem -> listOf(i.x, a.y + (a.h - i.h) / 2, i.w, i.h) }, "Align bottom" to { i: SlideItem, a: SlideItem -> listOf(i.x, a.y + a.h - i.h, i.w, i.h) })
-                    .forEach { (label, to) -> DropdownMenuItem(text = { Text(label) }, onClick = { aligning = false; reframeAll(to); WriterLog.i("Slides: several, $label") }) }
-            }
-        }
+        RibbonMenu("Align", w, R.drawable.ic_align_horizontal_center, preset = false, choices =
+            listOf("Align left" to { i: SlideItem, a: SlideItem -> listOf(a.x, i.y, i.w, i.h) }, "Align centre" to { i: SlideItem, a: SlideItem -> listOf(a.x + (a.w - i.w) / 2, i.y, i.w, i.h) },
+                "Align right" to { i: SlideItem, a: SlideItem -> listOf(a.x + a.w - i.w, i.y, i.w, i.h) }, "Align top" to { i: SlideItem, a: SlideItem -> listOf(i.x, a.y, i.w, i.h) },
+                "Align middle" to { i: SlideItem, a: SlideItem -> listOf(i.x, a.y + (a.h - i.h) / 2, i.w, i.h) }, "Align bottom" to { i: SlideItem, a: SlideItem -> listOf(i.x, a.y + a.h - i.h, i.w, i.h) })
+                .map { (label, to) -> MenuChoice(label) { reframeAll(to); WriterLog.i("Slides: several, $label") } })
         RibbonButton("Distribute across", w, R.drawable.ic_horizontal_distribute, enabled = more.size >= 2) { distribute(true) }
         RibbonButton("Distribute down", w, R.drawable.ic_vertical_distribute, enabled = more.size >= 2) { distribute(false) }
         RibbonDivider(w)
@@ -915,36 +914,19 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         // Words' superscript and subscript, and Aa (change case: the box's words, each letter keeping its look)
         RibbonButton("X²", w, on = r?.script == 1) { restyle { it.copy(script = if (r?.script == 1) 0 else 1) } }
         RibbonButton("X₂", w, on = r?.script == -1) { restyle { it.copy(script = if (r?.script == -1) 0 else -1) } }
-        Box {
-            var casing by remember { mutableStateOf(false) }
-            RibbonButton("Aa", w) { casing = true }
-            DropdownMenu(casing, { casing = false }) {
-                WriterBridge.Case.entries.forEach { cs -> DropdownMenuItem(text = { Text(cs.label) }, onClick = { casing = false; recase(box, cs) }) }
-            }
-        }
+        RibbonMenu("Aa", w, preset = false, title = "Change case", choices = WriterBridge.Case.entries.map { cs -> MenuChoice(cs.label) { recase(box, cs) } })
         Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
         Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { col -> restyle { it.copy(highlight = col?.toArgb() ?: SlidesEdit.NONE) } }
         // PowerPoint's Character Spacing (Words' choices): the box's letters closer or wider
-        Box { var spacing by remember { mutableStateOf(false) }
-            val now = r?.font?.let { LetterLooks.spacingOf(it) } ?: 0f
-            RibbonButton("Spacing", w, R.drawable.ic_format_letter_spacing, on = now != 0f) { spacing = true }
-            DropdownMenu(spacing, { spacing = false }) { CHARACTER_SPACINGS.forEach { (label, pt) ->
-                DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (now == pt) Icon(painterResource(R.drawable.ic_check), null) },
-                    onClick = { spacing = false; restyle { it.copy(letterSpacing = pt) }; WriterLog.i("Slides: character spacing $pt") }) } } }
+        run { val now = r?.font?.let { LetterLooks.spacingOf(it) } ?: 0f
+            RibbonMenu("Spacing", w, R.drawable.ic_format_letter_spacing, on = now != 0f, title = "Character spacing", choices = CHARACTER_SPACINGS.map { (label, pt) ->
+                MenuChoice(label, checked = now == pt) { restyle { it.copy(letterSpacing = pt) }; WriterLog.i("Slides: character spacing $pt") } }) }
         // PowerPoint's Text Effects (WordArt's, on any box's words): an outline round the letters, a shadow, a glow (an .odp has none)
-        Box {
-            var effecting by remember { mutableStateOf(false) }
-            val fx = TextEffects.of(r?.font)
-            RibbonButton("Text effects", w, R.drawable.ic_format_color_text, on = fx.any) { effecting = true }
-            DropdownMenu(effecting, { effecting = false }) {
-                val tint = r?.color ?: 0x4472C4
-                listOfNotNull("Outline" to (fx.outline != null), "Shadow" to fx.shadow, ("Glow" to (fx.glow != null)).takeIf { !odp }).forEach { (label, on) ->
-                    DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (on) Icon(painterResource(R.drawable.ic_check), null) }, onClick = { effecting = false
-                        restyle { it.copy(effects = when (label) { "Outline" -> fx.copy(outline = if (on) null else artOutline(tint)); "Shadow" -> fx.copy(shadow = !on); else -> fx.copy(glow = if (on) null else artGlow(tint)) }) }
-                        WriterLog.i("Slides: text effect $label ${if (on) "off" else "on"}") })
-                }
-            }
-        }
+        run { val fx = TextEffects.of(r?.font); val tint = r?.color ?: 0x4472C4
+            RibbonMenu("Text effects", w, R.drawable.ic_format_color_text, on = fx.any, preset = false, choices = listOfNotNull("Outline" to (fx.outline != null), "Shadow" to fx.shadow, ("Glow" to (fx.glow != null)).takeIf { !odp }).map { (label, on) ->
+                MenuChoice(label, checked = on) {
+                    restyle { it.copy(effects = when (label) { "Outline" -> fx.copy(outline = if (on) null else artOutline(tint)); "Shadow" -> fx.copy(shadow = !on); else -> fx.copy(glow = if (on) null else artGlow(tint)) }) }
+                    WriterLog.i("Slides: text effect $label ${if (on) "off" else "on"}") } }) }
         // Format painter: this box's look taken, put on the next box chosen
         Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) {
             painter = if (painter != null) null else lookOf(box)
@@ -1085,17 +1067,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             texts = ee.texts.mapKeys { (k, _) -> if (k == u to a.id) SlidesEdit.MASTER to a.id else k }))
                         message = "On every slide (the slide master's now)"; WriterLog.i("Slides: a thing put on every slide") }
                     RibbonButton("Selection pane", w, R.drawable.ic_layers) { selectionPane = true }
-                    Box {
-                        var aligning by remember { mutableStateOf(false) }
-                        RibbonButton("Align", w, R.drawable.ic_align_horizontal_center) { aligning = true }
-                        DropdownMenu(aligning, { aligning = false }) {
-                            val dw = deck?.width ?: 720f; val dh = deck?.height ?: 540f
+                    run { val dw = deck?.width ?: 720f; val dh = deck?.height ?: 540f
+                        RibbonMenu("Align", w, R.drawable.ic_align_horizontal_center, preset = false, choices =
                             listOf("Align left" to { i: SlideItem -> listOf(0f, i.y, i.w, i.h) }, "Align centre" to { i: SlideItem -> listOf((dw - i.w) / 2, i.y, i.w, i.h) },
                                 "Align right" to { i: SlideItem -> listOf(dw - i.w, i.y, i.w, i.h) }, "Align top" to { i: SlideItem -> listOf(i.x, 0f, i.w, i.h) },
                                 "Align middle" to { i: SlideItem -> listOf(i.x, (dh - i.h) / 2, i.w, i.h) }, "Align bottom" to { i: SlideItem -> listOf(i.x, dh - i.h, i.w, i.h) })
-                                .forEach { (label, to) -> DropdownMenuItem(text = { Text(label) }, onClick = { aligning = false; reframe(to); WriterLog.i("Slides: $label") }) }
-                        }
-                    }
+                                .map { (label, to) -> MenuChoice(label) { reframe(to); WriterLog.i("Slides: $label") } }) }
                     if (it0 is SlideItem.Shape || it0 is SlideItem.Picture) {
                         RibbonButton("Rotate", w, R.drawable.ic_rotate_right) { rotating = true }
                         RibbonButton("Turn left", w, R.drawable.ic_rotate_left) { turn { it.copy(deg = (it.deg + 270f) % 360f) } }
@@ -1107,14 +1084,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     // a box with words: PowerPoint's Format Shape › Text Box (inner margins, wrap, columns)
                     (it0 as? SlideItem.Shape)?.text?.takeIf { !it0.hint && it0.id != null }?.let { t -> RibbonButton("Layout", w, R.drawable.ic_margin) { boxLayout = t } }
                     // PowerPoint's Text Direction: the box's words across, or turned 90° or 270°
-                    (it0 as? SlideItem.Shape)?.text?.takeIf { !it0.hint && it0.id != null && it.warp == null }?.let { t -> Box {
-                        var turning by remember { mutableStateOf(false) }
-                        RibbonButton("Text direction", w, R.drawable.ic_rotate_right, on = t.vert != 0) { turning = true }
-                        DropdownMenu(turning, { turning = false }) {
-                            listOf("Horizontal" to 0, "Rotate all text 90°" to 90, "Rotate all text 270°" to 270).forEach { (label, v) ->
-                                DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (t.vert == v) Icon(painterResource(R.drawable.ic_check), null) },
-                                    onClick = { turning = false; restyle { it.copy(vert = v) }; WriterLog.i("Slides: text direction $v") }) }
-                        } } }
+                    (it0 as? SlideItem.Shape)?.text?.takeIf { !it0.hint && it0.id != null && it.warp == null }?.let { t -> RibbonMenu("Text direction", w, R.drawable.ic_rotate_right, on = t.vert != 0, choices = listOf("Horizontal" to 0, "Rotate all text 90°" to 90, "Rotate all text 270°" to 270).map { (label, v) ->
+                        MenuChoice(label, checked = t.vert == v) { restyle { it.copy(vert = v) }; WriterLog.i("Slides: text direction $v") } })  }
                     // a video: played in its frame on the slide
                     it0.media?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { scope.launch { filmOf(m)?.let { f -> chosen?.let { c -> filming = c to OfficeVideo.Spot(f, it0.x, it0.y, it0.w, it0.h, it0.rotation, it0.trim) } } ?: run { message = "Its film could not be found" } } } }
                     // PowerPoint's Trim Video: a film in the deck from a later start to an earlier end (kept in a .pptx; LibreOffice has no such thing)
@@ -1127,24 +1098,11 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         message = withContext(Dispatchers.IO) { it0.bytes() }?.let { savePictureToPhone(context, it, null, file?.name ?: "Presentation") } ?: "Could not read the picture." } }
                     if (it0 is SlideItem.Picture && it0.math == null) {
                         // PowerPoint's Picture Styles (the tablet app's frame, shadow, rounded corners) and Transparency
-                        Box {
-                            var styling by remember { mutableStateOf(false) }
-                            RibbonButton("Picture styles", w, R.drawable.ic_style) { styling = true }
-                            DropdownMenu(styling, { styling = false }) {
-                                listOf("Plain" to PictureLook(), "White frame" to PictureLook(line = 0xFFFFFF, lineW = 6f, shadow = true), "Black frame" to PictureLook(line = 0x000000, lineW = 3f),
-                                    "Shadow" to PictureLook(shadow = true), "Rounded" to PictureLook(round = Slides.ROUND), "Rounded with shadow" to PictureLook(round = Slides.ROUND, shadow = true))
-                                    .forEach { (label, st) -> DropdownMenuItem(text = { Text(label) }, onClick = { styling = false; restyle { it.copy(picStyle = st) }; WriterLog.i("Slides: picture style $label") }) }
-                            }
-                        }
-                        Box {
-                            var seeing by remember { mutableStateOf(false) }
-                            RibbonButton("Transparency", w, R.drawable.ic_opacity) { seeing = true }
-                            DropdownMenu(seeing, { seeing = false }) {
-                                listOf(0, 15, 30, 50, 65, 80).forEach { pc -> DropdownMenuItem(text = { Text(if (pc == 0) "None" else "$pc %") },
-                                    trailingIcon = { if (Math.round((1 - (it0.pic?.alpha ?: 1f)) * 100) == pc) Icon(painterResource(R.drawable.ic_check), null) },
-                                    onClick = { seeing = false; restyle { it.copy(alpha = 1 - pc / 100f) }; WriterLog.i("Slides: transparency $pc%") }) }
-                            }
-                        }
+                        RibbonMenu("Picture styles", w, R.drawable.ic_style, choices = listOf("Plain" to PictureLook(), "White frame" to PictureLook(line = 0xFFFFFF, lineW = 6f, shadow = true), "Black frame" to PictureLook(line = 0x000000, lineW = 3f),
+                            "Shadow" to PictureLook(shadow = true), "Rounded" to PictureLook(round = Slides.ROUND), "Rounded with shadow" to PictureLook(round = Slides.ROUND, shadow = true))
+                            .map { (label, st) -> MenuChoice(label) { restyle { it.copy(picStyle = st) }; WriterLog.i("Slides: picture style $label") } })
+                        RibbonMenu("Transparency", w, R.drawable.ic_opacity, choices = listOf(0, 15, 30, 50, 65, 80).map { pc ->
+                            MenuChoice(if (pc == 0) "None" else "$pc %", checked = Math.round((1 - (it0.pic?.alpha ?: 1f)) * 100) == pc) { restyle { it.copy(alpha = 1 - pc / 100f) }; WriterLog.i("Slides: transparency $pc%") } })
                         RibbonButton("Crop", w, R.drawable.ic_crop) { scope.launch {
                             cropping = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { it0.bytes()?.let { b ->
                                 val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }; android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, o)
@@ -1256,14 +1214,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = file != null) { exportPdf() }
                 RibbonButton("Export pictures", w, R.drawable.ic_gallery, enabled = file != null) { exportPictures() }
                 // Print: full slides, or handouts (PowerPoint's 2, 3 with lines for notes, 6 to a page)
-                Box {
-                    var printing by remember { mutableStateOf(false) }
-                    RibbonButton("Print", w, R.drawable.ic_print) { printing = true }
-                    DropdownMenu(printing, { printing = false }) {
-                        listOf("Full slides" to 1, "Handouts, 2 to a page" to 2, "Handouts, 3 with lines for notes" to 3, "Handouts, 6 to a page" to 6)
-                            .forEach { (label, n) -> DropdownMenuItem(text = { Text(label) }, onClick = { printing = false; printIt(n) }) }
-                    }
-                }
+                RibbonMenu("Print", w, R.drawable.ic_print, preset = false, choices = listOf("Full slides" to 1, "Handouts, 2 to a page" to 2, "Handouts, 3 with lines for notes" to 3, "Handouts, 6 to a page" to 6)
+                    .map { (label, n) -> MenuChoice(label) { printIt(n) } })
                 file?.let { f ->
                     RibbonDivider(w)
                     RibbonButton("Share", w, R.drawable.ic_share) { if (changed) save { shareDriveFile(context, f) } else shareDriveFile(context, f) }
@@ -1306,11 +1258,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700) {
                     RibbonButton("Ruler", w, R.drawable.ic_margin, on = rulers) { rulers = !rulers }
                     // PowerPoint's Zoom: Fit (the slide as big as the room lets it be), or bigger, moved about by dragging where nothing is
-                    Box { var zooming by remember { mutableStateOf(false) }
-                        RibbonButton(if (slideZoom == 1f) "Zoom" else "Zoom ${Math.round(slideZoom * 100)}%", w, R.drawable.ic_zoom_in, on = slideZoom != 1f) { zooming = true }
-                        DropdownMenu(zooming, { zooming = false }) { listOf("Fit" to 1f, "150%" to 1.5f, "200%" to 2f, "300%" to 3f).forEach { (label, z) ->
-                            DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (slideZoom == z) Icon(painterResource(R.drawable.ic_check), null) },
-                                onClick = { zooming = false; slideZoom = z; WriterLog.i("Slides: zoom $label") }) } } }
+                    RibbonMenu(if (slideZoom == 1f) "Zoom" else "Zoom ${Math.round(slideZoom * 100)}%", w, R.drawable.ic_zoom_in, on = slideZoom != 1f, title = "Zoom", choices = listOf("Fit" to 1f, "150%" to 1.5f, "200%" to 2f, "300%" to 3f).map { (label, z) ->
+                        MenuChoice(label, checked = slideZoom == z) { slideZoom = z; WriterLog.i("Slides: zoom $label") } })
                 }
                 // PowerPoint's Reading View: the show from this slide (on a phone or tablet, the screen is its window)
                 RibbonButton("Reading view", w, R.drawable.ic_play) { presenting = c }
@@ -1334,14 +1283,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             "References" -> {
                 // Words' References for a deck (the user's choices, 17 Oct): its sources, their style, citations put in where one types
                 RibbonButton("Sources", w, R.drawable.ic_checklist) { sourcesOpen = true }
-                Box {
-                    var styling by remember { mutableStateOf(false) }
-                    RibbonButton("Style: ${citeStyle.label}", w, R.drawable.ic_style) { styling = true }
-                    DropdownMenu(styling, { styling = false }) {
-                        // shortcut: IEEE numbers its citations by their order, which words on slides cannot follow
-                        CiteStyle.entries.filter { it != CiteStyle.IEEE }.forEach { st -> DropdownMenuItem(text = { Text(st.label) }, onClick = { styling = false; resource(sources, st, "Citations in ${st.label}") }) }
-                    }
-                }
+                // shortcut: IEEE numbers its citations by their order, which words on slides cannot follow
+                RibbonMenu("Style: ${citeStyle.label}", w, R.drawable.ic_style, title = "Citation style", choices = CiteStyle.entries.filter { it != CiteStyle.IEEE }.map { st ->
+                    MenuChoice(st.label, checked = st == citeStyle) { resource(sources, st, "Citations in ${st.label}") } })
                 RibbonButton("Insert citation", w, R.drawable.ic_format_quote) { if (sources.isEmpty()) sourceNew = true else citing = true }
                 RibbonDivider(w)
                 // made, or brought up to date (the old ones replaced)
@@ -1383,18 +1327,36 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
             }
             "Design" -> {
                 // PowerPoint's Design: the deck's theme — its colours, fonts and background — light or dark, Tetra's or a template's
-                RibbonButton("Themes", w, R.drawable.ic_palette) { themesPage = true }
+                // a tablet or phone: the themes on a strip, the one tapped shown on the slides, ✓ keeps it, More… the whole panel
+                val themeStrip = officeStrip("Themes", ok = { previewKeep() }, cancel = { previewDrop() }) { s ->
+                    val strips = LocalOfficeStrips.current
+                    val templates by androidx.compose.runtime.produceState(emptyList<SlideTheme>()) { value = withContext(Dispatchers.IO) { SlidesTemplates.files().mapNotNull { SlidesThemes.fromFile(it) } } }
+                    val card = if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700) 150.dp else 112.dp
+                    (SlidesThemes.BUILT_IN + templates).forEach { t -> ThemeCard(t, (s.picked ?: e.theme) == t, Modifier.width(card).padding(horizontal = 3.dp)) { s.picked = t; preview { it.copy(theme = t) } } }
+                    RibbonButton("More…", w, R.drawable.ic_more_horiz) { strips?.cancel(); themesPage = true }
+                }
+                RibbonButton("Themes", w, R.drawable.ic_palette) { themeStrip?.invoke() ?: run { themesPage = true } }
                 Text(e.theme?.let { "Theme: ${it.name}" } ?: "The file's own theme", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 6.dp))
                 if (e.theme != null) RibbonButton("As the file was", w, R.drawable.ic_restore) { change(e.copy(theme = null)) }
                 // Format background (PowerPoint's): this slide's own colour or picture, the same on all, or as its layout has it again
                 RibbonDivider(w)
-                Swatches(w, R.drawable.ic_format_color_fill, "Background", SHAPE_COLOURS.map { Color(it) }) { col ->
-                    change(e.copy(backgrounds = e.backgrounds + (uid to SlidesEdit.Back(color = col?.toArgb() ?: 0xFFFFFFFF.toInt())))) }
+                fun back(col: Color?) = SlidesEdit.Back(color = col?.toArgb() ?: 0xFFFFFFFF.toInt())
                 // a gradient (PowerPoint's Gradient fill): the colour's light tint at the top to the colour at the foot
-                Swatches(w, R.drawable.ic_gradient, "Gradient", SHAPE_COLOURS.map { Color(it) }) { col -> col?.toArgb()?.let { c ->
+                fun gradient(col: Color): SlidesEdit.Back { val c = col.toArgb()
                     fun tint(v: Int) = v + (255 - v) * 7 / 10
-                    val light = android.graphics.Color.rgb(tint(android.graphics.Color.red(c)), tint(android.graphics.Color.green(c)), tint(android.graphics.Color.blue(c)))
-                    change(e.copy(backgrounds = e.backgrounds + (uid to SlidesEdit.Back(color = light, to = c)))); WriterLog.i("Slides: gradient background") } }
+                    return SlidesEdit.Back(color = android.graphics.Color.rgb(tint(android.graphics.Color.red(c)), tint(android.graphics.Color.green(c)), tint(android.graphics.Color.blue(c))), to = c) }
+                // a tablet or phone: each on a strip, the colour tapped shown on the slide, ✓ keeps it (the user, 18 Oct)
+                for ((label, icon, make) in listOf(Triple("Background", R.drawable.ic_format_color_fill) { c: Color? -> back(c) },
+                    Triple("Gradient", R.drawable.ic_gradient) { c: Color? -> c?.let(::gradient) })) {
+                    val colours = SHAPE_COLOURS.map { Color(it) }
+                    val colourStrip = officeStrip(label, ok = { previewKeep(); WriterLog.i("Slides: $label chosen") }, cancel = { previewDrop() }) { s ->
+                        SwatchDots(w, label, colours, s.picked) { c -> make(c)?.let { b -> s.picked = c ?: NO_COLOUR; preview { it.copy(backgrounds = it.backgrounds + (uid to b)) } } }
+                        val strips = LocalOfficeStrips.current
+                        MoreColours(w, label) { c -> make(c)?.let { b -> s.picked = c; preview { it.copy(backgrounds = it.backgrounds + (uid to b)) }; strips?.ok() } }
+                    }
+                    if (colourStrip != null) Tool(icon, label, w) { colourStrip() }
+                    else Swatches(w, icon, label, colours) { c -> make(c)?.let { b -> change(e.copy(backgrounds = e.backgrounds + (uid to b))); WriterLog.i("Slides: $label background") } }
+                }
                 RibbonButton("Background picture", w, R.drawable.ic_gallery) { pickBack.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 e.backgrounds[uid]?.let { b ->
                     RibbonButton("Apply to all", w, R.drawable.ic_done_all) { change(e.copy(backgrounds = e.backgrounds + e.order.associate { it.uid to b })) }
@@ -1413,6 +1375,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     // everything on the slides is moved from the file as saved: other changes are saved first (asked, 18 Oct)
                     if (e.copy(theme = null, size = null) != SlidesEdit.start(deck ?: return)) sizeAfterSave = sw to sh else resizing = sw to sh
                 }
+                RibbonMenu("Slide size", w, R.drawable.ic_aspect_ratio, choices = SlidesSize.PRESETS.map { (label, z) -> MenuChoice(label, checked = same(base, z.first, z.second)) { resize(z.first, z.second) } } +
+                    MenuChoice("Custom…", checked = SlidesSize.PRESETS.none { (_, z) -> same(base, z.first, z.second) }, opens = true) { slideSizing = true })
             }
             "Transitions" -> {
                 // how this slide comes in when presenting; Options: its side, speed, and when the next comes; Play shows it from the slide before
@@ -1434,8 +1398,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 } else {
                     for ((label, kind) in kinds) RibbonButton(label, w, on = (now?.kind ?: "") == kind) { set(SlideTransition(kind, now?.dir, if (kind.isEmpty()) 0 else now?.ms?.takeIf { it > 0 } ?: 750, now?.after)) }
                     RibbonDivider(w)
-                RibbonMenu("Slide size", w, R.drawable.ic_aspect_ratio, choices = SlidesSize.PRESETS.map { (label, z) -> MenuChoice(label, checked = same(base, z.first, z.second)) { resize(z.first, z.second) } } +
-                    MenuChoice("Custom…", checked = SlidesSize.PRESETS.none { (_, z) -> same(base, z.first, z.second) }, opens = true) { slideSizing = true })
                     RibbonButton("Options", w, R.drawable.ic_tune) { effectOptions = true }
                     // a kind PowerPoint names in another namespace (p14's) is not copied: it would be written in the wrong one
                     RibbonButton("Apply to all", w, R.drawable.ic_done_all, enabled = kinds.any { it.second == (now?.kind ?: "") }) { val t = now ?: SlideTransition("", null, 750); change(e.copy(transitions = e.transitions + e.order.associate { it.uid to t })) }
@@ -1952,7 +1914,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     }
                     // the chosen slide's ribbon, its tabs as Tables' (asked 16 Oct): what is chosen on it, the slide, Insert, Transitions, Animations
                     val e = edit
-                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && (notesTyping == null || OfficeUi.top) && !layouts && !shapes && !tables && e != null,
+                    // a gallery (Font, Colours, Fonts, WordArt…) up: the ribbon slides down under it, as Words' (the user, 18 Oct)
+                    val galleryUp = editing && strip != null && e != null && (item != null || strip in setOf(DesignGallery.WordArt, DesignGallery.Colours, DesignGallery.Fonts))
+                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && (notesTyping == null || OfficeUi.top) && !layouts && !shapes && !tables && e != null && !galleryUp,
                         // at the bottom for a finger; at the top while a mouse is in use (or as Settings say), as a PC's PowerPoint
                         Modifier.align(if (OfficeUi.top) Alignment.TopCenter else Alignment.BottomCenter),
                         enter = if (OfficeUi.top) androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn() else SLIDE_IN,
@@ -1994,7 +1958,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                         if (e != null) SlideRibbon(shown, c, e, w)
                                     }
                                 }
-                            }
+                            } }
                             }
                         }
                     }
@@ -2004,7 +1968,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     // Home › Font and Insert › Drop cap: Words' strips, a card tapped shown at once; Cancel puts the words back
                     var stripShown by remember { mutableStateOf(DesignGallery.Font) } // kept while it slides away
                     strip?.let { stripShown = it }
-                    androidx.compose.animation.AnimatedVisibility(editing && strip != null && e != null && (item != null || strip in setOf(DesignGallery.WordArt, DesignGallery.Colours, DesignGallery.Fonts)), Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
+                    androidx.compose.animation.AnimatedVisibility(galleryUp, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
                         val fonts = remember(base) { ((base?.slides.orEmpty().flatMap { s -> s.items.filterIsInstance<SlideItem.Shape>().flatMap { sh -> sh.text?.paras.orEmpty().flatMap { pp -> pp.runs.mapNotNull { r -> DocStyles.Plain.fontName(r.font) } } } })
                             .distinct().sorted() + STYLE_FONTS).distinctBy { it.lowercase() } }
                         val now = chosenWords()?.text?.paras?.flatMap { it.runs }?.firstOrNull { it.text.isNotBlank() }?.font?.let(DocStyles.Plain::fontName)
@@ -2021,7 +1985,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                     else (ch as ThemeFonts).let { f -> t0.copy(major = f.heading, minor = f.body) }
                                 stripBefore = b; stripPicked = ch; edit = b.copy(theme = t)
                                 return@DesignGalleryStrip
-                            } }
+                            }
                             if (stripShown == DesignGallery.WordArt) {
                                 // a look and a bend make the WordArt, as in Words: the one not tapped stays as it was
                                 val b = stripBefore ?: edit ?: return@DesignGalleryStrip; val cc = chosen ?: return@DesignGalleryStrip
@@ -2118,6 +2082,14 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             androidx.compose.material3.TextButton(onClick = { resizing = null; edit?.let { change(it.copy(size = SlidesSize.Size(sw, sh, true))) } }) { Text("Maximize") }
                             androidx.compose.material3.TextButton(onClick = { resizing = null; edit?.let { change(it.copy(size = SlidesSize.Size(sw, sh, false))) } }) { Text("Ensure fit") } } },
                         dismissButton = { androidx.compose.material3.TextButton(onClick = { resizing = null }) { Text("Cancel") } }) }
+                    sizeAfterSave?.let { z -> androidx.compose.material3.AlertDialog(onDismissRequest = { sizeAfterSave = null }, title = { Text("Slide size") },
+                        text = { Text("A new slide size moves everything on the slides, so your other changes are saved first. Undo takes the new size back.") },
+                        confirmButton = { androidx.compose.material3.TextButton(onClick = { sizeAfterSave = null; save { resizing = z } }) { Text("Save and go on") } },
+                        dismissButton = { androidx.compose.material3.TextButton(onClick = { sizeAfterSave = null }) { Text("Cancel") } }) }
+                    if (slideSizing) SlideSizeDialog(base?.width ?: SlidesSize.WIDE_W, base?.height ?: SlidesSize.HEIGHT, { slideSizing = false }) { sw, sh -> slideSizing = false
+                        val e = edit ?: return@SlideSizeDialog; val d = deck ?: return@SlideSizeDialog
+                        if (Math.abs(d.width - sw) < 0.5f && Math.abs(d.height - sh) < 0.5f) change(e.copy(size = null))
+                        else if (e.copy(theme = null, size = null) != SlidesEdit.start(d)) sizeAfterSave = sw to sh else resizing = sw to sh }
                     if (dating) DateDialog({ dating = false }) { dating = false; putWords(it) }
                     val arranged = item?.let { id -> edit?.let { ee -> chosen?.let { cc -> current(ee, cc, id) } } }
                     if (rotating && arranged != null) RotateDialog(arranged.rotation, { rotating = false }) { deg -> rotating = false; turn { it.copy(deg = (deg + 360f) % 360f) } }
@@ -2139,14 +2111,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     if (alting && arranged != null) {
                         var typed by remember { mutableStateOf(arranged.alt.orEmpty()) }
                         androidx.compose.material3.AlertDialog(onDismissRequest = { alting = false }, title = { Text("Alt text") },
-                    sizeAfterSave?.let { z -> androidx.compose.material3.AlertDialog(onDismissRequest = { sizeAfterSave = null }, title = { Text("Slide size") },
-                        text = { Text("A new slide size moves everything on the slides, so your other changes are saved first. Undo takes the new size back.") },
-                        confirmButton = { androidx.compose.material3.TextButton(onClick = { sizeAfterSave = null; save { resizing = z } }) { Text("Save and go on") } },
-                        dismissButton = { androidx.compose.material3.TextButton(onClick = { sizeAfterSave = null }) { Text("Cancel") } }) }
-                    if (slideSizing) SlideSizeDialog(base?.width ?: SlidesSize.WIDE_W, base?.height ?: SlidesSize.HEIGHT, { slideSizing = false }) { sw, sh -> slideSizing = false
-                        val e = edit ?: return@SlideSizeDialog; val d = deck ?: return@SlideSizeDialog
-                        if (Math.abs(d.width - sw) < 0.5f && Math.abs(d.height - sh) < 0.5f) change(e.copy(size = null))
-                        else if (e.copy(theme = null, size = null) != SlidesEdit.start(d)) sizeAfterSave = sw to sh else resizing = sw to sh }
                             text = { androidx.compose.material3.OutlinedTextField(typed, { typed = it }, label = { Text("What it shows, for screen readers") }, minLines = 2, maxLines = 4, modifier = Modifier.fillMaxWidth()) },
                             confirmButton = { androidx.compose.material3.TextButton(onClick = { alting = false; restyle { it.copy(alt = typed.trim()) } }) { Text("OK") } },
                             dismissButton = { androidx.compose.material3.TextButton(onClick = { alting = false }) { Text("Cancel") } })
@@ -2318,7 +2282,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val full = deck
                         Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.bottomBarPadding().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { layouts = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
+                                StripHead(if (relaying) "Layout" else "New slide", islandContentColor()) { layouts = false; relaying = false }
                                 androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(end = 12.dp)) {
                                     if (full != null) itemsIndexed(full.layouts) { l, layout ->
                                         Column(Modifier.width(132.dp).clickable {
@@ -2354,7 +2318,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         val w = islandContentColor()
                         Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.bottomBarPadding().fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { tables = false }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
+                                StripHead("Table", w) { tables = false }
                                 for ((rows, cols) in listOf(2 to 2, 3 to 2, 3 to 3, 4 to 3, 4 to 4, 5 to 4)) RibbonButton("$rows × $cols", w) {
                                     val dd = deck ?: return@RibbonButton; val ee = edit ?: return@RibbonButton; val c = chosen ?: return@RibbonButton
                                     val tw = dd.width * 0.8f; val th = rows * 36f

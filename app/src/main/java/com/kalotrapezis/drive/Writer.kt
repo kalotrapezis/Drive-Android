@@ -2735,7 +2735,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun openGallery(g: DesignGallery) {
         galleryStart = snapshot(); galleryUndo = undone.size; galleryChosen = null; designGallery = g
         // Page numbers, headers and footers sit where the editor shows no page: the pages are shown while choosing.
-        if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter || g == DesignGallery.DropCap) { galleryViewing = viewing; viewing = true } // a drop cap too: only the pages draw it
+        if (g == DesignGallery.PageNumbers || g == DesignGallery.HeaderFooter || g == DesignGallery.DropCap || g == DesignGallery.LineNumbers) { galleryViewing = viewing; viewing = true } // a drop cap too: only the pages draw it
     }
     fun galleryClosed() { galleryViewing?.let { viewing = it }; galleryViewing = null }
     // A gallery's choices shown on the page as they are tapped: OK keeps the last as one step, Cancel the document as it was.
@@ -2965,7 +2965,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        if (restart != null) message = "Line numbers — they show on the pages (the eye at the top)"
+        if (restart != null && designGallery == null) message = "Line numbers — they show on the pages (the eye at the top)"
     }
     var datePage by remember { mutableStateOf(false) }
     /** Symbol or date typed at the cursor, over what is chosen (as typing; the editor's own undo). */
@@ -3082,6 +3082,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             is HeaderLayout -> { galleryChosen = c; val hf = c.make(HeaderFooter.of(documentStyles.section, documentStyles.evenAndOdd), name.substringBeforeLast('.'))
                 setHeaderFooter(hf); goPage = 0 to System.nanoTime() }
             is ListScheme -> { galleryChosen = c; setNumbering(c.levels) }
+            is LineNumbering -> { galleryChosen = c; setLineNumbers(c.mode) }
             is FontChoice -> { galleryChosen = c; setFont(c.name) }
             is DropKind -> { galleryChosen = c; dropAt?.let { i -> val now = DropCap.of(current().paras.getOrNull(i)?.keep)
                 setDropCap(i, when (c) { DropKind.None -> null; DropKind.Margin -> (now ?: DropCap()).copy(margin = true, lines = dropLines); else -> (now ?: DropCap()).copy(margin = false, lines = dropLines) }); styleEdits++ } } // the pages laid out again with it
@@ -3776,7 +3777,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 else if (g == DesignGallery.DropCap) { { galleryCancel(); dropAt?.let { i -> dropCapPage = i to DropCap.of(current().paras.getOrNull(i)?.keep) } } } else null,
             drops = listOfNotNull(DropKind.None, DropKind.Dropped, DropKind.Margin.takeIf { kind == OfficeKind.Docx }),
             dropLines = dropLines, dropLinesChange = { n -> dropLines = n; (galleryChosen as? DropKind)?.takeIf { it != DropKind.None }?.let(::galleryPick) },
-            glow = kind == OfficeKind.Docx, title = name.substringBeforeLast('.'),
+            glow = kind == OfficeKind.Docx, title = name.substringBeforeLast('.'), lineModes = LINE_NUMBERINGS.filter { it.mode != "newSection" || kind == OfficeKind.Docx },
             fonts = remember(g) { if (g == DesignGallery.Font) (meta.paras.flatMap { p -> p.runs.mapNotNull { r -> r.font?.let { documentStyles.fontName(it) } } } + listOfNotNull(hereFont)).distinct().sorted().plus(WRITER_FONTS).distinct() else emptyList() },
             now = hereFont) } }
         // A window open over the page (Standards, a shape's): no ribbon — not needed, and the page shows what is going on.
@@ -3843,7 +3844,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     { toggleBold(span) }, { toggleItalic(span) }, { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) },
                     { c -> if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c)) },
                     { dictate?.invoke() ?: run { message = "This phone has no voice typing" } }, { ribbonOverKeyboard = true }, { keyboard?.hide() })
-            } else Column(Modifier.fillMaxWidth()) {
+            } else OfficeStripFrame(w, Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth()) {
             val selectedObject = selectedPicture?.second?.let { pictures[it] }
             // Selection first, where the hand is when words are chosen (asked 14 Oct, after trying it last).
             OfficeTabRow((listOf(WriterTab.Selection) + WriterTab.entries.filter { it != WriterTab.Selection }).filter { t -> when (t) {
@@ -3937,25 +3938,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c))
                     }
                     // Change case (Word's Aa): the chosen letters, or the word at the cursor.
-                    Box {
-                        var casing by remember { mutableStateOf(false) }
-                        RibbonButton("Aa", w) { casing = true }
-                        DropdownMenu(casing, { casing = false }) {
-                            WriterBridge.Case.entries.forEach { c -> DropdownMenuItem(text = { Text(c.label) }, onClick = { casing = false; change {
-                                val text = state.annotatedString.text
-                                val sel = state.selection
-                                val (from, to) = chosenOrWord()
-                                state.setRichTextDocument(WriterBridge.changeCase(text, state.toRichTextDocument(), from, to, c), sel)
-                            } }) }
-                        }
-                    }
+                    RibbonMenu("Aa", w, preset = false, title = "Change case", choices = WriterBridge.Case.entries.map { c -> MenuChoice(c.label) { change {
+                        val text = state.annotatedString.text
+                        val sel = state.selection
+                        val (from, to) = chosenOrWord()
+                        state.setRichTextDocument(WriterBridge.changeCase(text, state.toRichTextDocument(), from, to, c), sel)
+                    } } })
                     // Character spacing (Word's Font › Advanced › Spacing): the chosen words, or the word at the cursor, closer or wider
-                    Box {
-                        var spacing by remember { mutableStateOf(false) }
-                        RibbonButton("Spacing", w, R.drawable.ic_format_letter_spacing) { spacing = true }
-                        DropdownMenu(spacing, { spacing = false }) { CHARACTER_SPACINGS.forEach { (label, pt) ->
-                            DropdownMenuItem(text = { Text(label) }, onClick = { spacing = false; setSpacing(pt) }) } }
-                    }
+                    RibbonMenu("Spacing", w, R.drawable.ic_format_letter_spacing, title = "Character spacing", choices = CHARACTER_SPACINGS.map { (label, pt) -> MenuChoice(label) { setSpacing(pt) } })
                     // Format painter: the look of the letters at the cursor, painted on the next words chosen.
                     Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) { pickPainter() }
                     // Clear formatting: the chosen letters (or, with none chosen, the paragraph) back to their style's look.
@@ -4094,14 +4084,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         else RibbonButton(if (grouping == key) "Tap another…" else "Group", w, R.drawable.ic_group_objects, enabled = floating, on = grouping == key) {
                             grouping = if (grouping == key) null else key.also { message = "Now tap the other picture or shape to group with it" }
                         }
-                        Box {
-                            var aligning by remember { mutableStateOf(false) }
-                            RibbonButton("Align", w, R.drawable.ic_align_horizontal_center, enabled = floating) { aligning = true }
-                            DropdownMenu(aligning, { aligning = false }) {
-                                listOf("left" to "Align left", "center" to "Align centre", "right" to "Align right", "top" to "Align top", "middle" to "Align middle", "bottom" to "Align bottom")
-                                    .forEach { (how, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { aligning = false; align(key, how) }) }
-                            }
-                        }
+                        RibbonMenu("Align", w, R.drawable.ic_align_horizontal_center, enabled = floating, preset = false, choices =
+                            listOf("left" to "Align left", "center" to "Align centre", "right" to "Align right", "top" to "Align top", "middle" to "Align middle", "bottom" to "Align bottom")
+                                .map { (how, label) -> MenuChoice(label) { align(key, how) } })
                     }, {
                         RibbonButton("Turn left", w, R.drawable.ic_rotate_left, enabled = hasBytes && editable) { transform(-90, false) }
                         RibbonButton("Turn right", w, R.drawable.ic_rotate_right, enabled = hasBytes && editable) { transform(90, false) }
@@ -4181,36 +4166,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Fonts", w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.Fonts) }
                 }, {
                     // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
-                    Box {
-                        var spacing by remember { mutableStateOf(false) }
-                        RibbonButton("Paragraph spacing", w, R.drawable.ic_format_line_spacing, enabled = loaded) { spacing = true }
-                        DropdownMenu(spacing, { spacing = false }) {
-                            SPACING_SETS.forEach { (label, after, line) ->
-                                DropdownMenuItem(text = { Column { Text(label); Text("After ${plain(after)} pt · line ${plain(line)}", style = MaterialTheme.typography.bodySmall) } }, onClick = {
-                                    spacing = false
-                                    editStyle(documentStyles.paragraphStyles()[0], StyleChange(line = line, before = 0f, after = after))
-                                    message = "$label — every Normal paragraph; shown on the pages"
-                                })
-                            }
-                        }
-                    }
+                    RibbonMenu("Paragraph spacing", w, R.drawable.ic_format_line_spacing, enabled = loaded, choices = SPACING_SETS.map { (label, after, line) ->
+                        MenuChoice(label, detail = "After ${plain(after)} pt · line ${plain(line)}") {
+                            editStyle(documentStyles.paragraphStyles()[0], StyleChange(line = line, before = 0f, after = after))
+                            message = "$label — every Normal paragraph; shown on the pages"
+                        } })
                 }, {
                     // Word's Watermark: its words, one of your own, or none.
-                    Box {
-                        var open by remember { mutableStateOf(false) }
+                    run {
                         val now = documentStyles.section.watermark
                         val picture = documentStyles.section.watermarkPicture != null
-                        RibbonButton("Watermark", w, R.drawable.ic_branding_watermark, enabled = loaded, on = now != null || picture) { open = true }
-                        DropdownMenu(open, { open = false }) {
-                            Watermark.PRESETS.forEach { t -> DropdownMenuItem(text = { Text(t) }, trailingIcon = { if (t == now) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(18.dp)) },
-                                onClick = { open = false; setWatermark(t) }) }
-                            DropdownMenuItem(text = { Text("Custom watermark…") }, onClick = { open = false; watermarking = true })
-                            DropdownMenuItem(text = { Text("Picture watermark…") }, leadingIcon = { Icon(painterResource(R.drawable.ic_gallery), contentDescription = null, modifier = Modifier.size(20.dp)) },
-                                trailingIcon = { if (picture) Icon(painterResource(R.drawable.ic_check), contentDescription = "Now", modifier = Modifier.size(18.dp)) },
-                                onClick = { open = false; pickWatermark.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
-                            if (now != null || picture) DropdownMenuItem(text = { Text("Remove watermark") }, leadingIcon = { Icon(painterResource(R.drawable.ic_delete), contentDescription = null, modifier = Modifier.size(20.dp)) },
-                                onClick = { open = false; setWatermark(null) })
-                        }
+                        RibbonMenu("Watermark", w, R.drawable.ic_branding_watermark, enabled = loaded, on = now != null || picture, choices =
+                            Watermark.PRESETS.map { t -> MenuChoice(t, checked = t == now) { setWatermark(t) } } +
+                            MenuChoice("Custom watermark…", opens = true) { watermarking = true } +
+                            MenuChoice("Picture watermark…", checked = picture, opens = true, icon = R.drawable.ic_gallery) { pickWatermark.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } +
+                            listOfNotNull(MenuChoice("Remove watermark", opens = true, icon = R.drawable.ic_delete) { setWatermark(null) }.takeIf { now != null || picture }))
                     }
                     Swatches(w, R.drawable.ic_format_color_fill, "Page colour", PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
                         setDesign(c?.let { it.toArgb() and 0xFFFFFF }, sheet.border?.line)
@@ -4249,40 +4219,26 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     RibbonButton("Size", w, R.drawable.ic_fit_page, enabled = loaded) { pagePage = true }
                     // Columns: the pages show them (the editor keeps one column of text).
-                    Box {
-                        var columning by remember { mutableStateOf(false) }
-                        RibbonButton(if (sheet.columns > 1) "Columns: ${sheet.columns}" else "Columns", w, R.drawable.ic_view_column, enabled = loaded) { columning = true }
-                        DropdownMenu(columning, { columning = false }) {
-                            listOf(1 to "One", 2 to "Two", 3 to "Three").forEach { (n, label) ->
-                                DropdownMenuItem(text = { Text(label) }, onClick = { columning = false
-                                    if (n != sheet.columns || sectioned()) { setColumns(n); if (n > 1) message = "$label columns — they show on the pages (the eye at the top)" } })
-                            }
-                        }
-                    }
+                    RibbonMenu(if (sheet.columns > 1) "Columns: ${sheet.columns}" else "Columns", w, R.drawable.ic_view_column, enabled = loaded, title = "Columns", choices =
+                        listOf(1 to "One", 2 to "Two", 3 to "Three").map { (n, label) -> MenuChoice(label, checked = n == sheet.columns) {
+                            if (n != sheet.columns || sectioned()) { setColumns(n); if (n > 1) message = "$label columns — they show on the pages (the eye at the top)" } } })
                 }, {
                     RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
                     RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
                     // Layout › Breaks (Phase 2): a column break; section breaks — a new page, or on down the same one.
-                    Box {
-                        var breaking by remember { mutableStateOf(false) }
-                        RibbonButton("Breaks", w, R.drawable.ic_insert_page_break, enabled = loaded) { breaking = true }
-                        DropdownMenu(breaking, { breaking = false }) {
-                            DropdownMenuItem(text = { Text("Column break") }, onClick = { breaking = false; insertPageBreak(false, column = true); WriterLog.i("column break") })
-                            DropdownMenuItem(text = { Text("Section break · next page") }, onClick = { breaking = false; insertPageBreak(false, section = "nextPage") })
-                            DropdownMenuItem(text = { Text("Section break · continuous") }, onClick = { breaking = false; insertPageBreak(false, section = "continuous") })
-                        }
-                    }
+                    RibbonMenu("Breaks", w, R.drawable.ic_insert_page_break, enabled = loaded, preset = false, choices = listOf(
+                        MenuChoice("Column break") { insertPageBreak(false, column = true); WriterLog.i("column break") },
+                        MenuChoice("Section break · next page") { insertPageBreak(false, section = "nextPage") },
+                        MenuChoice("Section break · continuous") { insertPageBreak(false, section = "continuous") }))
                 }, {
                     // Word's Line Numbers: none, continuous, restart each page, restart each section (Word only); the pages show them.
-                    Box {
-                        var open by remember { mutableStateOf(false) }
+                    run {
                         val now = documentStyles.section.lineNumbers?.restart
-                        RibbonButton("Line numbers", w, R.drawable.ic_format_list_numbered, enabled = loaded, on = now != null) { open = true }
-                        DropdownMenu(open, { open = false }) {
+                        // a tablet or phone: cards on the pages' strip, as Insert › Page numbers (the user, 18 Oct); a desktop: its menu
+                        if (!OfficeUi.top) RibbonButton("Line numbers", w, R.drawable.ic_format_list_numbered, enabled = loaded, on = now != null) { openGallery(DesignGallery.LineNumbers) }
+                        else RibbonMenu("Line numbers", w, R.drawable.ic_format_list_numbered, enabled = loaded, on = now != null, choices =
                             (listOf(null to "None", "continuous" to "Continuous", "newPage" to "Restart each page") + if (kind == OfficeKind.Docx) listOf("newSection" to "Restart each section") else emptyList())
-                                .forEach { (mode, label) -> DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (mode == now) Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                    onClick = { open = false; if (mode != now) setLineNumbers(mode) }) }
-                        }
+                                .map { (mode, label) -> MenuChoice(label, checked = mode == now) { if (mode != now) setLineNumbers(mode) } })
                     }
                     // Word's Hyphenation: automatic on or off for the whole document (the pages break words at lines' ends), and by
                     // hand an optional hyphen at the cursor (Word's Ctrl + -): the word breaks there only at a line's end
@@ -4431,7 +4387,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonTools { pages.forEachIndexed { i, group -> if (i > 0) RibbonDivider(w); group() } }
                 }
             }
-            }
+            } }
         } }
         // A link inside the document at the cursor (a contents' entry, a cross-reference): a chip that goes to its bookmark (asked 16 Oct: clickable contents)
         val inside = state.selectedLinkUrl?.takeIf { it.startsWith("#") && loaded }
@@ -5248,17 +5204,57 @@ private fun joinedSpans(spans: List<androidx.compose.ui.text.AnnotatedString.Ran
 
 /** A colour tool: tapped, its swatches open beside it on the same line; the crossed-out one removes the colour. */
 @Composable internal fun Swatches(tint: Color, icon: Int, label: String, colors: List<Color>, choose: (Color?) -> Unit) {
+    // a tablet or phone: the colours on a strip of their own, picked, then ✓ (the user, 18 Oct); a desktop: in the ribbon's line
+    val strip = officeStrip(label, ok = { s -> s.picked?.let { choose(it as? Color) } }) { s ->
+        SwatchDots(tint, label, colors, s.picked) { s.picked = it ?: NO_COLOUR }
+        val strips = LocalOfficeStrips.current
+        MoreColours(tint, label) { c -> strips?.open = null; choose(c) }
+    }
+    if (strip != null) { Tool(icon, label, tint) { strip() }; return }
     var open by remember { mutableStateOf(false) }
     Tool(icon, label, tint, on = open) { open = !open }
     if (open) {
-        Box(Modifier.size(34.dp).clip(CircleShape).clickable(onClickLabel = "No $label") { choose(null); open = false }, contentAlignment = Alignment.Center) {
-            Icon(painterResource(R.drawable.ic_no_color), contentDescription = "No ${label.lowercase(Locale.ROOT)}", tint = tint, modifier = Modifier.size(22.dp))
-        }
-        colors.forEach { c ->
-            Box(Modifier.padding(3.dp).size(28.dp).clip(CircleShape).background(c).border(1.dp, tint.copy(alpha = 0.5f), CircleShape)
-                .clickable(onClickLabel = label) { choose(c); open = false })
-        }
+        SwatchDots(tint, label, colors, null) { choose(it); open = false }
         Spacer(Modifier.width(4.dp))
+    }
+}
+
+/** Word's colour table (the user, 18 Oct: "the basic colors at the top and gradually brighter ones as you go down"): black and
+ *  Word's ten standard colours, each lighter by a fifth a row down — a tap is the colour. */
+internal val COLOUR_TABLE: List<List<Color>> = listOf(0x000000, 0xC00000, 0xFF0000, 0xFFC000, 0xFFFF00, 0x92D050, 0x00B050, 0x00B0F0, 0x0070C0, 0x002060, 0x7030A0).let { base ->
+    (0..4).map { row -> base.map { rgb -> fun c(v: Int) = v + (255 - v) * row / 5
+        Color(c(rgb shr 16 and 0xFF), c(rgb shr 8 and 0xFF), c(rgb and 0xFF)) } } }
+
+/** A colour strip's last tool, More…: [COLOUR_TABLE] in a window, the colour tapped [choose]n. */
+@Composable internal fun MoreColours(tint: Color, label: String, choose: (Color) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    RibbonButton("More…", tint, R.drawable.ic_more_horiz) { open = true }
+    if (open) androidx.compose.material3.AlertDialog(onDismissRequest = { open = false }, title = { Text(label) }, text = {
+        BoxWithConstraints {
+            val cell = minOf(40.dp, maxWidth / COLOUR_TABLE[0].size)
+            Column {
+                COLOUR_TABLE.forEach { row -> Row { row.forEach { c ->
+                    Box(Modifier.size(cell).clickable(onClickLabel = label) { open = false; choose(c) }.padding(3.dp).clip(RoundedCornerShape(4.dp)).background(c)
+                        .border(1.dp, Color(0x55888888), RoundedCornerShape(4.dp)))
+                } } }
+            }
+        }
+    }, confirmButton = { TextButton(onClick = { open = false }) { Text("Cancel") } })
+}
+
+/** [Swatches]' picked "no colour" */
+internal const val NO_COLOUR = "no colour"
+
+/** Colour dots: "no [label]" first, then [colors]; [picked] (a colour or [NO_COLOUR]) ringed. A dot is a tool's size to tap. */
+@Composable internal fun SwatchDots(tint: Color, label: String, colors: List<Color>, picked: Any?, choose: (Color?) -> Unit) {
+    Box(Modifier.size(LocalToolSize.current).clip(CircleShape).then(if (picked == NO_COLOUR) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
+        .clickable(onClickLabel = "No $label") { choose(null) }, contentAlignment = Alignment.Center) {
+        Icon(painterResource(R.drawable.ic_no_color), contentDescription = "No ${label.lowercase(Locale.ROOT)}", tint = tint, modifier = Modifier.size(22.dp))
+    }
+    colors.forEach { c ->
+        Box(Modifier.size(LocalToolSize.current).clip(CircleShape).clickable(onClickLabel = label) { choose(c) }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(28.dp).clip(CircleShape).background(c).border(if (picked == c) 3.dp else 1.dp, if (picked == c) tint else tint.copy(alpha = 0.5f), CircleShape))
+        }
     }
 }
 

@@ -97,7 +97,7 @@ How to write here:
       7 skipped; sweep 349 + 29, none failing. At da417a3 (06:20, the last big pieces done): unit 502, 0 failing, 7 skipped; sweep
       349 documents + 29 decks (each deck also saved as the other format), none failing. Emulator only. For the tablet too: Tables › Page
       layout, Note, Drop-down list (its values row under the ribbon), Series, Cell styles, Format as table, Conditional formatting, Protect / Unprotect and Lock cell, View › Headings, Page layout › Print titles, Header and Footer (and Export PDF), Home's alignment and Clear ▾, a sheet's Copy and Tab colour, Insert/Delete cells, Insert › Picture and Text box, Data › Sort, Keep filter in file, Formulas › Names, Precedents/Dependents/Error checking, =FILTER/SORT/UNIQUE/SEQUENCE spilling, Data › Group/Collapse, Data › Subtotal, Insert › Shape, a drawing tapped, dragged, sized, deleted, Insert › Contents sheet, Insert › Source, the Review tab (Spelling, notes, statistics), View › Freeze panes; then View › Zoom to selection, Formula bar, Sheet tabs, Page break preview, Page layout; Data › Goal seek, From text/CSV, Reapply; File › Save a copy, AutoSave (Undo kept after a save), Save as, Rename; the keyboard bar while typing in a cell (phone and tablet) and in a Slides text box; Formulas › Recently used, Calculate sheet, Evaluate formula; Review › Show all notes, Protect workbook; Insert › Equation, WordArt (a look and a bend); Draw › Draw on sheet (with the tablet's pen); a picture's Save picture as. Slides: Add text on a shape with none, Save picture as, Edit data on a deck's own chart, Home › Text effects, View › Ruler and Reading view, a shape's Text direction, Review › Spelling, the show's All slides grid (and on the second screen), Slide show › Without animation and Use timings; View › Zoom; Tables' part-bold typing; Home › Spacing (Words and Slides); Home › Reuse slides; Arrange › On every slide; File › Save as PowerPoint/LibreOffice; Insert › Audio; Video › Trim.
-- [~] (office-strips session, 18 Oct, the only writer in this checkout) A › Made the same: the user's rule for options (18 Oct) — on a
+- [x] (office-strips session, 18 Oct, the only writer in this checkout) A › Made the same: the user's rule for options (18 Oct) — on a
       tablet/phone no lists over the page: presets get their own strip at the bottom (‹ name, ✓ / ×, More… → a window); desktop as is.
       In order: Slides › Design › Slide size; Design's Themes/Colours/Fonts/Background/Gradient; then every other popup in the three apps.
       Done: (1) the shared strip — `OfficeStripFrame` round each ribbon, `officeStrip` opens one in the ribbon's place (ribbon slides
@@ -106,6 +106,31 @@ How to write here:
       (screen16x10, 35mm, custom), Impress's page size; with other changes unsaved it asks "Save and go on" instead of refusing. Test
       `each slide size saved` (pptx + odp, LibreOffice both ways). Unit 503, 0 failing, 7 skipped. Emulator (1280×800): strip, ✓, Ensure
       fit, Save and go on, Custom….
+      (2) Slides › Design on strips: Themes (cards, the one tapped shown on the slides, More… = the full panel), Background and
+      Gradient (shown as tapped, ✓ one Undo step, × back); Colours/Fonts' gallery now slides the ribbon down as Words' does.
+      (3) The sweep (the user, 18 Oct: "everything that was recreated is made in to a list … Check in all applets of office"); on a
+      desktop (ribbon at the top) every one is the menu it was. Found and changed:
+      · every colour row (`Swatches`: Words' Text colour, Highlight, Shading, Page colour, the table's; Tables' Text colour, Fill, Tab
+        colour; Slides' Text colour, Highlight, Fill, Border) → its own strip, picked then ✓, **More…** = Word's colour table (black and
+        Word's ten standard colours on top, each a fifth lighter a row down) — the user: "a more that opens a table with these basic
+        colors at the top and gradually brighter ones as you go down like the real word has".
+      · Words: Aa, Spacing, picture Align, Design › Paragraph spacing, Watermark, Layout › Columns, Breaks; **Line numbers** = cards on
+        the pages' strip like Insert › Page numbers (shown on the page as tapped, OK/Cancel) — the user: "I want the way the UI looks in Insert".
+      · Slides: several chosen › Align, Aa, Spacing, Text effects, Arrange › Align, Text direction, Picture styles, Transparency, File ›
+        Print, View › Zoom, References › Style; New slide / Layout and Table sizes strips now start with "‹ name".
+      · Tables: Clear, Insert/Delete cells, Unhide sheet, Page layout's Orientation/Size/Margins/Scale/Header/Footer (Custom… opens its
+        window), Formulas › Recently used, Home › Orientation.
+      · Insert › Video (Words and Slides).
+      Strips: presets picked then ✓ (× / ‹ / Back leave them); actions (Clear all, Shift cells down, Align left, Print…) act at the tap and
+      the ribbon comes back. A phone: the name, × and ✓ on the tab row's line, the choices under them.
+      Left as they are, deliberately: lists inside windows (Sort's column pickers), the top bar's ⋯ menu, right-click menus (see the next
+      line), the tab-defining galleries shown in the ribbon itself as Word/PowerPoint do (Words' styles, table looks; Slides' transitions).
+      Unit 503, 0 failing, 7 skipped. Emulator (tablet 1280×800 and phone 360 dp, ribbon at the bottom and at the top): Slide size,
+      Themes, Background, Colours, Insert › Video, Words' Text colour + More…, Line numbers, Watermark, Spacing; Tables' Fill, Clear.
+      Seen there: the emulator's Gboard (hardware-keyboard mode) floats its toolbar 28 dp above the room it tells apps it takes, over
+      the ribbon; it can be dragged away (Gboard's own, not Tetra's).
+- [ ] (the user, 18 Oct: "right click otions go in the selection tab in phone and tablet") Words, Slides, Tables: what a right-click
+      menu offers is on the Selection tab on a phone and tablet (the ribbon at the bottom); the menu stays for a mouse.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

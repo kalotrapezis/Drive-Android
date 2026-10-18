@@ -106,7 +106,7 @@ How to write here:
 - (office-F, 18 Oct, 05:00) **Office's last big pieces — which first, or later?** Words, Slides and Tables' lines in this plan are now
   done or marked later, except these, each a day or more: (1) Slides › File › Save as the other format (.pptx ⇄ .odp: a whole-deck
   writer for each); (2) copying slides between decks (PowerPoint's Reuse slides); (3) editing the slide master; (4) View › Zoom on the
-  slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold);
+  slide being edited [done 18 Oct, see B › View]; (5) audio, Words' Online video, a film's start and end in Slides; (6) rich text typed in a Tables cell (part bold) [done 18 Oct, 0c6f13b];
   (7) character spacing in all three (the shared engine). The "later"s with evidence (none of the 29 decks uses them): slide tables'
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
   Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
@@ -305,6 +305,10 @@ paragraph when it is edited (`withTexts` keeps only the first run). Tables' cell
       their own (`OdsLooks.span`) when the cell is saved (a look put on it). `rich text in a cell` grew: LibreOffice's .ods of it,
       Tetra's save of that, and LibreOffice's .xlsx of Tetra's; emulator: "Na" bold, "me" red italic in an .ods.
       Not yet: rich text typed in Tables (a cell typed in is one look).
+      Done 18 Oct (office-F, 0c6f13b): letters chosen while typing in a cell take Bold, Italic or Underline from the keyboard bar alone
+      (Excel's); the field shows them, the runs follow the typing (`SheetRich`: kept letters keep their looks, typed ones take the look
+      before them, as Words), and Enter keeps them as the cell's rich text (Excel's runs, LibreOffice's spans, both written already).
+      `part of a cell's words bold while typing`. Emulator: "Hello **world**" in F8, saved — Excel's run with <b/>, LibreOffice's bold span.
 - [ ] **Tests at each big step (the user, 17 Oct: "we may have to run all the tests again"):** the whole unit suite,
       the user's document sweep (`UserDocsSweepTest`, TETRA_SWEEP=1), the LibreOffice round trips, and a walk of
       Words, Slides and Tables on the tablet (TEST_TREE.md) — numbers before and after written here.

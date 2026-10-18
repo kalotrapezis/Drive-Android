@@ -440,6 +440,8 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     }
     // a desktop's notes pane let go when a shape or another slide is clicked: the keys are the slide's again (Delete deletes the shape)
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    // voice typing (Words'): what was said in at the typing cursor
+    val said = rememberDictation { putWords(it) }
     LaunchedEffect(item, chosen) { if (OfficeUi.top && notesTyping != null) focusManager.clearFocus() }
     BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; notesTyping != null && !OfficeUi.top -> notesTyping = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     val view = remember(base, edit) { base?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
@@ -2202,8 +2204,26 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             }
                         }
                         val t = typing
+                        fun putTyping() {
+                            val ee = edit; val c = chosen
+                            if (t != null && ee != null && c != null) {
+                                val uid = ee.order[c].uid
+                                change(ee.copy(texts = ee.texts + ((uid to t.first.id!!) to t.second.text.split("\n"))))
+                                WriterLog.i("Slides: a text box changed")
+                            }
+                            typing = null
+                        }
                         if (cell == null && nt == null)
-                        Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color.Black, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) { Column {
+                            // Words' bar on the keyboard ([KeyboardBar]): its looks on the box, as Home's; ⋯ puts the words in and brings the ribbon back
+                            val ee = edit; val c = chosen
+                            val box = if (ee != null && c != null) base?.let { d -> SlidesEdit.slide(d, ee, ee.order[c]) }?.items?.lastOrNull { it.anim == item && item != null } as? SlideItem.Shape else null
+                            val r = box?.text?.paras?.flatMap { it.runs }?.firstOrNull { it.text.isNotBlank() }
+                            val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                            KeyboardBar(islandContentColor(), r?.bold == true, r?.italic == true, r?.underline == true,
+                                { restyle { it.copy(bold = r?.bold != true) } }, { restyle { it.copy(italic = r?.italic != true) } }, { restyle { it.copy(underline = r?.underline != true) } },
+                                { col -> restyle { it.copy(highlight = col?.toArgb() ?: SlidesEdit.NONE) } },
+                                { said?.invoke() ?: run { message = "This phone has no voice typing" } }, ::putTyping, { keyboard?.hide() })
                             Row(Modifier.bottomBarPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { typing = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
                                 // a new line in the same paragraph (Enter makes a new paragraph), as Words' Line break
@@ -2212,17 +2232,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                                 LaunchedEffect(t?.first) { if (t != null) focus.requestFocus() }
                                 if (t != null) androidx.compose.material3.OutlinedTextField(t.second, { typing = t.first to it }, modifier = Modifier.weight(1f).heightIn(max = 220.dp).focusRequester(focus),
                                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White), label = { Text("The words (a line a paragraph)") })
-                                IconButton(onClick = {
-                                    val ee = edit; val c = chosen
-                                    if (t != null && ee != null && c != null) {
-                                        val uid = ee.order[c].uid
-                                        change(ee.copy(texts = ee.texts + ((uid to t.first.id!!) to t.second.text.split("\n"))))
-                                        WriterLog.i("Slides: a text box changed")
-                                    }
-                                    typing = null
-                                }) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Put them in") }
+                                IconButton(onClick = ::putTyping) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Put them in") }
                             }
-                        }
+                        } }
                     }
                     OfficeMessage(message, top = 12.dp) { message = null }
                 }

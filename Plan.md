@@ -722,7 +722,10 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       recovery draft and versions, as Words renames). With PowerPoint's list below: Save as template (.potx into Tetra's Templates, which
       Design › Themes and New presentation offer; a .pptx only) and Inspect (speaker notes and comments taken out before sharing, Undo
       brings them back). Emulator: a .potx made in Templates; Save as went on with "sorter (18) (2).pptx".
-- [ ] **While typing**: Words' keyboard bar (bold, italic, underline, highlight, voice typing) over the keyboard.
+- [x] **While typing**: Words' keyboard bar (bold, italic, underline, highlight, voice typing) over the keyboard.
+      Done 18 Oct (office-F): Words' KeyboardBar and rememberDictation over a text box's typing panel, on tablet and phone
+      (the ribbon is hidden while typing on both); Bold, Italic, Underline, highlight on the box as Home's, voice typing in
+      at the cursor (Insert's putWords), ⋯ puts the words in and brings the ribbon back. Emulator: arrange.pptx's subtitle bold.
 - Not for slides: page breaks, blank page, watermark, page borders, line numbers, hyphenation, footnotes and
   endnotes, captions and cross-references, track changes, content controls, style sets (PowerPoint has none of these).
 

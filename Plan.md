@@ -770,9 +770,11 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       a condition's style by that name). A value with a decimal comma taken as a number. `conditional formatting made and cleared`
       (both formats, LibreOffice's conversions both ways); emulator: B2:B5 of an .ods > 1000 in light red. shortcut: Clear rules takes
       a rule partly over the cells away whole. Not yet: icon sets, Manage rules.
-- [~] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
+- [x] **Insert**: **Chart from the chosen cells** (Words' chart editor, the series from the cells); picture; shape
       and text box; link; **notes and comments** (they are only shown today); symbol; a checkbox in a cell; a drop-down
       (data validation list); sparklines (later); PivotTable (later).
+      A checkbox in a cell: later (18 Oct, office-F) — it is Excel 365's alone (a cell look's feature property bag; older Excel
+      shows TRUE/FALSE, LibreOffice nothing); a drop-down list of Yes/No does the job meanwhile.
       Chart done (office-F session, 17 Oct): Insert › Chart with cells chosen — Words' `OfficeCharts.fromTable` makes the series from them,
       Words' `ChartDialog` edits it, then it goes on the sheet to the right of the cells, Excel's default 8 × 15 cells (`SheetChart`:
       Words' `ChartWriter` part in the sheet's drawing, a two-cell anchor — a new drawing made when the sheet has none —, or LibreOffice's
@@ -868,7 +870,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       cell's values show as a row under the ribbon to tap; a value typed that is not one of them is refused (Excel's stop).
       `drop-down lists made and taken away` (both formats, LibreOffice's conversions); emulator: E2:E4 Yes/No/Maybe, "No" tapped into
       E3, "Hello" refused, saved and read by LibreOffice. shortcut: a list from another sheet's cells is kept but not looked up.
-- [~] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
+- [x] **Page layout**: margins, orientation, paper size, print area, rows repeated on every page, fit to pages, header
       and footer, gridlines printed — today Export PDF and Print use the file's own setup, which can't be changed.
       Done (office-F session, 17 Oct): a Page layout tab (Excel's place, after Insert) — Orientation, Size (A4, Letter), Margins (Excel's
       Normal, Wide, Narrow), Scale (actual size, all columns on one page, sheet on one page), Print gridlines, Set / Clear print area —
@@ -904,7 +906,7 @@ repeated. Words' code is reused wherever it fits (its dialogs, strips, pickers).
       dialog (Change, Ignore, Ignore all); also Previous / Next note, New or Edit note, Protect / Unprotect sheet, and Workbook
       statistics (sheets; this sheet's cells, numbers, formulas, words, notes, drawings, used range). `SheetSpelling`; `spelling in a
       sheet` (Words' English dictionary read in the test); emulator: harvst → harvest, ferri → ferry in a CSV, the counts.
-- [~] **View**: gridlines and headings on or off; split the window (later).
+- [x] **View**: gridlines and headings on or off; split the window (later).
       Gridlines done (office-F session, 17 Oct): View › Gridlines while editing, kept in the file (`SheetVisibility.gridXlsx`: the sheet
       view's showGridLines; `gridOds`: the sheet's ShowGrid in the view's Tables list, else the view's own — and the reader now takes
       the view's own when a file has no Tables list). `gridlines off and on` (both formats; LibreOffice 26.2 carries them neither way).
@@ -989,7 +991,7 @@ what is not already above:
       Formulas › Evaluate formula (Excel's dialog: Evaluate shows the next step, the leftmost innermost part replaced by its value —
       `SheetCalc.steps` on the tree, written back with `SheetCalc.show`; `formula evaluated step by step`). Emulator: B5's
       =SUM(B2:B3) to =1192.5. Precedents and dependents are marked cells, not arrows.
-- [~] **Data**: import a CSV or text file into the sheet; Reapply and Clear the filter; advanced filter (later);
+- [x] **Data**: import a CSV or text file into the sheet; Reapply and Clear the filter; advanced filter (later);
       Flash fill (later); Goal seek; consolidate (later); forecast (later).
       Done (office-F session, 18 Oct): Data › From text/CSV (the system's file picker; the table typed in from the chosen cell, numbers
       and dates read as typing reads them, one step of Undo) and Goal seek (Excel's dialog; `SheetGoalSeek`: the sheet's own

@@ -1518,6 +1518,11 @@ And for Home: "On the default buttons at home add New : Shedule : burthday : rem
       comes 5 s later); ✕ marks that time done and its other reminders do not ring. Settings › Calendar: notifications,
       alarms on time, battery, Hyper Island, Autostart, the reminders switch, a test reminder, Import, Export all.
       Desktop the same at the same widths (Drive branch `calendar`, 18 Oct).
+- [x] (1f00114; Drive 756d805) **Share with Claude** (the user, 18 Oct: "Add a share with Claude in the settings of the
+      calendar app for the user to download the skill"): skills/tetra-calendar the one source, zipped into the Android app
+      at build time (assets/tetra-calendar.zip) and copied into desktop/skills before a desktop build. Android, in the
+      drawer and Settings › Calendar: Share (the share sheet) and Save to Files. Desktop, in the Settings drawer: Save as…
+      (~/Downloads) and Copy to ~/.claude/skills. "Lets Claude read and change this calendar by editing its files."
 
 
 ## The user's original wishlist (Sept 2026, unchanged)

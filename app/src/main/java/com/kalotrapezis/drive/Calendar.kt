@@ -317,7 +317,7 @@ object CalendarFiles {
             }
         }
         f.overrides.forEach { add(it, it.start, it.end) }
-        return out
+        return out.sortedBy { it.start.toInstant() }
     }
 
     /** The starts of a repeating event from [from] on, until [to], in the event's own clock (09:00 stays 09:00 after DST). */
@@ -367,6 +367,71 @@ object CalendarFiles {
         tmp.writeText(ICal.write(all))
         if (!tmp.renameTo(file)) { file.writeText(tmp.readText()); tmp.delete() }
         return read(file)
+    }
+
+    /** Reads [file], lets [change] work on its components, writes it back whole (a ".part" first: sync skips dot files). */
+    private fun rewrite(file: File, change: (ICalComp) -> Unit): CalFile {
+        val comps = ICal.parse(file.readText())
+        val cal = comps.firstOrNull { it.name == "VCALENDAR" } ?: error("${file.name} is not an iCalendar file.")
+        change(cal)
+        val tmp = File(file.parentFile, ".${file.name}.part")
+        tmp.writeText(ICal.write(comps))
+        if (!tmp.renameTo(file)) { file.writeText(tmp.readText()); tmp.delete() }
+        return read(file)
+    }
+
+    private fun sameTime(p: ICalProp?, t: ZonedDateTime) = p != null && ICal.time(p, t.zone)?.first?.toInstant() == t.toInstant()
+
+    /** One day of a repeating event changed: a VEVENT with its RECURRENCE-ID in the same file (made or replaced). */
+    fun saveDay(f: CalFile, day: ZonedDateTime, e: CalEvent, now: Instant = Instant.now()): CalFile = rewrite(f.file) { cal ->
+        val allDay = f.master?.allDay ?: e.allDay
+        val old = cal.comps("VEVENT").firstOrNull { sameTime(it.prop("RECURRENCE-ID"), day) }
+        val v = old ?: ICalComp("VEVENT").also { cal.items.add(it) }
+        fill(v, e.copy(uid = f.uid, rrule = null, exdates = emptyList()), now, isNew = old == null)
+        ICal.timeValue(day, allDay).let { (value, params) -> v.set("RECURRENCE-ID", value, params) }
+    }
+
+    /** One day of a repeating event deleted: an EXDATE, and that day's own changes gone. */
+    fun skipDay(f: CalFile, day: ZonedDateTime, now: Instant = Instant.now()): CalFile = rewrite(f.file) { cal ->
+        cal.items.removeAll { it is ICalComp && it.name == "VEVENT" && sameTime(it.prop("RECURRENCE-ID"), day) }
+        val m = cal.comps("VEVENT").firstOrNull { it.prop("RECURRENCE-ID") == null } ?: return@rewrite
+        val allDay = f.master?.allDay ?: false
+        ICal.timeValue(day, allDay).let { (value, params) -> m.items.add(m.items.indexOfFirst { it is ICalComp }.let { if (it < 0) m.items.size else it }, ICalProp("EXDATE", params, value)) }
+        touch(m, now)
+    }
+
+    /** A repeating event ended before [day] (its UNTIL; a COUNT gives way): "this and following" deleted, or split off. */
+    fun endBefore(f: CalFile, day: ZonedDateTime, now: Instant = Instant.now()): CalFile = rewrite(f.file) { cal ->
+        val m = cal.comps("VEVENT").firstOrNull { it.prop("RECURRENCE-ID") == null } ?: return@rewrite
+        val allDay = f.master?.allDay ?: false
+        val until = if (allDay) ICal.timeValue(day.minusDays(1), true).first else ICal.timeValue(day.minusSeconds(1).withZoneSameInstant(ZoneOffset.UTC), false).first
+        m.prop("RRULE")?.let { r -> m.set("RRULE", (r.value.split(';').filterNot { it.startsWith("UNTIL=", true) || it.startsWith("COUNT=", true) } + "UNTIL=$until").joinToString(";")) }
+        cal.items.removeAll { c -> c is ICalComp && c.name == "VEVENT" && c.prop("RECURRENCE-ID")?.let { ICal.time(it, day.zone)?.first?.toInstant()?.let { t -> t >= day.toInstant() } } == true }
+        touch(m, now)
+    }
+
+    private fun touch(v: ICalComp, now: Instant) {
+        val stamp = ICal.timeValue(now.atZone(ZoneOffset.UTC), false).first
+        v.set("DTSTAMP", stamp)
+        v.set("LAST-MODIFIED", stamp)
+        v.set("SEQUENCE", ((v.prop("SEQUENCE")?.value?.trim()?.toIntOrNull() ?: 0) + 1).toString())
+    }
+
+    /** An event file to Tetra's Trash (sync never deletes; a move into Trash crosses as a move). Returns where it went. */
+    fun trash(calendarRoot: File, file: File): String =
+        DriveRules.moveToTrash(calendarRoot.parentFile!!, file.relativeTo(calendarRoot.parentFile!!).path)
+
+    /** The other files of the same event in its calendar: sync's "(2)" copies, for "Keep this one". */
+    fun copies(cal: CalendarInfo, f: CalFile): List<File> = (cal.dir.listFiles() ?: emptyArray())
+        .filter { it.isFile && it.name.endsWith(".ics", true) && it != f.file && !it.name.startsWith(".") && read(it).uid == f.uid }
+
+    /** An event to another calendar: its file moved to that folder (a name there already: "name (2)"). */
+    fun move(file: File, to: CalendarInfo): File {
+        var target = File(to.dir, file.name)
+        var n = 2
+        while (target.exists()) target = File(to.dir, file.nameWithoutExtension + " (${n++}).ics")
+        require(file.renameTo(target)) { "Could not move ${file.name}." }
+        return target
     }
 
     private fun fill(v: ICalComp, e: CalEvent, now: Instant, isNew: Boolean) {

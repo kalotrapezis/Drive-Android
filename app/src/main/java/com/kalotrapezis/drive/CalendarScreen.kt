@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -86,6 +87,7 @@ import java.time.temporal.WeekFields
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /*
@@ -105,7 +107,24 @@ private object CalendarPrefs {
     fun setHidden(c: Context, s: Set<String>) = prefs(c).edit().putStringSet("hidden", s).apply()
     fun view(c: Context, wide: Boolean): CalView = runCatching { CalView.valueOf(prefs(c).getString(if (wide) "viewWide" else "view", null)!!) }
         .getOrDefault(if (wide) CalView.Month else CalView.Agenda)
+    fun last(c: Context): String? = prefs(c).getString("lastCalendar", null)
+    fun setLast(c: Context, name: String) = prefs(c).edit().putString("lastCalendar", name).apply()
     fun setView(c: Context, wide: Boolean, v: CalView) = prefs(c).edit().putString(if (wide) "viewWide" else "view", v.name).apply()
+}
+
+/** The editor open: on an occurrence (null: a new event), its draft and calendar. */
+private class Editing(val occ: Occurrence?, val draft: CalEvent, val calendar: CalendarInfo?)
+private class Asking(val deleting: Boolean, val then: (Scope) -> Unit)
+
+/** "All events" from one day: the change of that day's time moved onto the series' own start. */
+private fun saveAll(f: CalFile, m: CalEvent?, o: Occurrence, e: CalEvent, moveTo: CalendarInfo?) {
+    val base = m ?: return run { CalendarFiles.save(f.file, e) }
+    val was = o.event.recurrenceId ?: o.start
+    val shift = ChronoUnit.DAYS.between(was.toLocalDate(), e.start.toLocalDate())
+    val start = base.start.toLocalDate().plusDays(shift).atTime(e.start.toLocalTime()).atZone(e.start.zone)
+    CalendarFiles.save(f.file, base.copy(title = e.title, place = e.place, notes = e.notes, allDay = e.allDay, rrule = e.rrule, alarms = e.alarms,
+        start = start, end = start.plus(java.time.Duration.between(e.start, e.end))))
+    if (moveTo != null) CalendarFiles.move(f.file, moveTo)
 }
 
 private class CalData(val cals: List<CalendarInfo>, val occ: List<Occurrence>)
@@ -183,19 +202,23 @@ private fun spanText(seconds: Long): String {
     return parts.joinToString(" ")
 }
 
-/** A reminder in words: "30 minutes before", "3 days before at 09:00 · every day, 3 times". */
-internal fun alarmText(a: CalAlarm, allDay: Boolean): String {
+/**
+ * A reminder in words: "30 minutes before", "The day before at 09:00", "3 days before at 09:00 · every day, 3 times".
+ * Anything a day or more before says the clock time it rings at, worked out from [start].
+ */
+internal fun alarmText(a: CalAlarm, allDay: Boolean, start: ZonedDateTime): String {
+    val t = a.days * 86400 + a.seconds
     val base = when {
         a.at != null -> "At " + a.at.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.ENGLISH))
-        a.fromEnd -> (if (a.days * 86400 + a.seconds == 0L) "At the end" else spanText(a.days * 86400 + a.seconds) + if (a.days * 86400 + a.seconds < 0) " before the end" else " after the end")
-        else -> {
-            val t = a.days * 86400 + a.seconds
-            if (allDay && t <= 0) {
-                val before = (-t + 86399) / 86400
-                val clock = LocalTime.ofSecondOfDay(((t % 86400) + 86400) % 86400).format(DateTimeFormatter.ofPattern("HH:mm"))
-                when (before) { 0L -> "On the day at $clock"; 1L -> "The day before at $clock"; else -> "$before days before at $clock" }
-            } else if (t == 0L) "At the time" else spanText(t) + if (t < 0) " before" else " after"
+        a.fromEnd -> if (t == 0L) "At the end" else spanText(t) + if (t < 0) " before the end" else " after the end"
+        t <= 0 && (allDay || t <= -86400) -> {
+            val fires = start.plusDays(a.days).plusSeconds(a.seconds)
+            val before = ChronoUnit.DAYS.between(fires.toLocalDate(), start.toLocalDate())
+            val clock = fires.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
+            when (before) { 0L -> "On the day at $clock"; 1L -> "The day before at $clock"; 7L -> "A week before at $clock"; else -> "$before days before at $clock" }
         }
+        t == 0L -> "At the time"
+        else -> spanText(t) + if (t < 0) " before" else " after"
     }
     return if (a.repeat > 0) "$base · every ${spanText(a.every).removePrefix("1 ")}, ${a.repeat + 1} times" else base
 }
@@ -207,7 +230,7 @@ private fun onColor(c: Color) = if (c.luminance() > 0.55f) Color.Black else Colo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit) {
+internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, startNew: Boolean = false) {
     val context = LocalContext.current
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val zone = remember { ZoneId.systemDefault() }
@@ -220,6 +243,14 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var panel by remember { mutableStateOf(true) }
     var drawer by remember { mutableStateOf(false) }
     var shown by remember { mutableStateOf<Occurrence?>(null) }
+    var editing by remember { mutableStateOf<Editing?>(null) }
+    var asking by remember { mutableStateOf<Asking?>(null) } // a repeating event's This / Following / All
+    var calDialog by remember { mutableStateOf<CalendarInfo?>(null) }
+    var newCal by remember { mutableStateOf(false) }
+    var deleteCal by remember { mutableStateOf<CalendarInfo?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(message) { if (message != null) { delay(3000); message = null } }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val root = remember { calendarRoot() }
 
     if (!hasAccess) {
@@ -252,18 +283,74 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         CalendarPrefs.setHidden(context, hidden)
     }
     fun setView(v: CalView) { view = v; CalendarPrefs.setView(context, wide, v) }
+    /** Writes on the IO thread; the folder's watcher shows the result, [said] says what happened. */
+    fun write(said: String, work: () -> Unit) = scope.launch {
+        val failed = withContext(Dispatchers.IO) { runCatching(work).exceptionOrNull() }
+        message = failed?.let { "Not saved: ${it.message ?: it.javaClass.simpleName}" } ?: said
+        if (failed != null) WriterLog.e("Calendar: $said failed", failed)
+        version++
+    }
+    fun create(day: LocalDate, minute: Int? = null) {
+        val now = java.time.LocalTime.now()
+        val at = minute?.let { java.time.LocalTime.of(it / 60, it % 60) }
+            ?: if (day == today) now.plusMinutes(60L - now.minute).withSecond(0).withNano(0).takeIf { it.isAfter(now) } ?: java.time.LocalTime.of(23, 0) else java.time.LocalTime.of(9, 0)
+        val start = day.atTime(at).atZone(zone)
+        val cal = cals.firstOrNull { it.dir.name == CalendarPrefs.last(context) && it.dir.name !in hidden } ?: cals.firstOrNull { it.dir.name !in hidden } ?: cals.firstOrNull()
+        editing = Editing(null, CalEvent(CalendarFiles.newUid(), "", "", "", false, start, start.plusHours(1), alarms = defaultAlarms(false, start)), cal)
+    }
+    LaunchedEffect(startNew, data != null) { if (startNew && data != null && editing == null) create(today) }
+    fun saveEvent(ed: Editing, e: CalEvent, target: CalendarInfo?, scopeChoice: Scope?) = write(if (ed.occ == null) "Event created" else "Saved") {
+        val to = target ?: CalendarFiles.calendars(root).firstOrNull() ?: CalendarFiles.newCalendar(root, "Personal", CalendarFiles.PALETTE[0])
+        CalendarPrefs.setLast(context, to.dir.name)
+        val o = ed.occ
+        if (o == null) { CalendarFiles.save(java.io.File(to.dir, CalendarFiles.fileName(e.title, e.uid)), e); return@write }
+        val f = o.file
+        val m = f.master
+        val day = o.event.recurrenceId ?: o.start
+        val moveTo = to.takeIf { it.dir != o.calendar.dir }
+        when (if (m?.rrule == null && o.event.recurrenceId == null) null else scopeChoice) {
+            null -> CalendarFiles.save(f.file, e).also { if (moveTo != null) CalendarFiles.move(f.file, moveTo) }
+            Scope.One -> CalendarFiles.saveDay(f, day, e)
+            Scope.Following -> if (m == null || day.toInstant() == m.start.toInstant()) saveAll(f, m, o, e, moveTo) else {
+                CalendarFiles.endBefore(f, day)
+                val uid = CalendarFiles.newUid()
+                CalendarFiles.save(java.io.File(to.dir, CalendarFiles.fileName(e.title, uid)), e.copy(uid = uid, recurrenceId = null, exdates = emptyList(),
+                    rrule = e.rrule?.split(';')?.filterNot { it.startsWith("COUNT=", true) }?.joinToString(";")))
+            }
+            Scope.All -> saveAll(f, m, o, e, moveTo)
+        }
+    }
+    fun deleteEvent(o: Occurrence, scopeChoice: Scope?) = write("Deleted") {
+        val f = o.file
+        val m = f.master
+        val day = o.event.recurrenceId ?: o.start
+        when (if (m?.rrule == null && o.event.recurrenceId == null) null else scopeChoice) {
+            null, Scope.All -> CalendarFiles.trash(root, f.file)
+            Scope.One -> CalendarFiles.skipDay(f, day)
+            Scope.Following -> if (m == null || day.toInstant() <= m.start.toInstant()) CalendarFiles.trash(root, f.file) else CalendarFiles.endBefore(f, day)
+        }
+    }
     val views = if (wide) listOf(CalView.Day, CalView.Week, CalView.Month, CalView.Agenda) else listOf(CalView.Agenda, CalView.Day, CalView.ThreeDays, CalView.Month)
     LaunchedEffect(wide) { if (view !in views) setView(views.first()) }
     BackHandler { when { shown != null -> shown = null; drawer -> drawer = false; else -> back() } }
+    editing?.let { ed ->
+        val repeating = ed.occ != null && (ed.occ.file.master?.rrule != null || ed.occ.event.recurrenceId != null)
+        EventEditor(ed.draft, ed.calendar, cals, isNew = ed.occ == null, wide = wide, cancel = { editing = null }) { e, target ->
+            if (repeating) asking = Asking(false) { sc -> saveEvent(ed, e, target, sc); editing = null }
+            else { saveEvent(ed, e, target, null); editing = null }
+        }
+        asking?.let { a -> ScopeDialog(a.deleting, { asking = null }) { sc -> asking = null; a.then(sc) } }
+        if (!wide) return
+    }
     val open: (Occurrence) -> Unit = { shown = it }
 
     val body: @Composable (Modifier) -> Unit = { m ->
         Box(m) {
             when (view) {
                 CalView.Month -> MonthGrid(YearMonth.from(selected), days, today, selected, compact = !wide, pick = { selected = it; if (!wide) setView(CalView.Agenda) }, open = open)
-                CalView.Week -> TimeGrid(weekOf(selected), days, today, open)
-                CalView.ThreeDays -> TimeGrid((0L..2).map { selected.plusDays(it) }, days, today, open)
-                CalView.Day -> TimeGrid(listOf(selected), days, today, open)
+                CalView.Week -> TimeGrid(weekOf(selected), days, today, open, ::create)
+                CalView.ThreeDays -> TimeGrid((0L..2).map { selected.plusDays(it) }, days, today, open, ::create)
+                CalView.Day -> TimeGrid(listOf(selected), days, today, open, ::create)
                 CalView.Agenda -> Agenda(anchor, days, today, selected, { selected = it }, open)
             }
         }
@@ -283,8 +370,10 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             }
             Row(Modifier.weight(1f)) {
                 if (panel) Column(Modifier.width(264.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    androidx.compose.material3.ExtendedFloatingActionButton(onClick = { create(selected) }, containerColor = CalendarPink, contentColor = Color.White,
+                        icon = { Icon(painterResource(R.drawable.ic_add), contentDescription = null) }, text = { Text("Create") })
                     MiniMonth(selected, today, days.keys) { selected = it }
-                    CalendarList(cals, hidden, ::toggle)
+                    CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true })
                 }
                 body(Modifier.weight(1f).fillMaxHeight())
             }
@@ -307,13 +396,58 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 Text(selected.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH)), style = MaterialTheme.typography.titleSmall)
                 IconButton(onClick = { selected = selected.plusMonths(1) }) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Next month") }
             }
-            body(Modifier.weight(1f).fillMaxWidth())
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                body(Modifier.fillMaxSize())
+                androidx.compose.material3.FloatingActionButton(onClick = { create(selected) }, containerColor = CalendarPink, contentColor = Color.White,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) { Icon(painterResource(R.drawable.ic_add), contentDescription = "New event") }
+            }
+        }
+        message?.let { m ->
+            Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 24.dp), contentAlignment = Alignment.BottomCenter) {
+                Surface(shape = MaterialTheme.shapes.large, color = islandColor(), contentColor = islandContentColor()) { Text(m, Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) }
+            }
         }
     }
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }) {
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) { CalendarList(cals, hidden, ::toggle) }
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) { CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true }) }
     }
-    shown?.let { EventCard(it) { shown = null } }
+    shown?.let { o ->
+        val repeating = o.file.master?.rrule != null || o.event.recurrenceId != null
+        EventCard(o, close = { shown = null },
+            edit = {
+                shown = null
+                val m = o.file.master
+                // a day of a repeat edits with the repeat shown; the editor's date is that day's
+                val draft = if (m != null && o.event.recurrenceId == null) m.copy(start = o.start, end = o.end) else o.event.copy(rrule = m?.rrule)
+                editing = Editing(o, draft, o.calendar)
+            },
+            delete = { shown = null; if (repeating) asking = Asking(true) { sc -> deleteEvent(o, sc) } else deleteEvent(o, null) },
+            keep = { shown = null; write("Kept this version; the other went to the Trash") { CalendarFiles.copies(o.calendar, o.file).forEach { CalendarFiles.trash(root, it) } } })
+    }
+    if (editing == null) asking?.let { a -> ScopeDialog(a.deleting, { asking = null }) { sc -> asking = null; a.then(sc) } }
+    if (newCal) CalendarDialog(null, cals.map { it.name }.toSet(), { newCal = false }) { name, color ->
+        newCal = false
+        write("Calendar $name created") { CalendarFiles.newCalendar(root, name, color) }
+    }
+    calDialog?.let { c ->
+        CalendarDialog(c, cals.map { it.name }.toSet(), { calDialog = null }, delete = { calDialog = null; deleteCal = c }) { name, color ->
+            calDialog = null
+            write("Saved") {
+                CalendarFiles.setColor(c.dir, color)
+                if (name != c.name) {
+                    val to = java.io.File(root, name)
+                    require(!to.exists() && c.dir.renameTo(to)) { "Could not rename ${c.name}." }
+                    if (c.dir.name in hidden) { hidden = hidden - c.dir.name + name; CalendarPrefs.setHidden(context, hidden) }
+                }
+            }
+        }
+    }
+    deleteCal?.let { c ->
+        androidx.compose.material3.AlertDialog(onDismissRequest = { deleteCal = null }, title = { Text("Delete ${c.name}?") },
+            text = { Text("The calendar's folder and all its events go to Tetra's Trash, on every device after the next sync. They can be restored from the Trash.") },
+            confirmButton = { TextButton(onClick = { deleteCal = null; write("${c.name} moved to the Trash") { DriveRules.moveToTrash(root.parentFile!!, c.dir.relativeTo(root.parentFile!!).path) } }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { deleteCal = null }) { Text("Cancel") } })
+    }
 }
 
 private fun step(d: LocalDate, v: CalView, n: Long): LocalDate = when (v) {
@@ -344,7 +478,7 @@ private fun title(d: LocalDate, v: CalView): String = when (v) {
     }
 }
 
-@Composable private fun CalendarList(cals: List<CalendarInfo>, hidden: Set<String>, toggle: (CalendarInfo) -> Unit) {
+@Composable private fun CalendarList(cals: List<CalendarInfo>, hidden: Set<String>, toggle: (CalendarInfo) -> Unit, edit: (CalendarInfo) -> Unit, add: () -> Unit) {
     Column {
         Text("My calendars", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp))
         if (cals.isEmpty()) Text("No calendars yet. Each folder in Tetra/Calendar is one.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -353,9 +487,11 @@ private fun title(d: LocalDate, v: CalView): String = when (v) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { toggle(c) }, verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = c.dir.name !in hidden, onCheckedChange = { toggle(c) },
                     colors = CheckboxDefaults.colors(checkedColor = color, uncheckedColor = color, checkmarkColor = onColor(color)))
-                Text(c.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(c.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                IconButton(onClick = { edit(c) }) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "${c.name}: colour, name, delete") }
             }
         }
+        TextButton(onClick = add) { Icon(painterResource(R.drawable.ic_add), contentDescription = null, modifier = Modifier.padding(end = 8.dp)); Text("New calendar") }
     }
 }
 
@@ -523,7 +659,7 @@ private data class AgendaNone(override val day: LocalDate) : AgendaRow
 }
 
 /** Day, 3 days and Week: hours down the side, events as blocks side by side where they overlap, a red line at now. */
-@Composable private fun TimeGrid(dates: List<LocalDate>, days: Map<LocalDate, List<Occurrence>>, today: LocalDate, open: (Occurrence) -> Unit) {
+@Composable private fun TimeGrid(dates: List<LocalDate>, days: Map<LocalDate, List<Occurrence>>, today: LocalDate, open: (Occurrence) -> Unit, slot: (LocalDate, Int) -> Unit) {
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
     val hourH = 52.dp
@@ -557,7 +693,10 @@ private data class AgendaNone(override val day: LocalDate) : AgendaRow
                 } }
             }
             dates.forEach { d ->
-                BoxWithConstraints(Modifier.weight(1f).height(hourH * 24).drawBehind {
+                BoxWithConstraints(Modifier.weight(1f).height(hourH * 24).pointerInput(d) {
+                    // an empty hour tapped: a new event there (Google's)
+                    detectTapGestures { p -> slot(d, (p.y / size.height * 24).toInt().coerceIn(0, 23) * 60) }
+                }.drawBehind {
                     val step = size.height / 24
                     for (h in 0..23) drawLine(line, Offset(0f, h * step), Offset(size.width, h * step), 1f)
                     drawLine(line, Offset(0f, 0f), Offset(0f, size.height), 1f)
@@ -611,7 +750,7 @@ private fun dayBlocks(d: LocalDate, occ: List<Occurrence>, zone: ZoneId): List<T
 }
 
 /** An event's card: when, how often, which calendar, its reminders, place and notes. */
-@Composable private fun EventCard(o: Occurrence, close: () -> Unit) {
+@Composable private fun EventCard(o: Occurrence, close: () -> Unit, edit: () -> Unit, delete: () -> Unit, keep: () -> Unit) {
     val context = LocalContext.current
     val e = o.event
     val zone = ZoneId.systemDefault()
@@ -630,15 +769,20 @@ private fun dayBlocks(d: LocalDate, occ: List<Occurrence>, zone: ZoneId): List<T
                 Row(verticalAlignment = Alignment.Top) {
                     Box(Modifier.padding(top = 8.dp, end = 12.dp).size(14.dp).clip(RoundedCornerShape(4.dp)).background(Color(o.calendar.color)))
                     Text(e.title.ifEmpty { "(No title)" }, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    IconButton(onClick = edit) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
+                    IconButton(onClick = delete) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete") }
                     IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close") }
                 }
                 Text(whenText, style = MaterialTheme.typography.bodyLarge)
                 (o.file.master ?: e).let { m -> repeatText(m.rrule, m.start) }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (e.place.isNotEmpty()) Text(e.place, style = MaterialTheme.typography.bodyMedium)
                 Text(o.calendar.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                e.alarms.forEach { Text("🔔 " + alarmText(it, e.allDay), style = MaterialTheme.typography.bodyMedium) }
+                e.alarms.forEach { Text("🔔 " + alarmText(it, e.allDay, o.start), style = MaterialTheme.typography.bodyMedium) }
                 if (e.notes.isNotEmpty()) Text(e.notes, style = MaterialTheme.typography.bodyMedium)
-                if (o.file.versions > 1) Text("${o.file.versions} versions of this event came from a sync; the newest is shown.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                if (o.file.versions > 1) {
+                    Text("${o.file.versions} versions of this event came from a sync (changed on two devices); the newest is shown.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = keep) { Text("Keep this one") }
+                }
                 Text(o.file.file.relativeTo(o.calendar.dir.parentFile ?: File("/")).path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

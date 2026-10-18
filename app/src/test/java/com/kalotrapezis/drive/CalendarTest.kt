@@ -120,4 +120,39 @@ class CalendarTest {
         assertEquals(athens, ICal.zone("Europe/Athens"))
         assertEquals(athens, ICal.zone("/mozilla.org/20050126_1/Europe/Athens"))
     }
+
+    private fun staff() = CalendarFiles.files(cal).single { it.uid.startsWith("staff") }
+    private fun staffDays() = CalendarFiles.occurrences(cal, staff(), at("2026-10-01T00:00"), at("2026-12-01T00:00")).map(::local)
+    private fun z(s: String) = LocalDateTime.parse(s).atZone(athens)
+
+    @Test fun `one day of a repeat moved, then deleted`() {
+        val f = staff()
+        val day = z("2026-11-03T10:00")
+        CalendarFiles.saveDay(f, day, f.master!!.copy(title = "Staff meeting, in the library", start = z("2026-11-03T13:00"), end = z("2026-11-03T14:00")))
+        assertEquals(listOf("2026-10-06T10:00", "2026-10-13T10:00", "2026-10-27T12:00", "2026-11-03T13:00", "2026-11-10T10:00"), staffDays())
+        assertEquals("Staff meeting, in the library", CalendarFiles.occurrences(cal, staff(), at("2026-11-03T00:00"), at("2026-11-04T00:00")).single().event.title)
+        // the same day changed again replaces its change, not a second one
+        CalendarFiles.saveDay(staff(), day, f.master!!.copy(start = z("2026-11-03T15:00"), end = z("2026-11-03T16:00")))
+        assertEquals("2026-11-03T15:00", staffDays()[3])
+        CalendarFiles.skipDay(staff(), day)
+        assertEquals(listOf("2026-10-06T10:00", "2026-10-13T10:00", "2026-10-27T12:00", "2026-11-10T10:00"), staffDays())
+    }
+
+    @Test fun `this and following - the old one ends the day before, a moved day after it goes`() {
+        CalendarFiles.endBefore(staff(), z("2026-10-27T10:00"))
+        assertEquals(listOf("2026-10-06T10:00", "2026-10-13T10:00"), staffDays())
+        assertTrue("UNTIL=20261027T075959Z" in staff().file.readText())
+    }
+
+    @Test fun `an event to another calendar and to the Trash`() {
+        val home = CalendarFiles.newCalendar(root, "Home", CalendarFiles.PALETTE[0])
+        val moved = CalendarFiles.move(staff().file, home)
+        assertEquals(1, CalendarFiles.files(home).size)
+        File(root.parentFile, "Trash").deleteRecursively()
+        val tetra = Files.createTempDirectory("tetra").toFile()
+        val calRoot = File(tetra, "Calendar"); root.copyRecursively(calRoot)
+        val there = File(calRoot, "Home/${moved.name}")
+        assertEquals("Trash/${moved.name}", CalendarFiles.trash(calRoot, there))
+        assertTrue(!there.exists() && File(tetra, "Trash/${moved.name}").isFile)
+    }
 }

@@ -316,6 +316,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
+    var calendarNew by remember { mutableStateOf(false) } // Home's New event: the Calendar opens on a new one
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
     var sheetOpen by remember { mutableStateOf<String?>(null) } // the spreadsheet Excel's viewer shows (its back: writerBack)
@@ -618,7 +619,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.Codes -> screen = Screen.Codes
             Applet.Office -> screen = Screen.Office
             Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
-            Applet.Calendar -> screen = Screen.Calendar
+            Applet.Calendar -> { calendarNew = false; screen = Screen.Calendar }
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -715,7 +716,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     openTextEditor = { start -> editorStart = start; screen = Screen.TextEditor },
                     openOffice = { screen = Screen.Office },
                     pickOffice = pickOffice,
-                    openCalendar = { screen = Screen.Calendar },
+                    openCalendar = { calendarNew = false; screen = Screen.Calendar },
+                    newEvent = { calendarNew = true; screen = Screen.Calendar },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -772,7 +774,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Pdf -> pdfOpen?.let { androidx.compose.runtime.key(it) { PdfScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
-                })
+                }, startNew = calendarNew)
                 Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -881,6 +883,7 @@ private fun Home(
     pickOffice: (OfficePick) -> Unit,
     newNote: (checklist: Boolean) -> Unit,
     openCalendar: () -> Unit,
+    newEvent: () -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -955,7 +958,7 @@ private fun Home(
                         val context = LocalContext.current
                         val next by produceState<String?>(null) { value = withContext(Dispatchers.IO) { nextEventText(context) } }
                         HomeCompactCard(next ?: "Nothing coming up", R.drawable.ic_calendar_today, openCalendar)
-                        HomeCompactCard("Today", R.drawable.ic_view_list, openCalendar)
+                        HomeCompactCard("New event", R.drawable.ic_add, newEvent)
                     }
                 }
             }

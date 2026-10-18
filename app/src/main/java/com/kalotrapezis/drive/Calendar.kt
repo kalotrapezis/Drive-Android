@@ -456,6 +456,29 @@ object CalendarFiles {
         touch(m, now)
     }
 
+    /**
+     * "This and following" changed from [day]: [f]'s repeat ends before it, and [e] is written as a new event in [file]
+     * with [f]'s cancelled and changed days from [day] on, moved by as much as [day] moved, or they come back. The
+     * desktop's split the same.
+     */
+    fun split(f: CalFile, day: ZonedDateTime, file: File, e: CalEvent, now: Instant = Instant.now()): CalFile {
+        fun after(p: ICalProp?) = p != null && ICal.time(p, day.zone)?.first?.toInstant()?.let { it >= day.toInstant() } == true
+        val cal = ICal.parse(f.file.readText()).firstOrNull { it.name == "VCALENDAR" }
+        val exdates = cal?.comps("VEVENT")?.firstOrNull { it.prop("RECURRENCE-ID") == null }?.items.orEmpty()
+            .filterIsInstance<ICalProp>().filter { it.name == "EXDATE" }
+            .map { p -> ICalProp(p.name, p.params, p.value.split(',').filter { after(ICalProp(p.name, p.params, it)) }.joinToString(",")) }
+            .filter { it.value.isNotEmpty() }
+        val days = cal?.comps("VEVENT").orEmpty().filter { after(it.prop("RECURRENCE-ID")) }
+        endBefore(f, day, now)
+        save(file, e, now)
+        return rewrite(file) { c ->
+            val v = c.comps("VEVENT").first()
+            v.items.addAll(v.items.indexOfFirst { it is ICalComp }.let { if (it < 0) v.items.size else it }, exdates)
+            days.forEach { it.set("UID", e.uid); c.items.add(it) }
+            ICal.time(v.prop("DTSTART")!!)?.let { shiftRepeat(c, v, day to (f.master?.allDay ?: false), it) }
+        }
+    }
+
     private fun touch(v: ICalComp, now: Instant) {
         val stamp = ICal.timeValue(now.atZone(ZoneOffset.UTC), false).first
         v.set("DTSTAMP", stamp)

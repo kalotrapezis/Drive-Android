@@ -159,6 +159,19 @@ class CalendarTest {
         assertTrue("UNTIL=20261027T075959Z" in staff().file.readText())
     }
 
+    @Test fun `this and following moved to another time keeps the cancelled and changed days after the split`() {
+        val old = staff()
+        val new = CalendarFiles.split(old, z("2026-10-13T10:00"), File(cal.dir, "staff-split.ics"), old.master!!.copy(uid = "staff-split",
+            rrule = "FREQ=WEEKLY;BYDAY=TU", exdates = emptyList(), start = z("2026-10-13T11:00"), end = z("2026-10-13T12:00")))
+        val days = CalendarFiles.files(cal).filter { it.uid.startsWith("staff") }
+            .flatMap { CalendarFiles.occurrences(cal, it, at("2026-10-01T00:00"), at("2026-11-15T00:00")) }.sortedBy { it.start.toInstant() }.map(::local)
+        assertEquals(listOf("2026-10-06T10:00", "2026-10-13T11:00", "2026-10-27T12:00", "2026-11-03T11:00", "2026-11-10T11:00"), days)
+        val text = new.file.readText()
+        assertTrue("EXDATE;TZID=Europe/Athens:20261020T110000" in text)
+        assertTrue("RECURRENCE-ID;TZID=Europe/Athens:20261027T110000" in text)
+        assertTrue("RECURRENCE-ID" !in old.file.readText())
+    }
+
     @Test fun `an event to another calendar and to the Trash`() {
         val home = CalendarFiles.newCalendar(root, "Home", CalendarFiles.PALETTE[0])
         val moved = CalendarFiles.move(staff().file, home)

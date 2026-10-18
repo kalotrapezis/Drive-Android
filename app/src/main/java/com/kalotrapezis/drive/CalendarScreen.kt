@@ -353,9 +353,8 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             null -> CalendarFiles.save(f.file, e).also { if (moveTo != null) CalendarFiles.move(f.file, moveTo) }
             Scope.One -> CalendarFiles.saveDay(f, day, e)
             Scope.Following -> if (m == null || day.toInstant() == m.start.toInstant()) saveAll(f, m, o, e, moveTo) else {
-                CalendarFiles.endBefore(f, day)
                 val uid = CalendarFiles.newUid()
-                CalendarFiles.save(CalendarFiles.newFile(to.dir, e.title, uid), e.copy(uid = uid, recurrenceId = null, exdates = emptyList(),
+                CalendarFiles.split(f, day, CalendarFiles.newFile(to.dir, e.title, uid), e.copy(uid = uid, recurrenceId = null, exdates = emptyList(),
                     rrule = e.rrule?.split(';')?.filterNot { it.startsWith("COUNT=", true) }?.joinToString(";")))
             }
             Scope.All -> saveAll(f, m, o, e, moveTo)

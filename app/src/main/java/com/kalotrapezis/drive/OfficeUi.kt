@@ -305,3 +305,24 @@ internal fun FindReplaceBar(w: Color, query: String, setQuery: (String) -> Unit,
         if (replacing) ReplaceRow(w, replacement, setReplacement, found, replace, replaceAll)
     }
 }
+
+/**
+ * Review › Spelling's dialog (Tables' and Slides', as Excel's and PowerPoint's): the word not in the dictionary, where it is
+ * ([at]), the suggestions to choose from; Change (when [canChange]), Ignore, Ignore all, Close.
+ */
+@Composable
+internal fun SpellingDialog(word: String, at: String, offered: List<String>, canChange: Boolean, change: (String) -> Unit, ignore: () -> Unit, ignoreAll: () -> Unit, close: () -> Unit) {
+    var choice by androidx.compose.runtime.remember(word, at) { androidx.compose.runtime.mutableStateOf(offered.firstOrNull()) }
+    androidx.compose.material3.AlertDialog(onDismissRequest = close, title = { androidx.compose.material3.Text("Spelling") },
+        text = { androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.Text("Not in the dictionary: $word", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            androidx.compose.material3.Text(at, style = androidx.compose.material3.MaterialTheme.typography.bodySmall, maxLines = 3)
+            if (offered.isEmpty()) androidx.compose.material3.Text("No suggestions")
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                offered.forEach { o -> androidx.compose.material3.FilterChip(choice == o, { choice = o }, { androidx.compose.material3.Text(o) }) } } } },
+        confirmButton = { androidx.compose.foundation.layout.Row {
+            androidx.compose.material3.TextButton(enabled = choice != null && canChange, onClick = { choice?.let(change) }) { androidx.compose.material3.Text("Change") }
+            androidx.compose.material3.TextButton(onClick = ignore) { androidx.compose.material3.Text("Ignore") }
+            androidx.compose.material3.TextButton(onClick = ignoreAll) { androidx.compose.material3.Text("Ignore all") } } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = close) { androidx.compose.material3.Text("Close") } })
+}

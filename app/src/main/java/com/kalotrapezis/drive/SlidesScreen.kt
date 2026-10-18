@@ -486,6 +486,9 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var query by remember { mutableStateOf("") }; var replacement by remember { mutableStateOf("") }; var replacing by remember { mutableStateOf(false) }
     var findAt by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var rulers by remember { mutableStateOf(false) } // View › Ruler: Words' rulers along the slide's top and side (a tablet's layout)
+    // Review › Spelling: the words left to look at (slide, box, line, where in it, the word), suggestions, words ignored
+    var spelling by remember { mutableStateOf<Triple<List<SlideSpell>, Map<String, List<String>>, Set<String>>?>(null) }
+    val speller = remember { WriterSpelling(context) }
     var grid by remember { mutableStateOf(false) } // View › Gridlines: a grid and the middle guides over the slide, what is dragged snapping to them
     var notesPage by remember { mutableStateOf(false) } // View › Notes page: the notes pane under the slide (a desktop always has it)
     var marked by remember { mutableStateOf(setOf<Int>()) } // …and the slides chosen there (their uids)
@@ -1270,6 +1273,17 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     reading = list
                     if (!reader.read(list.map { it.second }, 0)) message = "This phone cannot read aloud (no text-to-speech)"
                 }
+                // PowerPoint's Spelling (Words' dictionaries): every box's words, slide by slide from the first
+                RibbonButton("Spelling", w, R.drawable.ic_spellcheck) { message = "Checking spelling…"; scope.launch {
+                    val words = view?.slides.orEmpty().withIndex().flatMap { (i, sl) -> sl.items.filterIsInstance<SlideItem.Shape>().filter { it.text != null && !it.hint && it.id != null }
+                        .sortedWith(compareBy({ it.y }, { it.x })).flatMap { sh -> SlidesEdit.lines(sh).withIndex().flatMap { (n, line) ->
+                            WriterSpelling.words(line).map { r -> SlideSpell(i, sh.id!!, sh.anim ?: sh.id!!, n, r, line.substring(r)) } } } }
+                    val wrong = speller.check(words.map { it.word })
+                    val queue = words.filter { it.word in wrong }
+                    message = if (queue.isEmpty()) "No spelling mistakes found" else null
+                    if (queue.isNotEmpty()) spelling = Triple(queue, wrong, emptySet())
+                    WriterLog.i("Slides: spelling, ${queue.size} words to look at") } }
+                RibbonDivider(w)
                 RibbonButton(if (reader.speaking) "Stop reading" else "Read aloud", w, R.drawable.ic_volume_up, on = reader.speaking) { if (reader.speaking) reader.stop() else readFrom(false) }
                 if (!reader.speaking) RibbonButton("Read the notes", w, R.drawable.ic_volume_up) { readFrom(true) }
                 RibbonDivider(w)
@@ -1974,6 +1988,23 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                         }
                     }
                     if (symbols) SymbolDialog({ symbols = false }) { symbols = false; putWords(it) }
+                    spelling?.let { (queue, offered, ignored) ->
+                        val sp = queue.first()
+                        LaunchedEffect(sp) { chosen = sp.slide; item = sp.sel }
+                        fun next(ign: Set<String> = ignored) { val rest = queue.drop(1).filter { it.word !in ign }
+                            spelling = if (rest.isEmpty()) null.also { message = "Spelling check complete" } else Triple(rest, offered, ign) }
+                        val lines = view?.slides?.getOrNull(sp.slide)?.items?.lastOrNull { it.anim == sp.sel }?.let { it as? SlideItem.Shape }?.let { SlidesEdit.lines(it) }.orEmpty()
+                        SpellingDialog(sp.word, "Slide ${sp.slide + 1}: ${lines.getOrNull(sp.line).orEmpty().replace(LINE_BREAK, ' ')}", offered[sp.word].orEmpty(), editing, change = { c ->
+                            val ee = edit; val line = lines.getOrNull(sp.line)
+                            if (ee != null && line != null && line.regionMatches(sp.at.first, sp.word, 0, sp.word.length)) {
+                                val uid = ee.order[sp.slide].uid
+                                change(ee.copy(texts = ee.texts + ((uid to sp.id) to lines.toMutableList().also { it[sp.line] = line.replaceRange(sp.at, c) })))
+                                // on to the next, this line's later words moved by the change
+                                val shift = c.length - sp.word.length
+                                val rest = queue.drop(1).map { q -> if (q.slide == sp.slide && q.sel == sp.sel && q.line == sp.line && q.at.first > sp.at.last) q.copy(at = q.at.first + shift..q.at.last + shift) else q }.filter { it.word !in ignored }
+                                spelling = if (rest.isEmpty()) null.also { message = "Spelling check complete" } else Triple(rest, offered, ignored)
+                            } else next() }, ignore = { next() }, ignoreAll = { next(ignored + sp.word) }, close = { spelling = null })
+                    }
                     paragraphing?.let { q -> ParagraphDialog(q, { paragraphing = null }) { n -> paragraphing = null; restyle { it.copy(para = n) }; WriterLog.i("Slides: paragraph page") } }
                     // Slide size: PowerPoint's question — the things made as big as the new size allows, or fitted into it
                     resizing?.let { sw -> androidx.compose.material3.AlertDialog(onDismissRequest = { resizing = null }, title = { Text("Slide size") },
@@ -3051,3 +3082,6 @@ private fun SizeAndPosition(item: SlideItem, dismiss: () -> Unit, set: (Float, F
         confirmButton = { androidx.compose.material3.TextButton(enabled = ok, onClick = { set(WriterUnits.toPt(num(x)!!), WriterUnits.toPt(num(y)!!), WriterUnits.toPt(num(w)!!), WriterUnits.toPt(num(h)!!)) }) { Text("OK") } },
         dismissButton = { androidx.compose.material3.TextButton(onClick = dismiss) { Text("Cancel") } })
 }
+
+/** Review › Spelling's word in a deck: its slide, its box (its id), its line there, where in it, the word. */
+internal data class SlideSpell(val slide: Int, val id: String, /** what chooses it (its anim id) */ val sel: String, val line: Int, val at: IntRange, val word: String)

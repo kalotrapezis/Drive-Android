@@ -475,7 +475,7 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       has Edit drawing (the strokes back in Words' dialog), even after saving and opening again (seen on the emulator with an .odp).
       Also on a picture's tab: Replace (the phone's photo picker; a file's own picture gets a part of its own: `Look.image`).
       `a picture replaced saved` (both formats).
-- [~] **Review**: comments (PowerPoint's own, read and written); spelling in the typing field.
+- [x] **Review**: comments (PowerPoint's own, read and written); spelling in the typing field.
       Comments done 17 Oct (office-C session), with Insert › Comment: Words' `NewCommentDialog` (its remembered name), Words'
       `CommentCard`s with their replies (Edit, Reply, Delete — no Resolve: `CommentActions.resolve` now optional, as neither
       PowerPoint's older list nor Impress keeps it) in a pane beside the slide on a tablet, over the slides on a phone; a marker on
@@ -485,6 +485,9 @@ which shared piece it uses; a separate implementation only for a real reason, sa
       PowerPoint 365 shows; a slide's 365 threads become it when its comments are changed) and as Impress's annotations (a reply
       its own annotation: Impress has no threads). `comments saved` (both, LibreOffice's conversions; LibreOffice reads a
       comment's place only roughly — its own 5 cm comes back 4.76). Emulator: read, added, saved; phone size too. Spelling: not yet Unit 417/0/7; sweep 349 + 29, none failing.
+      Spelling done 18 Oct (office-F): Review › Spelling — every box's words, slide by slide, checked with Words' dictionaries
+      (`WriterSpelling`), each word not in them shown in the shared Excel/PowerPoint-style dialog (`SpellingDialog`, now Tables' too):
+      Change (the box's words changed, its looks kept), Ignore, Ignore all. Emulator: "speling" on slide 1 made "spelling".
 - [~] **View**: Outline (every slide's words as one list to edit, good on a phone); notes page; editing the slide
       master; grid and guides with snapping; zoom.
       Outline done 17 Oct (office-C session): View › Normal / Outline / Slide sorter; Outline lists every slide's text boxes top to bottom

@@ -2007,32 +2007,19 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     spellRun?.let { run -> sheet?.let { s -> val b = book
         val (k, r, word) = run.queue.first()
         LaunchedEffect(k) { view.row = Sheet.row(k); view.col = Sheet.col(k); view.reveal++ }
-        val offered = run.suggestions[word].orEmpty()
-        var choice by remember(run) { mutableStateOf(offered.firstOrNull()) }
         fun next(ignored: Set<String> = run.ignored) {
             // what is left after this word: on in reading order, words ignored left out
             val rest = run.queue.drop(1).filter { it.third !in ignored }
             spellRun = if (rest.isEmpty()) null.also { message = "Spelling check complete" } else run.copy(queue = rest, ignored = ignored)
         }
-        AlertDialog(onDismissRequest = { spellRun = null }, title = { Text("Spelling") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Not in the dictionary: $word", fontWeight = FontWeight.Bold)
-                Text("${Sheets.colName(Sheet.col(k))}${Sheet.row(k) + 1}: ${s.cells[k]?.text.orEmpty()}", style = MaterialTheme.typography.bodySmall, maxLines = 3)
-                if (offered.isEmpty()) Text("No suggestions")
-                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    offered.forEach { o -> androidx.compose.material3.FilterChip(choice == o, { choice = o }, { Text(o) }) } } } },
-            confirmButton = { Row {
-                TextButton(enabled = choice != null && editing, onClick = { val cell = s.cells[k]; val c = choice
-                    if (cell != null && c != null && b != null && cell.text.regionMatches(r.first, word, 0, word.length)) {
-                        history.apply(b, index, mapOf(k to SheetSpelling.changed(cell, r, c))); version++
-                        // on to the next, this cell's later words moved by the change
-                        val shift = c.length - word.length
-                        val rest = run.queue.drop(1).map { q -> if (q.first == k && q.second.first > r.last) Triple(k, q.second.first + shift..q.second.last + shift, q.third) else q }.filter { it.third !in run.ignored }
-                        spellRun = if (rest.isEmpty()) null.also { message = "Spelling check complete" } else run.copy(queue = rest)
-                    } else next() }) { Text("Change") }
-                TextButton(onClick = { next() }) { Text("Ignore") }
-                TextButton(onClick = { next(run.ignored + word) }) { Text("Ignore all") } } },
-            dismissButton = { TextButton(onClick = { spellRun = null }) { Text("Close") } }) } }
+        SpellingDialog(word, "${Sheets.colName(Sheet.col(k))}${Sheet.row(k) + 1}: ${s.cells[k]?.text.orEmpty()}", run.suggestions[word].orEmpty(), editing, change = { c -> val cell = s.cells[k]
+            if (cell != null && b != null && cell.text.regionMatches(r.first, word, 0, word.length)) {
+                history.apply(b, index, mapOf(k to SheetSpelling.changed(cell, r, c))); version++
+                // on to the next, this cell's later words moved by the change
+                val shift = c.length - word.length
+                val rest = run.queue.drop(1).map { q -> if (q.first == k && q.second.first > r.last) Triple(k, q.second.first + shift..q.second.last + shift, q.third) else q }.filter { it.third !in run.ignored }
+                spellRun = if (rest.isEmpty()) null.also { message = "Spelling check complete" } else run.copy(queue = rest)
+            } else next() }, ignore = { next() }, ignoreAll = { next(run.ignored + word) }, close = { spellRun = null }) } }
     // Review › Workbook statistics: as Words' counts — the workbook's sheets, this sheet's cells, words, formulas, notes, drawings
     if (counting) book?.let { b -> sheet?.let { s -> var filled = 0; var numbers = 0; var formulas2 = 0; var words = 0; var notes = 0
         s.cells.forEach { _, c -> if (c.kind != SheetKind.Empty) filled++; if (c.kind == SheetKind.Number) numbers++; if (c.formula != null) formulas2++

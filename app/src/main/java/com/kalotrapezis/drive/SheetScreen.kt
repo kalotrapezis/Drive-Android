@@ -4,6 +4,8 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -249,6 +251,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var fontStrip by remember { mutableStateOf<String?>(null) } // Home › Font's gallery open: the font in use ("" none)
     var fontChosen by remember { mutableStateOf<FontChoice?>(null) } // the one shown on the cells, one step of Undo
     val barFocus = remember { FocusRequester() }
+    var barFocused by remember { mutableStateOf(false) } // the cell bar has the keys
     val focusManager = LocalFocusManager.current
     fun leave() { if (history.unsaved != 0) leaving = true else { file?.let { sheetDraft(context, it).delete() }; back() } } // a draft of changes since undone: gone
     BackHandler {
@@ -382,6 +385,16 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         draftRuns = s[r, c]?.rich?.takeIf { s[r, c]?.formula == null }
         draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)); editAt = r to c; view.reveal++
     }
+    /** A key typed on the chosen cell (not in the bar): its typing starts afresh with that letter, as Excel's, in the bar. */
+    fun typeOver(letter: String) {
+        val s = sheet ?: return; val b = book ?: return
+        val (r, c) = chosen(s)
+        if (history.locked(b, s, Sheet.key(r, c))) { message = PROTECTED; return }
+        editAt = r to c; draftRuns = null
+        draft = TextFieldValue(letter, androidx.compose.ui.text.TextRange(letter.length)); view.reveal++
+        // the bar takes the keys once it shows the letter (keys before then are added by the screen's own handling)
+        scope.launch { androidx.compose.runtime.withFrameNanos { }; runCatching { barFocus.requestFocus() } }
+    }
 
     // The order rows and columns are drawn in: worked out away from the screen (a sort of 300,000 rows takes a moment).
     // Kept with the sheet it was made for, so a new sheet is never drawn in the last one's order.
@@ -406,7 +419,10 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     }
     /** What was typed goes into the chosen cell (and, [move]: the cell below is chosen, as Excel's Enter). */
     fun commit(move: Boolean) {
-        val d = draft ?: return; val b = book ?: return; val s = sheet ?: return
+        val d0 = draft ?: return; val b = book ?: return; val s = sheet ?: return
+        // a formula's missing brackets closed, as Excel does on Enter; a function with nothing in it yet is not written (the walk, 18 Oct:
+        // "=SUM(" went into C13 as an empty-looking cell) — it stays in the bar
+        val d = SheetInput.closed(d0.text)?.let { if (it == d0.text) d0 else TextFieldValue(it) } ?: run { message = "The formula is not finished: put in what ${d0.text.substringAfter('=').substringBefore('(')} takes, or ✕"; return }
         val (r, c) = editAt ?: chosen(s)
         val (look, format) = lookAt(s, r, c)
         // a part's own look typed (SheetRich): kept as the cell's runs while they are its words and say something
@@ -1512,7 +1528,21 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     Box(Modifier.fillMaxSize().focusRequester(keys).focusable().onPreviewKeyEvent { k ->
         if (k.type != KeyEventType.KeyDown || sheet == null) return@onPreviewKeyEvent false
         // Delete empties the chosen cells, as Excel's (and Slides' Delete takes what is chosen; 17 Oct)
-        if (!k.isCtrlPressed) return@onPreviewKeyEvent if (k.key == Key.Delete && editing && draft == null) { clearCells(); true } else false
+        if (!k.isCtrlPressed) return@onPreviewKeyEvent if (k.key == Key.Delete && editing && draft == null) { clearCells(); true }
+            // Excel with a keyboard (the second walk, 18 Oct): a letter typed on the chosen cell starts typing it afresh, Enter or F2 opens
+            // what is in it, the arrows move to the next cell
+            // typed before the bar has taken the keys: added to the typing
+            else if (editing && draft != null && !barFocused && !k.isAltPressed && k.utf16CodePoint >= 32 && k.utf16CodePoint != 127) {
+                draft?.let { d -> val t = d.text + String(Character.toChars(k.utf16CodePoint)); draft = TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length)) }; true }
+            else if (editing && draft == null && !k.isAltPressed) when (k.key) {
+                Key.Enter, Key.NumPadEnter, Key.F2 -> { startTyping(); scope.launch { delay(50); runCatching { barFocus.requestFocus() } }; true }
+                Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight -> {
+                    header = null; view.range = null
+                    when (k.key) { Key.DirectionUp -> view.row = maxOf(0, view.row - 1); Key.DirectionDown -> view.row += 1
+                        Key.DirectionLeft -> view.col = maxOf(0, view.col - 1); else -> view.col += 1 }
+                    view.reveal++; true }
+                else -> k.utf16CodePoint.takeIf { it >= 32 && it != 127 }?.let { cp -> typeOver(String(Character.toChars(cp))); true } ?: false
+            } else false
         when {
             k.key == Key.F -> { searching = true; true }
             draft != null -> false // the cell bar's own copy, paste and undo
@@ -1591,7 +1621,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                         val (r, c) = editAt?.takeIf { draft != null } ?: chosen(s)
                         EditBar(Sheets.colName(c) + (r + 1), version.let { SheetInput.text(s[r, c], lookAt(s, r, c).second, book!!.format) }, draft, barFocus,
                             change = { v -> draft?.text?.let { was -> draftRuns = draftRuns?.let { SheetRich.edited(it, was, v.text) } }; draft = v }, start = ::startTyping, commit = { commit(true) },
-                            runs = draftRuns,
+                            runs = draftRuns, focused = { barFocused = it },
                             cancel = { draft = null; draftRuns = null; focusManager.clearFocus() })
                     } else CellBar(s, view, ::follow) { text -> copy(context, "Cell", text); WriterLog.i("Sheets: a cell copied") }
                 }
@@ -1649,7 +1679,8 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                                 refAt = if (done) null else at.first until at.first + ref.length
                                 if (done) WriterLog.i("Sheets: $ref put in the formula")
                             }
-                        } else null)
+                        } else null,
+                        open = if (editing) { { if (draft == null) { startTyping(); scope.launch { delay(50); runCatching { barFocus.requestFocus() } } } } } else null)
                     // a right-click's menu, where it was clicked: the cells' Cut, Copy, Paste, Clear, and their rows and columns
                     cellMenu?.let { at -> OfficeMenu(at, { cellMenu = null }) {
                             @Composable fun item(label: String, icon: Int, action: () -> Unit) = OfficeMenuItem(label, icon) { cellMenu = null; WriterLog.i("Sheets: menu › $label"); action() }
@@ -2215,7 +2246,9 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         delay(150)
         val d = draft
         if (d != null && d.text.startsWith("=")) draft = TextFieldValue(d.text.substring(0, d.selection.min) + "$f(" + d.text.substring(d.selection.max), androidx.compose.ui.text.TextRange(d.selection.min + f.length + 1))
-        else { runCatching { barFocus.requestFocus() }; draft = TextFieldValue("=$f(", androidx.compose.ui.text.TextRange(f.length + 2)) }
+        // the typing first, for the chosen cell, then the bar's focus (which would start a typing of the cell's own words before it)
+        else { sheet?.let { editAt = chosen(it) }; draft = TextFieldValue("=$f(", androidx.compose.ui.text.TextRange(f.length + 2)) }
+        delay(50) // the bar laid out with it
         runCatching { barFocus.requestFocus() }
         inserted = null; TextEditorStore(context).usedFunction(f); WriterLog.i("Sheets: function $f") }
     LaunchedEffect(symbol) { val sym = symbol ?: return@LaunchedEffect
@@ -2440,7 +2473,7 @@ private fun FilterDialog(sheet: Sheet, col: Int, view: SheetView, close: () -> U
  */
 @Composable
 private fun EditBar(name: String, shown: String, draft: TextFieldValue?, focus: FocusRequester, change: (TextFieldValue) -> Unit, start: () -> Unit, commit: () -> Unit, cancel: () -> Unit,
-                    /** the typed words' looks (a part bold), shown in the field */ runs: List<DocRun>? = null) {
+                    /** the typed words' looks (a part bold), shown in the field */ runs: List<DocRun>? = null, focused: (Boolean) -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
         Text("fx", style = MaterialTheme.typography.labelLarge, color = islandContentColor().copy(alpha = 0.6f), fontFamily = FontFamily.Serif, modifier = Modifier.padding(end = 10.dp))
@@ -2456,7 +2489,7 @@ private fun EditBar(name: String, shown: String, draft: TextFieldValue?, focus: 
                                 textDecoration = androidx.compose.ui.text.style.TextDecoration.combine(listOfNotNull(androidx.compose.ui.text.style.TextDecoration.Underline.takeIf { r.underline }, androidx.compose.ui.text.style.TextDecoration.LineThrough.takeIf { r.strike }))), at, end)
                             at = end } } }, androidx.compose.ui.text.input.OffsetMapping.Identity) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp).focusRequester(focus)
-                    .onFocusChanged { if (it.isFocused && draft == null) start() })
+                    .onFocusChanged { focused(it.isFocused); if (it.isFocused && draft == null) start() })
         }
         if (draft != null) {
             IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Leave it as it was") }
@@ -2530,12 +2563,16 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                       /** While editing: a drawing tapped (null: a cell), and the chosen one dragged to a cell. */
                       figures: ((SheetDrawing?) -> Unit)? = null, dropped: ((SheetDrawing, Int, Int) -> Unit)? = null,
                       /** A formula being typed: a one-finger drag gives the cells from where it went down to where it is (the sheet's), done at the end. */
-                      pointing: ((Pair<Int, Int>, Pair<Int, Int>, Boolean) -> Unit)? = null) {
+                      pointing: ((Pair<Int, Int>, Pair<Int, Int>, Boolean) -> Unit)? = null,
+                      /** A chosen cell tapped twice quickly: opened for typing (Excel's double click). */
+                      open: (() -> Unit)? = null) {
     val density = LocalDensity.current.density
     val haptic = LocalHapticFeedback.current
     val painter = remember(sheet, layout, formulas, version) { SheetPainter(sheet, styles, density, layout, view.pins.toList(), view.filters.keys.toSet(), view.sort, formulas) }
     // read when a gesture starts: the gestures below are not started again when it changes (a formula's typing begins)
     val pointingNow by androidx.compose.runtime.rememberUpdatedState(pointing)
+    val openNow by androidx.compose.runtime.rememberUpdatedState(open)
+    val lastTap = remember { longArrayOf(0L, -1L) } // when the last tap on a cell was, and which cell (its key)
     val scope = rememberCoroutineScope()
     var size by remember { mutableStateOf(IntSize.Zero) }
     var fling by remember { mutableStateOf<Job?>(null) }
@@ -2643,8 +2680,13 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                         if (figure != null) { figures?.invoke(figure); return@awaitEachGesture }
                         figures?.invoke(null)
                         val cell = painter.sheetCellAt(view, down.position)
-                        if (cell == null || pick?.invoke(cell.first, cell.second) != true)
+                        if (cell == null || pick?.invoke(cell.first, cell.second) != true) {
                             painter.tap(view, down.position)?.let { (kind, k) -> if (kind == 'c') column(k, down.position.x) else row(k, down.position.y) }
+                            // the same cell again, quickly: opened for typing
+                            val key = cell?.let { Sheet.key(it.first, it.second) } ?: -1L
+                            if (key >= 0 && key == lastTap[1] && down.uptimeMillis - lastTap[0] < viewConfiguration.doubleTapTimeoutMillis) { openNow?.invoke(); lastTap[1] = -1L }
+                            else { lastTap[0] = down.uptimeMillis; lastTap[1] = key }
+                        }
                     }
                     else if (!pinched) {
                         val v = tracker.calculateVelocity()

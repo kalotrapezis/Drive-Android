@@ -33,6 +33,21 @@ internal object SheetInput {
         val seen = HashSet<List<String>>()
         return rows.indices.filter { i -> (headers && i == 0) || seen.add(rows[i].map { it.trim().lowercase() }) }
     }
+    /**
+     * A formula as Enter takes it: its open brackets closed (Excel's way); null when a function in it has nothing in its brackets yet
+     * ("=SUM(" or "=A1+SUM()"), which Excel refuses. Not a formula: as it is.
+     */
+    fun closed(text: String): String? {
+        if (!text.startsWith("=")) return text
+        var open = 0; var quoted = false
+        for (ch in text) { if (ch == '"') quoted = !quoted; if (!quoted) { if (ch == '(') open++; if (ch == ')' && open > 0) open-- } }
+        val t = text + ")".repeat(open)
+        // a name with empty brackets: only those that take nothing (TODAY(), NOW(), PI(), RAND(), …) may
+        val empty = Regex("""([A-Za-z][A-Za-z0-9.]*)\(\s*\)""").findAll(t).map { it.groupValues[1].uppercase() }.filter { it !in NO_ARGS }
+        return if (empty.any()) null else t
+    }
+    private val NO_ARGS = setOf("TODAY", "NOW", "PI", "RAND", "NA", "TRUE", "FALSE", "ROW", "COLUMN", "SHEET", "SHEETS", "RANDARRAY")
+
     /** Find and Replace: [content] (a cell as typed: its words, or its formula) with every [find] in it, any case, made [with]; null: none in it. */
     fun replaced(content: String, find: String, with: String): String? {
         if (find.isEmpty()) return null

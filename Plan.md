@@ -255,9 +255,15 @@ as 35mm, Ensure fit), Themes strip, Colours cards, Paragraph keeps levels, numbe
       (Enter writes there, the bar names it); while a formula is typed one finger dragged — plainly, after a long press, or in Select
       cells — names the range at the cursor, growing as it goes ("B2:B4"), the chosen cell untouched; two fingers move the sheet.
       Emulator: E2 "=SUM(" + drag B2:B4 + "," + tap D2 + ")" ✓ → =SUM(B2:B4,D2) = 5952 in E2.
-- [ ] 3. Formulas › Insert function › SUM: "=SUM(" in the bar but not editing (no ✓ ×, no keyboard, taps not added); tapping the bar
+- [~] 3. Formulas › Insert function › SUM: "=SUM(" in the bar but not editing (no ✓ ×, no keyboard, taps not added); tapping the bar
       throws it away; leaving saved "=SUM(" into the cell. It must open the bar for editing, the cursor inside the brackets.
-- [ ] 4. With a keyboard: typing on a chosen cell does nothing, a double tap does not open it — Excel starts typing on both.
+      Not reproduced on the emulator (ribbon top and bottom, a hardware keyboard): there the bar opens with ✓ ×, the cursor in "=SUM(".
+      Made robust: the typing (and its cell) is set before the bar takes the focus, and Enter or leaving never writes an unfinished
+      function — missing ")" are closed as Excel does, "=SUM(" stays in the bar with a note (`SheetInput.closed`, tested). [ ] On the
+      tablet with the keyboard case: the steps again, then File › Send log, to see what closed the typing there.
+- [x] 4. With a keyboard: typing on a chosen cell does nothing, a double tap does not open it — Excel starts typing on both. Now a key
+      typed on a chosen cell starts its typing afresh (every key kept), Enter or F2 opens what is in it, the arrows move; a double tap
+      opens the cell. Emulator (hardware keys): F3 "4278" Enter; B3 double-tapped → its 1850 in the bar.
 - [ ] 5. Search forgives a wrong letter ("Hello" finds "Yellow fill"); Replace / Replace all must change exact matches only.
 - [ ] 6. Two strip forms: "‹ title … × ✓" (Slide size, Themes) and "title … Cancel OK" (Colours, Multilevel, Line numbers cards) — one form.
 - [ ] 7. Slide size: the size picked is not shown on the slide before ✓ (Themes and Colours are).

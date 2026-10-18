@@ -41,6 +41,17 @@ class SheetEditTest {
 
     private val gr = SheetFormat(',', '.', language = java.util.Locale.forLanguageTag("el"))
 
+    /** Enter on a formula (the second walk, 18 Oct): open brackets closed as Excel does; a function with nothing in it yet refused. */
+    @Test fun `a formula closed on Enter`() {
+        assertEquals("=SUM(B1,B4)", SheetInput.closed("=SUM(B1,B4"))
+        assertEquals("=ROUND(SUM(A1:A3),2)", SheetInput.closed("=ROUND(SUM(A1:A3),2"))
+        assertEquals("=TODAY()", SheetInput.closed("=TODAY("))
+        assertEquals("=\"(\"&A1", SheetInput.closed("=\"(\"&A1"))
+        assertEquals("plain (words", SheetInput.closed("plain (words"))
+        assertNull(SheetInput.closed("=SUM("))
+        assertNull(SheetInput.closed("=A1+SUM( )"))
+    }
+
     @Test fun `typed entries`() {
         fun cell(s: String, format: String = "General") = SheetInput.cell(s, null, 0, format, gr)
         assertEquals(1234.5, cell("1.234,5").value); assertEquals("1234,5", cell("1.234,5").text)

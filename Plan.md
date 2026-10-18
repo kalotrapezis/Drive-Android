@@ -255,6 +255,8 @@ as 35mm, Ensure fit), Themes strip, Colours cards, Paragraph keeps levels, numbe
       (Enter writes there, the bar names it); while a formula is typed one finger dragged — plainly, after a long press, or in Select
       cells — names the range at the cursor, growing as it goes ("B2:B4"), the chosen cell untouched; two fingers move the sheet.
       Emulator: E2 "=SUM(" + drag B2:B4 + "," + tap D2 + ")" ✓ → =SUM(B2:B4,D2) = 5952 in E2.
+      The user on the tablet, 18 Oct: "it works but it does not show the selection so I know easily where to stop" — now the range
+      being dragged is outlined on the sheet (Excel's dashed blue over a light tint) while the finger moves.
 - [x] 3. Formulas › Insert function › SUM: "=SUM(" in the bar but not editing (no ✓ ×, no keyboard, taps not added); tapping the bar
       throws it away; leaving saved "=SUM(" into the cell. It must open the bar for editing, the cursor inside the brackets.
       Not reproduced on the emulator (ribbon top and bottom, a hardware keyboard): there the bar opens with ✓ ×, the cursor in "=SUM(".

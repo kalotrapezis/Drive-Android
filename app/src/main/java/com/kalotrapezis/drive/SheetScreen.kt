@@ -2309,6 +2309,7 @@ internal class SheetView {
     var sort by mutableStateOf<SheetSort?>(null)
     var freeze by mutableStateOf<Int?>(null) // the rows kept at the top, as chosen here (null: the file's)
     var range by mutableStateOf<SheetRange?>(null) // cells chosen by a long press and a drag, as drawn
+    var pointed by mutableStateOf<SheetRange?>(null) // a range being dragged into a formula, as drawn: outlined while the finger moves
     var selectMode by mutableStateOf(false) // Selection › Select cells: one finger's drag chooses cells without the long press
     var fill by mutableStateOf<SheetRange?>(null) // the fill handle being dragged: the cells it would fill, as drawn
 }
@@ -2656,9 +2657,12 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
                             if (e.changes.none { it.pressed }) break
                             if (e.changes.count { it.pressed } > 1) { two = true; break }
                             e.changes.firstOrNull { it.pressed }?.let { p -> painter.sheetCellAt(view, p.position)?.let { c -> if (c != to) { to = c; point(from, c, false) } } }
+                            // the cells named so far outlined on the sheet, where to stop seen at a glance (the user, 18 Oct)
+                            view.pointed = listOf(from, to).map { (r, c) -> layout.row(r) to layout.col(c) }.takeIf { l -> l.all { it.first >= 0 && it.second >= 0 } }?.let { (a, z) ->
+                                SheetRange(minOf(a.first, z.first), minOf(a.second, z.second), maxOf(a.first, z.first), maxOf(a.second, z.second)) }
                             e.changes.forEach { it.consume() }
                         }
-                        point(from, to, true)
+                        point(from, to, true); view.pointed = null
                         if (!two) return@awaitEachGesture
                         moved = true
                     }
@@ -2707,9 +2711,9 @@ private fun SheetGrid(sheet: Sheet, styles: List<SheetStyle>, layout: SheetLayou
             },
     ) {
         // Read here, so a scroll or a zoom redraws without recomposing.
-        val x = view.x; val y = view.y; val zoom = view.zoom; val r = view.row; val col = view.col; val range = view.range
+        val x = view.x; val y = view.y; val zoom = view.zoom; val r = view.row; val col = view.col; val range = view.range; val pointed = view.pointed
         painter.handle = filled != null; painter.filling = view.fill; painter.figure = view.figure; painter.figureShift = view.figureShift
-        drawIntoCanvas { painter.draw(it.nativeCanvas, this.size.width, this.size.height, x, y, zoom, r, col, marks, range) }
+        drawIntoCanvas { painter.draw(it.nativeCanvas, this.size.width, this.size.height, x, y, zoom, r, col, marks, range, pointed) }
     }
 }
 
@@ -2962,7 +2966,8 @@ internal class SheetPainter(
         view.range = SheetRange(min(anchor.first, r), min(anchor.second, c), max(anchor.first, r), max(anchor.second, c))
     }
 
-    fun draw(c: android.graphics.Canvas, w: Float, h: Float, x: Float, y: Float, zoom: Float, row: Int, col: Int, marks: SheetMarks, range: SheetRange? = null) {
+    fun draw(c: android.graphics.Canvas, w: Float, h: Float, x: Float, y: Float, zoom: Float, row: Int, col: Int, marks: SheetMarks, range: SheetRange? = null,
+             /** a range being dragged into a formula (as drawn): Excel's coloured dashed outline over a light tint */ pointed: SheetRange? = null) {
         val start = System.nanoTime()
         val s = scale(zoom)
         val fw = colX[fc] * s; val fh = rowY[fr] * s
@@ -2981,6 +2986,16 @@ internal class SheetPainter(
         if (fr > 0) c.drawLine(0f, by, w, by, line)
         if (pins.isNotEmpty()) { line.color = EXCEL_GREEN_ARGB; line.strokeWidth = 2.5f * density }
         if (fc > 0) c.drawLine(bx, 0f, bx, h, line)
+        pointed?.let { g ->
+            fun sx(k: Int) = if (k < fc) headerW + colX[k] * s else bx + (colX[k] - colX[fc] - x) * s
+            fun sy(k: Int) = if (k < fr) headerH + rowY[k] * s else by + (rowY[k] - rowY[fr] - y) * s
+            val rect = android.graphics.RectF(sx(g.c1), sy(g.r1), sx(g.c2 + 1), sy(g.r2 + 1))
+            c.save(); c.clipRect(headerW, headerH, w, h)
+            c.drawRect(rect, android.graphics.Paint().apply { color = 0x224472C4 })
+            c.drawRect(rect, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF4472C4.toInt(); style = android.graphics.Paint.Style.STROKE
+                strokeWidth = 2f * density; pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f * density, 3f * density), 0f) })
+            c.restore()
+        }
         val ms = (System.nanoTime() - start) / 1_000_000
         if (first < 0) { first = ms; WriterLog.i("Sheets: first draw $ms ms (${sheet.rows}×${sheet.cols}, ${sheet.cells.size} cells, $rows×$cols drawn)") }
         frames++; if (ms > 32) slow++; worst = max(worst, ms)

@@ -95,7 +95,7 @@ private val NOTE_COLORS = listOf("#F28B82", "#FBBC04", "#FFF475", "#CCFF90", "#A
 private fun noteColor(hex: String?): Color? = hex?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
 private val InkOnColor = Color(0xFF1B1D1F)
 // Sheets are solid: over a page of coloured notes a see-through one was hard to read (asked 2026-09-26).
-private val SheetColor = Color(0xFF16191A)
+internal val SheetColor = Color(0xFF16191A)
 
 internal fun notesStore() = NotesStore(File(TetraFolder.root(Environment.getExternalStorageDirectory()), ".notes"))
 
@@ -291,7 +291,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     if (count != null) Text("$count", style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.6f))
 }
 
-@Composable private fun DrawerButton(icon: Int, label: String, on: Boolean, modifier: Modifier, click: () -> Unit) = Surface(
+@Composable internal fun DrawerButton(icon: Int, label: String, on: Boolean, modifier: Modifier, click: () -> Unit) = Surface(
     color = if (on) driveNavigationSelectedColor() else Color.White.copy(alpha = 0.10f),
     contentColor = if (on) driveNavigationSelectedContentColor() else islandContentColor(),
     shape = MaterialTheme.shapes.large, modifier = modifier.clickable(onClick = click),

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -240,7 +241,6 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var view by remember(wide) { mutableStateOf(CalendarPrefs.view(context, wide)) }
     var version by remember { mutableIntStateOf(0) }
     var hidden by remember { mutableStateOf(CalendarPrefs.hidden(context)) }
-    var panel by remember { mutableStateOf(true) }
     var drawer by remember { mutableStateOf(false) }
     var shown by remember { mutableStateOf<Occurrence?>(null) }
     var editing by remember { mutableStateOf<Editing?>(null) }
@@ -355,8 +355,8 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             Scope.Following -> if (m == null || day.toInstant() <= m.start.toInstant()) CalendarFiles.trash(root, f.file) else CalendarFiles.endBefore(f, day)
         }
     }
-    val views = if (wide) listOf(CalView.Day, CalView.Week, CalView.Month, CalView.Agenda) else listOf(CalView.Agenda, CalView.Day, CalView.ThreeDays, CalView.Month)
-    LaunchedEffect(wide) { if (view !in views) setView(views.first()) }
+    val views = if (wide) listOf(CalView.Day, CalView.Week, CalView.Month, CalView.Agenda) else listOf(CalView.Agenda, CalView.Day, CalView.Month)
+    LaunchedEffect(wide) { if (view !in views && !(view == CalView.ThreeDays && !wide)) setView(views.first()) }
     BackHandler { when { shown != null -> shown = null; drawer -> drawer = false; else -> back() } }
     editing?.let { ed ->
         val repeating = ed.occ != null && (ed.occ.file.master?.rrule != null || ed.occ.event.recurrenceId != null)
@@ -381,62 +381,59 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         }
     }
 
+    // Tetra's own island at the bottom (Files', Notes'): the views and New; pulled up, the drawer with the rest (the user,
+    // 18 Oct: "an island and bottom drawer that opens for the rest like what calendars to see", on the big screen too).
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        if (wide) Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-                IconButton(onClick = { panel = !panel }) { Icon(painterResource(R.drawable.ic_menu), contentDescription = if (panel) "Hide the side panel" else "Show the side panel") }
-                Text("Calendar", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(end = 16.dp))
-                OutlinedButton(onClick = { selected = today }) { Text("Today") }
-                IconButton(onClick = { selected = step(selected, view, -1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous") }
-                IconButton(onClick = { selected = step(selected, view, 1) }) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Next") }
-                Text(title(selected, view), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                ViewMenu(view, views, ::setView)
-            }
-            ReminderNotes()
-            Row(Modifier.weight(1f)) {
-                if (panel) Column(Modifier.width(264.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    androidx.compose.material3.ExtendedFloatingActionButton(onClick = { create(selected) }, containerColor = CalendarPink, contentColor = Color.White,
-                        icon = { Icon(painterResource(R.drawable.ic_add), contentDescription = null) }, text = { Text("Create") })
-                    MiniMonth(selected, today, days.keys) { selected = it }
-                    CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true }, { pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { exportAll.launch("Tetra calendars.zip") })
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().statusBarsPadding()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                    Text(if (wide) title(selected, view) else selected.format(DateTimeFormatter.ofPattern(if (selected.year == today.year) "MMMM" else "MMMM yyyy", Locale.ENGLISH)),
+                        style = if (wide) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f).padding(start = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (wide) OutlinedButton(onClick = { selected = today }) { Text("Today") }
+                    else IconButton(onClick = { selected = today }) { Icon(painterResource(R.drawable.ic_calendar_today), contentDescription = "Today") }
+                    if (wide || view != CalView.Agenda) {
+                        IconButton(onClick = { selected = step(selected, view, -1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous") }
+                        IconButton(onClick = { selected = step(selected, view, 1) }) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Next") }
+                    }
                 }
-                body(Modifier.weight(1f).fillMaxHeight())
+                ReminderNotes()
+                if (!wide && view == CalView.Agenda) WeekStrip(selected, today, days) { selected = it }
+                // the island floats over the last row; the views stop above it
+                body(Modifier.weight(1f).fillMaxWidth().navigationBarsPadding().padding(bottom = if (view == CalView.Agenda) 0.dp else 76.dp))
             }
-        } else Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-                IconButton(onClick = { drawer = true }) { Icon(painterResource(R.drawable.ic_menu), contentDescription = "Calendars") }
-                Text(selected.format(DateTimeFormatter.ofPattern(if (selected.year == today.year) "MMMM" else "MMMM yyyy", Locale.ENGLISH)),
-                    style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(start = 4.dp), maxLines = 1)
-                IconButton(onClick = { selected = today }) { Icon(painterResource(R.drawable.ic_calendar_today), contentDescription = "Today") }
-                ViewMenu(view, views, ::setView)
+            Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 12.dp)) {
+                IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
+                    views.forEach { v -> IslandNavigationItem(v.label, view == v, viewIcon(v)) { setView(v) } }
+                    IslandNavigationItem("New event", false, R.drawable.ic_add) { create(selected) }
+                }
             }
-            ReminderNotes()
-            if (view == CalView.Agenda) WeekStrip(selected, today, days) { selected = it }
-            else if (view != CalView.Month) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { selected = step(selected, view, -1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous") }
-                Text(title(selected, view), style = MaterialTheme.typography.titleSmall)
-                IconButton(onClick = { selected = step(selected, view, 1) }) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Next") }
-            } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { selected = selected.minusMonths(1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Previous month") }
-                Text(selected.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH)), style = MaterialTheme.typography.titleSmall)
-                IconButton(onClick = { selected = selected.plusMonths(1) }) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Next month") }
-            }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                body(Modifier.fillMaxSize())
-                androidx.compose.material3.FloatingActionButton(onClick = { create(selected) }, containerColor = CalendarPink, contentColor = Color.White,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) { Icon(painterResource(R.drawable.ic_add), contentDescription = "New event") }
-            }
-        }
-        message?.let { m ->
-            Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 24.dp), contentAlignment = Alignment.BottomCenter) {
-                Surface(shape = MaterialTheme.shapes.large, color = islandColor(), contentColor = islandContentColor()) { Text(m, Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) }
+            message?.let { m ->
+                Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
+                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp)) { Text(m, Modifier.padding(horizontal = 18.dp, vertical = 10.dp)) }
             }
         }
     }
-    if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }) {
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) { CalendarList(cals, hidden, ::toggle, { calDialog = it }, { newCal = true }, { pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { exportAll.launch("Tetra calendars.zip") }) }
+    if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // what the island has no room for: 3 days on a phone, the small month on a big screen
+            if (!wide) DrawerButton(viewIcon(CalView.ThreeDays), "3 days", view == CalView.ThreeDays, Modifier.fillMaxWidth()) { setView(CalView.ThreeDays); drawer = false }
+            val calendarsPanel: @Composable (Modifier) -> Unit = { m ->
+                Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = m) {
+                    Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        CalendarList(cals, hidden, ::toggle, { drawer = false; calDialog = it }, { drawer = false; newCal = true },
+                            { drawer = false; pickImport.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }, { drawer = false; exportAll.launch("Tetra calendars.zip") })
+                    }
+                }
+            }
+            if (wide) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.width(340.dp)) {
+                    Box(Modifier.padding(12.dp)) { MiniMonth(selected, today, days.keys) { selected = it; drawer = false } }
+                }
+                calendarsPanel(Modifier.weight(1f))
+            } else calendarsPanel(Modifier.fillMaxWidth())
+        }
     }
     shown?.let { o ->
         val repeating = o.file.master?.rrule != null || o.event.recurrenceId != null
@@ -511,14 +508,11 @@ private fun title(d: LocalDate, v: CalView): String = when (v) {
     else -> d.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH))
 }
 
-@Composable private fun ViewMenu(view: CalView, views: List<CalView>, set: (CalView) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        OutlinedButton(onClick = { open = true }) { Text(view.label + "  ▾") }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            views.forEach { v -> DropdownMenuItem(text = { Text(v.label) }, onClick = { open = false; set(v) }) }
-        }
-    }
+private fun viewIcon(v: CalView) = when (v) {
+    CalView.Agenda -> R.drawable.ic_view_list
+    CalView.Day -> R.drawable.ic_view_day
+    CalView.ThreeDays, CalView.Week -> R.drawable.ic_view_column
+    CalView.Month -> R.drawable.ic_view_grid
 }
 
 @Composable private fun CalendarList(cals: List<CalendarInfo>, hidden: Set<String>, toggle: (CalendarInfo) -> Unit, edit: (CalendarInfo) -> Unit, add: () -> Unit, import: () -> Unit, exportAll: () -> Unit) {

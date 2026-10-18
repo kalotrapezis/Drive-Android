@@ -1472,15 +1472,16 @@ UIDs, unknown zone, bad RRULE) — run after every edit.
 the rest like what calendars to see and what not. The same for the big screen not hamburger menu an island that is
 close to the UX we are using to the rest of the Tetra app." And: "The calendar will go to desktop as well. So it can
 sync and you to be able to work with it with a skill just by editing files like normal."
-- [~] (calendar session, 18 Oct) Phone and tablet: no hamburger, no side panel. Tetra's bottom island (Files' and
+- [x] (0ed5b56) Phone and tablet: no hamburger, no side panel. Tetra's bottom island (Files' and
       Notes' `IslandBottomBar` / `IslandNavigationItem`): the views (phone: Agenda, Day, Month; tablet: Day, Week, Month,
       Agenda) and New; pulled up, the drawer (the same `ModalBottomSheet` as Notes' and Files'): the calendars with their
       coloured boxes (show/hide, ⋯ colour/name/export/delete), New calendar, Import, Export all, the small month on a
       big screen, 3 days on a phone, Reminders on this device. The top keeps Today, ‹ › and the month's name.
-- [ ] Desktop the same: the bottom island (the `notes-dock` island Files and Photos use) and a drawer for the rest,
-      not the side panel. The desktop part is already files only (no database copy): it reads Files/Calendar on every
+- [x] (Drive 7b9115c, 218f4ea) Desktop the same: Notes' bottom island (Day, Week, Month, Agenda, New event, Calendars)
+      and its drawer for the rest, not the side panel; Drive's HANDOFF.md says where it is. The desktop part is already files only (no database copy): it reads Files/Calendar on every
       look and fs.watch shows any edit (Claude's, the skill's, sync's) at once; the skill's paths (~/Tetra/Files/Calendar)
-      are what both apps read and write.
+      are what both apps read and write. Checked 18 Oct: a file made by the skill's calendar.py is read by the desktop with
+      the same days and reminder times (and by the phone: the same fixtures and answers in both test suites).
 
 
 ## The user's original wishlist (Sept 2026, unchanged)

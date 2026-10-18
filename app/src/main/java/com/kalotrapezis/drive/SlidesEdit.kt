@@ -103,7 +103,10 @@ internal object SlidesEdit {
             // a list as PowerPoint's Bullets and Numbering make it: hanging a quarter inch and a bit (marL 342900, indent −342900); none: no indent
             val form = l.scheme?.let { s -> SlideBullet.form(LIST_SCHEMES[s].levels[p.level.coerceIn(0, 8)].first) }
             val bullet = if (form != null) SlideBullet("1.", num = form) else when (l.list) { null -> p.bullet; 'n' -> null; 'b' -> SlideBullet("•"); else -> SlideBullet("1.") } // counted by numbered()
-            val look0 = when (if (form != null) '1' else l.list) { null -> p.look; 'n' -> p.look.copy(left = 0f, firstLine = 0f); else -> if (p.look.left > 0f) p.look else p.look.copy(left = 27f, firstLine = -27f) }
+            val look0 = when (if (form != null) '1' else l.list) { null -> p.look; 'n' -> p.look.copy(left = 0f, firstLine = 0f)
+                // numbered: room for "10." and a gap — half an inch hanging (PowerPoint's 457200), the level's words no further left (the walk, 18 Oct: "1.Read")
+                '1' -> if (p.look.firstLine <= -NUMBER_HANG) p.look else p.look.copy(left = maxOf(p.look.left, NUMBER_HANG * (p.level + 1)), firstLine = -NUMBER_HANG)
+                else -> if (p.look.left > 0f) p.look else p.look.copy(left = 27f, firstLine = -27f) }
             val look = l.drop?.let { d -> when (i) { first -> look0.copy(left = d, firstLine = 0f, after = 0f); first + 1 -> if (l.dropRest) look0.copy(firstLine = 0f, before = 0f) else null; else -> null } } ?: look0
             val paraLooked = l.para?.let { q -> paraOn(look, q, l.paraParts) } ?: look
             SlidePara(p.para.copy(runs = runs, align = l.align ?: p.para.align, list = DocList(bullet?.num != null || bullet?.text?.first()?.isDigit() == true, p.level)),
@@ -509,10 +512,16 @@ internal object SlidesEdit {
     private fun outerShadow(doc: org.w3c.dom.Document, blur: String = "50800") = doc.createElementNS(A, "a:outerShdw").also { sh ->
         listOf("blurRad" to blur, "dist" to "38100", "dir" to "2700000", "algn" to "tl", "rotWithShape" to "0").forEach { (k, v) -> sh.setAttribute(k, v) }
         sh.appendChild(doc.createElementNS(A, "a:srgbClr").also { c -> c.setAttribute("val", "000000"); c.appendChild(doc.createElementNS(A, "a:alpha").also { it.setAttribute("val", "40000") }) }) }
-    private fun words(doc: org.w3c.dom.Document, body: Element, l: Look, link: String? = null) {
+    private fun words(doc: org.w3c.dom.Document, body: Element, l: Look, link: String? = null, shown: List<ParaLook>? = null) {
         fun a(name: String, vararg attrs: Pair<String, String>) = doc.createElementNS(A, "a:$name").also { e -> attrs.forEach { (k, v) -> e.setAttribute(k, v) } }
         fun rgb(c: Int, holder: String) = a(holder).also { it.appendChild(a("srgbClr", "val" to "%06X".format(c and 0xFFFFFF))) }
         val paras = body.getElementsByTagNameNS(A, "p").let { ps -> (0 until ps.length).map { ps.item(it) as Element } }
+        // a numbered paragraph's indents as the editor shows them ([shown], the view's), else PowerPoint's for its level
+        fun hang(pPr: Element, lvl: Int) {
+            val q = shown?.takeIf { it.size == paras.size }?.getOrNull(paras.indexOf(pPr.parentNode))
+            if (q != null) { pPr.setAttribute("marL", "${Math.round(q.left * 12700)}"); pPr.setAttribute("indent", "${Math.round(q.firstLine * 12700)}") }
+            else if ((pPr.getAttribute("marL").toLongOrNull() ?: 0L) == 0L) { pPr.setAttribute("marL", "${Math.round(NUMBER_HANG * (lvl + 1) * 12700)}"); pPr.setAttribute("indent", "${-Math.round(NUMBER_HANG * 12700)}") }
+        }
         for (p in paras) {
             for (rPr in p.kids().filter { it.localName in setOf("r", "fld") }.map { r -> r.kids().firstOrNull { it.localName == "rPr" } ?: a("rPr").also { r.insertBefore(it, r.firstChild) } } +
                 p.kids().filter { it.localName == "endParaRPr" }) {
@@ -575,7 +584,7 @@ internal object SlidesEdit {
                 pPr.kids().filter { it.localName in setOf("buNone", "buAutoNum", "buChar", "buBlip", "buFont", "buFontTx") }.forEach { pPr.removeChild(it) }
                 place(pPr, a("buFont", "typeface" to "+mj-lt"), PPR)
                 place(pPr, a("buAutoNum", "type" to SlideBullet.pptx(SlideBullet.form(LIST_SCHEMES[s].levels[lvl.coerceIn(0, 8)].first))), PPR)
-                if ((pPr.getAttribute("marL").toLongOrNull() ?: 0L) == 0L) { pPr.setAttribute("marL", "${342900 + lvl * 457200}"); pPr.setAttribute("indent", "-342900") }
+                hang(pPr, lvl)
             }
             l.list?.let { kind ->
                 pPr.kids().filter { it.localName in setOf("buNone", "buAutoNum", "buChar", "buBlip", "buFont", "buFontTx") }.forEach { pPr.removeChild(it) }
@@ -583,7 +592,8 @@ internal object SlidesEdit {
                 else {
                     place(pPr, if (kind == 'b') a("buFont", "typeface" to "Arial") else a("buFont", "typeface" to "+mj-lt"), PPR)
                     place(pPr, if (kind == 'b') a("buChar", "char" to "•") else a("buAutoNum", "type" to "arabicPeriod"), PPR)
-                    if ((pPr.getAttribute("marL").toLongOrNull() ?: 0L) == 0L) { pPr.setAttribute("marL", "342900"); pPr.setAttribute("indent", "-342900") }
+                    if (kind != 'b') hang(pPr, pPr.getAttribute("lvl").toIntOrNull() ?: 0)
+                    else if ((pPr.getAttribute("marL").toLongOrNull() ?: 0L) == 0L) { pPr.setAttribute("marL", "342900"); pPr.setAttribute("indent", "-342900") }
                 }
             }
         }
@@ -615,7 +625,7 @@ internal object SlidesEdit {
         looks: Map<String, Look> = emptyMap(), transition: SlideTransition? = null, anims: List<SlideEffect>? = null, frames: Map<String, List<Float>> = emptyMap(),
         removed: Set<String> = emptySet(), footers: Footers? = null, number: Int = 0, layoutPhs: List<Triple<String, String?, String?>> = emptyList(),
         turns: Map<String, Turn> = emptyMap(), stack: List<String>? = null, back: Back? = null, groups: Map<String, List<String>> = emptyMap(), apart: Set<String> = emptySet(), reset: Boolean = false,
-        tables: Map<String, List<Pair<Char, Int>>> = emptyMap()): ByteArray {
+        tables: Map<String, List<Pair<Char, Int>>> = emptyMap(), /** each looked shape's paragraphs as the editor draws them */ shown: Map<String, List<ParaLook>> = emptyMap()): ByteArray {
         val doc = OfficeFormats.parse(bytes)
         val root = doc.documentElement
         if (reset) resetSlide(root)
@@ -782,7 +792,7 @@ internal object SlidesEdit {
                 fx.kids().filter { it.localName == "outerShdw" }.forEach { fx.removeChild(it) }
                 if (on) fx.insertBefore(outerShadow(doc), fx.kids().firstOrNull { it.localName in setOf("prstShdw", "reflection", "softEdge") })
             }
-            if (l.words) sp.kids().firstOrNull { it.localName == "txBody" }?.let { body -> words(doc, body, l, rels["link $id"]) }
+            if (l.words) sp.kids().firstOrNull { it.localName == "txBody" }?.let { body -> words(doc, body, l, rels["link $id"], shown[id]) }
         }
         // a picture's crop: its blip's srcRect (in thousandths of a percent of the whole picture), none when nothing is cut
         for ((id, l) in looks) l.crop?.let { c -> (named(id)?.takeIf { it.localName == "pic" }?.kids()?.firstOrNull { it.localName == "blipFill" })?.let { fill ->
@@ -1008,6 +1018,12 @@ internal object SlidesEdit {
      * slide's parts gone), hidden ones marked, edited words in their slides, notes typed in the slides' notes pages
      * (a notes page made for a slide that had none, and the notes master for a deck that never had notes).
      */
+    /** The numbered boxes' paragraphs on [e]'s slide as the editor draws them (shape id → looks), so the file has what was seen. */
+    private fun shownParas(deck: Deck, edit: Edit, e: Entry, looks: Map<String, Look>): Map<String, List<ParaLook>> {
+        val ids = looks.filterValues { it.scheme != null || it.list == '1' }.keys.ifEmpty { return emptyMap() }
+        return slide(deck, edit, e).items.filterIsInstance<SlideItem.Shape>().mapNotNull { sh -> sh.anim?.takeIf { it in ids }?.let { id -> sh.text?.let { id to it.paras.map { p -> p.look } } } }.toMap()
+    }
+
     fun save(source: File, deck: Deck, edit: Edit, target: File) {
         val zip = java.util.zip.ZipFile(source)
         fun read(n: String) = zip.getEntry(n)?.let { e -> zip.getInputStream(e).use { it.readBytes() } }
@@ -1234,12 +1250,12 @@ internal object SlidesEdit {
                 if (texts.isNotEmpty() || added.isNotEmpty() || looks.isNotEmpty() || frames.isNotEmpty() || removed.isNotEmpty() || turns.isNotEmpty() || e.uid in edit.stack || e.uid in edit.backgrounds || e.uid in edit.groups || edit.ungrouped.any { it.first == e.uid } || e.uid in edit.reset || edit.tables.keys.any { it.first == e.uid } || transition != null || anims != null || (hide != null && hide != source!!.hidden) || footers != null)
                     out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs, turns, edit.stack[e.uid], edit.backgrounds[e.uid],
                         edit.groups[e.uid].orEmpty(), edit.ungrouped.filter { it.first == e.uid }.map { it.second }.toSet(), e.uid in edit.reset,
-                        edit.tables.filterKeys { it.first == e.uid }.mapKeys { it.key.second })
+                        edit.tables.filterKeys { it.first == e.uid }.mapKeys { it.key.second }, shownParas(deck, edit, e, looks))
                 if (ids.isNotEmpty() || noted || commented || relaid) out[relsPath(part)] = xml(relsXml)
             } else {
                 out[part] = withTexts(base, texts, hide, added, ids, looks, transition, anims, frames, removed, footers, number, phs, turns, edit.stack[e.uid], edit.backgrounds[e.uid],
                         edit.groups[e.uid].orEmpty(), edit.ungrouped.filter { it.first == e.uid }.map { it.second }.toSet(), e.uid in edit.reset,
-                        edit.tables.filterKeys { it.first == e.uid }.mapKeys { it.key.second })
+                        edit.tables.filterKeys { it.first == e.uid }.mapKeys { it.key.second }, shownParas(deck, edit, e, looks))
                 out[relsPath(part)] = xml(relsXml)
                 list(part)
             }
@@ -1339,3 +1355,6 @@ internal fun paraOn(look: ParaLook, q: ParaLook, parts: Set<String>): ParaLook {
     return look.copy(before = if (on("before")) q.before else look.before, after = if (on("after")) q.after else look.after,
         lineMultiple = if (on("line")) q.lineMultiple else look.lineMultiple, lineExact = if (on("line")) q.lineExact else look.lineExact, lineAtLeast = if (on("line")) q.lineAtLeast else look.lineAtLeast,
         left = if (on("left")) q.left else look.left, right = if (on("right")) q.right else look.right, firstLine = if (on("first")) q.firstLine else look.firstLine) }
+
+/** A numbered paragraph's hanging indent (pt): half an inch, PowerPoint's 457200 EMU — room for "10." and a gap. */
+internal const val NUMBER_HANG = 36f

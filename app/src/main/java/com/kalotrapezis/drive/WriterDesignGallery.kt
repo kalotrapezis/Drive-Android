@@ -116,10 +116,12 @@ internal data class ListScheme(val label: String, val levels: List<Pair<String, 
 internal val LIST_SCHEMES = listOf(
     ListScheme("1.  2.  3.", (0..8).map { "decimal" to "%${it + 1}." }),
     ListScheme("1.  a.  i.", (0..8).map { listOf("decimal", "lowerLetter", "lowerRoman")[it % 3] to "%${it + 1}." }),
-    ListScheme("1.  1.1.  1.1.1.", (0..8).map { l -> "decimal" to (1..l + 1).joinToString("") { "%$it." } }),
+    ListScheme(LEGAL_SCHEME, (0..8).map { l -> "decimal" to (1..l + 1).joinToString("") { "%$it." } }),
     ListScheme("I.  A.  1.", (0..8).map { listOf("upperRoman", "upperLetter", "decimal")[it % 3] to "%${it + 1}." }),
     ListScheme("i.  a.  1.", (0..8).map { listOf("lowerRoman", "lowerLetter", "decimal")[it % 3] to "%${it + 1}." }),
 )
+/** Word's legal numbering's name: PowerPoint and Impress number a level on its own, so Slides does not offer it (the tablet walk, 18 Oct) */
+internal const val LEGAL_SCHEME = "1.  1.1.  1.1.1."
 /** How a scheme's [level] reads for the [n]th item (1, a, i; 1.1.). */
 internal fun ListScheme.marker(level: Int, n: Int): String {
     fun one(fmt: String, k: Int) = when (fmt) { "lowerLetter" -> ('a' + (k - 1) % 26).toString(); "lowerRoman" -> listOf("i", "ii", "iii", "iv", "v")[(k - 1) % 5]; "upperRoman" -> listOf("I", "II", "III", "IV", "V")[(k - 1) % 5]
@@ -137,7 +139,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
     more: (() -> Unit)? = null, glow: Boolean = true, title: String = "", modifier: Modifier = Modifier, fonts: List<String> = emptyList(), now: String? = null,
     drops: List<DropKind> = emptyList(),
     /** Drop cap: how many lines tall (the user, 17 Oct: a setting, as Word's "Lines to drop", 1–10, and LibreOffice's "Lines", 2–9) */
-    dropLines: Int = 3, dropLinesChange: ((Int) -> Unit)? = null, lineModes: List<LineNumbering> = LINE_NUMBERINGS) {
+    dropLines: Int = 3, dropLinesChange: ((Int) -> Unit)? = null, lineModes: List<LineNumbering> = LINE_NUMBERINGS, schemes: List<ListScheme> = LIST_SCHEMES) {
     // the last card: a page of its own (Page numbers' "Your own…", Drop cap's "More…" as the user named it)
     val moreLabel = if (what == DesignGallery.DropCap) "More…" else "Your own…"
     fun c(rgb: Int) = Color(0xFF000000 or (rgb.toLong() and 0xFFFFFF))
@@ -314,7 +316,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                     }
                 }
                 // Multilevel lists: three levels as they read.
-                DesignGallery.Lists -> LIST_SCHEMES.forEach { scheme -> card(chosen == scheme, click = { pick(scheme) }) {
+                DesignGallery.Lists -> schemes.forEach { scheme -> card(chosen == scheme, click = { pick(scheme) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp * k)) {
                         listOf(0 to 1, 1 to 1, 2 to 1, 0 to 2).forEach { (level, n) ->
                             Row(Modifier.padding(start = 14.dp * k * level), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

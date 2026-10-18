@@ -928,6 +928,21 @@ class SlidesTest {
         }
     }
 
+    /** Numbering and Multilevel on a box with two levels (the tablet walk, 18 Oct: "1.Read"): every number hangs half an inch, and the saved .pptx has the indents the editor drew. */
+    @Test fun `numbered paragraphs drawn and saved alike`() {
+        val src = File("src/test/resources/slides.pptx"); val deck = Slides.read(src)
+        fun box(d: Deck) = d.slides[1].items.filterIsInstance<SlideItem.Shape>().first { words(it)?.startsWith("Read the slides") == true }
+        for ((how, look) in listOf("numbering" to SlidesEdit.Look(list = '1'), "multilevel" to SlidesEdit.Look(scheme = 1))) {
+            val e = SlidesEdit.start(deck).copy(looks = mapOf((1 to box(deck).anim!!) to look))
+            val shown = box(SlidesEdit.view(deck, e)).text!!.paras.map { it.look }
+            shown.forEach { assertTrue(how, it.firstLine <= -NUMBER_HANG + 0.1f) }
+            val out = File("build/office-roundtrip").apply { mkdirs() }.resolve("numbered-$how.pptx")
+            SlidesEdit.save(src, deck, e, out)
+            val saved = box(Slides.read(out)).text!!.paras.map { it.look }
+            assertEquals(how, shown.map { Math.round(it.left) to Math.round(it.firstLine) }, saved.map { Math.round(it.left) to Math.round(it.firstLine) })
+        }
+    }
+
     /** The Table tab on a deck's own table (one saved here, then read as the file's): a row and a column added, another row taken — in the XML, the frame grown. */
     @Test fun `a deck's own table's rows and columns saved`() {
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0

@@ -188,8 +188,9 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       lose their level). Only the fields changed are applied.
 - [x] (the user, 18 Oct: "add a select mode in tables under selection") Tables › Selection › Select cells: while on, one finger dragged
       chooses cells at once (no long press); two fingers still move and zoom. Off: a long press, then drag, as before.
-- [ ] 2. Slides › Multilevel: the "1. / 1.1. / 1.1.1." card gives "1." at level 2 — draw what the card shows, or drop the card for slides.
-- [ ] 3. Slides: no gap between a number and its words ("1.Read") in the editor while unsaved; saved, level 2 has it, level 1 not. One renderer.
+- [x] 2. Slides › Multilevel: the "1. / 1.1. / 1.1.1." card gives "1." at level 2 — dropped for slides (PowerPoint and Impress have no legal numbering).
+- [x] 3. Slides: no gap between a number and its words ("1.Read") in the editor while unsaved; saved, level 2 has it, level 1 not. Now a number
+      hangs half an inch (PowerPoint's 457200) and the .pptx gets exactly the indents the editor drew (test `numbered paragraphs drawn and saved alike`).
 - [ ] 4. Tables › Remove duplicates: a whole column (header tapped) refused; formula cells refused after the dialog (Excel compares
       values); "The first row is headers" ticked even when row 1 is data.
 - [ ] 5. Tables: on a protected sheet a tap does not choose the cell, nothing says why — choose it, refuse typing with a message.

@@ -1973,7 +1973,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             .distinct().sorted() + STYLE_FONTS).distinctBy { it.lowercase() } }
                         val now = chosenWords()?.text?.paras?.flatMap { it.runs }?.firstOrNull { it.text.isNotBlank() }?.font?.let(DocStyles.Plain::fontName)
                         fun close() { stripBefore = null; stripPicked = null; strip = null }
-                        DesignGalleryStrip(stripShown, stripPicked, cancel = { stripBefore?.let { edit = it }; close() }, ok = {
+                        DesignGalleryStrip(stripShown, stripPicked, schemes = LIST_SCHEMES.filter { it.label != LEGAL_SCHEME }, cancel = { stripBefore?.let { edit = it }; close() }, ok = {
                             val made = edit; stripBefore?.let { b -> edit = b; if (made != null && made != b) change(made) }; close(); WriterLog.i("Slides: ${stripShown.title} chosen")
                         }, pick = { ch ->
                             if (ch is ThemeColors || ch is ThemeFonts) {

@@ -202,8 +202,10 @@ Every item is checked on the tablet and phone and against LibreOffice, as Words'
       aside and each save writes the edits onto it (Tables did so already, Words never cleared it). A new slide size still starts afresh.
 - [x] 7. Tables › Sheet › Unhide popup → strip (7ee3675).
 - [x] 8. Slides › View › Zoom popup → strip (7ee3675).
-- [ ] 9. Slides › Insert › Table: "‹ Table" (7ee3675); one shared table-size picker with Words' Insert › Table.
-- [ ] 10. Words › Page numbers in Insert and in Layout, once a strip, once a list — one form.
+- [x] 9. Slides › Insert › Table: "‹ Table" (7ee3675); one shared table-size picker with Words' Insert › Table. Now `TableSizeButton`
+      in both: the size dragged out on a grid, on a strip on tablet/phone (✓ puts it in), in Words' window on a desktop.
+- [x] 10. Words › Page numbers in Insert and in Layout, once a strip, once a list — one form. Layout has no Page numbers; its list was
+      Line numbers, now cards on the pages' strip as Insert › Page numbers (7ee3675).
 - [ ] 11. Duplicates: Tables Sheet › Protect vs Review › Protect sheet; Formulas › Insert function vs Insert › Function; Show formulas
       in Formulas and View; AutoSum in Home and Formulas; Slides' Selection pane in Home and in the Shape tab — one place, or one form.
 - [x] 12. Slides › Design: after Save, Apply to all and Reset background go although the slide keeps its own background.

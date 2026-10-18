@@ -1354,7 +1354,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // Merging: the first cell tapped, then the last; the cells between light up before they are merged.
     var mergeFrom by remember { mutableStateOf<TableCellRef?>(null) }
     var mergeTo by remember { mutableStateOf<TableCellRef?>(null) }
-    var insertingTable by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<TableCellRef?>(null) }
     var cellEdit by remember { mutableStateOf<TableCellEdit?>(null) }
     var bordersPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home › Borders: its panel, for which paragraphs
@@ -3996,7 +3995,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
                     RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
                     RibbonDivider(w)
-                    RibbonButton("Table", w, R.drawable.ic_table, enabled = loaded) { insertingTable = true }
+                    TableSizeButton(w, WORD_BLUE, enabled = loaded) { rows, columns ->
+                        val table = if (kind == OfficeKind.Odt) TableEdit.newOdtTable(rows, columns, "Table " + java.util.UUID.randomUUID().toString().take(6))
+                            else TableEdit.newTable(rows, columns, documentStyles.page.textWidth)
+                        val (width, height) = WriterBridge.tableSize(meta, table, documentStyles)
+                        val img = DocImage("t" + java.util.UUID.randomUUID(), null, width, height, table = table)
+                        val at = placePicture(img)
+                        state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
+                        selectedCell = selectedPicture?.second?.let { TableCellRef(it, 0, 0) } // the key it is shown by, now
+                        tab = WriterTab.Table
+                    }
                 }, {
                     RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
@@ -4535,33 +4543,6 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }
         }
     }
-    if (insertingTable) {
-        var rows by remember { mutableIntStateOf(2) }
-        var columns by remember { mutableIntStateOf(2) }
-        AlertDialog(
-            onDismissRequest = { insertingTable = false },
-            title = { Text("Insert table") },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TableSizeGrid(5, 5, rows, columns) { r, c -> rows = r; columns = c }
-                    Text("$rows × $columns", style = MaterialTheme.typography.titleMedium)
-                    Text("Drag across the grid to choose up to 5 × 5 cells.", style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = { TextButton(onClick = {
-                insertingTable = false
-                val table = if (kind == OfficeKind.Odt) TableEdit.newOdtTable(rows, columns, "Table " + java.util.UUID.randomUUID().toString().take(6))
-                    else TableEdit.newTable(rows, columns, documentStyles.page.textWidth)
-                val (width, height) = WriterBridge.tableSize(meta, table, documentStyles)
-                val img = DocImage("t" + java.util.UUID.randomUUID(), null, width, height, table = table)
-                val at = placePicture(img)
-                state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
-                selectedCell = selectedPicture?.second?.let { TableCellRef(it, 0, 0) } // the key it is shown by, now
-                tab = WriterTab.Table
-            }) { Text("Insert") } },
-            dismissButton = { TextButton(onClick = { insertingTable = false }) { Text("Cancel") } },
-        )
-    }
     selectedPicture?.let { (_, key) -> pictures[key] }?.let { img ->
         val key = selectedPicture!!.second
         img.table?.let { table ->
@@ -4981,8 +4962,36 @@ internal fun preparePicture(context: Context, uri: Uri): DocImage {
 }
 
 /** Word's familiar table picker: tap or drag to choose the rectangle from its top-left corner. */
-@Composable private fun TableSizeGrid(maxRows: Int, maxColumns: Int, rows: Int, columns: Int, select: (Int, Int) -> Unit) {
-    val cell = 40.dp
+/**
+ * Insert › Table, one picker for Words and Slides (the tablet walk, 18 Oct): the size dragged out on a grid of cells — on a strip in
+ * the ribbon's place on a tablet or phone (✓ puts it in), in a window on a desktop.
+ */
+@Composable internal fun TableSizeButton(w: Color, accent: Color, enabled: Boolean = true, insert: (Int, Int) -> Unit) {
+    var dialog by remember { mutableStateOf(false) }
+    val strip = officeStrip("Table", ok = { s -> (s.picked as? Pair<*, *>)?.let { (r, c) -> insert(r as Int, c as Int) } }) { s ->
+        val (r, c) = (s.picked as? Pair<*, *>)?.let { (a, b) -> a as Int to b as Int } ?: (0 to 0)
+        TableSizeGrid(4, 8, r, c, cell = 18.dp, fill = accent) { rr, cc -> s.picked = rr to cc }
+        // a fixed width: the line is centred, and a label growing would move the grid under the finger
+        Text(if (r > 0) "$r × $c" else "Drag across the cells", color = w, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.padding(horizontal = 12.dp).width(160.dp))
+    }
+    RibbonButton("Table", w, R.drawable.ic_table, enabled = enabled) { strip?.invoke() ?: run { dialog = true } }
+    if (dialog) {
+        var rows by remember { mutableIntStateOf(2) }
+        var columns by remember { mutableIntStateOf(2) }
+        AlertDialog(onDismissRequest = { dialog = false }, title = { Text("Insert table") },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TableSizeGrid(5, 5, rows, columns, fill = accent) { r, c -> rows = r; columns = c }
+                    Text("$rows × $columns", style = MaterialTheme.typography.titleMedium)
+                    Text("Drag across the grid to choose up to 5 × 5 cells.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { dialog = false; insert(rows, columns) }) { Text("Insert") } },
+            dismissButton = { TextButton(onClick = { dialog = false }) { Text("Cancel") } })
+    }
+}
+
+@Composable private fun TableSizeGrid(maxRows: Int, maxColumns: Int, rows: Int, columns: Int, cell: Dp = 40.dp, fill: Color = WORD_BLUE, select: (Int, Int) -> Unit) {
     BoxWithConstraints(
         Modifier.width(cell * maxColumns).height(cell * maxRows).pointerInput(maxRows, maxColumns) {
             fun choose(point: Offset) {
@@ -4999,7 +5008,7 @@ internal fun preparePicture(context: Context, uri: Uri): DocImage {
                     repeat(maxColumns) { column ->
                         Box(
                             Modifier.size(cell).padding(2.dp).clip(RoundedCornerShape(4.dp))
-                                .background(if (row < rows && column < columns) WORD_BLUE else MaterialTheme.colorScheme.surfaceVariant)
+                                .background(if (row < rows && column < columns) fill else MaterialTheme.colorScheme.surfaceVariant)
                                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
                                 .clickable { select(row + 1, column + 1) },
                         )

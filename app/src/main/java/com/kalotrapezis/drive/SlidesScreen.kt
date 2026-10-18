@@ -216,7 +216,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     var sizeAfterSave by remember { mutableStateOf<Pair<Float, Float>?>(null) } // … asked for with other changes unsaved: Save, then go on
     var slideSizing by remember { mutableStateOf(false) } // … Custom…: its width and height in cm
     var paragraphing by remember { mutableStateOf<ParaLook?>(null) } // Home › Paragraph: Words' page open on the box's first paragraph's look
-    var tables by remember { mutableStateOf(false) } // Table: the sizes to choose from
     var officeSettings by remember { mutableStateOf(false) } // File › Settings: the ribbon's place and size
     var clip by remember { mutableStateOf<Pair<SlidesEdit.Added, SlidesEdit.Look?>?>(null) } // Copy's: what Paste puts on a slide
     var slideMenu by remember { mutableStateOf<Triple<Boolean, Int, androidx.compose.ui.geometry.Offset>?>(null) } // a right-click's menu: on the sidebar?, which slide, where
@@ -468,7 +467,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     // voice typing (Words'): what was said in at the typing cursor
     val said = rememberDictation { putWords(it) }
     LaunchedEffect(item, chosen) { if (OfficeUi.top && notesTyping != null) focusManager.clearFocus() }
-    BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; notesTyping != null && !OfficeUi.top -> notesTyping = null; tables -> tables = false; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
+    BackHandler { when { typing != null -> typing = null; cellEdit != null -> cellEdit = null; notesTyping != null && !OfficeUi.top -> notesTyping = null; layouts -> layouts = false; shapes -> shapes = false; item != null -> item = null; chosen != null -> chosen = null; else -> leave() } }
     val view = remember(base, edit) { base?.let { d -> edit?.let { SlidesEdit.view(d, it) } ?: d } }
     /** The chosen box with words of the file's own (a text box, a placeholder, a shape with words), as it shows: what Home's text tools change. */
     fun chosenWords(): SlideItem.Shape? = (view?.slides?.getOrNull(chosen ?: -1)?.items?.lastOrNull { it.anim == item } as? SlideItem.Shape)?.takeIf { it.text != null && it.id != null && !it.grouped }
@@ -1176,7 +1175,12 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                 RibbonButton("Text box", w, R.drawable.ic_text_box) { newTextBox() }
                 // WordArt (Words' strip of looks and bends): a new one, or the chosen box's words in the look tapped
                 RibbonButton("WordArt", w, R.drawable.ic_format_color_text) { strip = DesignGallery.WordArt }
-                RibbonButton("Table", w, R.drawable.ic_table) { tables = true }
+                TableSizeButton(w, POWERPOINT_ORANGE) { rows, cols ->
+                    // in the middle, four fifths of the slide wide, a row 36 pt high
+                    val dd = deck ?: return@TableSizeButton; val ee = edit ?: return@TableSizeButton; val cc = chosen ?: return@TableSizeButton
+                    val tw = dd.width * 0.8f; val th = rows * 36f
+                    put(SlidesEdit.Added(ee.newId(ee.order[cc].uid, taken(ee, cc)), (dd.width - tw) / 2, (dd.height - th) / 2, tw, th, prst = "table", rows = rows, cols = cols, cells = List(rows * cols) { "" }))
+                    message = "Tap a cell to type in it"; WriterLog.i("Slides: a table put on a slide ($rows × $cols)") }
                 // Video (asked 17 Oct): from the phone (kept in the deck) or online (a web address), played when tapped in a show
                 VideoButton(w, phone = { pickVideo.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.VideoOnly)) }, online = ::putOnlineVideo)
                 RibbonButton("Audio", w, R.drawable.ic_volume_up, enabled = chosen != null) { pickSound.launch("audio/*") }
@@ -1926,7 +1930,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                     val e = edit
                     // a gallery (Font, Colours, Fonts, WordArt…) up: the ribbon slides down under it, as Words' (the user, 18 Oct)
                     val galleryUp = editing && strip != null && e != null && (item != null || strip in setOf(DesignGallery.WordArt, DesignGallery.Colours, DesignGallery.Fonts))
-                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && (notesTyping == null || OfficeUi.top) && !layouts && !shapes && !tables && e != null && !galleryUp,
+                    androidx.compose.animation.AnimatedVisibility(editing && chosen != null && typing == null && cellEdit == null && (notesTyping == null || OfficeUi.top) && !layouts && !shapes && e != null && !galleryUp,
                         // at the bottom for a finger; at the top while a mouse is in use (or as Settings say), as a PC's PowerPoint
                         Modifier.align(if (OfficeUi.top) Alignment.TopCenter else Alignment.BottomCenter),
                         enter = if (OfficeUi.top) androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn() else SLIDE_IN,
@@ -2327,21 +2331,6 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
                             // its fill and outline as chosen (none for either kept as none)
                             edit?.let { now -> edit = now.copy(looks = now.looks + ((uid to id) to SlidesEdit.Look(fill = fill?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE, line = line?.or(0xFF000000.toInt()) ?: SlidesEdit.NONE))) }
                             WriterLog.i("Slides: a shape put on a slide ($kind)")
-                        }
-                    }
-                    // Table: its size; the table goes in the middle, four fifths of the slide wide, a row 36 pt high
-                    androidx.compose.animation.AnimatedVisibility(editing && tables && e != null, Modifier.align(Alignment.BottomCenter), enter = SLIDE_IN, exit = SLIDE_OUT) {
-                        val w = islandContentColor()
-                        Surface(color = Color.Black, contentColor = w, modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.bottomBarPadding().fillMaxWidth().shadedRow().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                StripHead("Table", w) { tables = false }
-                                for ((rows, cols) in listOf(2 to 2, 3 to 2, 3 to 3, 4 to 3, 4 to 4, 5 to 4)) RibbonButton("$rows × $cols", w) {
-                                    val dd = deck ?: return@RibbonButton; val ee = edit ?: return@RibbonButton; val c = chosen ?: return@RibbonButton
-                                    val tw = dd.width * 0.8f; val th = rows * 36f
-                                    put(SlidesEdit.Added(ee.newId(ee.order[c].uid, taken(ee, c)), (dd.width - tw) / 2, (dd.height - th) / 2, tw, th, prst = "table", rows = rows, cols = cols, cells = List(rows * cols) { "" }))
-                                    tables = false; message = "Tap a cell to type in it"; WriterLog.i("Slides: a table put on a slide ($rows × $cols)")
-                                }
-                            }
                         }
                     }
                     // a text box's words: a line a paragraph, ✕ leaves them, ✓ puts them in (one step of Undo)

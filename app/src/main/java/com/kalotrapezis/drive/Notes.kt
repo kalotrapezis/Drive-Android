@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.Calendar
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,8 @@ internal data class Note(
 internal data class NoteVersion(val name: String, val at: Long, val title: String, val content: String, val items: List<CheckItem>, val n: Int = 0)
 
 internal class NotesStore(val root: File, private val deviceId: String = "tetra-android") {
+    // Editors and sync create separate stores for the same folder; each transaction must see the other's writes.
+    private val lock = locks.computeIfAbsent(root.canonicalPath) { Any() }
     private fun isId(id: String) = id.isNotEmpty() && id.length <= 64 && id.all { it.isLetterOrDigit() || it == '-' }
     private fun file(id: String): File { require(isId(id)) { "Not a note." }; return File(root, "$id.json") }
     private fun versions(id: String): File { require(isId(id)) { "Not a note." }; return File(File(root, "history"), id) }
@@ -45,39 +48,53 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     // A new note lives here until something is written in it: an empty one is never saved, so never sent (asked 2026-09-26).
     private val drafts = mutableMapOf<String, JSONObject>()
 
-    fun json(id: String): JSONObject? = runCatching { JSONObject(file(id).readText()) }.getOrNull() ?: drafts[id]?.let { JSONObject(it.toString()) }
+    fun json(id: String): JSONObject? = synchronized(lock) {
+        if (id in deletedIds()) null
+        else runCatching { JSONObject(file(id).readText()) }.getOrNull() ?: drafts[id]?.let { JSONObject(it.toString()) }
+    }
     fun get(id: String): Note? = json(id)?.let(::parse)
 
-    fun list(): List<Note> = root.listFiles { f -> f.isFile && f.name.endsWith(".json") && f.name != "deletions.json" }.orEmpty()
-        .mapNotNull { f -> runCatching { parse(JSONObject(f.readText())) }.getOrNull() }
-
-    /** Whole, through a temporary file, so a crash never leaves half a note. */
-    fun write(o: JSONObject) {
-        root.mkdirs()
-        drafts.remove(o.getString("id"))
-        val target = file(o.getString("id"))
-        val tmp = File(root, "${target.name}.tmp")
-        tmp.writeText(o.toString(2))
-        if (!tmp.renameTo(target)) { target.delete(); tmp.renameTo(target) }
+    fun list(): List<Note> = synchronized(lock) {
+        val deleted = deletedIds()
+        root.listFiles { f -> f.isFile && f.name.endsWith(".json") && f.name != "deletions.json" }.orEmpty()
+            .mapNotNull { f -> runCatching { parse(JSONObject(f.readText())) }.getOrNull() }
+            .filterNot { it.id in deleted }
     }
 
-    fun create(checklist: Boolean, labels: List<String> = emptyList()): Note {
+    /** Whole, through a temporary file, so a crash never leaves half a note. */
+    fun write(o: JSONObject) = synchronized(lock) {
+        val id = o.getString("id")
+        check(id !in deletedIds()) { "That note was permanently deleted." }
+        writeJson(file(id), o.toString(2))
+        drafts.remove(id)
+        Unit
+    }
+
+    private fun writeJson(target: File, text: String) {
+        root.mkdirs()
+        val tmp = File(root, "${target.name}.tmp")
+        tmp.writeText(text)
+        check(tmp.renameTo(target)) { "Could not save ${target.name}; the previous file was kept." }
+    }
+
+    fun create(checklist: Boolean, labels: List<String> = emptyList()): Note = synchronized(lock) {
         val now = System.currentTimeMillis()
         val o = JSONObject().put("id", UUID.randomUUID().toString()).put("title", "").put("content", "")
             .put("createdAt", now).put("updatedAt", now).put("deviceId", deviceId).put("syncStatus", "LOCAL_ONLY")
             .put("noteType", if (checklist) "CHECKLIST" else "TEXT").put("isPinned", false).put("labels", JSONArray(labels))
         if (checklist) o.put("checklistItems", JSONArray())
         drafts[o.getString("id")] = o
-        return parse(o)
+        parse(o)
     }
 
     /** A person's edit: the fields given change, everything else stays, and it is now the newest. */
-    fun update(id: String, edit: (JSONObject) -> Unit): Note {
+    fun update(id: String, edit: (JSONObject) -> Unit): Note = synchronized(lock) {
         val o = json(id) ?: error("That note is gone.")
+        val previous = o.optLong("updatedAt")
         edit(o)
-        o.put("updatedAt", System.currentTimeMillis()).put("deviceId", deviceId)
+        o.put("updatedAt", maxOf(System.currentTimeMillis(), previous + 1)).put("deviceId", deviceId)
         write(o)
-        return parse(o)
+        parse(o)
     }
 
     fun setText(id: String, title: String, content: String, items: List<CheckItem>?) = update(id) { o ->
@@ -90,7 +107,7 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
      * left (asked 2026-09-26: "when I change stuff I can still see my old note before the edits"). The same text as
      * the newest copy is not kept twice, and only the newest [KEEP] copies stay.
      */
-    fun snapshot(id: String, now: Long = System.currentTimeMillis()): String? {
+    fun snapshot(id: String, now: Long = System.currentTimeMillis()): String? = synchronized(lock) {
         val o = json(id) ?: return null
         val note = parse(o)
         if (note.empty) return null // nothing to go back to
@@ -102,19 +119,19 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
         val name = "${safeTitle(o.optString("title"))}-$stamp-$n.json"
         File(dir, name).writeText(JSONObject(o.toString()).put("savedAt", now).put("version", n).toString(2))
         history(id).drop(KEEP).forEach { File(dir, it.name).delete() }
-        return name
+        name
     }
 
-    fun history(id: String): List<NoteVersion> = versions(id).listFiles { f -> f.name.endsWith(".json") }.orEmpty().mapNotNull { f ->
+    fun history(id: String): List<NoteVersion> = synchronized(lock) { versions(id).listFiles { f -> f.name.endsWith(".json") }.orEmpty().mapNotNull { f ->
         runCatching { JSONObject(f.readText()).let { o -> parse(o).let { NoteVersion(f.name, it.updatedAt, it.title, it.content, it.items, o.optInt("version")) } } }.getOrNull()
-    }.sortedWith(compareByDescending<NoteVersion> { it.n }.thenByDescending { it.at })
+    }.sortedWith(compareByDescending<NoteVersion> { it.n }.thenByDescending { it.at }) }
 
     /** A version comes back as a new edit; what it replaces is kept in the history first. */
-    fun restoreVersion(id: String, name: String): Note {
+    fun restoreVersion(id: String, name: String): Note = synchronized(lock) {
         require(File(name).name == name) { "Not a version." }
         val v = JSONObject(File(versions(id), name).readText())
         snapshot(id)
-        return update(id) { o ->
+        update(id) { o ->
             o.put("title", v.optString("title")).put("content", v.optString("content"))
             v.optJSONArray("checklistItems")?.let { o.put("checklistItems", it) }
         }
@@ -124,26 +141,30 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     private fun deletedIds(list: JSONArray = deletions()) = (0 until list.length()).mapTo(HashSet()) { list.getJSONObject(it).optString("id") }
 
     /** For good: the file goes and the id is remembered. Its history stays, so it can still be read back. */
-    fun remove(id: String, at: Long = System.currentTimeMillis()) {
+    fun remove(id: String, at: Long = System.currentTimeMillis()) = synchronized(lock) {
         if (drafts.remove(id) != null && !file(id).exists()) return // never saved: nothing to tell anyone
-        file(id).delete()
+        val target = file(id)
         val old = deletions()
         val list = JSONArray()
         for (i in 0 until old.length()) if (old.getJSONObject(i).optString("id") != id) list.put(old.getJSONObject(i))
         list.put(JSONObject().put("id", id).put("deletedAt", at).put("deviceId", deviceId))
-        root.mkdirs()
-        File(root, "deletions.json").writeText(list.toString())
+        writeJson(File(root, "deletions.json"), list.toString())
+        check(!target.exists() || target.delete()) { "Could not delete the note file." }
+        Unit
     }
 
     /** Trash keeps a note 30 days, then it is deleted for good. */
-    fun sweep(now: Long = System.currentTimeMillis()): Int = list().filter { it.trashedAt != null && it.trashedAt < now - 30 * 86_400_000L }
-        .onEach { remove(it.id, now) }.size
+    fun sweep(now: Long = System.currentTimeMillis()): Int = synchronized(lock) {
+        list().filter { it.trashedAt != null && it.trashedAt < now - 30 * 86_400_000L }.onEach { remove(it.id, now) }.size
+    }
 
     /** What this phone sends at a sync: every note and every deletion. */
-    fun payload(): JSONObject = JSONObject().put("notes", JSONArray(list().mapNotNull { json(it.id) })).put("deletions", deletions())
+    fun payload(): JSONObject = synchronized(lock) {
+        JSONObject().put("notes", JSONArray(list().mapNotNull { json(it.id) })).put("deletions", deletions())
+    }
 
     /** The computer's answer: notes newer there or missing here, and every deletion. Returns how many changed here. */
-    fun apply(answer: JSONObject): Int {
+    fun apply(answer: JSONObject): Int = synchronized(lock) {
         var changed = 0
         val theirs = answer.optJSONArray("deletions") ?: JSONArray()
         val mine = deletions()
@@ -153,10 +174,18 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
             val id = d.optString("id")
             if (!isId(id) || id in known) continue
             mine.put(d); known += id
-            if (file(id).delete()) changed++
         }
-        root.mkdirs()
-        File(root, "deletions.json").writeText(mine.toString())
+        writeJson(File(root, "deletions.json"), mine.toString())
+        // Retry known deletions too: an earlier failed delete or stale writer may have left a file behind.
+        for (id in known) {
+            if (!isId(id)) continue
+            drafts.remove(id)
+            val target = file(id)
+            if (target.exists()) {
+                check(target.delete()) { "Could not delete the note file." }
+                changed++
+            }
+        }
         val notes = answer.optJSONArray("notes") ?: JSONArray()
         for (i in 0 until notes.length()) {
             val n = notes.getJSONObject(i)
@@ -165,10 +194,11 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
             val here = json(id)
             if (here == null || n.optLong("updatedAt") > here.optLong("updatedAt")) { write(n); changed++ }
         }
-        return changed
+        changed
     }
 
     companion object {
+        private val locks = ConcurrentHashMap<String, Any>()
         const val KEEP = 3 // copies of a note in its history
         fun safeTitle(t: String) = t.replace(Regex("[/\\\\\u0000:*?\"<>|]"), " ").replace(Regex("\\s+"), " ").trim().take(80).ifEmpty { "Untitled" }
 

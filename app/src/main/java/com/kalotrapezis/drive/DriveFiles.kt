@@ -217,6 +217,7 @@ object DriveRules {
         require(!source.isDirectory || !inside(source, destination)) { "A folder cannot be copied into itself." }
         val target = File(destination, source.name).canonicalFile
         require(inside(root, target) && !target.exists()) { "A file with this name already exists." }
+        requireNoLinks(source)
         if (source.isDirectory) source.copyRecursively(target, overwrite = false) else Files.copy(source.toPath(), target.toPath())
         return relative(root, target)
     }
@@ -293,12 +294,14 @@ object DriveRules {
         require(inside(root, trash)) { "Trash is outside Drive." }
         if (!trash.exists()) return 0
         val items = trash.listFiles().orEmpty()
-        items.forEach { item ->
-            require(inside(root, item)) { "Trash contains an unsafe item." }
-            check(item.deleteRecursively()) { "Could not permanently delete ${item.name}." }
-        }
+        items.forEach { item -> require(inside(root, item)) { "Trash contains an unsafe item." }; requireNoLinks(item) }
+        items.forEach { item -> check(item.deleteRecursively()) { "Could not permanently delete ${item.name}." } }
         return items.size
     }
+
+    // copyRecursively and deleteRecursively follow links, so one inside a folder would copy in or delete what it points at.
+    private fun requireNoLinks(item: File) =
+        require(item.walkTopDown().none { Files.isSymbolicLink(it.toPath()) }) { "${item.name} holds a link, which Tetra does not follow." }
 
     private fun moveExisting(root: File, source: File, target: File) {
         require(inside(root, target) && target != source && !target.exists()) { "A file with this name already exists." }

@@ -157,6 +157,12 @@ How to write here:
       the same file object Files opens).
 - [x] (timer session, 18 Oct) **Timer**, Android and desktop, branches `timer` in both repos (from `calendar`): § Timer below. Also
       the Calendar's and the Timer's folders hidden in Files on both. Not merged, not on the tablet.
+- [x] (notes-audit session, 19 Oct) The Codex bug-audit patch
+      (backups/2026-10-19-codex-worktrees/bug-audit-uncommitted.patch) against main: none of it was there, all its tests failed.
+      Applied: Notes — one lock per notes folder for every NotesStore, a deleted note's id never read/listed/written again and a
+      stale file of it deleted at sync, a failed save or ledger write throws instead of deleting, updatedAt always moves forward
+      (a corrupt deletions.json still reads as empty, not a crash). Files — Copy and Empty trash refuse a folder holding a link
+      (on main Empty trash deleted what an escaping link pointed at). NotesTest +6, DriveFilesTest +2; unit 547, 0 failing, 8 skipped.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

@@ -4,12 +4,65 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
+import java.io.File
 
 class NotesTest {
     private fun store() = NotesStore(Files.createTempDirectory("notes").toFile())
+
+    @Test fun `a failed first save keeps the unsaved note available for retry`() {
+        val s = store()
+        val n = s.create(checklist = false)
+        File(s.root, "${n.id}.json.tmp").mkdirs()
+        assertThrows(Exception::class.java) { s.setText(n.id, "Keep me", "draft", null) }
+        assertEquals(n.id, s.get(n.id)?.id)
+    }
+
+    @Test fun `a failed replacement reports failure and preserves the obstructing target`() {
+        val s = store()
+        val target = File(s.root, "blocked.json").apply { mkdirs() }
+        File(target, "keep.txt").writeText("keep")
+        assertThrows(Exception::class.java) { s.write(JSONObject().put("id", "blocked").put("title", "new")) }
+        assertEquals("keep", File(target, "keep.txt").readText())
+    }
+
+    @Test fun `a deletion ledger write failure does not delete the note`() {
+        val s = store()
+        s.write(JSONObject().put("id", "keep").put("title", "keep me"))
+        File(s.root, "deletions.json").mkdirs()
+        assertThrows(Exception::class.java) { s.remove("keep") }
+        assertEquals("keep me", s.get("keep")?.title)
+    }
+
+    @Test fun `sync retries a known deletion if a stale file has reappeared`() {
+        val s = store()
+        s.write(JSONObject().put("id", "gone").put("title", "old"))
+        s.remove("gone")
+        // A stale writer or restored backup can put the old file back after its deletion was recorded.
+        File(s.root, "gone.json").writeText(JSONObject().put("id", "gone").put("title", "stale").toString())
+        assertEquals(1, s.apply(JSONObject().put("deletions", s.deletions())))
+        assertNull(s.get("gone"))
+        assertEquals(0, s.payload().getJSONArray("notes").length())
+    }
+
+    @Test fun `an edit is newer than a copy stamped by a clock that runs ahead`() {
+        val s = store()
+        val ahead = System.currentTimeMillis() + 86_400_000L
+        s.write(JSONObject().put("id", "ahead").put("title", "theirs").put("updatedAt", ahead))
+        assertTrue(s.setText("ahead", "mine", "", null).updatedAt > ahead)
+    }
+
+    @Test fun `two stores of one folder share a lock`() {
+        val dir = Files.createTempDirectory("notes").toFile()
+        val a = NotesStore(dir); val b = NotesStore(File(dir.path))
+        a.write(JSONObject().put("id", "n").put("title", "t"))
+        val threads = (1..8).map { t -> Thread { repeat(50) { (if (t % 2 == 0) a else b).update("n") { o -> o.put("count", o.optInt("count") + 1) } } } }
+        threads.forEach { it.start() }; threads.forEach { it.join() }
+        assertEquals(400, a.json("n")!!.getInt("count"))
+    }
 
     @Test fun `an edit keeps what a newer app wrote, and history is numbered`() {
         val s = store()

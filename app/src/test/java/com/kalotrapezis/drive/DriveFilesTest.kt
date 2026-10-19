@@ -3,12 +3,40 @@ package com.kalotrapezis.drive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 
 class DriveFilesTest {
+    @Test fun recursiveCopyRefusesAnEscapingLinkBeforeCopyingAnything() {
+        val base = Files.createTempDirectory("drive-copy-link").toFile()
+        val root = File(base, "Tetra").apply { mkdirs() }
+        val outside = File(base, "outside").apply { mkdirs() }
+        File(outside, "private.txt").writeText("private")
+        val source = File(root, "source").apply { mkdirs() }
+        File(source, "safe.txt").writeText("safe")
+        Files.createSymbolicLink(File(source, "escape").toPath(), outside.toPath())
+        File(root, "copies").mkdirs()
+        assertThrows(IllegalArgumentException::class.java) { DriveRules.copy(root, "source", "copies") }
+        assertFalse(File(root, "copies/source").exists())
+        assertEquals("private", File(outside, "private.txt").readText())
+    }
+
+    @Test fun emptyTrashRefusesNestedLinksBeforeDeletingAnyContents() {
+        val base = Files.createTempDirectory("drive-trash-link").toFile()
+        val root = File(base, "Tetra").apply { mkdirs() }
+        val outside = File(base, "outside").apply { mkdirs() }
+        File(outside, "private.txt").writeText("private")
+        val trashed = File(root, "Trash/folder").apply { mkdirs() }
+        File(trashed, "keep.txt").writeText("keep")
+        Files.createSymbolicLink(File(trashed, "escape").toPath(), outside.toPath())
+        assertThrows(IllegalArgumentException::class.java) { DriveRules.emptyTrash(root) }
+        assertEquals("keep", File(trashed, "keep.txt").readText())
+        assertEquals("private", File(outside, "private.txt").readText())
+    }
+
     @Test fun aMoveTakesFilesKeepsSystemFoldersAndLetsEmptyRegularFoldersGo() {
         val root = Files.createTempDirectory("tetra").toFile()
         val gone = listOf("Documents/Scanned Documents/scan.pdf", "Documents/cv.pdf", "Work/2019/tax.pdf")

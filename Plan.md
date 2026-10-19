@@ -1632,6 +1632,12 @@ Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/T
       3 s (it stopped at 17:06:45) but never the tablet, which had lost the network after the reinstall (the PC heard nothing
       from it after 17:04:58; restarting the hotspot fixed it) — nothing can reach a device that is off the network. Found
       on the way: every change of a timer made sync copies of its one file; now each device writes its own file (above).
+- [x] (19 Oct, the user: "We did not make a share with claude skill setting on Android or Desktop for the timer, we also did
+      not add the timer to the togles for the individual apps for apearing in the launcher") A **tetra-timer skill**
+      (skills/tetra-timer, zipped into the APK and copied into desktop/skills as the Calendar's); **Settings › Timer › Share
+      with Claude** on Android (Share / Save to Files) and in the desktop Timer's own ⚙ at the top right, as the Calendar's (Save as… / Copy to ~/.claude/skills);
+      **Timer in Settings › App icons** (Android; `.AppTimer`, its icon by hand from the vector glyph on Timer teal). The
+      desktop has no launcher toggles for any part.
 - [ ] Seen: Tetra already open does not turn to a part asked for by `adb am start -e …APPLET` (the Calendar's too); a
       notification's tap does. Not looked into.
 - [ ] (18 Oct, the user: "Let be for now. write it down") **The tablet drops off the network after each reinstall** of

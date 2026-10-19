@@ -617,7 +617,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     val pickOffice = rememberOfficePicker { openOfficeFile(it, Screen.Home) }
     // an applet icon's part (Settings › App icons), as its card on Home opens it; Back goes to Home (first-run photo setup stays first)
     LaunchedEffect(applet.value) {
-        // the Timer's notification opens its screen (no launcher icon of its own)
+        // the Timer's notification and its App icon open its screen
         if (applet.value == TimerService.SCREEN && screen != Screen.PhotoSetup) { applet.value = null; screen = Screen.Timer; return@LaunchedEffect }
         val a = Applet.of(applet.value) ?: return@LaunchedEffect
         applet.value = null
@@ -632,6 +632,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.Office -> screen = Screen.Office
             Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
             Applet.Calendar -> { calendarNew = null; screen = Screen.Calendar }
+            Applet.Timer -> screen = Screen.Timer
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -1768,6 +1769,7 @@ private fun SettingsTab(
             }
         }
         item { SettingsCard("Calendar", Category.Calendar) { CalendarSettings() } }
+        item { SettingsCard("Timer", Category.Timer) { ShareWithClaude("tetra-timer", "Timer", "Lets Claude start, pause and stop your timers by editing their files.") } }
         item {
             // a launcher icon for each part (asked 17 Oct): on the home screen and in the app list, opening straight into it
             SettingsCard("App icons") {

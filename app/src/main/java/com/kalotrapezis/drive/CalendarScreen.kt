@@ -685,29 +685,29 @@ private fun viewIcon(v: CalView) = when (v) {
 }
 
 /**
- * Share with Claude (asked 18 Oct): the tetra-calendar skill the app was built with (assets/tetra-calendar.zip, from
- * skills/tetra-calendar), to send to the Claude app, mail or Drive, or to save in Files.
+ * Share with Claude (asked 18 Oct): a skill the app was built with (assets/<skill>.zip, from skills/<skill>), to send to
+ * the Claude app, mail or Drive, or to save in Files. The Calendar's and the Timer's (19 Oct).
  */
-@Composable internal fun ShareWithClaude() {
+@Composable internal fun ShareWithClaude(skill: String = "tetra-calendar", part: String = "Calendar", what: String = "Lets Claude read and change this calendar by editing its files.") {
     val context = LocalContext.current
-    fun zip() = context.assets.open("tetra-calendar.zip").use { it.readBytes() }
+    fun zip() = context.assets.open("$skill.zip").use { it.readBytes() }
     val save = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) runCatching { context.contentResolver.openOutputStream(uri)!!.use { it.write(zip()) } }
     }
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Text("Share with Claude", style = MaterialTheme.typography.titleSmall)
-        Text("Lets Claude read and change this calendar by editing its files.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(what, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = {
                 runCatching {
-                    val file = java.io.File(context.cacheDir, "share/tetra-calendar.zip").apply { parentFile?.mkdirs(); writeBytes(zip()) }
+                    val file = java.io.File(context.cacheDir, "share/$skill.zip").apply { parentFile?.mkdirs(); writeBytes(zip()) }
                     val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", file)
                     context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/zip")
-                        .putExtra(android.content.Intent.EXTRA_STREAM, uri).putExtra(android.content.Intent.EXTRA_SUBJECT, "Tetra Calendar skill for Claude")
+                        .putExtra(android.content.Intent.EXTRA_STREAM, uri).putExtra(android.content.Intent.EXTRA_SUBJECT, "Tetra $part skill for Claude")
                         .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share the skill"))
-                }.onFailure { WriterLog.e("Calendar: sharing the skill failed", it) }
+                }.onFailure { WriterLog.e("$part: sharing the skill failed", it) }
             }) { Text("Share") }
-            TextButton(onClick = { save.launch("tetra-calendar.zip") }) { Text("Save to Files") }
+            TextButton(onClick = { save.launch("$skill.zip") }) { Text("Save to Files") }
         }
     }
 }

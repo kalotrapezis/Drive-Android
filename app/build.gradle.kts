@@ -91,22 +91,26 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
 }
 
-// The tetra-calendar skill, zipped into the app at build time from skills/tetra-calendar (its one source), so Calendar ›
-// Share with Claude always hands over the skill that matches this app's files (asked 18 Oct).
+// The tetra-calendar and tetra-timer skills, zipped into the app at build time from skills/<name> (their one source), so
+// Share with Claude always hands over the skill that matches this app's files (asked 18 Oct; the Timer's 19 Oct).
 abstract class SkillZip : DefaultTask() {
-    @get:InputDirectory abstract val skill: DirectoryProperty
+    @get:InputDirectory abstract val skills: DirectoryProperty
+    @get:Input abstract val names: ListProperty<String>
     @get:OutputDirectory abstract val out: DirectoryProperty
     @TaskAction fun zip() {
         val dir = out.get().asFile.apply { deleteRecursively(); mkdirs() }
-        ZipOutputStream(File(dir, "tetra-calendar.zip").outputStream()).use { z ->
-            skill.get().asFile.listFiles()!!.filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name }.forEach { f ->
-                z.putNextEntry(ZipEntry("tetra-calendar/${f.name}")); f.inputStream().use { it.copyTo(z) }; z.closeEntry()
+        names.get().forEach { name ->
+            ZipOutputStream(File(dir, "$name.zip").outputStream()).use { z ->
+                File(skills.get().asFile, name).listFiles()!!.filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name }.forEach { f ->
+                    z.putNextEntry(ZipEntry("$name/${f.name}")); f.inputStream().use { it.copyTo(z) }; z.closeEntry()
+                }
             }
         }
     }
 }
 val skillZip = tasks.register<SkillZip>("skillZip") {
-    skill.set(rootProject.layout.projectDirectory.dir("skills/tetra-calendar"))
+    skills.set(rootProject.layout.projectDirectory.dir("skills"))
+    names.set(listOf("tetra-calendar", "tetra-timer"))
     out.set(layout.buildDirectory.dir("generated/skillAssets"))
 }
 androidComponents { onVariants { it.sources.assets?.addGeneratedSourceDirectory(skillZip, SkillZip::out) } }

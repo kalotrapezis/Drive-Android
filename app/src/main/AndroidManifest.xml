@@ -86,6 +86,9 @@
         <activity-alias android:name=".AppCalendar" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Calendar" android:icon="@mipmap/applet_calendar" android:roundIcon="@mipmap/applet_calendar">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
+        <activity-alias android:name=".AppTimer" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Timer" android:icon="@mipmap/applet_timer" android:roundIcon="@mipmap/applet_timer">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
         <!-- Calendar: an .ics from any app (Open with › Tetra Calendar) is imported -->
         <activity-alias android:name=".CalendarOpen" android:targetActivity=".MainActivity" android:exported="true" android:label="Tetra Calendar" android:icon="@mipmap/applet_calendar">
             <intent-filter>

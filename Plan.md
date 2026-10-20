@@ -163,6 +163,7 @@ How to write here:
       stale file of it deleted at sync, a failed save or ledger write throws instead of deleting, updatedAt always moves forward
       (a corrupt deletions.json still reads as empty, not a crash). Files — Copy and Empty trash refuse a folder holding a link
       (on main Empty trash deleted what an escaping link pointed at). NotesTest +6, DriveFilesTest +2; unit 547, 0 failing, 8 skipped.
+- [~] (maps session, 20 Oct) **Maps**, step 1 (§ Maps below), branch `maps` in worktree Drive-Android-worktrees/maps.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -1655,6 +1656,26 @@ Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/T
 - [ ] (same) The fix above (72e9d0b / Drive b2e9561, pushed) is **not yet on the devices**: the PC's .deb is built
       (Drive/desktop/release/local-drive-desktop_0.6.0-beta.1_amd64.deb, the user installs it with sudo dpkg -i); the phone
       and tablet get the debug APK when connected. No GitHub release of 0.6.0 Beta 1 yet.
+
+## Maps (planned 20 Oct, maps session; branch `maps`, worktree Drive-Android-worktrees/maps)
+The user, 20 Oct: "Greece as a map, offline, Map managment, Navigation, Turn nav voice, Import from Google Maps, Save loations
+with SVGs and names, A home tab doeble the size, with slots for 6 locations". Decided 20 Oct: the **computer builds** the map
+files and Tetra's sync carries them to the phone and tablet; routing for **car, walking and bike**.
+
+Pieces (all free, no keys): the map is **Protomaps** (a Greece cut of their daily OSM build, one `.pmtiles` file, opened by the
+MapLibre the app already has; style "light"/"dark" with Greek labels, fonts and sprites in assets/maps); routing **GraphHopper**
+offline on the phone (Greek instructions); voice Android's **TextToSpeech** (el-GR); search an offline index of names/addresses
+from Geofabrik's Greece OSM extract (accent-blind); icons **Maki** (CC0) + the user's own SVGs; import **Google Takeout**
+(starred places have coordinates; list entries are name + link, found through the search, misses shown to fix).
+Files: Tetra/Maps (hidden in Files like Calendar and Timer, synced): `greece.pmtiles` now; routing and search files later; saved
+places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 beside the repo's GPL-2.0 (as other libraries already).
+
+- [~] (maps session, 20 Oct) 1. Greece offline map (512 MB at zoom 15, region polygon), my location, map management (packages,
+      size, date, delete to Trash); `tools/maps-greece.sh` makes the file on the computer.
+- [ ] 2. Saved places (name, SVG icon, list) as files; Home's Maps group double size with 6 place slots; Google Takeout import.
+- [ ] 3. Offline search.
+- [ ] 4. Routing (car, foot, bike), turn by turn, voice, the next turn in HyperIsland; reroute offline.
+- [ ] Later: the desktop app builds and refreshes the files monthly by itself; Maps on desktop Tetra; a `tetra-maps` skill.
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

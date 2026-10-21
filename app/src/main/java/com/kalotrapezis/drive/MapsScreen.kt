@@ -142,6 +142,9 @@ private data class Nav(
  */
 internal object MapsPrefs {
     private fun prefs(c: Context) = c.getSharedPreferences("maps", Context.MODE_PRIVATE)
+    /** The map's own look, apart from the app's (the user, 21 Oct: "I dont like the dark theme on the map"): light unless set. */
+    fun mapTheme(c: Context) = prefs(c).getString("map_theme", "light") ?: "light"
+    fun setMapTheme(c: Context, theme: String) = prefs(c).edit().putString("map_theme", theme).apply()
     fun rolling(c: Context) = prefs(c).getBoolean("rolling", false)
     fun setRolling(c: Context, on: Boolean) = prefs(c).edit().putBoolean("rolling", on).apply()
     fun autoPark(c: Context) = prefs(c).getBoolean("auto_park", true)
@@ -159,7 +162,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 /**
- * Maps (Plan.md § Maps): Greece offline (Tetra/Maps/greece.pmtiles, Protomaps' dark style with Greek names), where you are,
+ * Maps (Plan.md § Maps): Greece offline (Tetra/Maps/greece.pmtiles, Protomaps' light or dark style with Greek names), where you are,
  * your saved places (long-press the map to save one), and turn-by-turn directions by car, on foot or by bike, worked out
  * on the phone (MapsRouting) and spoken in Greek. [go] (a place on Home's card) starts its directions as soon as there is a fix.
  */
@@ -351,7 +354,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     }
     LaunchedEffect(mapView) {
         if (!mapFile.isFile) return@LaunchedEffect
-        val json = context.assets.open("maps/dark.json").bufferedReader().use { it.readText() }
+        val json = context.assets.open("maps/${MapsPrefs.mapTheme(context)}.json").bufferedReader().use { it.readText() }
             .replace("pmtiles://MAP_FILE", "pmtiles://file://${mapFile.absolutePath}")
         mapView.getMapAsync { map ->
             map.setLatLngBoundsForCameraTarget(GREECE)

@@ -1813,6 +1813,9 @@ private fun SettingsTab(
                 files?.forEach { (what, about) -> Text("$what — $about", style = MaterialTheme.typography.bodySmall) }
                 Text("Maps are made on the computer and come here with Local Sync, into Tetra/Maps: tools/maps-greece.sh downloads " +
                     "the newest map of Greece and builds the routing for it (an Update button in desktop Tetra is planned).", style = MaterialTheme.typography.bodySmall)
+                var mapTheme by remember { mutableStateOf(MapsPrefs.mapTheme(mapsContext)) }
+                Text("Map", style = MaterialTheme.typography.titleSmall)
+                Choices(listOf("light" to "Light", "dark" to "Dark"), mapTheme) { mapTheme = it; MapsPrefs.setMapTheme(mapsContext, it) }
                 var rolling by remember { mutableStateOf(MapsPrefs.rolling(mapsContext)) }
                 Text("On foot", style = MaterialTheme.typography.titleSmall)
                 Text(if (rolling) "Rolling: routes for a wheelchair, without steps or rough paths, and its icon." else "Walking: every footpath and step.", style = MaterialTheme.typography.bodySmall)

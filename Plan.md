@@ -168,6 +168,11 @@ How to write here:
       "we may transfer this map to the desktop as well"): branch `maps`, worktree Drive-Android-worktrees/maps; step 1's
       files downloaded to ~/Tetra-maps by tools/maps-greece.sh (§ Maps below): greece.pmtiles 485 MB (Protomaps
       20261021, zoom 0–15, Geofabrik's Greece border) and greece-latest.osm.pbf 327 MB (md5 checked), ~3 min.
+- [ ] Timer: clear away its waste files (the user, 21 Oct: "some kind of a garbige collector be cause the timer app creates
+      a lot of duplicat files what is nessesary and what is waste … on the phone I dont know about the desktop"): the
+      tablet and the PC each hold 27 files, 23 of them "<id> (n) (n).json" copies from the 18 Oct bug (fixed since: one
+      file per device, <id>.<device>.json). A copy whose timer is over and not pinned is waste; the clean-up must go the
+      way sync carries a delete (or the other side sends it back), and the same in desktop/timer.js.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -1720,6 +1725,10 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       GraphHopper's GTFS module routes on timetables. Open feeds: Athens OASA (buses, trolleys) and STASY (metro, tram);
       Thessaloniki OASTH to check; Hellenic Train and ferries have no open feed (ferries: none known). Offline on the phone
       it needs GraphHopper's PT graph built on the computer like the road one; a big piece, after the road directions.
+- [x] (maps-link session, 21 Oct) The map light or dark, apart from the app (the user: "add in the settings a separate
+      togle for dark and light theme, because I dont like the dark theme on the map"): Settings › Maps › Map, light by default.
+- [ ] Tetra in light (the user, 21 Oct: "after that we sould check every page and polise the light theme of the android
+      app and make it an option light or dark"): Roadmap F; every page checked in light, Settings › Appearance Light / Dark.
 - [ ] Android Auto (the user, 21 Oct: "Can it work with Android auto?"): Tetra's directions on the car screen with the
       Android for Cars App Library (NavigationTemplate: the next turn, the route drawn on a surface). Android Auto shows
       only Play-installed navigation apps unless Developer settings › Unknown sources is on in Android Auto, so this works

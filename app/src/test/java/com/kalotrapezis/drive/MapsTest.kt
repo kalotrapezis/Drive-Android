@@ -40,6 +40,13 @@ class MapsTest {
             assertTrue(r.metres in 800.0..3000.0)
             assertTrue(r.steps.isNotEmpty() && r.lats.size == r.lngs.size)
         }
+        // Rolling: the wheelchair profile, when the graph has it — no steps, so never shorter than on foot
+        if ("wheelchair" in MapsRouting.profiles(dir)) {
+            val foot = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, "foot")
+            val roll = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, "wheelchair")
+            println("wheelchair: ${roll.metres.toInt()} m, ${roll.millis / 1000} s (foot ${foot.metres.toInt()} m)")
+            assertTrue(roll.metres >= foot.metres - 1 && roll.millis >= foot.millis)
+        }
         // the hand-written custom models give GraphHopper's own answers (its server on the same graph, 21 Oct)
         val gh = mapOf("car" to (471079.0 to 19950L), "foot" to (359126.0 to 230982L), "bike" to (463242.0 to 98452L))
         for ((mode, want) in gh) {

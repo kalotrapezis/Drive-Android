@@ -5,9 +5,11 @@ links) the rest").
 
 1. Every decision whose subject speaks of an ΑμεΑ parking spot, half a year at a time from 2012 (the API answers a few
    months per question), written to diavgeia-amea.tsv:  org <TAB> org label <TAB> date <TAB> ada <TAB> subject
-2. Each general (not exclusive to one person's car), not abolished spot with a street and number is looked up in
-   greece-addresses.tsv near its municipality's town: found → greece-amea-diavgeia.tsv (the search list's form, kind
-   disabled_parking, the decision's link in the last field); not found → diavgeia-amea-check.tsv (to be placed by hand).
+2. Each public (created, set out; not given to one person's car), not abolished spot with a street and number is looked up
+   in greece-addresses.tsv near its municipality's town: found → greece-amea-diavgeia.tsv (the search list's form, kind
+   disabled_parking, the decision's link in the web field); not found → greece-amea-check.tsv, the app's list of spots to
+   place by hand (Maps › Saved › ΑμεΑ to place):  id <TAB> lat <TAB> lng <TAB> town <TAB> address <TAB> subject
+   <TAB> link <TAB> date, at the street's middle (greece-streets.tsv) when its name is known there, else the town's.
 
 Usage: maps-diavgeia.py <maps dir>   (fetches when diavgeia-amea.tsv is older than a week or missing)
 """
@@ -82,8 +84,12 @@ def fold(s):
     return "".join(c for c in unicodedata.normalize("NFD", s.lower()) if unicodedata.category(c) != "Mn").replace("ς", "σ").strip(" .,")
 
 
-# a spot reserved for one person's car (Ρ-72 for "του Π.Μ.", a plate), or a request, abolition, move-away: not a public spot
-PERSONAL = re.compile(r"αποκλειστικ|αίτηση|αιτηση|κατάργηση|καταργηση|αριθμ[όο] κυκλοφορ|\b[Α-Ω]\.[Α-Ω]\.|ρ-?72|ανάκληση|ανακληση|μεταφορ[άα]ς? .*από", re.I)
+# Most decisions give a spot to one person (outside the home, for one car: "παραχώρηση … της κ. …", a plate): not public, left
+# out. A public spot is created, set or laid out (δημιουργία, καθορισμός, χωροθέτηση, καθιέρωση, a "γενική θέση").
+PERSONAL = re.compile(r"αποκλειστικ|ατομικ|παραχ[ωώ]ρ|αίτη|αιτη|κατ[αά]ργ|αφα[ιί]ρεσ|αν[αά]κλησ|μη έγκριση|ή μη|εξ[εέ]ταση|επικαιροπο|"
+                      r"κυκλ|[οό]χημ|αυτοκ[ιί]νητ|του κ\.|της κ\.|\bκας\b|\bκου\b|δικαιο[υύ]χ|οικ[ιί]α|κατοικ|ρ-?72|μεταφορ|\b[Α-Ω]\. ?[Α-Ω]\.", re.I)
+PUBLIC = re.compile(r"δημιουργ|καθορισμ|χωροθ[εέ]τ|καθι[εέ]ρωσ|γενικ|διαμ[οό]ρφωσ|δημιουρ", re.I)
+NAMED = re.compile(r"(?:οδ[όο]ύ?|οδών|παρόδου|λεωφόρου|λεωφ\.)\s+([Α-ΩΆ-Ώ][^,()«»\"]{2,40}?)(?=\s+(?:στην|στη|στο|στον|της|του|έναντι|έμπροσθεν|μπροστά|και|ως|$)|[,.()«»\"]|$)")
 STREET = re.compile(r"(?:οδ[όο]ύ?|οδών|παρόδου|λεωφόρου|λεωφ\.|πλατείας)\s+([^,()«»\"]+?)\s+(?:αρ\.?\s*)?(\d{1,4}[Α-Ωα-ωA-Za-z]?)(?=$|[\s,.)»\"-])")
 
 
@@ -104,36 +110,75 @@ def place(maps):
         c = line.split("\t")
         if c[0] in ("city", "town", "village", "suburb") and c[3]:
             settlements.append((fold(c[3]), float(c[1]), float(c[2]), c[0], c[3]))
+    streets = {}
+    path = os.path.join(maps, "greece-streets.tsv")
+    if os.path.isfile(path):
+        for line in open(path, encoding="utf-8"):
+            c = line.rstrip("\n").split("\t")
+            if len(c) == 3:
+                streets.setdefault(fold(c[0]), []).append((float(c[1]), float(c[2])))
     addresses = {}
     for line in open(os.path.join(maps, "greece-addresses.tsv"), encoding="utf-8"):
         c = line.rstrip("\n").split("\t")
         addresses.setdefault((fold(c[2]), c[3].lower().replace(" ", "")), []).append((float(c[0]), float(c[1])))
-    placed, check, skipped = [], [], 0
+    placed, check, skipped, seen = [], [], 0, set()
+
+    def street_at(street, town):
+        """The street's piece nearest the town's middle, within 12 km: by its name, else by a name holding its words
+        ("Πατριάρχου Κυρίλλου" in "Πατριάρχου Κυρίλλου Ε΄"), else by its last word when that is long and sure."""
+        def near(names):
+            pieces = [p for n in names for p in streets.get(n, []) if abs(p[0] - town[1]) < 0.11 and abs(p[1] - town[2]) < 0.14]
+            return min(pieces, key=lambda p: (p[0] - town[1]) ** 2 + (p[1] - town[2]) ** 2) if pieces else None
+        f = fold(street)
+        hit = near([f])
+        if hit or len(f) < 4:
+            return hit
+        words = [w for w in re.split(r"[\s.]+", f) if len(w) >= 3]
+        local = [n for n in local_names(town) if all(w in n for w in words)]
+        if not local and words and len(words[-1]) >= 6:
+            local = [n for n in local_names(town) if words[-1] in n.split()]
+        return near(local[:3]) if 0 < len(local) <= 3 else None
+
+    town_names = {}
+    def local_names(town):
+        if town[4] not in town_names:
+            town_names[town[4]] = [n for n, ps in streets.items() if any(abs(p[0] - town[1]) < 0.11 and abs(p[1] - town[2]) < 0.14 for p in ps)]
+        return town_names[town[4]]
     for line in open(os.path.join(maps, "diavgeia-amea.tsv"), encoding="utf-8"):
         org, label, date, ada, subj = line.rstrip("\n").split("\t")
-        if PERSONAL.search(subj):
+        # only the municipalities' own (a region's review of one repeats it), only public spots
+        if not label.startswith("ΔΗΜΟΣ") or PERSONAL.search(subj) or not PUBLIC.search(subj):
             skipped += 1
             continue
         town = town_of(label, settlements)
+        if town is None:
+            continue  # nowhere to show it
         hits = list(STREET.finditer(subj))
         if not hits:
-            check.append((label, date, "", subj, LINK + ada)); continue
+            # a street without a number: shown at the street; nothing named: at the town
+            named = NAMED.search(subj)
+            street = named.group(1).strip() if named else ""
+            at = street_at(street, town) if street else None
+            check.append((ada, (at or town[1:3])[0], (at or town[1:3])[1], town[4], f"{street}, {town[4]}" if at else town[4], subj, LINK + ada, date)); continue
         for m in hits:
             street, number = m.group(1).strip(), m.group(2).lower()
-            near = [p for p in addresses.get((fold(street), number), [])
-                    if town is None or abs(p[0] - town[1]) < 0.15 and abs(p[1] - town[2]) < 0.2]
+            near = [p for p in addresses.get((fold(street), number), []) if abs(p[0] - town[1]) < 0.15 and abs(p[1] - town[2]) < 0.2]
+            address = f"{street} {m.group(2)}, {town[4]}"
+            if (fold(address)) in seen:
+                continue  # the same spot again (a correction, a renewal)
+            seen.add(fold(address))
             if len(near) == 1 or (near and max(abs(a[0] - near[0][0]) + abs(a[1] - near[0][1]) for a in near) < 0.0005):
                 la, lo = near[0]
-                more = f"{street} {m.group(2)}, {town[4] if town else label}"
-                placed.append(f"disabled_parking\t{la:.6f}\t{lo:.6f}\tΑμεΑ parking\t\t{more}\t\t\t{LINK + ada}\t\t{label} ({date})\n")
+                placed.append(f"disabled_parking\t{la:.6f}\t{lo:.6f}\tΑμεΑ parking\t\t{address}\t\t\t{LINK + ada}\t\t{label} ({date})\n")
             else:
-                check.append((label, date, f"{street} {m.group(2)}", subj, LINK + ada))
+                at = street_at(street, town) or (town[1], town[2])
+                check.append((f"{ada}-{len(check)}", at[0], at[1], town[4], address, subj, LINK + ada, date))
     with open(os.path.join(maps, "greece-amea-diavgeia.tsv"), "w", encoding="utf-8") as f:
         f.writelines(placed)
-    with open(os.path.join(maps, "diavgeia-amea-check.tsv"), "w", encoding="utf-8") as f:
-        f.write("municipality\tdate\taddress\tsubject\tlink\n")
-        f.writelines("\t".join(r) + "\n" for r in check)
-    print(f"placed {len(placed)}, to check {len(check)}, personal/abolished/requests left out {skipped}", file=sys.stderr)
+    with open(os.path.join(maps, "greece-amea-check.tsv"), "w", encoding="utf-8") as f:
+        for r in check:
+            f.write(f"{r[0]}\t{r[1]:.6f}\t{r[2]:.6f}\t{r[3]}\t{r[4]}\t{r[5]}\t{r[6]}\t{r[7]}\n")
+    print(f"placed {len(placed)}, to check {len(check)}, left out (personal, requests, abolished, not a municipality) {skipped}", file=sys.stderr)
 
 
 if __name__ == "__main__":

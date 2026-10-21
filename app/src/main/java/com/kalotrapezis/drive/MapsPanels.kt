@@ -127,7 +127,8 @@ internal enum class MapsTab(val label: String, val icon: Int) {
 /** Saved: all places by emblem tab, or one list; lists with a name and an emoji, a long press to change one. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable internal fun FavoritesPanel(places: List<Place>, lists: List<PlaceList>, eopyy: List<Poi>, shown: String?, show: (String?) -> Unit, newList: () -> Unit,
-    editList: (PlaceList) -> Unit, distance: (Place) -> Double?, open: (Place) -> Unit, openPoi: (Poi) -> Unit) = MapsPanel {
+    editList: (PlaceList) -> Unit, distance: (Place) -> Double?, open: (Place) -> Unit, checks: List<AmeaCheck> = emptyList(),
+    openCheck: (AmeaCheck) -> Unit = {}, openPoi: (Poi) -> Unit) = MapsPanel {
     Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         FilterChip(shown == null, { show(null) }, label = { Text("All") }, colors = chipColors())
         lists.forEach { l ->
@@ -137,7 +138,25 @@ internal enum class MapsTab(val label: String, val icon: Int) {
         }
         // a list of the app's own: EOPYY's pharmacies, nearest first
         if (eopyy.isNotEmpty()) FilterChip(shown == "eopyy", { show("eopyy") }, label = { Text("⚕️ EOPYY pharmacies") }, colors = chipColors())
+        // the municipalities' ΑμεΑ spots to place by hand, nearest first
+        if (checks.isNotEmpty()) FilterChip(shown == "amea-check", { show("amea-check") }, label = { Text("♿ ΑμεΑ to place (${checks.size})") }, colors = chipColors())
         TextButton(onClick = newList) { Text("+ New list", color = Color.White) }
+    }
+    if (shown == "amea-check") {
+        LazyColumn { items(checks, key = { it.id }) { c ->
+            Row(Modifier.fillMaxWidth().clickable { openCheck(c) }.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("♿")
+                Column(Modifier.weight(1f)) {
+                    // the street when known, else what the decision says, without its common opening
+                    Text(if (',' in c.address) c.address else c.subject.replace(Regex("^.*?(στάθμευσης|στάθμευση)\\s+(ΑμεΑ|ΑΜΕΑ|για ΑμεΑ|για ΑΜΕΑ)?[,»\"]*\\s*", RegexOption.IGNORE_CASE), "")
+                        .ifBlank { c.subject }, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("${c.municipality} · ${c.date.take(4)}", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
+                }
+                distance(Place("", "", c.lat, c.lng))?.let { Text(metresText(it), style = MaterialTheme.typography.labelMedium) }
+            }
+        } }
+        return@MapsPanel
     }
     if (shown == "eopyy") {
         LazyColumn { items(eopyy) { p -> PoiRow(p, distance(p.place())) { openPoi(p) } } }

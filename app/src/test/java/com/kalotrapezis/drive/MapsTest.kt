@@ -324,3 +324,15 @@ class MapsEdgeCaseTest {
         assertTrue(problems.filter { "Exception" in it || "Error" in it }.joinToString("\n"), problems.none { "Exception" in it || "Error" in it })
     }
 }
+
+class MapsCheckTest {
+    @Test fun placingTakesItOffTheList() {
+        val root = Files.createTempDirectory("check").toFile()
+        File(root, MapsCheck.FILE).writeText("a1\t41.137\t24.891\tΞάνθη\tΠλάτωνος 44, Ξάνθη\tΔημιουργία θέσης\thttps://diavgeia.gov.gr/decision/view/a1\t2012-01-25\n" +
+            "b2\t41.139\t24.889\tΞάνθη\tΘερμοπυλών, Ξάνθη\tΔημιουργία θέσης\thttps://diavgeia.gov.gr/decision/view/b2\t2013-09-16\nbroken line\n")
+        assertEquals(listOf("a1", "b2"), MapsCheck.load(root).map { it.id })
+        assertEquals("Ξάνθη", MapsCheck.load(root).first().municipality)
+        MapsCheck.done(root, "a1")
+        assertEquals(listOf("b2"), MapsCheck.load(root).map { it.id })
+    }
+}

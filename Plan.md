@@ -1771,11 +1771,19 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       parking here" at the top, one tap. Not done: looking for them by eye in Google's imagery (its terms forbid taking data
       from it; its satellite pictures too coarse with cars on the spots, 21 Oct). Mapillary's street photos (CC-BY-SA) and
       their detected signs could give them lawfully; needs a Mapillary token (the user's account).
-- [~] ΑμεΑ spots from Διαύγεια (tools/maps-diavgeia.py, the open API, half a year at a time from 2012): Ξάνθη 59 decisions
-      ("δημιουργία θέσης στάθμευσης ΑΜΕΑ επί της οδού Πλάτωνος 44" …), Δράμα 44 (mostly exclusive Ρ-72 spots for named people
-      and their cars: personal, left out), Καβάλα none. Placing them: OSM has 440 house numbers in Ξάνθη and Δράμα, so only 2
-      of 34 addresses with a number are found. To do with the user: a checklist of the official addresses in the app, each
-      placed by him on the map (he knows the town), or another lawful geocoder.
+- [x] (maps-link session, 21 Oct night) ΑμεΑ spots from Διαύγεια, all of Greece (tools/maps-diavgeia.py; the user: "Continue the
+      same way for all over Greece add what are you are serten of and I will check (give links) the rest"): 6 061 decisions
+      2012–2026; 5 740 left out (a spot given to one person or car — most of them —, requests, abolitions, regions' reviews);
+      2 placed for sure by address (greece-amea-diavgeia.tsv: Βόλος, Ξάνθη); 223 public ones to place by hand
+      (greece-amea-check.tsv: Ξάνθη 49, Βόλος 37, Μυτιλήνη 19, Ρέθυμνο 13, Πειραιάς 12 …), 129 of them at their street
+      (greece-streets.tsv, 212 167 named road pieces), 94 at the town. In the app: Saved › "♿ ΑμεΑ to place (n)", nearest
+      first; a tap shows the street and the decision; a long press places it (a map addition with the decision's link),
+      "Not there" drops it; amea-checked.txt keeps the done ones on every device. OSM has too few house numbers to do more.
+      Also: favourites' markers at 22 dp (were 28); car times ×1.2 (Άγιος Λουκάς → Χαλκίδα 30 min); routing errors in
+      plain words; map additions shown at once (a bug: they waited for a reopen); an edge-case route battery (MapsEdgeCaseTest:
+      ferries, bridges, islands, mountains, one-ways, outside Greece, at sea — no crash, sensible times). The user's Takeout:
+      18 favourites given their emblem (beaches, cafés, parkings, doctors…), 4 public additions (2 ΑμεΑ spots in Ναύπλιο,
+      Παραλία Δρεπάνου, River Cafe, a parking in Ξάνθη) — waiting for a device on USB (scratchpad emblems/, public-additions.tsv).
 - [ ] Tolls: GraphHopper's toll encoded value is not in the graph; with it (a rebuild) a "no tolls" profile, and the routes
       marked with tolls. The user stopped a rebuild on 21 Oct (distance influence 30 for the car); to be asked again.
 - [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane

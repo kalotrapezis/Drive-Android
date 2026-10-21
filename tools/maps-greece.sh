@@ -63,13 +63,15 @@ fi
 # the offline search list: towns and the kinds of place Search's pills find (tools/maps-places.py)
 if [ ! -f greece-addresses.tsv ] || [ greece-latest.osm.pbf -nt greece-places.tsv ]; then
   [ -x venv/bin/python ] || { python3 -m venv venv && venv/bin/pip install -q osmium; }
-  venv/bin/python -I "$HERE/maps-places.py" greece-latest.osm.pbf greece-places.tsv greece-addresses.tsv
+  venv/bin/python -I "$HERE/maps-places.py" greece-latest.osm.pbf greece-places.tsv greece-addresses.tsv greece-streets.tsv
 fi
 
 # EOPYY's own pharmacies, from EOPYY's site (tools/maps-eopyy.py); a failed fetch keeps the last list
 venv/bin/python -I "$HERE/maps-eopyy.py" greece-eopyy.tsv || echo "EOPYY's list not refreshed"
 # cities' own disabled (ΑμεΑ) parking spots from data.gov.gr (tools/maps-amea.py); a failed fetch keeps the last list
 venv/bin/python -I "$HERE/maps-amea.py" greece-amea.tsv || echo "The ΑμεΑ spots not refreshed"
+# the ΑμεΑ spots in the municipalities' decisions (Διαύγεια): the sure ones placed, the rest a list to place by hand
+python3 -I "$HERE/maps-diavgeia.py" . || echo "Διαύγεια not refreshed"
 
 bin/pmtiles show greece.pmtiles | head -20
 ls -lh "$OUT"

@@ -258,6 +258,8 @@ internal object MapsSearch {
     const val EOPYY = "greece-eopyy.tsv"
     /** Cities' own disabled parking spots from data.gov.gr (tools/maps-amea.py), kind disabled_parking. */
     const val AMEA = "greece-amea.tsv"
+    /** ΑμεΑ spots from the municipalities' decisions on Διαύγεια, placed by their address (tools/maps-diavgeia.py). */
+    const val AMEA_DECISIONS = "greece-amea-diavgeia.tsv"
     /** Places put into the map's own data by hand (the user's schools, 21 Oct: "keep them as system locations"). */
     const val ADDED = "added-places.tsv"
     data class Kind(val key: String, val label: String, val emoji: String, val emblem: String)
@@ -317,7 +319,7 @@ internal object MapsSearch {
 
     /** The search list in [root] with EOPYY's, read once (about 140 000 places) and kept while the files are the same. */
     @Synchronized fun load(root: File): List<Poi> {
-        val files = listOf(File(root, FILE), File(root, EOPYY), File(root, AMEA), File(root, ADDED)).filter { it.isFile }
+        val files = listOf(File(root, FILE), File(root, EOPYY), File(root, AMEA), File(root, AMEA_DECISIONS), File(root, ADDED)).filter { it.isFile }
         if (files.isEmpty()) return emptyList()
         val stamp = files.sumOf { it.lastModified() }
         cache?.let { (path, at, all) -> if (path == root.path && at == stamp) return all }
@@ -672,4 +674,31 @@ internal class StillDetector(private val windowNanos: Long = 2_000_000_000L, pri
         val mean = sizes.average()
         return Math.sqrt(sizes.sumOf { (it - mean) * (it - mean) } / sizes.size) < threshold
     }
+}
+
+/**
+ * ΑμεΑ spots in the municipalities' decisions that could not be placed from their address (greece-amea-check.tsv, made by
+ * tools/maps-diavgeia.py), for the user to place by hand (the user, 21 Oct: "add what are you are serten of and I will
+ * check (give links) the rest"). One placed or skipped is written to amea-checked.txt (its id), so every device leaves it.
+ */
+internal data class AmeaCheck(val id: String, val lat: Double, val lng: Double, val municipality: String, val address: String,
+    val subject: String, val link: String, val date: String)
+
+internal object MapsCheck {
+    const val FILE = "greece-amea-check.tsv"
+    const val DONE = "amea-checked.txt"
+
+    fun load(root: File): List<AmeaCheck> {
+        val f = File(root, FILE)
+        if (!f.isFile) return emptyList()
+        val done = File(root, DONE).takeIf { it.isFile }?.readLines()?.map { it.trim() }?.toSet().orEmpty()
+        return f.readLines().mapNotNull { line ->
+            val c = line.split('\t')
+            if (c.size < 8) return@mapNotNull null
+            val lat = c[1].toDoubleOrNull() ?: return@mapNotNull null; val lng = c[2].toDoubleOrNull() ?: return@mapNotNull null
+            AmeaCheck(c[0], lat, lng, c[3], c[4], c[5], c[6], c[7])
+        }.filter { it.id !in done }
+    }
+
+    fun done(root: File, id: String) { root.mkdirs(); File(root, DONE).appendText("$id\n") }
 }

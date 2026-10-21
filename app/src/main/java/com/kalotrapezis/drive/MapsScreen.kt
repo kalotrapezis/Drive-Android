@@ -40,6 +40,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -279,6 +280,9 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var lastReal by remember { mutableStateOf<Location?>(null) } // the last fix from the GPS itself
     // after parking: "was it an ΑμεΑ spot?", one tap puts it on the map (the user, 21 Oct: the spots he knows in Καβάλα and Ξάνθη)
     var askAmea by remember { mutableStateOf<Pair<Location, Long>?>(null) }
+    // a municipality's ΑμεΑ spot being placed by hand: the next long press puts it there
+    var checks by remember { mutableStateOf(runCatching { MapsCheck.load(root) }.getOrDefault(emptyList())) }
+    var placing by remember { mutableStateOf<AmeaCheck?>(null) }
     var lastRealAt by remember { mutableStateOf(0L) } // when it came, by this device's clock (a fix's own stamp can be empty)
     var reckoning by remember { mutableStateOf(false) } // no signal: going on along the route at the last speed
     var address by remember { mutableStateOf<String?>(null) } // of the place shown
@@ -549,7 +553,18 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconSize(0.9f)))
                 map.addOnCameraIdleListener { center = map.cameraPosition.target ?: center }
                 map.addOnMapLongClickListener { at ->
-                    if (nav == null) editing = Place("", "", at.latitude, at.longitude)
+                    val c = placing
+                    if (c != null) {
+                        placing = null
+                        scope.launch {
+                            withContext(Dispatchers.IO) { runCatching {
+                                MapsShare.add(root, Poi("disabled_parking", at.latitude, at.longitude, "ΑμεΑ parking", more = c.address, web = c.link, note = "${c.municipality} (${c.date})"))
+                                MapsCheck.done(root, c.id)
+                            } }
+                            reloadAdded(); checks = withContext(Dispatchers.IO) { MapsCheck.load(root) }
+                        }
+                        Toast.makeText(context, "ΑμεΑ spot placed: ${c.address}", Toast.LENGTH_SHORT).show()
+                    } else if (nav == null) editing = Place("", "", at.latitude, at.longitude)
                     true
                 }
                 // a tap: my place, a search result, a place of the map's own, or a dropped pin (the user: "how do I start
@@ -600,8 +615,8 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         map.locationComponent.renderMode = RenderMode.COMPASS
         here?.let { map.locationComponent.forceLocationUpdate(it) }
     }
-    // the added ones, but not where one of my places stands on it (the five work schools are both)
-    LaunchedEffect(mapRef, places) {
+    // the added ones, but not where one of my places stands on it (the five work schools are both); again when one is added
+    LaunchedEffect(mapRef, places, added) {
         (mapRef?.style?.getSource("added") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(added
             .filter { a -> places.none { metresBetween(it.lat, it.lng, a.lat, a.lng) < 30 } }
             .map { a -> Feature.fromGeometry(Point.fromLngLat(a.lng, a.lat)).apply { addStringProperty("name", a.title); addStringProperty("icon", markerOf(a.kind)) } }))
@@ -830,6 +845,26 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     }) { Text("Stop") }
                 }
               }
+            } else if (placing != null) {
+                val c = placing!!
+                Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("♿ ${c.address.ifEmpty { c.municipality }}", style = MaterialTheme.typography.titleMedium)
+                        Text(c.subject, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                            color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f))
+                        Text("Long-press where the spot is (the map shows the street, not the house).", style = MaterialTheme.typography.bodyMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(c.link))) } }) {
+                                Text("Decision", color = androidx.compose.ui.graphics.Color.White) }
+                            OutlinedButton(onClick = {
+                                // not to be found: off the list on every device
+                                placing = null
+                                scope.launch { withContext(Dispatchers.IO) { runCatching { MapsCheck.done(root, c.id) } }; checks = withContext(Dispatchers.IO) { MapsCheck.load(root) } }
+                            }) { Text("Not there", color = androidx.compose.ui.graphics.Color.White) }
+                            OutlinedButton(onClick = { placing = null }) { Text("Later", color = androidx.compose.ui.graphics.Color.White) }
+                        }
+                    }
+                }
             } else if (preview != null) {
                 val pv = preview!!
                 RoutesPanel(pv.routes, previewTolls.map { it.size }, pv.chosen, { i -> preview = pv.copy(chosen = i) }, { preview = null; selected = pv.target },
@@ -881,10 +916,16 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                         mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), if (MapsSearch.settlement(p.kind)) 13.0 else 16.5))
                     }
                     MapsTab.Favorites -> FavoritesPanel(places, lists, remember(all, here) { all.filter { it.kind == "eopyy" }.sortedBy { p -> away(p.lat, p.lng) ?: 0.0 } },
-                        shownList, { shownList = it }, { listEditing = PlaceList("", "", "❤️") }, { listEditing = it }, { away(it.lat, it.lng) }, { p ->
-                        selected = p; detail = MapsSearch.near(all, p.lat, p.lng, p.name, 25.0); tab = null
-                        mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), 16.0))
-                    }) { p ->
+                        shownList, { shownList = it }, { listEditing = PlaceList("", "", "❤️") }, { listEditing = it }, { away(it.lat, it.lng) },
+                        open = { p ->
+                            selected = p; detail = MapsSearch.near(all, p.lat, p.lng, p.name, 25.0); tab = null
+                            mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), 16.0))
+                        },
+                        checks = remember(checks, here) { checks.sortedBy { c -> away(c.lat, c.lng) ?: 0.0 } },
+                        openCheck = { c ->
+                            placing = c; tab = null; selected = null
+                            mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(c.lat, c.lng), 17.0))
+                        }) { p ->
                         detail = p; selected = p.place(); tab = null
                         mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), 16.5))
                     }

@@ -11,7 +11,9 @@ kind is one of KINDS' keys below (the phone's pills) or a settlement (city, town
 at the mean of their nodes; relations are left out (few of these kinds are relations).
 A second file, the addresses (the user, 21 Oct: "To click on a spot show the address the number the postcode"), one line
 for each thing with a house number: lat <TAB> lng <TAB> street <TAB> number <TAB> postcode <TAB> town.
-Usage: maps-places.py greece-latest.osm.pbf greece-places.tsv greece-addresses.tsv   (needs pyosmium; tools/maps-greece.sh installs it)
+A third, the streets: name <TAB> lat <TAB> lng, the middle of each named road's piece, so a street named in a decision (an
+ΑμεΑ spot from Διαύγεια, tools/maps-diavgeia.py) can be shown even where its house numbers are not known.
+Usage: maps-places.py greece-latest.osm.pbf greece-places.tsv greece-addresses.tsv [greece-streets.tsv]   (needs pyosmium)
 """
 import sys
 import osmium
@@ -49,6 +51,9 @@ KINDS = {
 PLACES = {"city", "town", "village", "suburb", "neighbourhood", "hamlet", "island", "islet", "locality"}
 
 
+ROADS = {"primary", "secondary", "tertiary", "unclassified", "residential", "living_street", "pedestrian", "service", "trunk"}
+
+
 def kind(tags):
     if tags.get("place") in PLACES and "name" in tags:
         return tags["place"]
@@ -63,10 +68,11 @@ def clean(s):
 
 
 class Handler(osmium.SimpleHandler):
-    def __init__(self, out, addresses):
+    def __init__(self, out, addresses, streets=None):
         super().__init__()
         self.out = out
         self.addresses = addresses
+        self.streets = streets
         self.count = 0
         self.addressed = 0
 
@@ -95,6 +101,11 @@ class Handler(osmium.SimpleHandler):
             self.write(k, n.location.lat, n.location.lon, n.tags)
 
     def way(self, w):
+        if self.streets is not None and "highway" in w.tags and "name" in w.tags and w.tags["highway"] in ROADS:
+            pts = [(n.lat, n.lon) for n in w.nodes if n.location.valid()]
+            if pts:
+                mid = pts[len(pts) // 2]
+                self.streets.write(f"{clean(w.tags['name'])}\t{mid[0]:.6f}\t{mid[1]:.6f}\n")
         k = kind(w.tags)
         if k in PLACES:
             k = None
@@ -109,10 +120,13 @@ class Handler(osmium.SimpleHandler):
 
 
 if __name__ == "__main__":
-    with open(sys.argv[2] + ".part", "w", encoding="utf-8") as out, open(sys.argv[3] + ".part", "w", encoding="utf-8") as addresses:
-        h = Handler(out, addresses)
-        h.apply_file(sys.argv[1], locations=True)
     import os
+    streets = open(sys.argv[4] + ".part", "w", encoding="utf-8") if len(sys.argv) > 4 else None
+    with open(sys.argv[2] + ".part", "w", encoding="utf-8") as out, open(sys.argv[3] + ".part", "w", encoding="utf-8") as addresses:
+        h = Handler(out, addresses, streets)
+        h.apply_file(sys.argv[1], locations=True)
     os.replace(sys.argv[2] + ".part", sys.argv[2])
     os.replace(sys.argv[3] + ".part", sys.argv[3])
+    if streets:
+        streets.close(); os.replace(sys.argv[4] + ".part", sys.argv[4])
     print(f"{h.count} places, {h.addressed} addresses")

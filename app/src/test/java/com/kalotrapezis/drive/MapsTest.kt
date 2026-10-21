@@ -74,3 +74,30 @@ class MapsProgressTest {
         assertTrue(progress(r, cum, 37.9715, 23.73).first.off > 800)
     }
 }
+
+class MapsImportTest {
+    @Test fun takeout() {
+        val csv = "Title,Note,URL,Tags,Comment\n" +
+            "\"Ταβέρνα, \"\"Ο Νίκος\"\"\",,https://www.google.com/maps/place/x/data=!4m2!3m1!1s0x0:0x1!3d41.1381!4d24.8864,,\n" +
+            "Φαρμακείο Χ,note,https://www.google.com/maps/place/Farmakeio/data=!4m2!3m1!1s0x14:0x22,,\n" +
+            "Dropped,,\"https://www.google.com/maps/search/40.64,+22.94\",,\n"
+        val es = MapsImport.csv("Want to go", csv)
+        assertEquals(3, es.size)
+        assertEquals("Ταβέρνα, \"Ο Νίκος\"", es[0].name); assertEquals(41.1381, es[0].lat!!, 1e-9)
+        assertNull(es[1].lat); assertEquals("note", es[1].note)
+        assertEquals(22.94, es[2].lng!!, 1e-9)
+        val gj = """{"type":"FeatureCollection","features":[{"geometry":{"coordinates":[23.7257,37.9715],"type":"Point"},"properties":{"location":{"name":"Acropolis","address":"Athens"}}},
+            {"geometry":{"coordinates":[0,0],"type":"Point"},"properties":{"google_maps_url":"http://maps.google.com/?cid=1","location":{"name":"Nowhere"}}}]}"""
+        val g = MapsImport.geojson("Starred places", gj)
+        assertEquals(2, g.size); assertEquals(37.9715, g[0].lat!!, 1e-9); assertNull(g[1].lat)
+        // into Tetra: the unplaced one found by its exact name in the search list, the other missed
+        val root = Files.createTempDirectory("import").toFile()
+        val r = MapsImport.apply(root, listOf(Poi("pharmacy", 41.13, 24.88, "Φαρμακείο Χ")), es + g)
+        assertEquals(4, r.places); assertEquals(listOf("Nowhere (Starred places)"), r.missed)
+        assertEquals(setOf("Want to go", "Starred places"), MapsFiles.lists(root).map { it.name }.toSet())
+        assertEquals("🚩", MapsFiles.lists(root).first { it.name == "Want to go" }.emoji)
+        // a second import adds nothing new
+        assertEquals(4, MapsImport.apply(root, emptyList(), es.take(1) + g.take(1)).places + 2)
+        assertEquals(4, MapsFiles.places(root).size)
+    }
+}

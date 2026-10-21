@@ -23,7 +23,7 @@ import java.io.File
 import java.util.Locale
 
 /** One leg of a route's spoken and shown directions; [at] is the index in [Route.points] where it begins. */
-internal data class Step(val text: String, val sign: Int, val metres: Double, val at: Int, val street: String)
+internal data class Step(val text: String, val sign: Int, val metres: Double, val at: Int, val street: String, val ref: String = "")
 
 internal data class Route(val mode: String, val lats: DoubleArray, val lngs: DoubleArray, val metres: Double, val millis: Long, val steps: List<Step>)
 
@@ -82,7 +82,8 @@ internal object MapsRouting {
         val tr = gh.translationMap.getWithFallBack(locale)
         var at = 0
         val steps = best.instructions.map { ins ->
-            Step(ins.getTurnDescription(tr), ins.sign, ins.distance, at, ins.name.orEmpty()).also { at += ins.points.size() }
+            Step(ins.getTurnDescription(tr), ins.sign, ins.distance, at, ins.name.orEmpty(), (ins.extraInfoJSON["street_ref"] as? String).orEmpty())
+                .also { at += ins.points.size() }
         }
         val pts = best.points
         return Route(mode, DoubleArray(pts.size()) { pts.getLat(it) }, DoubleArray(pts.size()) { pts.getLon(it) }, best.distance, best.time, steps)

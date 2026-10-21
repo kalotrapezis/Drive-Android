@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds Tetra's offline map of Greece on the computer (Plan.md § Maps): the Protomaps basemap cut to Greece's border
 # (greece.pmtiles — one file MapLibre opens on Android and, later, on the desktop) and Geofabrik's OSM extract of Greece
-# (greece-latest.osm.pbf), and from it the routing graph for car, foot and bike (greece-gh/, GraphHopper 10.2).
+# (greece-latest.osm.pbf), and from it the routing graph for car, foot, bike and wheelchair (greece-gh/, GraphHopper 10.2)
+# and the search list and addresses (greece-places.tsv, greece-addresses.tsv).
 # Long and heavy: ~0.5 GB + 0.35 GB of downloads, then several minutes and ~4 GB of memory for the graph.
 # Usage: tools/maps-greece.sh [out-dir]   (default ~/Tetra-maps; MAXZOOM=15 by default)
 set -euo pipefail
@@ -58,6 +59,15 @@ if [ ! -f greece-gh/properties ] || [ "${REBUILD:-0}" = 1 ]; then
   rm -f greece-gh.new/gh.lock
   rm -rf greece-gh.old; [ -d greece-gh ] && mv greece-gh greece-gh.old; mv greece-gh.new greece-gh; rm -rf greece-gh.old
 fi
+
+# the offline search list: towns and the kinds of place Search's pills find (tools/maps-places.py)
+if [ ! -f greece-addresses.tsv ] || [ greece-latest.osm.pbf -nt greece-places.tsv ]; then
+  [ -x venv/bin/python ] || { python3 -m venv venv && venv/bin/pip install -q osmium; }
+  venv/bin/python -I "$HERE/maps-places.py" greece-latest.osm.pbf greece-places.tsv greece-addresses.tsv
+fi
+
+# EOPYY's own pharmacies, from EOPYY's site (tools/maps-eopyy.py); a failed fetch keeps the last list
+venv/bin/python -I "$HERE/maps-eopyy.py" greece-eopyy.tsv || echo "EOPYY's list not refreshed"
 
 bin/pmtiles show greece.pmtiles | head -20
 ls -lh "$OUT"

@@ -1691,8 +1691,24 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
 
 - [~] (maps-link session, 21 Oct) 1. Greece offline map (512 MB at zoom 15, region polygon), my location, map management (packages,
       size, date, delete to Trash); `tools/maps-greece.sh` makes the file on the computer.
-- [ ] 2. Saved places (name, SVG icon, list) as files; Home's Maps group double size with 6 place slots; Google Takeout import.
-- [ ] 3. Offline search.
+- [x] (maps-link session, 21 Oct) 2. Saved places (name, emblem, lists) as files; Home's Maps group double size with place slots; Google Takeout import.
+- [x] (maps-link session, 21 Oct) 3. Offline search, the bottom island, places' pages, lists (the user, 21 Oct: "an Island
+      at the bottom with navigation,favorites, search … make lists with names and emojes … nearby lcations in an area like
+      Google Maps … restorants and pharmases and supermarkets or petrol stations or charging stations add disability parking
+      … button pills"; "If I click touch on a place there is no info page"; "To click on a spot show the address the number
+      the postcode"; "the EOpYY farmacies … as a list as well as a pill"; schools "from kindengarden to Highschools"):
+      tools/maps-places.py makes greece-places.tsv (122 834 towns and places of 22 kinds, with hours, phone, website,
+      wheelchair) and greece-addresses.tsv (168 778 addresses); tools/maps-eopyy.py takes EOPYY's 39 pharmacies from
+      eopyy.gov.gr (with their map positions). Search: words (accent-blind, Greek or English names) or a pill, nearest the
+      map's middle first, as dots on the map; the user's accessible places count as disabled parking. Saved: all places by
+      emblem, lists with a name and an emoji (long-press to change), EOPYY's list built in. Directions: Car/Walk(Roll)/Bike,
+      "Where to?", Home's places and the car. A tap on the map: my place, a result, a place of the map's own (its page from
+      the list), or a dropped pin with the nearest address; the page has the address, hours, phone, website, wheelchair,
+      directions, Save (with lists), and Google Maps online for reviews and photos. Top left the road I am on with its code
+      (EO1, A2), top right the next turn in a small window. Home's card 12 slots on a tablet (6 a row), 6 on a phone.
+      Google Takeout import in Settings › Maps (lists' CSVs and starred places; unplaced ones listed). Not done: sch.gr's
+      school register (its terms forbid reuse without permission; OSM's schools only, thin in places: 9 in Xanthi); Google
+      Maps' data is not copied.
 - [ ] 4. Routing (car, foot, bike), turn by turn, voice, the next turn in HyperIsland; reroute offline.
 - [ ] Later: the desktop app builds and refreshes the files monthly by itself; Maps on desktop Tetra; a `tetra-maps` skill.
 - [ ] Desktop Maps asks the phone where it is (the user, 21 Oct: "when I click the corent location or a rute is calculated it

@@ -177,8 +177,21 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var selected by remember { mutableStateOf<Place?>(null) }
     var editing by remember { mutableStateOf<Place?>(null) }
     var deleting by remember { mutableStateOf<Place?>(null) }
-    var showList by remember { mutableStateOf(false) }
-    var listTab by remember { mutableStateOf("All") }
+    var tab by remember { mutableStateOf<MapsTab?>(null) }
+    var query by remember { mutableStateOf("") }
+    var pill by remember { mutableStateOf<String?>(null) }
+    var navQuery by remember { mutableStateOf("") }
+    var navMode by remember { mutableStateOf("car") }
+    var shownList by remember { mutableStateOf<String?>(null) }
+    var lists by remember { mutableStateOf(MapsFiles.lists(root)) }
+    var listEditing by remember { mutableStateOf<PlaceList?>(null) }
+    var detail by remember { mutableStateOf<Poi?>(null) } // what the search list knows of the place shown
+    var all by remember { mutableStateOf<List<Poi>>(emptyList()) }
+    var center by remember { mutableStateOf(LatLng(38.4, 23.8)) }
+    var results by remember { mutableStateOf<List<Poi>>(emptyList()) }
+    var navResults by remember { mutableStateOf<List<Poi>>(emptyList()) }
+    var road by remember { mutableStateOf<Pair<String, String>?>(null) } // the road under me: name, code
+    var address by remember { mutableStateOf<String?>(null) } // of the place shown
     var here by remember { mutableStateOf<Location?>(null) }
     var live by remember { mutableStateOf(false) } // a fix came while the map is open (not Android's stored last one)
     var granted by remember { mutableStateOf(hasLocation(context)) }
@@ -273,6 +286,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         fast = if (loc.hasSpeed() && loc.speed > 11f) fast + 1 else 0
         if (fast == 3 && nav?.mode != "foot" && nav?.mode != "bike") unpark("driving")
         mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }?.forceLocationUpdate(loc)
+        road = roadAt(mapRef, loc)
         val n = nav ?: return
         val (p, i) = progress(n.route, n.cum, loc.latitude, loc.longitude, n.index)
         val car = n.mode == "car"
@@ -335,6 +349,24 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         startNav(p, p.mode)
     }
 
+    LaunchedEffect(Unit) { all = withContext(Dispatchers.IO) { runCatching { MapsSearch.load(root) }.onFailure { WriterLog.e("Maps: search list", it) }.getOrDefault(emptyList()) } }
+    // the user's own accessible places count as disabled parking (OSM knows few: none in Xanthi on 21 Oct)
+    fun mine(kind: String?) = if (kind == "disabled_parking") places.filter { it.icon == "accessible" }.map { Poi(kind, it.lat, it.lng, it.name, more = "Saved") } else emptyList()
+    LaunchedEffect(query, pill, center, all, places) {
+        results = withContext(Dispatchers.Default) { (mine(pill) + MapsSearch.search(all, query, center.latitude, center.longitude, pill)).let { r ->
+            if (pill == "disabled_parking") r.sortedBy { metresBetween(center.latitude, center.longitude, it.lat, it.lng) } else r } }
+    }
+    LaunchedEffect(selected, all) {
+        val s = selected ?: run { address = null; return@LaunchedEffect }
+        address = null
+        address = withContext(Dispatchers.IO) { runCatching { MapsAddresses.describe(root, all, s.lat, s.lng) }.getOrNull() }
+        // a dropped pin is named by its address
+        if (s.id.isEmpty() && detail == null && address != null && selected == s && (s.name == "Dropped pin" || s.name == road?.first)) selected = s.copy(name = address!!.substringBefore(","))
+    }
+    LaunchedEffect(navQuery, center, all) {
+        navResults = withContext(Dispatchers.Default) { MapsSearch.search(all, navQuery, center.latitude, center.longitude) }
+    }
+
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply { onCreate(Bundle()) }
@@ -375,15 +407,42 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     PropertyFactory.textFont(arrayOf("Noto Sans Medium")), PropertyFactory.textSize(13f), PropertyFactory.textOffset(arrayOf(0f, 1.3f)),
                     PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP), PropertyFactory.textColor("#FFFFFF"), PropertyFactory.textHaloColor("#1A237E"),
                     PropertyFactory.textHaloWidth(1.5f), PropertyFactory.textAllowOverlap(true)))
+                style.addSource(GeoJsonSource("results"))
+                style.addLayer(CircleLayer("results-dot", "results").withProperties(PropertyFactory.circleRadius(7f), PropertyFactory.circleColor("#F4511E"),
+                    PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(2f)))
+                map.addOnCameraIdleListener { center = map.cameraPosition.target ?: center }
                 map.addOnMapLongClickListener { at ->
                     if (nav == null) editing = Place("", "", at.latitude, at.longitude)
                     true
                 }
+                // a tap: my place, a search result, a place of the map's own, or a dropped pin (the user: "how do I start
+                // navigation if cllicking does not add a mark on the read?")
                 map.addOnMapClickListener { at ->
-                    val hit = map.queryRenderedFeatures(map.projection.toScreenLocation(at), "places-dot").firstOrNull()?.getStringProperty("id")
-                    selected = places.firstOrNull { it.id == hit }
-                    showList = false
-                    hit != null
+                    if (nav != null) return@addOnMapClickListener false
+                    val pt = map.projection.toScreenLocation(at)
+                    val box = android.graphics.RectF(pt.x - 24, pt.y - 24, pt.x + 24, pt.y + 24)
+                    val mineHit = map.queryRenderedFeatures(box, "places-dot").firstOrNull()?.getStringProperty("id")?.let { id -> places.firstOrNull { it.id == id } }
+                    val resultHit = map.queryRenderedFeatures(box, "results-dot").firstOrNull()?.let { f -> (f.geometry() as? Point)?.let { g ->
+                        results.minByOrNull { metresBetween(g.latitude(), g.longitude(), it.lat, it.lng) } } }
+                    val mapHit = map.queryRenderedFeatures(box, "pois").firstOrNull { it.geometry() is Point && it.hasProperty("name") }
+                    when {
+                        mineHit != null -> { selected = mineHit; detail = MapsSearch.near(all, mineHit.lat, mineHit.lng, mineHit.name, 25.0) }
+                        resultHit != null -> { detail = resultHit; selected = resultHit.place() }
+                        mapHit != null -> {
+                            val g = mapHit.geometry() as Point
+                            val name = mapHit.getStringProperty("name").orEmpty()
+                            val p = MapsSearch.near(all, g.latitude(), g.longitude(), name)
+                                ?: Poi(mapHit.getStringProperty("kind").orEmpty(), g.latitude(), g.longitude(), name)
+                            detail = p; selected = p.place()
+                        }
+                        else -> {
+                            val r = roadAtPoint(map, pt)
+                            detail = null
+                            selected = Place("", r?.first?.ifEmpty { null } ?: "Dropped pin", at.latitude, at.longitude)
+                        }
+                    }
+                    tab = null
+                    true
                 }
                 mapRef = map
             }
@@ -406,6 +465,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             Feature.fromGeometry(Point.fromLngLat(p.lng, p.lat)).apply { addStringProperty("id", p.id); addStringProperty("name", p.name) }
         }))
     }
+    LaunchedEffect(mapRef, results, tab, selected) {
+        val shown = if (tab == MapsTab.Search) results else emptyList()
+        val pin = selected?.takeIf { s -> s.id.isEmpty() }
+        (mapRef?.style?.getSource("results") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures((shown.map { Point.fromLngLat(it.lng, it.lat) } +
+            listOfNotNull(pin?.let { Point.fromLngLat(it.lng, it.lat) })).map { Feature.fromGeometry(it) }))
+    }
     LaunchedEffect(mapRef, nav?.route) {
         val src = mapRef?.style?.getSource("route") as? GeoJsonSource ?: return@LaunchedEffect
         val r = nav?.route
@@ -417,8 +482,8 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         mapView.keepScreenOn = nav != null
         onDispose { mapView.keepScreenOn = false }
     }
-    BackHandler(nav != null || selected != null || showList) {
-        when { showList -> showList = false; selected != null -> selected = null; else -> stopNav() }
+    BackHandler(nav != null || selected != null || tab != null) {
+        when { selected != null -> selected = null; tab != null -> tab = null; else -> stopNav() }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -430,60 +495,42 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 "and Local Sync brings them here into Tetra/Maps.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        // top: back, and (no directions running) the places list and where I am
+        // top left: back and the road I am on, with its code (the user, 21 Oct: "To the top left no title. info about the road the code")
         val n = nav
-        if (n == null) Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Island(R.drawable.ic_chevron_left, "Back", back)
-            Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                Text("Maps", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            val step = n?.let { nn -> nn.route.steps.getOrNull(((nn.p?.next ?: 1) - 1).coerceAtLeast(0)) }
+            val name = step?.street?.ifEmpty { null } ?: road?.first?.ifEmpty { null }
+            val code = step?.ref?.ifEmpty { null } ?: road?.second?.ifEmpty { null }
+            if (name != null || code != null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    code?.let { RoadCode(it) }
+                    name?.let { Text(it, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp)) }
+                }
             }
-            Box(Modifier.weight(1f))
+        }
+        // top right: the next turn in a small window (the user: "A small window will open at the top right to tell me what lane to take"), or P and where I am
+        if (n != null) NavBanner(n, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
+        else Row(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Island(R.drawable.ic_parking, "I parked here") {
                 val h = here
                 if (h == null || !live) Toast.makeText(context, if (granted) "Waiting for your location…" else "Location is off for Tetra.", Toast.LENGTH_SHORT).show()
                 else park(h, "the P button")
             }
-            Island(R.drawable.ic_view_list, "Saved places") { showList = !showList; selected = null }
             Island(R.drawable.ic_my_location, "Where I am") {
                 val h = here
                 if (h == null) Toast.makeText(context, if (granted) "Waiting for your location…" else "Location is off for Tetra.", Toast.LENGTH_SHORT).show()
                 else mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(h.latitude, h.longitude), 16.0))
             }
-        } else NavBanner(n, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp))
-
-        if (showList && n == null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge,
-            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 72.dp, end = 12.dp).widthIn(max = 340.dp).heightIn(max = 420.dp)) {
-            if (places.isEmpty()) Text("No saved places yet. Long-press the map to save one.", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
-            else Column {
-                // tabs: All, then each category that has places
-                val tabs = listOf("All") + Place.CATEGORIES.keys.filter { c -> places.any { Place.category(it.icon) == c } }
-                if (listTab !in tabs) listTab = "All"
-                if (tabs.size > 2) androidx.compose.material3.SecondaryScrollableTabRow(tabs.indexOf(listTab), edgePadding = 8.dp, containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                    contentColor = islandContentColor()) {
-                    tabs.forEach { c -> androidx.compose.material3.Tab(listTab == c, { listTab = c }, text = { Text(c) }) }
-                }
-            LazyColumn(Modifier.padding(vertical = 8.dp)) {
-                items(places.filter { listTab == "All" || Place.category(it.icon) == listTab }, key = { it.id }) { p ->
-                    Row(Modifier.fillMaxWidth().clickable {
-                        showList = false; selected = p
-                        mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), 16.0))
-                    }.padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(painterResource(placeIcon(p.icon)), contentDescription = null, modifier = Modifier.size(20.dp))
-                        Text(p.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (p.slot > 0) Text("Home ${p.slot}", style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-            }
-            }
         }
 
-        // bottom: the chosen place, directions running, or a hint
-        Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp).widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // bottom: directions running; or a place's page; or a panel and the island
+        Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp).widthIn(max = 560.dp).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             finding?.let { Pill(it) }
             if (pending != null && nav == null && finding == null) Pill(if (granted) "Waiting for your location…" else "Location is off for Tetra: directions need it.")
             val s = selected
-            // the road I am on: the street of the leg being driven (the user: "will I be able to see on what road I am on?")
-            n?.let { nn -> nn.route.steps.getOrNull(((nn.p?.next ?: 1) - 1).coerceAtLeast(0))?.street?.takeIf { it.isNotBlank() } }?.let { Pill(it) }
+            fun away(lat: Double, lng: Double) = here?.let { metresBetween(it.latitude, it.longitude, lat, lng) }
             if (n != null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
                 Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -503,30 +550,43 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                         if (n.mode == "car" && MapsPrefs.autoPark(context)) here?.let { park(it, "a car trip stopped") }
                     }) { Text("Stop") }
                 }
-            } else if (s != null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(painterResource(placeIcon(s.icon)), contentDescription = null)
-                        Column(Modifier.weight(1f)) {
-                            Text(s.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            here?.let { Text(metresText(metresBetween(it.latitude, it.longitude, s.lat, s.lng)) + " away", style = MaterialTheme.typography.bodySmall) }
-                        }
-                        IconButton(onClick = { editing = s }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
-                        IconButton(onClick = { deleting = s }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete") }
+            } else if (s != null) {
+                val saved = s.id.isNotEmpty() && places.any { it.id == s.id }
+                PlaceCard(s, detail, address, saved, away(s.lat, s.lng), rolling, lists, go = { m -> startNav(s, m) },
+                    save = { editing = s.copy(name = if (s.name == "Dropped pin") "" else s.name) },
+                    edit = { editing = s }, delete = { deleting = s }, close = { selected = null; detail = null })
+            } else if (mapFile.isFile) {
+                when (tab) {
+                    MapsTab.Search -> SearchPanel(query, { query = it }, pill, { pill = it }, results, { away(it.lat, it.lng) }, all.isNotEmpty()) { p ->
+                        detail = p; selected = p.place(); tab = null
+                        mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), if (MapsSearch.settlement(p.kind)) 13.0 else 16.5))
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Place.MODES.forEach { m ->
-                            Button(onClick = { startNav(s, m) }, modifier = Modifier.weight(1f)) {
-                                Icon(painterResource(modeIcon(m, rolling)), contentDescription = null, modifier = Modifier.size(18.dp)); Text(" " + modeLabel(m, rolling))
-                            }
-                        }
+                    MapsTab.Favorites -> FavoritesPanel(places, lists, remember(all, here) { all.filter { it.kind == "eopyy" }.sortedBy { p -> away(p.lat, p.lng) ?: 0.0 } },
+                        shownList, { shownList = it }, { listEditing = PlaceList("", "", "❤️") }, { listEditing = it }, { away(it.lat, it.lng) }, { p ->
+                        selected = p; detail = MapsSearch.near(all, p.lat, p.lng, p.name, 25.0); tab = null
+                        mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), 16.0))
+                    }) { p ->
+                        detail = p; selected = p.place(); tab = null
+                        mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), 16.5))
                     }
+                    MapsTab.Navigate -> NavigatePanel(navMode, { navMode = it }, rolling, navQuery, { navQuery = it }, navResults,
+                        MapsFiles.slots(places).filterNotNull() + places.filter { it.id == MapsFiles.PARKING }, { away(it.lat, it.lng) },
+                        { p -> tab = null; navQuery = ""; startNav(p.place(), navMode) }, { p -> tab = null; startNav(p, navMode) })
+                    null -> Unit
                 }
-            } else if (mapFile.isFile && places.isEmpty()) Pill("Long-press the map to save a place.")
+                MapsIsland(tab) { t -> tab = if (tab == t) null else t }
+            }
         }
     }
 
-    editing?.let { p -> PlaceDialog(p, places, { editing = null }) { saved ->
+    listEditing?.let { l -> ListDialog(l, { listEditing = null }, if (l.id.isEmpty()) null else ({
+        listEditing = null; if (shownList == l.id) shownList = null
+        scope.launch { withContext(Dispatchers.IO) { MapsFiles.deleteList(root, l) }; lists = withContext(Dispatchers.IO) { MapsFiles.lists(root) } }
+    })) { saved ->
+        listEditing = null
+        scope.launch { withContext(Dispatchers.IO) { runCatching { MapsFiles.saveList(root, saved) } }; lists = withContext(Dispatchers.IO) { MapsFiles.lists(root) }; shownList = saved.id }
+    } }
+    editing?.let { p -> PlaceDialog(p, places, lists, { editing = null }) { saved ->
         editing = null
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { MapsFiles.save(root, saved) } }
@@ -544,6 +604,27 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }) }
 }
 
+/** The road the map draws under [pt] (screen pixels): its name and code (A2, EO1…), from the map's own roads. */
+internal fun roadAtPoint(map: MapLibreMap, pt: android.graphics.PointF): Pair<String, String>? {
+    val ids = map.style?.layers.orEmpty().map { it.id }.filter { it.startsWith("roads_") && listOf("casing", "labels", "shields", "oneway", "rail", "runway", "taxiway", "pier").none { x -> x in it } }
+    if (ids.isEmpty()) return null
+    val f = map.queryRenderedFeatures(android.graphics.RectF(pt.x - 12, pt.y - 12, pt.x + 12, pt.y + 12), *ids.toTypedArray())
+        .firstOrNull { it.hasProperty("name") || it.hasProperty("ref") } ?: return null
+    val name = (f.getStringProperty("name:el")?.takeIf { it.isNotEmpty() } ?: f.getStringProperty("name")).orEmpty()
+    val ref = (if (f.hasProperty("ref")) f.getStringProperty("ref") else if (f.hasProperty("shield_text")) f.getStringProperty("shield_text") else null).orEmpty()
+    return (name to ref.substringBefore(';')).takeIf { it.first.isNotEmpty() || it.second.isNotEmpty() }
+}
+
+private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
+    map?.let { m -> runCatching { roadAtPoint(m, m.projection.toScreenLocation(LatLng(loc.latitude, loc.longitude))) }.getOrNull() }
+
+/** A road's code as on its signs: motorways green, the rest blue. */
+@Composable private fun RoadCode(code: String) = Surface(shape = MaterialTheme.shapes.small,
+    color = if (code.startsWith("A") || code.startsWith("Α")) androidx.compose.ui.graphics.Color(0xFF1B7F3B) else androidx.compose.ui.graphics.Color(0xFF1565C0)) {
+    Text(code, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White,
+        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+}
+
 @Composable private fun Island(icon: Int, label: String, click: () -> Unit) = Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
     IconButton(onClick = click) { Icon(painterResource(icon), contentDescription = label) }
 }
@@ -555,21 +636,22 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
 /** The next turn: its arrow, how far, and GraphHopper's words for it. */
 @Composable private fun NavBanner(n: Nav, modifier: Modifier) {
     val step = n.route.steps.getOrNull(n.p?.next ?: 0) ?: return
-    Surface(color = MAPS_COLOR, contentColor = androidx.compose.ui.graphics.Color.White, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.widthIn(max = 560.dp).fillMaxWidth()) {
-        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Surface(color = MAPS_COLOR, contentColor = androidx.compose.ui.graphics.Color.White, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.widthIn(max = 340.dp)) {
+        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             val turn = when (step.sign) { 1 -> 45f; 2 -> 90f; 3 -> 135f; 7 -> 20f; -1 -> -45f; -2 -> -90f; -3 -> -135f; -7 -> -20f; 8, -8, -98 -> 180f; else -> 0f }
             Icon(painterResource(if (step.sign == 4) R.drawable.ic_place else R.drawable.ic_navigation), contentDescription = null,
                 modifier = Modifier.size(40.dp).rotate(if (step.sign == 4) 0f else turn))
             Column(Modifier.weight(1f)) {
-                Text(n.p?.let { metresText(it.toNext) } ?: "", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(step.text, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(n.p?.let { metresText(it.toNext) } ?: "", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(step.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         }
     }
 }
 
 /** A place's name, icon, Home slot and how its Home tap goes; a new one (no id) gets its id here. */
-@Composable private fun PlaceDialog(p: Place, all: List<Place>, dismiss: () -> Unit, save: (Place) -> Unit) {
+@Composable private fun PlaceDialog(p: Place, all: List<Place>, lists: List<PlaceList>, dismiss: () -> Unit, save: (Place) -> Unit) {
+    var inLists by remember { mutableStateOf(p.lists.toSet()) }
     var name by remember { mutableStateOf(p.name) }
     var icon by remember { mutableStateOf(p.icon) }
     var slot by remember { mutableStateOf(p.slot) }
@@ -585,7 +667,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 Place.CATEGORIES.getValue(tab).forEach { i -> FilterChip(icon == i, { icon = i }, label = { Icon(painterResource(placeIcon(i)), contentDescription = i, modifier = Modifier.size(18.dp)) }) }
             }
             Text("On Home's Maps card", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilterChip(slot == 0, { slot = 0 }, label = { Text("No") })
                 (1..MapsFiles.SLOTS).forEach { n ->
                     val taken = all.firstOrNull { it.slot == n && it.id != p.id }
@@ -593,6 +675,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 }
             }
             all.firstOrNull { it.slot == slot && slot > 0 && it.id != p.id }?.let { Text("Takes slot $slot from ${it.name}.", style = MaterialTheme.typography.bodySmall) }
+            if (lists.isNotEmpty()) {
+                Text("In lists", style = MaterialTheme.typography.labelLarge)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    lists.forEach { l -> FilterChip(l.id in inLists, { inLists = if (l.id in inLists) inLists - l.id else inLists + l.id }, label = { Text("${l.emoji} ${l.name}".trim()) }) }
+                }
+            }
             Text("Its Home tap goes", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 val rolling = MapsPrefs.rolling(LocalContext.current)
@@ -601,7 +689,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             }
         } },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
-            save(p.copy(id = p.id.ifEmpty { MapsFiles.newId() }, name = name.trim(), icon = icon, slot = slot, mode = mode))
+            save(p.copy(id = p.id.ifEmpty { MapsFiles.newId() }, name = name.trim(), icon = icon, slot = slot, mode = mode, lists = lists.map { it.id }.filter { it in inLists }))
         }) { Text("Save") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }

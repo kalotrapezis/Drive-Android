@@ -1063,7 +1063,8 @@ private fun Home(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeArtCard("Maps", R.drawable.maps_art, { openMaps(null) }, Modifier.weight(1f), artSize = 76)
             Column(Modifier.weight(if (wide) 3f else 1.6f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                slots.chunked(3).forEach { row ->
+                // a tablet: all twelve, six a row; a phone: the first six, three a row (the user, 21 Oct: "very big on the tablet we can double them")
+                (if (wide) slots.chunked(6) else slots.take(MapsFiles.PHONE_SLOTS).chunked(3)).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         row.forEach { p ->
                             if (p == null) HomeTile("Add", R.drawable.ic_add, Color(0xFF9FA8DA).copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
@@ -1813,6 +1814,37 @@ private fun SettingsTab(
                 files?.forEach { (what, about) -> Text("$what — $about", style = MaterialTheme.typography.bodySmall) }
                 Text("Maps are made on the computer and come here with Local Sync, into Tetra/Maps: tools/maps-greece.sh downloads " +
                     "the newest map of Greece and builds the routing for it (an Update button in desktop Tetra is planned).", style = MaterialTheme.typography.bodySmall)
+                // Google Maps' saved places from Takeout (the user, 21 Oct: "be able to bring stuff I saved over")
+                val importScope = androidx.compose.runtime.rememberCoroutineScope()
+                var imported by remember { mutableStateOf<MapsImport.Result?>(null) }
+                var importing by remember { mutableStateOf(false) }
+                val pickTakeout = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+                    if (uri == null) return@rememberLauncherForActivityResult
+                    importing = true
+                    importScope.launch {
+                        val r = withContext(Dispatchers.IO) { runCatching {
+                            val name = mapsContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "import.zip"
+                            val bytes = mapsContext.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                            val root = MapsFiles.root(driveRoot())
+                            MapsImport.apply(root, MapsSearch.load(root), MapsImport.read(name, bytes))
+                        } }
+                        importing = false
+                        r.onSuccess { imported = it; WriterLog.i("Maps: imported ${it.places} places, ${it.missed.size} not placed") }
+                            .onFailure { WriterLog.e("Maps: import", it); Toast.makeText(mapsContext, "Could not read that file: ${it.message}", Toast.LENGTH_LONG).show() }
+                    }
+                }
+                Text("Import from Google Maps", style = MaterialTheme.typography.titleSmall)
+                Text("Your saved lists and starred places from Google Takeout (takeout.google.com › Saved and Maps (your places)): the .zip, or one list's .csv. " +
+                    "Each list becomes a list here; a place without its spot in the file is found by its name, the others are named for you to find.", style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(enabled = !importing, onClick = { pickTakeout.launch(arrayOf("application/zip", "text/csv", "text/comma-separated-values", "application/json", "*/*")) }) {
+                    Text(if (importing) "Importing…" else "Choose the file")
+                }
+                imported?.let { r -> androidx.compose.material3.AlertDialog(onDismissRequest = { imported = null }, title = { Text("Imported ${r.places} places") },
+                    text = { androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        item { Text("Into ${r.lists} lists." + if (r.missed.isEmpty()) "" else " These could not be placed — search for them in Maps and Save:", style = MaterialTheme.typography.bodyMedium) }
+                        items(r.missed.size) { i -> Text("• " + r.missed[i], style = MaterialTheme.typography.bodySmall) }
+                    } },
+                    confirmButton = { TextButton(onClick = { imported = null }) { Text("OK") } }) }
                 var mapTheme by remember { mutableStateOf(MapsPrefs.mapTheme(mapsContext)) }
                 Text("Map", style = MaterialTheme.typography.titleSmall)
                 Choices(listOf("light" to "Light", "dark" to "Dark"), mapTheme) { mapTheme = it; MapsPrefs.setMapTheme(mapsContext, it) }

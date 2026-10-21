@@ -1892,6 +1892,46 @@ private fun SettingsTab(
                             .onFailure { WriterLog.e("Maps: import", it); Toast.makeText(mapsContext, "Could not read that file: ${it.message}", Toast.LENGTH_LONG).show() }
                     }
                 }
+                // sharing: my places and the map's additions out as GeoJSON and in again (the user, 21 Oct: "μαζική εισαγωγή και εξαγωγή
+                // των προσωπικών ή των δημώσιων στειχείων για διαμηρασμό και εμπλούτευση του χάρτη κάθε χρήστη")
+                var exportWhat by remember { mutableStateOf<String?>(null) }
+                var shared by remember { mutableStateOf<MapsShare.Imported?>(null) }
+                val pickShared = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+                    if (uri == null) return@rememberLauncherForActivityResult
+                    importScope.launch {
+                        val r = withContext(Dispatchers.IO) { runCatching {
+                            MapsShare.import(MapsFiles.root(driveRoot()), mapsContext.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) })
+                        } }
+                        r.onSuccess { shared = it; WriterLog.i("Maps: imported $it") }
+                            .onFailure { WriterLog.e("Maps: import of a shared file", it); Toast.makeText(mapsContext, "Not a places file: ${it.message}", Toast.LENGTH_LONG).show() }
+                    }
+                }
+                Text("Share", style = MaterialTheme.typography.titleSmall)
+                Text("Your places and what you added to the map, as a GeoJSON file for another Tetra (or another map app); Import adds such a file's places and map additions to yours.",
+                    style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { exportWhat = "" }) { Text("Export") }
+                    OutlinedButton(onClick = { pickShared.launch(arrayOf("application/geo+json", "application/json", "*/*")) }) { Text("Import") }
+                }
+                exportWhat?.let { _ -> androidx.compose.material3.AlertDialog(onDismissRequest = { exportWhat = null }, title = { Text("Export") },
+                    text = { Text("What goes in the file?") },
+                    confirmButton = { Row {
+                        listOf("mine" to "My places", "map" to "Map additions", "both" to "Both").forEach { (k, label) -> TextButton(onClick = {
+                            exportWhat = null
+                            runCatching {
+                                val root = MapsFiles.root(driveRoot())
+                                val text = MapsShare.export(if (k == "map") emptyList() else MapsFiles.places(root), MapsFiles.lists(root), if (k == "mine") emptyList() else MapsSearch.added(root))
+                                val file = java.io.File(mapsContext.cacheDir, "share/tetra-places-${java.time.LocalDate.now()}.geojson").apply { parentFile?.mkdirs(); writeText(text) }
+                                val uri = androidx.core.content.FileProvider.getUriForFile(mapsContext, "${mapsContext.packageName}.files", file)
+                                mapsContext.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("application/geo+json").putExtra(Intent.EXTRA_STREAM, uri)
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share places"))
+                            }.onFailure { WriterLog.e("Maps: export", it); Toast.makeText(mapsContext, "Could not export: ${it.message}", Toast.LENGTH_LONG).show() }
+                        }) { Text(label) } }
+                    } },
+                    dismissButton = { TextButton(onClick = { exportWhat = null }) { Text("Cancel") } }) }
+                shared?.let { r -> androidx.compose.material3.AlertDialog(onDismissRequest = { shared = null }, title = { Text("Imported") },
+                    text = { Text("${r.places} places and ${r.added} map additions; ${r.skipped} already here or without a position.") },
+                    confirmButton = { TextButton(onClick = { shared = null }) { Text("OK") } }) }
                 Text("Import from Google Maps", style = MaterialTheme.typography.titleSmall)
                 Text("Your saved lists and starred places from Google Takeout: choose only Saved and Maps (your places) at takeout.google.com (the others, as YouTube and Maps, carry videos and photos), then the .zip here, or one list's .csv. " +
                     "Each list becomes a list here; a place without its spot in the file is found by its name, the others are named for you to find.", style = MaterialTheme.typography.bodySmall)

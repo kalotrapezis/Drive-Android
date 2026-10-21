@@ -183,7 +183,7 @@ internal fun modeLabelOf(mode: String, rolling: Boolean) = when (mode) { "foot" 
  * Maps for reviews and photos when online.
  */
 @Composable internal fun PlaceCard(place: Place, poi: Poi?, address: String?, saved: Boolean, metres: Double?, rolling: Boolean, lists: List<PlaceList>,
-    go: (String) -> Unit, save: () -> Unit, edit: () -> Unit, delete: () -> Unit, close: () -> Unit, nearby: () -> Unit) {
+    go: (String) -> Unit, save: () -> Unit, edit: () -> Unit, delete: () -> Unit, close: () -> Unit, remove: (() -> Unit)? = null, nearby: () -> Unit) {
     val context = LocalContext.current
     fun open(uri: String) = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
@@ -199,6 +199,8 @@ internal fun modeLabelOf(mode: String, rolling: Boolean) = when (mode) { "foot" 
                     IconButton(onClick = edit) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") }
                     IconButton(onClick = delete) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete") }
                 }
+                // one I added to the map: it can go again
+                remove?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Remove from the map") } }
                 IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close") }
             }
             // the place's own address when OSM has it, else the nearest one's
@@ -262,7 +264,7 @@ internal fun modeLabelOf(mode: String, rolling: Boolean) = when (mode) { "foot" 
 }
 
 /** The ways there to pick from: each its time, length and roads; Start goes by the chosen one (drawn bold). */
-@Composable internal fun RoutesPanel(routes: List<Route>, chosen: Int, choose: (Int) -> Unit, cancel: () -> Unit, start: () -> Unit) = MapsPanel {
+@Composable internal fun RoutesPanel(routes: List<Route>, tolls: List<Int>, chosen: Int, choose: (Int) -> Unit, cancel: () -> Unit, start: () -> Unit) = MapsPanel {
     routes.forEachIndexed { i, r ->
         val on = i == chosen
         Surface(shape = MaterialTheme.shapes.large, color = if (on) Color.White.copy(alpha = 0.18f) else Color.Transparent,
@@ -274,6 +276,10 @@ internal fun modeLabelOf(mode: String, rolling: Boolean) = when (mode) { "foot" 
                 Text(metresText(r.metres), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
                 Text(when (r.roads) { "motorway" -> "Motorway"; "main" -> "Main roads"; "track" -> "Tracks"; else -> "Local roads" },
                     style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                // tolls on it (OSM's toll stations on its line), or none (the user: "alternative routs with tolls or without")
+                // (OSM misses some ramp tolls: "No tolls" is said only for local roads)
+                tolls.getOrNull(i)?.let { k -> if (k > 0) Text("💶 $k", style = MaterialTheme.typography.labelMedium)
+                    else if (r.roads == "local") Text("No tolls", style = MaterialTheme.typography.labelMedium) }
                 if (i == 0) Text("Fastest", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FA8DA))
             }
         }

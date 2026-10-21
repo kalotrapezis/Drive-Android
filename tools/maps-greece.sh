@@ -68,6 +68,8 @@ fi
 
 # EOPYY's own pharmacies, from EOPYY's site (tools/maps-eopyy.py); a failed fetch keeps the last list
 venv/bin/python -I "$HERE/maps-eopyy.py" greece-eopyy.tsv || echo "EOPYY's list not refreshed"
+# cities' own disabled (ΑμεΑ) parking spots from data.gov.gr (tools/maps-amea.py); a failed fetch keeps the last list
+venv/bin/python -I "$HERE/maps-amea.py" greece-amea.tsv || echo "The ΑμεΑ spots not refreshed"
 
 bin/pmtiles show greece.pmtiles | head -20
 ls -lh "$OUT"

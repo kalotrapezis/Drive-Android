@@ -203,6 +203,24 @@ internal fun dueWarning(step: Int, toNext: Double, speed: Double, car: Boolean, 
 internal fun spokenDistance(m: Double, car: Boolean): Pair<Double, Boolean> =
     if (m >= 950) (Math.round(m / 500.0) * 0.5) to true else (Math.round(m / (if (car) 50.0 else 10.0)) * (if (car) 50.0 else 10.0)) to false
 
+/**
+ * The toll stations on route [r] (its [cum]ulative metres) and how far along it each is (the user, 21 Oct: "Do we know where
+ * the talls are to show them on the map as dots on active routs in a menu show the talls"): OSM's toll booths within 40 m
+ * of its line.
+ */
+internal fun tollsOn(r: Route, cum: DoubleArray, pois: List<Poi>): List<Pair<Poi, Double>> {
+    if (r.lats.isEmpty()) return emptyList()
+    val south = r.lats.min() - 0.01; val north = r.lats.max() + 0.01; val west = r.lngs.min() - 0.01; val east = r.lngs.max() + 0.01
+    val found = pois.asSequence().filter { it.kind == "toll" && it.lat in south..north && it.lng in west..east }
+        .mapNotNull { t -> progress(r, cum, t.lat, t.lng).first.takeIf { it.off < 40 }?.let { t to it.along } }
+        .sortedBy { it.second }.toList()
+    // one station, however many booths OSM has of it (Σπαθοβούνι came three times): within 500 m of the last one kept
+    val out = ArrayList<Pair<Poi, Double>>()
+    for (t in found) if (out.isEmpty() || t.second - out.last().second > 500) out += t
+        else if (out.last().first.name.isEmpty() && t.first.name.isNotEmpty()) out[out.lastIndex] = t
+    return out
+}
+
 internal fun metresBetween(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
     val p1 = Math.toRadians(lat1); val p2 = Math.toRadians(lat2)
     val a = Math.sin((p2 - p1) / 2).let { it * it } + Math.cos(p1) * Math.cos(p2) * Math.sin(Math.toRadians(lng2 - lng1) / 2).let { it * it }
@@ -238,6 +256,8 @@ internal object MapsSearch {
     const val FILE = "greece-places.tsv"
     /** EOPYY's own pharmacies (tools/maps-eopyy.py), kind "eopyy" (the user, 21 Oct: "add them as a list as well as a pill"). */
     const val EOPYY = "greece-eopyy.tsv"
+    /** Cities' own disabled parking spots from data.gov.gr (tools/maps-amea.py), kind disabled_parking. */
+    const val AMEA = "greece-amea.tsv"
     /** Places put into the map's own data by hand (the user's schools, 21 Oct: "keep them as system locations"). */
     const val ADDED = "added-places.tsv"
     data class Kind(val key: String, val label: String, val emoji: String, val emblem: String)
@@ -249,13 +269,14 @@ internal object MapsSearch {
         Kind("hospital", "Hospitals", "🏥", "hospital"), Kind("bakery", "Bakeries", "🥖", "food"), Kind("fast_food", "Fast food", "🍔", "food"),
         Kind("atm", "ATMs", "🏧", "pin"), Kind("hotel", "Hotels", "🛏️", "hotel"), Kind("beach", "Beaches", "🏖️", "beach"),
         Kind("museum", "Museums", "🏛️", "star"), Kind("toilets", "Toilets", "🚻", "pin"),
+        Kind("toll", "Tolls", "💶", "pin"),
         Kind("kindergarten", "Kindergartens", "🧸", "school"), Kind("primary_school", "Primary schools", "🎒", "school"),
         Kind("secondary_school", "High schools", "🏫", "school"), Kind("school", "Other schools", "🏫", "school"), Kind("university", "Universities", "🎓", "school"),
     )
     private val SETTLEMENTS = mapOf("city" to "City", "town" to "Town", "village" to "Village", "suburb" to "Suburb", "neighbourhood" to "Neighbourhood",
         "hamlet" to "Hamlet", "island" to "Island", "islet" to "Islet", "locality" to "Place")
     fun settlement(kind: String) = kind in SETTLEMENTS
-    private val ONE = mapOf("eopyy" to "EOPYY pharmacy", "university" to "University", "school" to "School", "pharmacy" to "Pharmacy",
+    private val ONE = mapOf("toll" to "Toll", "eopyy" to "EOPYY pharmacy", "university" to "University", "school" to "School", "pharmacy" to "Pharmacy",
         "charging" to "EV charging", "disabled_parking" to "Disabled parking", "fast_food" to "Fast food")
     fun label(kind: String) = ONE[kind] ?: PILLS.firstOrNull { it.key == kind }?.label?.removeSuffix("s")?.let { if (kind == "pharmacy") "Pharmacy" else if (kind == "charging") "EV charging" else it }
         ?: SETTLEMENTS[kind] ?: kind.replace('_', ' ').replaceFirstChar { it.uppercase() }
@@ -296,7 +317,7 @@ internal object MapsSearch {
 
     /** The search list in [root] with EOPYY's, read once (about 140 000 places) and kept while the files are the same. */
     @Synchronized fun load(root: File): List<Poi> {
-        val files = listOf(File(root, FILE), File(root, EOPYY), File(root, ADDED)).filter { it.isFile }
+        val files = listOf(File(root, FILE), File(root, EOPYY), File(root, AMEA), File(root, ADDED)).filter { it.isFile }
         if (files.isEmpty()) return emptyList()
         val stamp = files.sumOf { it.lastModified() }
         cache?.let { (path, at, all) -> if (path == root.path && at == stamp) return all }
@@ -316,6 +337,13 @@ internal object MapsSearch {
             .sortedBy { metresBetween(lat, lng, it.lat, it.lng) }.take(limit).toList()
         val words = q.split(' ').filter { it.isNotEmpty() }
         val greeklish = latin(q).split(' ').filter { it.isNotEmpty() }
+        // a kind with words that name a town: that kind in and around it, not with the town in its name (the user, 21 Oct:
+        // "agios loukas" + Supermarkets went to Αθήνα, "ψάχνεις την λέξη … την κατηγορία που βρήσκετε")
+        if (kind != null && words.isNotEmpty()) {
+            val town = all.asSequence().filter { settlement(it.kind) && (it.key.startsWith(q) || it.key.contains(" $q") || words.all { w -> it.key.contains(w) } || greeklish.all { w -> it.key.contains(w) }) }
+                .minByOrNull { metresBetween(lat, lng, it.lat, it.lng) }
+            if (town != null) return search(all, "", town.lat, town.lng, kind, limit, nearby = true)
+        }
         return all.asSequence()
             .filter { (kind == null || it.kind == kind) && (words.all { w -> it.key.contains(w) } || greeklish.all { w -> it.key.contains(w) }) }
             .map { p -> p to metresBetween(lat, lng, p.lat, p.lng) }
@@ -537,5 +565,88 @@ internal object MapsImport {
             }
         }
         return Result(count, entries.map { it.list }.distinct().size, missed)
+    }
+}
+
+/**
+ * The map enriched by hand and shared (the user, 21 Oct: "να προσθέτω στοιχεία στο χάρτη με τα σωστά σύμβολα, όταν βρήσκο
+ * θέσεις αμέα ή μαγαζιά … μαζική εισαγωγή και εξαγωγή των προσωπικών ή των δημώσιων στειχείων για διαμηρασμό και
+ * εμπλούτευση του χάρτη κάθε χρήστη"). Map additions are lines of added-places.tsv (the search list's form: a kind, so the
+ * right symbol and pill); sharing is GeoJSON, which other map apps read too:
+ *
+ *   {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[lng,lat]},
+ *     "properties":{"tetra":"map","kind":"disabled_parking","name":"…","more":"…"}}, … "tetra":"place", "icon", "lists":["Work"] …]}
+ */
+internal object MapsShare {
+    private fun line(p: Poi) = listOf(p.kind, "%.6f".format(java.util.Locale.ROOT, p.lat), "%.6f".format(java.util.Locale.ROOT, p.lng), p.name, p.nameEn, p.more,
+        p.hours, p.phone, p.web, p.wheelchair, p.note).joinToString("\t") { it.replace('\t', ' ').replace('\n', ' ') } + "\n"
+
+    fun add(root: File, p: Poi) {
+        val f = File(root, MapsSearch.ADDED)
+        root.mkdirs(); f.appendText(line(p))
+    }
+
+    /** The addition at [p]'s spot and of its kind goes (the others are written back as they were). */
+    fun remove(root: File, p: Poi) {
+        val f = File(root, MapsSearch.ADDED)
+        if (!f.isFile) return
+        val keep = f.readLines().filter { l -> MapsSearch.parse(l)?.let { it.kind == p.kind && metresBetween(it.lat, it.lng, p.lat, p.lng) < 2 } != true }
+        val part = File(root, ".${f.name}.part")
+        part.writeText(keep.joinToString("") { "$it\n" })
+        check(part.renameTo(f)) { "Could not change the map's additions." }
+    }
+
+    /** My places ([places], with their lists by name) and/or the map's additions ([added]) as GeoJSON. */
+    fun export(places: List<Place>, lists: List<PlaceList>, added: List<Poi>): String {
+        val fs = org.json.JSONArray()
+        fun feature(lat: Double, lng: Double, props: JSONObject) = JSONObject().put("type", "Feature")
+            .put("geometry", JSONObject().put("type", "Point").put("coordinates", org.json.JSONArray().put(lng).put(lat))).put("properties", props)
+        places.filter { it.id != MapsFiles.PARKING }.forEach { p ->
+            fs.put(feature(p.lat, p.lng, JSONObject().put("tetra", "place").put("name", p.name).put("icon", p.icon)
+                .put("lists", org.json.JSONArray(lists.filter { it.id in p.lists }.map { it.name })).apply { if (p.label.isNotBlank()) put("label", p.label) }))
+        }
+        added.forEach { a ->
+            fs.put(feature(a.lat, a.lng, JSONObject().put("tetra", "map").put("kind", a.kind).put("name", a.name).put("more", a.more)
+                .apply { if (a.hours.isNotEmpty()) put("hours", a.hours); if (a.phone.isNotEmpty()) put("phone", a.phone); if (a.web.isNotEmpty()) put("web", a.web) }))
+        }
+        return JSONObject().put("type", "FeatureCollection").put("features", fs).toString(1) + "\n"
+    }
+
+    data class Imported(val places: Int, val added: Int, val skipped: Int)
+
+    /**
+     * A shared file into Tetra: "map" features become map additions (one already there, of its kind within 10 m, is not
+     * added again), the rest my places (one of the same name within 30 m joins the lists instead); GeoJSON from elsewhere
+     * (no "tetra") comes in as places, named by its name or title.
+     */
+    fun import(root: File, text: String): Imported {
+        val fs = JSONObject(text).optJSONArray("features") ?: return Imported(0, 0, 0)
+        var places = 0; var added = 0; var skipped = 0
+        var lists = MapsFiles.lists(root)
+        val have = MapsSearch.added(root).toMutableList()
+        for (i in 0 until fs.length()) {
+            val f = fs.optJSONObject(i) ?: continue
+            val c = f.optJSONObject("geometry")?.takeIf { it.optString("type") == "Point" }?.optJSONArray("coordinates")
+            val lng = c?.optDouble(0) ?: Double.NaN; val lat = c?.optDouble(1) ?: Double.NaN
+            if (lat.isNaN() || lng.isNaN() || lat !in -90.0..90.0 || lng !in -180.0..180.0) { skipped++; continue }
+            val p = f.optJSONObject("properties") ?: JSONObject()
+            val name = p.optString("name").ifEmpty { p.optString("title").ifEmpty { p.optString("Title") } }
+            if (p.optString("tetra") == "map") {
+                val kind = p.optString("kind").ifEmpty { "pin" }
+                if (have.any { it.kind == kind && metresBetween(it.lat, it.lng, lat, lng) < 10 }) { skipped++; continue }
+                val poi = Poi(kind, lat, lng, name, more = p.optString("more"), hours = p.optString("hours"), phone = p.optString("phone"), web = p.optString("web"))
+                add(root, poi); have += poi; added++
+            } else {
+                val listIds = (p.optJSONArray("lists")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()).filter { it.isNotBlank() }.map { ln ->
+                    (lists.firstOrNull { it.name.equals(ln, true) } ?: MapsFiles.saveList(root, PlaceList(MapsFiles.newId(), ln, MapsImport.emoji(ln))).also { lists = lists + it }).id
+                }
+                val same = MapsFiles.places(root).firstOrNull { MapsSearch.fold(it.name) == MapsSearch.fold(name) && metresBetween(it.lat, it.lng, lat, lng) < 30 }
+                if (same != null) { if (!same.lists.containsAll(listIds)) MapsFiles.save(root, same.copy(lists = (same.lists + listIds).distinct())); skipped++; continue }
+                MapsFiles.save(root, Place(MapsFiles.newId(), name.ifEmpty { "Place" }, lat, lng, p.optString("icon").takeIf { it in Place.ICONS } ?: "pin",
+                    lists = listIds, label = p.optString("label")))
+                places++
+            }
+        }
+        return Imported(places, added, skipped)
     }
 }

@@ -197,5 +197,46 @@ class MapsAlternativesTest {
         assertTrue(rs.size >= 2 && rs.none { it.roads == "track" })
         assertEquals(rs.sortedBy { it.millis }, rs)
         assertTrue(rs.any { it.roads == "motorway" } && rs.any { it.roads != "motorway" })
+        // the tolls on each: the motorway passes OSM's toll stations, the local roads none
+        val all = MapsSearch.load(File(System.getProperty("user.home"), "Tetra-maps"))
+        assumeTrue(all.any { it.kind == "toll" })
+        // (OSM has no toll station near Σχηματάρι or Οινόφυτα: the local roads have none, the motorway none known)
+        assertTrue(rs.all { r -> tollsOn(r, cumulative(r), all).isEmpty() })
+        // Σχηματάρι to Ναύπλιο: Ολυμπία Οδός's at Ελευσίνα and Μορέας' on the Α7 are on the way
+        val far = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car")
+        val t = tollsOn(far, cumulative(far), all)
+        println("Σχηματάρι → Ναύπλιο tolls: ${t.map { "${it.first.title} (${it.first.more}) at ${(it.second / 1000).toInt()} km" }}")
+        assertTrue(t.size >= 2 && t.any { "Ελευσίνας" in it.first.title })
+    }
+}
+
+class MapsKindInTownTest {
+    /** Words that name a town with a pill: that kind in the town, nearest first, not shops with the town in their name. */
+    @Test fun aKindInATown() {
+        val all = listOf(Poi("village", 37.2777, 22.5878, "Άγιος Λουκάς"), Poi("supermarket", 37.2758, 22.5880, ""),
+            Poi("supermarket", 37.3492, 22.5846, "My Market"), Poi("supermarket", 37.98, 23.73, "Σούπερ Μάρκετ Άγιος Λουκάς"))
+        val r = MapsSearch.search(all, "agios loukas", 37.98, 23.73, "supermarket")
+        assertEquals(listOf(37.2758, 37.3492), r.take(2).map { it.lat })
+    }
+}
+
+class MapsShareTest {
+    /** Mine and the map's additions out as GeoJSON and into another Tetra: each where it belongs, nothing twice. */
+    @Test fun exportAndImport() {
+        val a = Files.createTempDirectory("share-a").toFile()
+        val work = MapsFiles.saveList(a, PlaceList("w", "Work", "💼"))
+        MapsFiles.save(a, Place("s1", "Δημοτικό Σχολείο Πύργου", 37.3505, 22.4857, "school", slot = 2, lists = listOf(work.id), label = "Πύργος"))
+        MapsShare.add(a, Poi("disabled_parking", 41.1380, 24.8880, "ΑμεΑ", more = "Κεντρική πλατεία"))
+        MapsShare.add(a, Poi("supermarket", 37.2758, 22.5880, "Μίνι μάρκετ"))
+        val json = MapsShare.export(MapsFiles.places(a), MapsFiles.lists(a), MapsSearch.added(a))
+        val b = Files.createTempDirectory("share-b").toFile()
+        assertEquals(MapsShare.Imported(1, 2, 0), MapsShare.import(b, json))
+        assertEquals(MapsShare.Imported(0, 0, 3), MapsShare.import(b, json)) // again: nothing twice
+        val p = MapsFiles.places(b).single()
+        assertEquals("Πύργος", p.label); assertEquals("school", p.icon); assertEquals(0, p.slot) // a slot is one's own Home
+        assertEquals(listOf("Work"), MapsFiles.lists(b).filter { it.id in p.lists }.map { it.name })
+        assertEquals(setOf("disabled_parking", "supermarket"), MapsSearch.added(b).map { it.kind }.toSet())
+        MapsShare.remove(b, MapsSearch.added(b).first { it.kind == "supermarket" })
+        assertEquals(listOf("disabled_parking"), MapsSearch.added(b).map { it.kind })
     }
 }

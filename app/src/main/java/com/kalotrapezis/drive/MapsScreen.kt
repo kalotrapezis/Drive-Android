@@ -14,6 +14,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -199,7 +203,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var listEditing by remember { mutableStateOf<PlaceList?>(null) }
     var detail by remember { mutableStateOf<Poi?>(null) } // what the search list knows of the place shown
     var all by remember { mutableStateOf<List<Poi>>(emptyList()) }
-    val added = remember { runCatching { MapsSearch.added(root) }.getOrDefault(emptyList()) }
+    var added by remember { mutableStateOf(runCatching { MapsSearch.added(root) }.getOrDefault(emptyList())) }
+    /** After a change to the map's additions: they and the search list read again. */
+    fun reloadAdded() = scope.launch {
+        added = withContext(Dispatchers.IO) { MapsSearch.added(root) }
+        all = withContext(Dispatchers.IO) { runCatching { MapsSearch.load(root) }.getOrDefault(all) }
+    }
     var listLoading by remember { mutableStateOf(true) }
     var center by remember { mutableStateOf(LatLng(38.4, 23.8)) }
     var near by remember { mutableStateOf<Place?>(null) } // Nearby: Search around this place instead of the map's middle
@@ -215,6 +224,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var granted by remember { mutableStateOf(hasLocation(context)) }
     var nav by remember { mutableStateOf<Nav?>(null) }
     var preview by remember { mutableStateOf<Preview?>(null) }
+    var navSheet by remember { mutableStateOf(false) } // the handle's sheet over the directions bar: tolls and the turns ahead
     var finding by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf(go) }
     var muted by remember { mutableStateOf(false) }
@@ -439,6 +449,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 style.addLayer(LineLayer("alts-line", "alts").withProperties(PropertyFactory.lineColor("#9E9E9E"), PropertyFactory.lineWidth(6f),
                     PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND), PropertyFactory.lineOpacity(0.8f)))
                 style.addSource(GeoJsonSource("route"))
+                style.addSource(GeoJsonSource("tolls"))
                 style.addLayer(LineLayer("route-casing", "route").withProperties(PropertyFactory.lineColor("#1A237E"), PropertyFactory.lineWidth(9f),
                     PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
                 style.addLayer(LineLayer("route-line", "route").withProperties(PropertyFactory.lineColor("#7986CB"), PropertyFactory.lineWidth(6f),
@@ -452,6 +463,10 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     PropertyFactory.textSize(12f), PropertyFactory.textOffset(arrayOf(0f, 1.1f)), PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
                     PropertyFactory.textColor(if (dark) "#E0E0E0" else "#4A3A70"), PropertyFactory.textHaloColor(if (dark) "#000000" else "#FFFFFF"),
                     PropertyFactory.textHaloWidth(1.2f), PropertyFactory.textOptional(true)))
+                style.addLayer(CircleLayer("tolls-dot", "tolls").withProperties(PropertyFactory.circleRadius(9f), PropertyFactory.circleColor("#F9A825"),
+                    PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(2f)))
+                style.addLayer(SymbolLayer("tolls-sign", "tolls").withProperties(PropertyFactory.textField("€"), PropertyFactory.textFont(arrayOf("Noto Sans Medium")),
+                    PropertyFactory.textSize(12f), PropertyFactory.textColor("#3E2723"), PropertyFactory.textAllowOverlap(true)))
                 style.addSource(GeoJsonSource("places"))
                 style.addLayer(CircleLayer("places-dot", "places").withProperties(PropertyFactory.circleRadius(8f), PropertyFactory.circleColor("#5C6BC0"),
                     PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(2.5f)))
@@ -532,6 +547,13 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         (mapRef?.style?.getSource("results") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures((shown.map { Point.fromLngLat(it.lng, it.lat) } +
             listOfNotNull(pin?.let { Point.fromLngLat(it.lng, it.lat) })).map { Feature.fromGeometry(it) }))
     }
+    // the tolls on the route being driven or chosen, dots on the map
+    val navTolls = remember(nav?.route, all) { nav?.let { tollsOn(it.route, it.cum, all) }.orEmpty() }
+    val previewTolls = remember(preview?.routes, all) { preview?.routes?.map { tollsOn(it, cumulative(it), all) }.orEmpty() }
+    LaunchedEffect(mapRef, navTolls, previewTolls, preview?.chosen) {
+        val shown = if (nav != null) navTolls else previewTolls.getOrNull(preview?.chosen ?: -1).orEmpty()
+        (mapRef?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(shown.map { (t, _) -> Feature.fromGeometry(Point.fromLngLat(t.lng, t.lat)) }))
+    }
     LaunchedEffect(mapRef, nav?.route, preview) {
         val src = mapRef?.style?.getSource("route") as? GeoJsonSource ?: return@LaunchedEffect
         fun line(r: Route) = Feature.fromGeometry(LineString.fromLngLats(r.lats.indices.map { Point.fromLngLat(r.lngs[it], r.lats[it]) }))
@@ -562,7 +584,8 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         // bottom left: the speed limit as its sign, red when I am over it (by more than 3 km/h), my speed under it
         limit?.takeIf { live }?.let { l ->
             val over = (speed ?: 0) > l + 3
-            Column(Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 12.dp, bottom = 76.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            // clear of the island and the bars below it (the user, 21 Oct: "ακουμπάει πάνω στο νησί … δώσε λίγο αέρα")
+            Column(Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 12.dp, bottom = if (nav != null) 150.dp else 100.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Surface(shape = CircleShape, color = if (over) androidx.compose.ui.graphics.Color(0xFFD32F2F) else androidx.compose.ui.graphics.Color.White,
                     border = androidx.compose.foundation.BorderStroke(5.dp, androidx.compose.ui.graphics.Color(0xFFD32F2F)), modifier = Modifier.size(58.dp)) {
                     Box(contentAlignment = Alignment.Center) {
@@ -576,22 +599,34 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             }
         }
 
-        // top left: back and the road I am on, with its code (the user, 21 Oct: "To the top left no title. info about the road the code")
+        // top left: back and the road I am on, with its code (the user, 21 Oct: "To the top left no title. info about the road the code");
+        // no Back while directions run (the user: "the back button remove it when in active navigation")
         val n = nav
-        Row(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Island(R.drawable.ic_chevron_left, "Back", back)
-            val step = n?.let { nn -> nn.route.steps.getOrNull(((nn.p?.next ?: 1) - 1).coerceAtLeast(0)) }
-            val name = step?.street?.ifEmpty { null } ?: road?.first?.ifEmpty { null }
-            val code = step?.ref?.ifEmpty { null } ?: road?.second?.ifEmpty { null }
-            if (name != null || code != null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    code?.let { RoadCode(it) }
-                    name?.let { Text(it, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp)) }
-                }
+        val step = n?.let { nn -> nn.route.steps.getOrNull(((nn.p?.next ?: 1) - 1).coerceAtLeast(0)) }
+        val roadName = step?.street?.ifEmpty { null } ?: road?.first?.ifEmpty { null }
+        val roadCode = step?.ref?.ifEmpty { null } ?: road?.second?.ifEmpty { null }
+        val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
+        @Composable fun RoadPill() { if (roadName != null || roadCode != null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+            Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                roadCode?.let { RoadCode(it) }
+                roadName?.let { Text(it, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp)) }
             }
+        } }
+        if (n != null && narrow) {
+            // a narrow screen: one pill, the road above and the next turn below (the user, 21 Oct)
+            Column(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                RoadPill()
+                NavBanner(n, Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (n == null) Island(R.drawable.ic_chevron_left, "Back", back)
+                RoadPill()
+            }
+            // top right: the next turn in a small window (the user: "A small window will open at the top right to tell me what lane to take")
+            if (n != null) NavBanner(n, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
         }
-        // top right: the next turn in a small window (the user: "A small window will open at the top right to tell me what lane to take")
-        if (n != null) NavBanner(n, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
         // bottom right, above the island: P and where I am (the user, 21 Oct: at the top they covered the map's compass);
         // away while a panel or a place's page is open
         if (n == null && tab == null && selected == null && preview == null) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 12.dp, bottom = 76.dp),
@@ -617,7 +652,16 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             val s = selected
             fun away(lat: Double, lng: Double) = here?.let { metresBetween(it.latitude, it.longitude, lat, lng) }
             if (n != null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
-                Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+              Column {
+                // the handle, as Tetra's others: drag up (or tap) for the tolls and the turns ahead
+                var drag by remember { mutableStateOf(0f) }
+                Box(Modifier.fillMaxWidth().clickable { navSheet = !navSheet }.pointerInput(Unit) {
+                    detectVerticalDragGestures(onDragStart = { drag = 0f }, onVerticalDrag = { _, d -> drag += d }, onDragEnd = { if (drag < -30) navSheet = true else if (drag > 30) navSheet = false })
+                }.padding(top = 8.dp, bottom = 2.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(width = 36.dp, height = 4.dp).clip(CircleShape).background(islandContentColor().copy(alpha = 0.5f)))
+                }
+                if (navSheet) NavSheet(n, navTolls, lang)
+                Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 2.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         val left = n.p?.left ?: n.route.metres
                         val minutes = Math.round(n.route.millis / 60_000.0 * (left / n.route.metres.coerceAtLeast(1.0)))
@@ -635,15 +679,20 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                         if (n.mode == "car" && MapsPrefs.autoPark(context)) here?.let { park(it, "a car trip stopped") }
                     }) { Text("Stop") }
                 }
+              }
             } else if (preview != null) {
                 val pv = preview!!
-                RoutesPanel(pv.routes, pv.chosen, { i -> preview = pv.copy(chosen = i) }, { preview = null; selected = pv.target },
+                RoutesPanel(pv.routes, previewTolls.map { it.size }, pv.chosen, { i -> preview = pv.copy(chosen = i) }, { preview = null; selected = pv.target },
                     { begin(pv.target, pv.mode, pv.routes[pv.chosen], here ?: pv.from) })
             } else if (s != null) {
                 val saved = s.id.isNotEmpty() && places.any { it.id == s.id }
                 PlaceCard(s, detail, address, saved, away(s.lat, s.lng), rolling, lists, go = { m -> startNav(s, m, choose = true) },
                     save = { editing = s.copy(name = if (s.name == "Dropped pin") "" else s.name) },
-                    edit = { editing = s }, delete = { deleting = s }, close = { selected = null; detail = null }) {
+                    edit = { editing = s }, delete = { deleting = s }, close = { selected = null; detail = null },
+                    remove = detail?.takeIf { d -> added.any { it.kind == d.kind && metresBetween(it.lat, it.lng, d.lat, d.lng) < 2 } }?.let { d -> {
+                        selected = null; detail = null
+                        scope.launch { withContext(Dispatchers.IO) { runCatching { MapsShare.remove(root, d) } }; reloadAdded() }
+                    } }) {
                     // what is around it, in Search: nearest first, the pills to narrow it
                     near = s; query = ""; pill = null; selected = null; detail = null; tab = MapsTab.Search
                     mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(s.lat, s.lng), 15.0))
@@ -682,7 +731,10 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         listEditing = null
         scope.launch { withContext(Dispatchers.IO) { runCatching { MapsFiles.saveList(root, saved) } }; lists = withContext(Dispatchers.IO) { MapsFiles.lists(root) }; shownList = saved.id }
     } }
-    editing?.let { p -> PlaceDialog(p, places, lists, { editing = null }) { saved ->
+    editing?.let { p -> PlaceDialog(p, places, lists, { editing = null }, onMap = { poi ->
+        editing = null
+        scope.launch { withContext(Dispatchers.IO) { runCatching { MapsShare.add(root, poi) } }; reloadAdded(); detail = poi; selected = poi.place() }
+    }) { saved ->
         editing = null
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { MapsFiles.save(root, saved) } }
@@ -729,10 +781,37 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
     Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
 }
 
+/** Under the handle: the tolls still ahead (name, operator and price where OSM has them, how far) and the next turns. */
+@Composable private fun NavSheet(n: Nav, tolls: List<Pair<Poi, Double>>, lang: String) {
+    val along = n.p?.along ?: 0.0
+    val ahead = tolls.filter { it.second > along - 20 }
+    LazyColumn(Modifier.heightIn(max = 320.dp).padding(horizontal = 16.dp)) {
+        item { Text(if (ahead.isEmpty()) "No tolls ahead" else "Tolls ahead: ${ahead.size}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp)) }
+        items(ahead) { (t, at) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("💶")
+                Column(Modifier.weight(1f)) {
+                    Text(t.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (t.more.isNotEmpty()) Text(t.more, style = MaterialTheme.typography.bodySmall, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
+                }
+                Text(metresText(at - along), style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        item { Text("Next turns", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)) }
+        val cum = n.cum
+        items(n.route.steps.drop(n.p?.next ?: 0).take(8)) { s ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(s.text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(metresText((cum[s.at.coerceAtMost(cum.lastIndex)] - along).coerceAtLeast(0.0)), style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
 /** The next turn: its arrow, how far, and GraphHopper's words for it. */
 @Composable private fun NavBanner(n: Nav, modifier: Modifier) {
     val step = n.route.steps.getOrNull(n.p?.next ?: 0) ?: return
-    Surface(color = MAPS_COLOR, contentColor = androidx.compose.ui.graphics.Color.White, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.widthIn(max = 340.dp)) {
+    Surface(color = MAPS_COLOR, contentColor = androidx.compose.ui.graphics.Color.White, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.widthIn(max = 560.dp)) {
         Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             val turn = when (step.sign) { 1 -> 45f; 2 -> 90f; 3 -> 135f; 7 -> 20f; -1 -> -45f; -2 -> -90f; -3 -> -135f; -7 -> -20f; 8, -8, -98 -> 180f; else -> 0f }
             Icon(painterResource(if (step.sign == 4) R.drawable.ic_place else R.drawable.ic_navigation), contentDescription = null,
@@ -746,7 +825,30 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
 }
 
 /** A place's name, icon, Home slot and how its Home tap goes; a new one (no id) gets its id here. */
-@Composable private fun PlaceDialog(p: Place, all: List<Place>, lists: List<PlaceList>, dismiss: () -> Unit, save: (Place) -> Unit) {
+@Composable private fun PlaceDialog(p: Place, all: List<Place>, lists: List<PlaceList>, dismiss: () -> Unit, onMap: ((Poi) -> Unit)? = null, save: (Place) -> Unit) {
+    // a new one: mine, or on the map for every pill and search, with its kind's symbol (the user, 21 Oct)
+    var toMap by remember { mutableStateOf(false) }
+    var kind by remember { mutableStateOf("disabled_parking") }
+    var note by remember { mutableStateOf("") }
+    if (toMap && onMap != null) {
+        var mapName by remember { mutableStateOf(p.name) }
+        AlertDialog(onDismissRequest = dismiss, title = { Text("Add to the map") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(false, { toMap = false }, label = { Text("My place") }); FilterChip(true, {}, label = { Text("On the map") })
+                }
+                OutlinedTextField(mapName, { mapName = it }, label = { Text("Name (if it has one)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(note, { note = it }, label = { Text("Address or note") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("What it is", style = MaterialTheme.typography.labelLarge)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    MapsSearch.PILLS.filter { it.key != "eopyy" }.forEach { k -> FilterChip(kind == k.key, { kind = k.key }, label = { Text("${k.emoji} ${k.label}") }) }
+                }
+                Text("It shows on the map, in Search and under its pill, on all your devices; Export shares it.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { TextButton(onClick = { onMap(Poi(kind, p.lat, p.lng, mapName.trim(), more = note.trim())) }) { Text("Add") } },
+            dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        return
+    }
     var inLists by remember { mutableStateOf(p.lists.toSet()) }
     var label by remember { mutableStateOf(p.label) }
     var name by remember { mutableStateOf(p.name) }
@@ -755,6 +857,9 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
     var mode by remember { mutableStateOf(p.mode) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(if (p.id.isEmpty()) "Save place" else "Place") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (p.id.isEmpty() && onMap != null) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(true, {}, label = { Text("My place") }); FilterChip(false, { toMap = true }, label = { Text("On the map") })
+            }
             OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             var tab by remember { mutableStateOf(Place.category(p.icon)) }
             androidx.compose.material3.SecondaryScrollableTabRow(Place.CATEGORIES.keys.indexOf(tab), edgePadding = 0.dp, containerColor = androidx.compose.ui.graphics.Color.Transparent) {

@@ -1742,6 +1742,14 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       with Home names (Place.label); 8 half-size Home slots on a phone; P and where-I-am at the bottom right (the compass);
       Greeklish search; Google Takeout in Greek (Αποθηκευμένα, Χάρτες (τα μέρη σας), Μέρη με ετικέτα), streamed, links'
       ?q= positions, addresses looked up in the address list in the right town: the user's first Takeout part gave 53 of 65.
+- [x] (maps-link session, 21 Oct) More of the user's asks the same evening: a narrow screen's one pill (the road over the next
+      turn), no Back in directions; toll stations (OSM's 255 barrier=toll_booth, with operator and price where tagged) as
+      € dots on the route, counted on each route to choose ("💶 n", "No tolls" only for local roads: OSM misses some ramp
+      tolls, as Νέα Οδός' near Σχηματάρι), and under a handle on the directions bar with the turns ahead; a kind with a town's
+      name searched in that town ("agios loukas" + Supermarkets); mini markets under Supermarkets; the cities' own ΑμεΑ
+      spots from data.gov.gr (tools/maps-amea.py: 740 — Θεσσαλονίκη, Χανιά, Παπάγου-Χολαργός, Αθήνα, Χαλάνδρι, Νάξος; Λάρισα's
+      and Ηράκλειο's only as shapefile/document, not read); "Add to the map" (a long press: My place / On the map with its
+      kind, added-places.tsv, removable from its card); Export / Import as GeoJSON (my places, map additions or both).
 - [ ] Tolls: GraphHopper's toll encoded value is not in the graph; with it (a rebuild) a "no tolls" profile, and the routes
       marked with tolls. The user stopped a rebuild on 21 Oct (distance influence 30 for the car); to be asked again.
 - [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane

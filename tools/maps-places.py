@@ -23,7 +23,7 @@ KINDS = {
     "cafe": lambda t: t.get("amenity") == "cafe",
     "fast_food": lambda t: t.get("amenity") == "fast_food",
     "bakery": lambda t: t.get("shop") == "bakery",
-    "supermarket": lambda t: t.get("shop") == "supermarket",
+    "supermarket": lambda t: t.get("shop") in ("supermarket", "convenience"),  # mini markets too (Easy Market in Σχηματάρι)
     "pharmacy": lambda t: t.get("amenity") == "pharmacy",
     "hospital": lambda t: t.get("amenity") in ("hospital", "clinic"),
     "fuel": lambda t: t.get("amenity") == "fuel",
@@ -43,6 +43,8 @@ KINDS = {
         or any(w in t.get("name", "") for w in ("υμνάσιο", "ύκειο", "ΓΥΜΝΑΣΙΟ", "ΛΥΚΕΙΟ", "ΕΠΑΛ", "ΕΠΑ.Λ"))),
     "school": lambda t: t.get("amenity") == "school",
     "university": lambda t: t.get("amenity") in ("university", "college"),
+    # toll stations (the user, 21 Oct: "Do we know where the talls are to show them on the map as dots on active routs")
+    "toll": lambda t: t.get("barrier") == "toll_booth",
 }
 PLACES = {"city", "town", "village", "suburb", "neighbourhood", "hamlet", "island", "islet", "locality"}
 
@@ -77,6 +79,8 @@ class Handler(osmium.SimpleHandler):
     def write(self, k, lat, lng, tags):
         street = " ".join(x for x in (tags.get("addr:street"), tags.get("addr:housenumber")) if x)
         more = ", ".join(x for x in (street, tags.get("addr:city")) if x) or tags.get("brand") or tags.get("operator") or ""
+        if k == "toll":  # who runs it and, when OSM has it, what a car pays
+            more = " · ".join(x for x in (tags.get("operator"), tags.get("charge")) if x)
         phone = tags.get("phone") or tags.get("contact:phone")
         site = tags.get("website") or tags.get("contact:website")
         self.out.write(f"{k}\t{lat:.6f}\t{lng:.6f}\t{clean(tags.get('name'))}\t{clean(tags.get('name:en'))}\t{clean(more)}"

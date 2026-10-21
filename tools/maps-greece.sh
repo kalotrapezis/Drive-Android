@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Builds Tetra's offline map of Greece on the computer (Plan.md § Maps): the Protomaps basemap cut to Greece's border
+# (greece.pmtiles — one file MapLibre opens on Android and, later, on the desktop) and Geofabrik's OSM extract of Greece
+# (greece-latest.osm.pbf, for routing and search later). Long and heavy: ~0.5 GB + 0.35 GB of downloads.
+# Usage: tools/maps-greece.sh [out-dir]   (default ~/Tetra-maps; MAXZOOM=15 by default)
+set -euo pipefail
+OUT=${1:-$HOME/Tetra-maps}
+MAXZOOM=${MAXZOOM:-15}
+PMTILES_VERSION=1.31.2
+mkdir -p "$OUT/bin"
+cd "$OUT"
+
+if [ ! -x bin/pmtiles ]; then
+  t=go-pmtiles_${PMTILES_VERSION}_Linux_x86_64.tar.gz
+  curl -fL -o "bin/$t" "https://github.com/protomaps/go-pmtiles/releases/download/v$PMTILES_VERSION/$t"
+  tar xzf "bin/$t" -C bin pmtiles && rm "bin/$t"
+fi
+
+# Greece's border (Geofabrik's .poly, which includes the sea around the islands) as GeoJSON for pmtiles extract
+curl -fsL -o greece.poly https://download.geofabrik.de/europe/greece.poly
+python3 -I - greece.poly greece.geojson <<'EOF'
+import json, sys
+rings, ring = [], None
+for line in open(sys.argv[1]).read().split("\n")[1:]:
+    w = line.split()
+    if not w: continue
+    if w[0] == "END":
+        if ring is None: break
+        rings.append(ring); ring = None
+    elif ring is None: ring = []
+    else: ring.append([float(w[0]), float(w[1])])
+assert rings, "no rings in the .poly"
+json.dump({"type": "MultiPolygon", "coordinates": [[r + [r[0]]] for r in rings]}, open(sys.argv[2], "w"))
+EOF
+
+if [ ! -f greece.pmtiles ]; then
+  build=$(curl -fs https://build-metadata.protomaps.dev/builds.json | python3 -I -c "import json,sys; print(json.load(sys.stdin)[-1]['key'])")
+  echo "Protomaps build $build, maxzoom $MAXZOOM"
+  bin/pmtiles extract "https://build.protomaps.com/$build" greece.pmtiles.part --region=greece.geojson --maxzoom="$MAXZOOM" --download-threads=4
+  mv greece.pmtiles.part greece.pmtiles
+  echo "$build" > greece.pmtiles.build
+fi
+
+if [ ! -f greece-latest.osm.pbf ]; then
+  curl -fL -C - -o greece-latest.osm.pbf.part https://download.geofabrik.de/europe/greece-latest.osm.pbf
+  curl -fsL https://download.geofabrik.de/europe/greece-latest.osm.pbf.md5 | sed 's/greece-latest.osm.pbf/greece-latest.osm.pbf.part/' | md5sum -c -
+  mv greece-latest.osm.pbf.part greece-latest.osm.pbf
+fi
+
+bin/pmtiles show greece.pmtiles | head -20
+ls -lh "$OUT"

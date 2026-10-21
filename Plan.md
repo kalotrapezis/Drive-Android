@@ -164,6 +164,9 @@ How to write here:
       (a corrupt deletions.json still reads as empty, not a crash). Files — Copy and Empty trash refuse a folder holding a link
       (on main Empty trash deleted what an escaping link pointed at). NotesTest +6, DriveFilesTest +2; unit 547, 0 failing, 8 skipped.
 - [-] (the user, 20 Oct: "no map scrap it the app will get 2GB") **Maps** (§ Maps below): dropped; worktree and branch `maps` removed.
+- [~] (maps-link session, 21 Oct) **Maps restarted** (the user, 21 Oct: "I changed my mind start buidlding the map applet";
+      "we may transfer this map to the desktop as well"): branch `maps`, worktree Drive-Android-worktrees/maps; step 1's
+      files being downloaded to ~/Tetra-maps by tools/maps-greece.sh (§ Maps below).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -1664,7 +1667,10 @@ Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/T
       (Drive/desktop/release/local-drive-desktop_0.6.0-beta.1_amd64.deb, the user installs it with sudo dpkg -i); the phone
       and tablet get the debug APK when connected. No GitHub release of 0.6.0 Beta 1 yet.
 
-## Maps — dropped 20 Oct (the user: "no map scrap it the app will get 2GB"); the plan kept below for the record
+## Maps — dropped 20 Oct, restarted 21 Oct on branch `maps` (the user: "I changed my mind start buidlding the map applet")
+The user, 21 Oct: "Have in mind that we may transfer this map to the desktop as well" — so the files stay plain and
+shared: greece.pmtiles opens in MapLibre GL JS (pmtiles protocol) on the desktop as in MapLibre Android; routing and
+search files built so both can read them. The size worry stands: the map is a file in Tetra/Maps, not in the APK.
 The user, 20 Oct: "Greece as a map, offline, Map managment, Navigation, Turn nav voice, Import from Google Maps, Save loations
 with SVGs and names, A home tab doeble the size, with slots for 6 locations". Decided 20 Oct: the **computer builds** the map
 files and Tetra's sync carries them to the phone and tablet; routing for **car, walking and bike**.
@@ -1677,7 +1683,7 @@ from Geofabrik's Greece OSM extract (accent-blind); icons **Maki** (CC0) + the u
 Files: Tetra/Maps (hidden in Files like Calendar and Timer, synced): `greece.pmtiles` now; routing and search files later; saved
 places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 beside the repo's GPL-2.0 (as other libraries already).
 
-- [-] (dropped) 1. Greece offline map (512 MB at zoom 15, region polygon), my location, map management (packages,
+- [~] (maps-link session, 21 Oct) 1. Greece offline map (512 MB at zoom 15, region polygon), my location, map management (packages,
       size, date, delete to Trash); `tools/maps-greece.sh` makes the file on the computer.
 - [ ] 2. Saved places (name, SVG icon, list) as files; Home's Maps group double size with 6 place slots; Google Takeout import.
 - [ ] 3. Offline search.

@@ -85,6 +85,9 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
     var timers by remember { mutableStateOf(emptyList<TimerRecord>()) }
     LaunchedEffect(Unit) {
         TimerService.check(context)
+        // sync's old copies of timers, cleared each time the Timer opens (TimerFiles.clean)
+        withContext(Dispatchers.IO) { runCatching { TimerFiles.clean(TimerControl.dir(), TimerControl.device()) }
+            .onSuccess { if (it > 0) WriterLog.i("Timer: cleared $it old copies") }.onFailure { WriterLog.e("Timer: clean", it) } }
         while (true) {
             timers = withContext(Dispatchers.IO) { runCatching { TimerFiles.cards(TimerControl.dir()) }.getOrDefault(emptyList()) }
             now = Instant.now()

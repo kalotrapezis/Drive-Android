@@ -168,11 +168,14 @@ How to write here:
       "we may transfer this map to the desktop as well"): branch `maps`, worktree Drive-Android-worktrees/maps; step 1's
       files downloaded to ~/Tetra-maps by tools/maps-greece.sh (§ Maps below): greece.pmtiles 485 MB (Protomaps
       20261021, zoom 0–15, Geofabrik's Greece border) and greece-latest.osm.pbf 327 MB (md5 checked), ~3 min.
-- [ ] Timer: clear away its waste files (the user, 21 Oct: "some kind of a garbige collector be cause the timer app creates
-      a lot of duplicat files what is nessesary and what is waste … on the phone I dont know about the desktop"): the
-      tablet and the PC each hold 27 files, 23 of them "<id> (n) (n).json" copies from the 18 Oct bug (fixed since: one
-      file per device, <id>.<device>.json). A copy whose timer is over and not pinned is waste; the clean-up must go the
-      way sync carries a delete (or the other side sends it back), and the same in desktop/timer.js.
+- [x] (maps-link session, 21 Oct) Timer: its waste files cleared (the user, 21 Oct: "some kind of a garbige collector be cause
+      the timer app creates a lot of duplicat files what is nessesary and what is waste … on the phone I dont know about the
+      desktop"): 23 of the 28 files on the PC and the tablet were sync's "<id> (n).json" copies from the 18 Oct bug (fixed
+      since: one file per device). TimerFiles.clean / desktop timer.js clean, the same rule: every copy goes, the timer kept
+      as it is (its newest state, pin and all, written into the device's own file first when only a copy held it). Runs
+      when the Timer opens (phone) and when desktop Tetra starts. Sync never deletes, so the copies stop coming back only
+      once every device has the new version (phone, tablet, PC .deb). Dry run on a copy of the PC's folder: 23 removed,
+      the five timers unchanged. Tests: TimerTest, desktop test/timer.test.js.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

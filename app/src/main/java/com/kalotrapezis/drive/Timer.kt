@@ -130,6 +130,31 @@ internal object TimerFiles {
         return write(dir, r)
     }
 
+    private val COPY = Regex(""" \(\d+\)\.json$""", RegexOption.IGNORE_CASE)
+
+    /**
+     * The waste (the user, 21 Oct: "the timer app creates a lot of duplicat files what is nessesary and what is waste"): sync's
+     * "x (2).json" copies, left from before each device wrote only its own file (18 Oct). Every timer's copies go; when the
+     * files that stay would not hold the timer as it is (its newest state, pin and all, was in a copy, or an older paused one
+     * would come back), this device first writes it into its own file. Sync never deletes, so the computer does the same
+     * (desktop/timer.js clean): a copy one side still has would otherwise come back. Answers how many went.
+     */
+    fun clean(dir: File, by: String): Int {
+        val all = dir.listFiles().orEmpty().filter { it.isFile && !it.name.startsWith(".") && it.name.endsWith(".json", true) }
+            .mapNotNull { f -> runCatching { TimerRecord.parse(f.readText(), f) }.getOrNull() }
+        var removed = 0
+        for (group in all.groupBy { it.id }.values) {
+            val w = TimerRecord.winners(group).single()
+            val copies = group.filter { COPY.containsMatchIn(it.file!!.name) }
+            if (copies.isEmpty()) continue
+            val rest = TimerRecord.winners(group - copies.toSet()).singleOrNull()
+            if (rest == null || rest.rev < w.rev || rest.state != w.state || rest.pinned != w.pinned || rest.ends != w.ends || rest.left != w.left)
+                write(dir, w.copy(by = by))
+            copies.forEach { if (it.file!!.delete()) removed++ }
+        }
+        return removed
+    }
+
     /** "k3f9a2.24091RPADG.json"; a record with no device (one written by hand) keeps "<id>.json". */
     fun fileName(id: String, by: String) = by.replace(Regex("[^A-Za-z0-9_-]"), "").let { if (it.isEmpty()) "$id.json" else "$id.$it.json" }
 

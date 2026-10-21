@@ -147,4 +147,30 @@ class TimerTest {
         assertEquals(180_000, r.leftMs(t0))
         assertNull(TimerRecord.parse("""{"state":"exploded"}"""))
     }
+
+    /** The 18 Oct copies: all go, each timer kept as it is — a stop, a pin, a running one — and an older paused one never comes back. */
+    @Test fun cleanClearsTheOldCopiesAndKeepsEachTimerAsItIs() {
+        val now = t0.plusSeconds(3600)
+        tablet.mkdirs()
+        fun put(name: String, r: TimerRecord) = File(tablet, name).writeText(r.json())
+        // a: an old paused file and a stopped copy that is newer — the stop must stay
+        put("a.json", TimerRecord("a", 300, TimerRecord.PAUSED, null, 120.0, 1))
+        put("a (2).json", TimerRecord("a", 300, TimerRecord.STOPPED, null, 0.0, 2, by = "Tablet"))
+        // b: copies of a stopped timer beside its own file, which already says so
+        put("b.Tablet.json", TimerRecord("b", 60, TimerRecord.STOPPED, null, 0.0, 3, by = "Tablet"))
+        put("b (2).json", TimerRecord("b", 60, TimerRecord.STOPPED, null, 0.0, 2))
+        put("b (3) (2).json", TimerRecord("b", 60, TimerRecord.STOPPED, null, 0.0, 1))
+        // c: running now, only in a copy; d: pinned, only in copies (as the user's two on 21 Oct)
+        put("c (2).json", TimerRecord("c", 7200, TimerRecord.RUNNING, now.plusSeconds(600), 0.0, 1))
+        put("d (2).json", TimerRecord("d", 60, TimerRecord.STOPPED, null, 0.0, 1, pinned = true))
+        put("d (3).json", TimerRecord("d", 60, TimerRecord.STOPPED, null, 0.0, 2, pinned = true))
+        assertEquals(6, TimerFiles.clean(tablet, "Tablet"))
+        assertEquals(setOf("a.json", "a.Tablet.json", "b.Tablet.json", "c.Tablet.json", "d.Tablet.json"), tablet.list()!!.toSet())
+        val after = TimerFiles.read(tablet).associateBy { it.id }
+        assertEquals(TimerRecord.STOPPED, after.getValue("a").state) // not the old paused one
+        assertEquals(now.plusSeconds(600), after.getValue("c").ends)
+        assertTrue(after.getValue("d").pinned); assertEquals(2, after.getValue("d").rev)
+        assertEquals(setOf("c", "d"), TimerFiles.cards(tablet, now).map { it.id }.toSet())
+        assertEquals(0, TimerFiles.clean(tablet, "Tablet")) // nothing more
+    }
 }

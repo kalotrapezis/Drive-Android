@@ -155,7 +155,15 @@ internal object MapsPrefs {
     fun lang(c: Context) = prefs(c).getString("lang", "el") ?: "el"
     fun setLang(c: Context, lang: String) = prefs(c).edit().putString("lang", lang).apply()
     fun ttsLocale(lang: String): Locale = Locale.forLanguageTag(if (lang == "en") "en-GB" else "el-GR")
-    fun inMetres(lang: String, m: Long, then: String) = if (lang == "en") "In $m metres, $then" else "Σε $m μέτρα, $then"
+    fun inDistance(lang: String, metres: Double, car: Boolean, then: String): String {
+        val (d, km) = spokenDistance(metres, car)
+        val n = if (d % 1.0 == 0.0) d.toLong().toString() else if (lang == "en") d.toString() else d.toString().replace('.', ',')
+        return when {
+            lang == "en" -> "In $n ${if (km) (if (d == 1.0) "kilometre" else "kilometres") else "metres"}, $then"
+            km -> "Σε $n ${if (d == 1.0) "χιλιόμετρο" else "χιλιόμετρα"}, $then"
+            else -> "Σε $n μέτρα, $then"
+        }
+    }
     fun sample(lang: String) = if (lang == "en") "In 300 metres, turn right onto Panepistimiou" else "Σε 300 μέτρα, στρίψτε δεξιά στην Πανεπιστημίου"
 }
 
@@ -311,11 +319,10 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             Toast.makeText(context, "Arrived: ${n.target.name}", Toast.LENGTH_LONG).show(); return
         }
         val step = n.route.steps[p.next]
-        val far = if (car) 500.0 else 150.0; val near = if (car) 80.0 else 20.0
-        if (p.toNext <= near && "n${p.next}" !in said) { say(step.text); said = said + "n${p.next}" + "f${p.next}" }
-        else if (p.toNext <= far && p.toNext > near * 2 && "f${p.next}" !in said) {
-            val round = if (car) 50 else 10
-            say(MapsPrefs.inMetres(lang, Math.round(p.toNext / round) * round, step.text)); said = said + "f${p.next}"
+        when (dueWarning(p.next, p.toNext, if (loc.hasSpeed()) loc.speed.toDouble() else 0.0, car, said)) {
+            "n" -> { say(step.text); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
+            "f" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, step.text)); said = said + "f${p.next}" + "e${p.next}" }
+            "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, step.text)); said = said + "e${p.next}" }
         }
         nav = n.copy(index = i, p = p, offFixes = 0, said = said)
     }

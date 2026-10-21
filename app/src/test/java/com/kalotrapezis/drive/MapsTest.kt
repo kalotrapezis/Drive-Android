@@ -101,3 +101,30 @@ class MapsImportTest {
         assertEquals(4, MapsFiles.places(root).size)
     }
 }
+
+class MapsWarningTest {
+    /** At 120 km/h (33 m/s) a turn is warned at 2 km, at ~660 m and at ~165 m; in town at 500 m and 80 m; each once. */
+    @Test fun warningsFollowTheSpeed() {
+        var said = emptySet<String>()
+        val heard = ArrayList<Pair<Int, String>>()
+        for (d in 3000 downTo 0 step 30) dueWarning(4, d.toDouble(), 33.0, true, said)?.let { heard += d to it; said = said + "${it}4" }
+        assertEquals(listOf("e", "f", "n"), heard.map { it.second })
+        assertTrue(heard[0].first in 2100..2200); assertTrue(heard[1].first in 630..660); assertTrue(heard[2].first in 140..165)
+        said = emptySet(); heard.clear()
+        for (d in 1500 downTo 0 step 10) dueWarning(1, d.toDouble(), 12.0, true, said)?.let { heard += d to it; said = said + "${it}1" }
+        assertEquals(listOf(500 to "f", 80 to "n"), heard)
+        assertEquals(2.0 to true, spokenDistance(2140.0, true)); assertEquals(650.0 to false, spokenDistance(660.0, true))
+        assertEquals(1.5 to true, spokenDistance(1400.0, true))
+    }
+}
+
+class MapsMotorwayTest {
+    /** Σχηματάρι to Ναύπλιο on the computer's graph, when it is there: the on-ramp to Olympia Odos names the road it leads onto. */
+    @Test fun aRampSaysWhereItLeads() {
+        val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
+        assumeTrue(File(dir, "properties").isFile)
+        val r = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car")
+        r.steps.forEach { println("${it.sign}\t${it.metres.toInt()} m\t${it.text}\t[${it.ref}] ${it.street}") }
+        assertTrue(r.steps.none { it.metres > 20_000 && it.street.isEmpty() })
+    }
+}

@@ -177,6 +177,26 @@ internal fun progress(r: Route, cum: DoubleArray, lat: Double, lng: Double, from
     return Progress(d, along, (cum.last() - along).coerceAtLeast(0.0), next, toNext) to i
 }
 
+/**
+ * Which of a turn's spoken warnings is due ([step] its index, [toNext] metres ahead, [speed] m/s): "e" early, 2 km ahead
+ * on a fast road; "f" far, about 20 s ahead (500 m at least); "n" at it, about 5 s ahead; or null. By car the warnings
+ * follow the speed (the user, 21 Oct, on the Egnatia: "σε 3χμ πάρτη την έξοδο στα δεξιά" — 500 m at 120 km/h is 15 s).
+ */
+internal fun dueWarning(step: Int, toNext: Double, speed: Double, car: Boolean, said: Set<String>): String? {
+    val near = if (car) maxOf(80.0, speed * 5) else 20.0
+    val far = if (car) maxOf(500.0, speed * 20) else 150.0
+    return when {
+        toNext <= near -> "n".takeIf { "n$step" !in said }
+        toNext <= far -> "f".takeIf { "f$step" !in said && toNext > near * 1.5 }
+        car && speed > 22 && toNext <= 2200 && toNext > far * 1.5 -> "e".takeIf { "e$step" !in said && "f$step" !in said }
+        else -> null
+    }
+}
+
+/** A warning's distance as said: whole or half kilometres from 1 km, else metres to 50 (to 10 on foot). */
+internal fun spokenDistance(m: Double, car: Boolean): Pair<Double, Boolean> =
+    if (m >= 950) (Math.round(m / 500.0) * 0.5) to true else (Math.round(m / (if (car) 50.0 else 10.0)) * (if (car) 50.0 else 10.0)) to false
+
 internal fun metresBetween(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
     val p1 = Math.toRadians(lat1); val p2 = Math.toRadians(lat2)
     val a = Math.sin((p2 - p1) / 2).let { it * it } + Math.cos(p1) * Math.cos(p2) * Math.sin(Math.toRadians(lng2 - lng1) / 2).let { it * it }

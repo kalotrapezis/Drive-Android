@@ -1725,6 +1725,13 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       The user's work schools put in by hand (Places/sch-*.json, list Work 💼, Home slots 1–5): Πύργος and Σκάλα at the
       village's middle (no school in OSM there), the 2nd of Κρεώνα at the user's link, the 1st
       of Κρεώνα (not a work one) at the village's middle.
+- [x] (maps-link session, 21 Oct) Motorways (the user: "έκανες κανένα τέστ σε εγνατία οδό … σε 3χμ πάρτη την έξοδο στα δεξιά";
+      "Κάνε και Σχιματάρι Ναυπλιο"): tried Καβάλα → Ξάνθη and Σχηματάρι → Ναύπλιο on the graph. The exits say "μείνετε
+      δεξιά … προς Εύλαλο, Τοξότες" (OSM's destination signs) and "πάρτε τον δρόμο Α7 προς Τρίπολη"; a turn onto a nameless
+      ramp now says where it leads ("στρίψτε αριστερά προς Α8 Αθήνα - Πάτρα", from the path's street_name/ref); the spoken
+      warnings follow the speed (dueWarning: 2 km ahead over 80 km/h, ~20 s ahead, ~5 s ahead; "Σε 2 χιλιόμετρα, …").
+      Not there: lanes (below), exit numbers, the word "έξοδος", tolls. GraphHopper chose the Θηβών–Ελευσίνας road over the
+      Αθηνών–Λαμίας + Αττική Οδός for Σχηματάρι → Ναύπλιο (shorter; to be judged by the user on the road).
 - [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane
       you should take - keep?"): now only GraphHopper's keep left/right at forks. GraphHopper 10 keeps no lanes, so the
       computer's build reads OSM's turn:lanes tags itself (a pass over greece-latest.osm.pbf beside the graph, by way id),

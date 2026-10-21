@@ -76,14 +76,31 @@ internal object MapsRouting {
         val gh = open(dir)
         val locale = Locale.forLanguageTag(lang)
         val mode = if (mode == "wheelchair" && "wheelchair" !in profiles(dir)) "foot" else mode // a graph from before Rolling
-        val rsp = gh.route(GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale))
+        val rsp = gh.route(GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale)
+            .setPathDetails(listOf("street_name", "street_ref")))
         check(!rsp.hasErrors()) { rsp.errors.firstOrNull()?.message ?: "No route." }
         val best = rsp.best
         val tr = gh.translationMap.getWithFallBack(locale)
+        val names = best.pathDetails["street_name"].orEmpty(); val refs = best.pathDetails["street_ref"].orEmpty()
+        /** The road a leg [from]..[to] (point indexes) mostly runs on: its code and name, as "Α8 Ολυμπία Οδός". */
+        fun mostly(from: Int, to: Int): String {
+            fun longest(ds: List<com.graphhopper.util.details.PathDetail>) = ds.filter { it.last > from && it.first < to && (it.value as? String).orEmpty().isNotBlank() }
+                .maxByOrNull { minOf(it.last, to) - maxOf(it.first, from) }?.value as? String
+            return listOfNotNull(longest(refs)?.substringBefore(';'), longest(names)).distinct().joinToString(" ")
+        }
         var at = 0
         val steps = best.instructions.map { ins ->
-            Step(ins.getTurnDescription(tr), ins.sign, ins.distance, at, ins.name.orEmpty(), (ins.extraInfoJSON["street_ref"] as? String).orEmpty())
-                .also { at += ins.points.size() }
+            var text = ins.getTurnDescription(tr)
+            var street = ins.name.orEmpty(); var ref = (ins.extraInfoJSON["street_ref"] as? String).orEmpty()
+            // a turn onto a ramp with no name says where the ramp leads (the user, 21 Oct, on motorways: "Στρίψτε αριστερά" for 61 km)
+            if (street.isEmpty() && ins.sign != com.graphhopper.util.Instruction.FINISH) {
+                val road = mostly(at, at + ins.points.size())
+                if (road.isNotEmpty() && ins.distance > 1000) {
+                    text += (if (lang == "en") " towards " else " προς ") + road
+                    street = road.substringAfter(' ', road); ref = ref.ifEmpty { road.substringBefore(' ').takeIf { r -> r.any(Char::isDigit) }.orEmpty() }
+                }
+            }
+            Step(text.replaceFirstChar { it.uppercase() }, ins.sign, ins.distance, at, street, ref).also { at += ins.points.size() }
         }
         val pts = best.points
         return Route(mode, DoubleArray(pts.size()) { pts.getLat(it) }, DoubleArray(pts.size()) { pts.getLon(it) }, best.distance, best.time, steps)

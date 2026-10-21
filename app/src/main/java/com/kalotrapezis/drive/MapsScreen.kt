@@ -66,6 +66,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.maplibre.android.MapLibre
@@ -80,6 +81,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
@@ -111,6 +113,7 @@ internal fun placeIcon(icon: String) = when (icon) {
     "travel" -> R.drawable.ic_flight
     "hotel" -> R.drawable.ic_hotel
     "food" -> R.drawable.ic_restaurant
+    "tavern" -> R.drawable.ic_tavern
     "cafe" -> R.drawable.ic_cafe
     "shop" -> R.drawable.ic_shop
     "fuel" -> R.drawable.ic_fuel
@@ -123,6 +126,59 @@ internal fun placeIcon(icon: String) = when (icon) {
     "forest" -> R.drawable.ic_forest
     "camping" -> R.drawable.ic_camping
     else -> R.drawable.ic_place
+}
+
+/**
+ * Public things on the map — search results, the map's additions — in the map's own icon style (the user, 21 Oct: "my
+ * personal keep our style what I save as public info gets the maps own style"): its sprite where it has one, else drawn as
+ * it draws them, a rounded square of a pale tint with a coloured edge and symbol, in its colours (orange food, blue shops
+ * and parking, purple learning, green nature and money, pink culture; red for health, which it has none of).
+ */
+private val SPRITE = mapOf("restaurant" to "restaurant", "cafe" to "cafe", "fast_food" to "fast_food", "supermarket" to "supermarket",
+    "kindergarten" to "school", "primary_school" to "school", "secondary_school" to "school", "school" to "school", "university" to "university",
+    "museum" to "museum", "beach" to "beach", "toilets" to "toilets")
+private val ORANGE = 0xFFF7A157.toInt() to 0xFFFDE7D2.toInt(); private val BLUE = 0xFF4BA3D3.toInt() to 0xFFD9EEF8.toInt()
+private val PURPLE = 0xFF8F83BC.toInt() to 0xFFE3E2F3.toInt(); private val GREEN = 0xFF57A26D.toInt() to 0xFFD7EEDF.toInt()
+private val RED = 0xFFE5635C.toInt() to 0xFFFADBD9.toInt(); private val SLATE = 0xFF6E8FA8.toInt() to 0xFFDDE7EE.toInt()
+private fun drawnLook(kind: String): Triple<Int?, Pair<Int, Int>, String> = when (kind) {
+    "pharmacy", "eopyy" -> Triple(R.drawable.ic_pharmacy, RED, ""); "hospital" -> Triple(R.drawable.ic_hospital, RED, "")
+    "fuel", "charging" -> Triple(R.drawable.ic_fuel, SLATE, ""); "parking" -> Triple(R.drawable.ic_parking, BLUE, "")
+    "disabled_parking" -> Triple(R.drawable.ic_accessible, BLUE, ""); "hotel" -> Triple(R.drawable.ic_hotel, PURPLE, "")
+    "bakery" -> Triple(R.drawable.ic_shop, ORANGE, ""); "atm" -> Triple(null, GREEN, "ATM"); "toll" -> Triple(null, ORANGE, "€")
+    else -> Triple(R.drawable.ic_place, PURPLE, "")
+}
+
+/** The marker for a public [kind]: the map's sprite, or ours drawn in its style; the plain pin for one without (a town, "bar"). */
+private fun markerOf(kind: String) = SPRITE[kind] ?: if (MapsSearch.PILLS.any { it.key == kind }) "k-$kind" else "k-pin"
+
+/** The drawn markers ("k-<kind>") and the favourites' own ("e-<icon>", Maps' indigo circle) put into the map's style once. */
+private fun addMarkers(context: Context, style: Style) {
+    val d = context.resources.displayMetrics.density
+    fun square(icon: Int?, colors: Pair<Int, Int>, text: String): android.graphics.Bitmap {
+        val px = (20 * d).toInt(); val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(b); val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        val r = android.graphics.RectF(d, d, px - d, px - d); val corner = px * 0.28f
+        paint.color = colors.second; c.drawRoundRect(r, corner, corner, paint)
+        paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = 1.6f * d; paint.color = colors.first; c.drawRoundRect(r, corner, corner, paint)
+        paint.style = android.graphics.Paint.Style.FILL
+        if (icon != null) androidx.core.content.ContextCompat.getDrawable(context, icon)?.mutate()?.let { dr ->
+            dr.setTint(colors.first); val m = (px * 0.22f).toInt(); dr.setBounds(m, m, px - m, px - m); dr.draw(c)
+        } else {
+            paint.textAlign = android.graphics.Paint.Align.CENTER; paint.isFakeBoldText = true
+            paint.textSize = px * (if (text.length > 1) 0.34f else 0.6f); c.drawText(text, px / 2f, px / 2f - (paint.descent() + paint.ascent()) / 2, paint)
+        }
+        return b
+    }
+    fun round(icon: Int): android.graphics.Bitmap {
+        val px = (28 * d).toInt(); val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(b); val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        paint.color = android.graphics.Color.WHITE; c.drawCircle(px / 2f, px / 2f, px / 2f, paint)
+        paint.color = 0xFF5C6BC0.toInt(); c.drawCircle(px / 2f, px / 2f, px / 2f - px / 14f, paint)
+        androidx.core.content.ContextCompat.getDrawable(context, icon)?.mutate()?.let { dr -> dr.setTint(android.graphics.Color.WHITE); val m = px / 4; dr.setBounds(m, m, px - m, px - m); dr.draw(c) }
+        return b
+    }
+    (MapsSearch.PILLS.map { it.key }.filter { it !in SPRITE } + "pin").forEach { k -> val (icon, colors, text) = drawnLook(k); style.addImage("k-$k", square(icon, colors, text)) }
+    Place.ICONS.forEach { style.addImage("e-$it", round(placeIcon(it))) }
 }
 
 /** [rolling]: Settings › Maps › On foot is Rolling, a wheelchair (the user, 21 Oct: "Walking to be changed the icon to rolling"). */
@@ -218,6 +274,9 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var limit by remember { mutableStateOf<Int?>(null) } // its speed limit, km/h
     var speed by remember { mutableStateOf<Int?>(null) } // mine, km/h
     var limitAsked by remember { mutableStateOf(0L) }
+    var lastReal by remember { mutableStateOf<Location?>(null) } // the last fix from the GPS itself
+    var lastRealAt by remember { mutableStateOf(0L) } // when it came, by this device's clock (a fix's own stamp can be empty)
+    var reckoning by remember { mutableStateOf(false) } // no signal: going on along the route at the last speed
     var address by remember { mutableStateOf<String?>(null) } // of the place shown
     var here by remember { mutableStateOf<Location?>(null) }
     var live by remember { mutableStateOf(false) } // a fix came while the map is open (not Android's stored last one)
@@ -321,6 +380,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
 
     /** Each fix: where on the route, what to say, and a new route when off it for three fixes in a row. */
     fun onFix(loc: Location) {
+        if (loc.provider != "tetra-reckoning") { lastReal = loc; lastRealAt = android.os.SystemClock.elapsedRealtimeNanos(); reckoning = false }
         here = loc; live = true
         // at car speed (40 km/h) for three fixes: driving, so the car is no longer where it was parked
         fast = if (loc.hasSpeed() && loc.speed > 11f) fast + 1 else 0
@@ -369,6 +429,10 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             // a network fix only until GPS has one, and never over a fresher GPS one
             val h = here
             if (loc.provider == LocationManager.NETWORK_PROVIDER && h != null && h.provider == LocationManager.GPS_PROVIDER && loc.time - h.time < 10_000) return@LocationListener
+            // in directions, a cell tower's rough fix does not stand for the GPS for two minutes after its last: in a tunnel
+            // the arrow goes on along the route instead of jumping to it
+            if (loc.provider == LocationManager.NETWORK_PROVIDER && nav != null && lastReal?.provider == LocationManager.GPS_PROVIDER &&
+                android.os.SystemClock.elapsedRealtimeNanos() - lastRealAt < 120_000_000_000L) return@LocationListener
             onFix(loc)
         }
         if (granted && lm != null) {
@@ -456,9 +520,10 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
                 // places put into the map's own data by hand (added-places.tsv): a small dot and the name, as the map's own
                 val dark = MapsPrefs.mapTheme(context) == "dark"
+                addMarkers(context, style)
                 style.addSource(GeoJsonSource("added"))
-                style.addLayer(CircleLayer("added-dot", "added").withProperties(PropertyFactory.circleRadius(5f), PropertyFactory.circleColor("#7E57C2"),
-                    PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(1.5f)))
+                style.addLayer(SymbolLayer("added-dot", "added").withProperties(PropertyFactory.iconImage(Expression.get("icon")),
+                    PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconSize(0.8f)))
                 style.addLayer(SymbolLayer("added-name", "added").withProperties(PropertyFactory.textField("{name}"), PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
                     PropertyFactory.textSize(12f), PropertyFactory.textOffset(arrayOf(0f, 1.1f)), PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
                     PropertyFactory.textColor(if (dark) "#E0E0E0" else "#4A3A70"), PropertyFactory.textHaloColor(if (dark) "#000000" else "#FFFFFF"),
@@ -468,15 +533,15 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 style.addLayer(SymbolLayer("tolls-sign", "tolls").withProperties(PropertyFactory.textField("€"), PropertyFactory.textFont(arrayOf("Noto Sans Medium")),
                     PropertyFactory.textSize(12f), PropertyFactory.textColor("#3E2723"), PropertyFactory.textAllowOverlap(true)))
                 style.addSource(GeoJsonSource("places"))
-                style.addLayer(CircleLayer("places-dot", "places").withProperties(PropertyFactory.circleRadius(8f), PropertyFactory.circleColor("#5C6BC0"),
-                    PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(2.5f)))
+                style.addLayer(SymbolLayer("places-dot", "places").withProperties(PropertyFactory.iconImage(Expression.get("icon")),
+                    PropertyFactory.iconAllowOverlap(true)))
                 style.addLayer(SymbolLayer("places-name", "places").withProperties(PropertyFactory.textField("{name}"),
                     PropertyFactory.textFont(arrayOf("Noto Sans Medium")), PropertyFactory.textSize(13f), PropertyFactory.textOffset(arrayOf(0f, 1.3f)),
                     PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP), PropertyFactory.textColor("#FFFFFF"), PropertyFactory.textHaloColor("#1A237E"),
                     PropertyFactory.textHaloWidth(1.5f), PropertyFactory.textAllowOverlap(true)))
                 style.addSource(GeoJsonSource("results"))
-                style.addLayer(CircleLayer("results-dot", "results").withProperties(PropertyFactory.circleRadius(7f), PropertyFactory.circleColor("#F4511E"),
-                    PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(2f)))
+                style.addLayer(SymbolLayer("results-dot", "results").withProperties(PropertyFactory.iconImage(Expression.get("icon")),
+                    PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconSize(0.9f)))
                 map.addOnCameraIdleListener { center = map.cameraPosition.target ?: center }
                 map.addOnMapLongClickListener { at ->
                     if (nav == null) editing = Place("", "", at.latitude, at.longitude)
@@ -534,18 +599,19 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     LaunchedEffect(mapRef, places) {
         (mapRef?.style?.getSource("added") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(added
             .filter { a -> places.none { metresBetween(it.lat, it.lng, a.lat, a.lng) < 30 } }
-            .map { a -> Feature.fromGeometry(Point.fromLngLat(a.lng, a.lat)).apply { addStringProperty("name", a.title) } }))
+            .map { a -> Feature.fromGeometry(Point.fromLngLat(a.lng, a.lat)).apply { addStringProperty("name", a.title); addStringProperty("icon", markerOf(a.kind)) } }))
     }
     LaunchedEffect(mapRef, places) {
         (mapRef?.style?.getSource("places") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(places.map { p ->
-            Feature.fromGeometry(Point.fromLngLat(p.lng, p.lat)).apply { addStringProperty("id", p.id); addStringProperty("name", p.name) }
+            Feature.fromGeometry(Point.fromLngLat(p.lng, p.lat)).apply { addStringProperty("id", p.id); addStringProperty("name", p.name); addStringProperty("icon", "e-${p.icon}") }
         }))
     }
     LaunchedEffect(mapRef, results, tab, selected) {
         val shown = if (tab == MapsTab.Search) results else emptyList()
         val pin = selected?.takeIf { s -> s.id.isEmpty() }
-        (mapRef?.style?.getSource("results") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures((shown.map { Point.fromLngLat(it.lng, it.lat) } +
-            listOfNotNull(pin?.let { Point.fromLngLat(it.lng, it.lat) })).map { Feature.fromGeometry(it) }))
+        (mapRef?.style?.getSource("results") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(
+            shown.map { Feature.fromGeometry(Point.fromLngLat(it.lng, it.lat)).apply { addStringProperty("icon", markerOf(it.kind)) } } +
+            listOfNotNull(pin?.let { Feature.fromGeometry(Point.fromLngLat(it.lng, it.lat)).apply { addStringProperty("icon", markerOf(detail?.kind.orEmpty())) } })))
     }
     // the tolls on the route being driven or chosen, dots on the map
     val navTolls = remember(nav?.route, all) { nav?.let { tollsOn(it.route, it.cum, all) }.orEmpty() }
@@ -562,6 +628,37 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         val r = nav?.route ?: preview?.let { it.routes[it.chosen] }
         src.setGeoJson(if (r == null) FeatureCollection.fromFeatures(emptyList()) else
             FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(r.lats.indices.map { Point.fromLngLat(r.lngs[it], r.lats[it]) }))))
+    }
+    /*
+     * A tunnel (the user, 21 Oct: "What if I loose GPS sygnal on a tannel … will it come back after the return of the sygnal"):
+     * with no fix for 3 s while directions run at speed, the arrow goes on along the route at the last speed, a second at a
+     * time, for at most 10 km; the first real fix takes over again (and a new route only if that fix is off the route).
+     */
+    LaunchedEffect(nav != null) {
+        while (nav != null) {
+            delay(1000)
+            val n = nav ?: break
+            val real = lastReal ?: continue
+            val quiet = android.os.SystemClock.elapsedRealtimeNanos() - lastRealAt
+            val v = if (real.hasSpeed()) real.speed.toDouble() else 0.0
+            val p = n.p ?: continue
+            if (quiet < 3_000_000_000L || v < 3 || p.left < 50) { reckoning = false; continue }
+            val gone = v * quiet / 1e9
+            if (gone > 10_000) { reckoning = false; continue }
+            val start = progress(n.route, n.cum, real.latitude, real.longitude).first.along
+            val at = (start + gone).coerceAtMost(n.cum.last())
+            val i = n.cum.indexOfLast { it <= at }.coerceIn(0, n.cum.size - 2)
+            val t = ((at - n.cum[i]) / (n.cum[i + 1] - n.cum[i]).coerceAtLeast(0.01)).coerceIn(0.0, 1.0)
+            val lat = n.route.lats[i] + t * (n.route.lats[i + 1] - n.route.lats[i]); val lng = n.route.lngs[i] + t * (n.route.lngs[i + 1] - n.route.lngs[i])
+            if (!reckoning) WriterLog.i("Maps: no GPS fix for ${quiet / 1_000_000_000} s, going on along the route at ${(v * 3.6).toInt()} km/h")
+            reckoning = true
+            fix(Location("tetra-reckoning").apply {
+                setLatitude(lat); setLongitude(lng); setSpeed(v.toFloat()); setTime(System.currentTimeMillis())
+                setElapsedRealtimeNanos(android.os.SystemClock.elapsedRealtimeNanos()); setAccuracy(50f)
+                setBearing(Location("").apply { setLatitude(n.route.lats[i]); setLongitude(n.route.lngs[i]) }
+                    .bearingTo(Location("").apply { setLatitude(n.route.lats[i + 1]); setLongitude(n.route.lngs[i + 1]) }))
+            })
+        }
     }
     // the screen stays on while directions run
     DisposableEffect(nav != null) {
@@ -648,6 +745,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding().padding(12.dp).widthIn(max = 560.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             finding?.let { Pill(it) }
+            if (reckoning && nav != null) Pill("No GPS signal: going on along the route")
             if (pending != null && nav == null && finding == null) Pill(if (granted) "Waiting for your location…" else "Location is off for Tetra: directions need it.")
             val s = selected
             fun away(lat: Double, lng: Double) = here?.let { metresBetween(it.latitude, it.longitude, lat, lng) }

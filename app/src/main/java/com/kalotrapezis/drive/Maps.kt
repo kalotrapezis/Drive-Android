@@ -43,7 +43,7 @@ internal data class Place(
             "General" to listOf("pin", "star", "heart", "accessible", "home", "work", "school"),
             "People" to listOf("family", "friend"),
             "Health" to listOf("pharmacy", "hospital", "doctor"),
-            "Travel" to listOf("travel", "hotel", "food", "cafe", "shop", "fuel", "parking", "accessible"),
+            "Travel" to listOf("travel", "hotel", "food", "tavern", "cafe", "shop", "fuel", "parking", "accessible"),
             "Nature" to listOf("beach", "waterfall", "river", "lake", "mountain", "forest", "camping"),
         )
         val ICONS = CATEGORIES.values.flatten().distinct() // the accessible mark is in General and beside Parking (the user, 21 Oct: "a disability mark … for my parking spots and accessible places")

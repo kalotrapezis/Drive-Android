@@ -130,6 +130,9 @@ internal fun modeIcon(mode: String, rolling: Boolean = false) = when (mode) {
 
 private fun modeLabel(mode: String, rolling: Boolean = false) = when (mode) { "foot" -> if (rolling) "Roll" else "Walk"; "bike" -> "Bike"; else -> "Car" }
 
+/** The ways there, before starting: [chosen] is the one drawn bold. */
+private data class Preview(val target: Place, val mode: String, val routes: List<Route>, val chosen: Int, val from: Location)
+
 /** A navigation running: the route, where on it the last fix was, and what has been said. */
 private data class Nav(
     val target: Place, val mode: String, val route: Route, val cum: DoubleArray, val since: Long,
@@ -196,17 +199,22 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var listEditing by remember { mutableStateOf<PlaceList?>(null) }
     var detail by remember { mutableStateOf<Poi?>(null) } // what the search list knows of the place shown
     var all by remember { mutableStateOf<List<Poi>>(emptyList()) }
+    val added = remember { runCatching { MapsSearch.added(root) }.getOrDefault(emptyList()) }
     var listLoading by remember { mutableStateOf(true) }
     var center by remember { mutableStateOf(LatLng(38.4, 23.8)) }
     var near by remember { mutableStateOf<Place?>(null) } // Nearby: Search around this place instead of the map's middle
     var results by remember { mutableStateOf<List<Poi>>(emptyList()) }
     var navResults by remember { mutableStateOf<List<Poi>>(emptyList()) }
     var road by remember { mutableStateOf<Pair<String, String>?>(null) } // the road under me: name, code
+    var limit by remember { mutableStateOf<Int?>(null) } // its speed limit, km/h
+    var speed by remember { mutableStateOf<Int?>(null) } // mine, km/h
+    var limitAsked by remember { mutableStateOf(0L) }
     var address by remember { mutableStateOf<String?>(null) } // of the place shown
     var here by remember { mutableStateOf<Location?>(null) }
     var live by remember { mutableStateOf(false) } // a fix came while the map is open (not Android's stored last one)
     var granted by remember { mutableStateOf(hasLocation(context)) }
     var nav by remember { mutableStateOf<Nav?>(null) }
+    var preview by remember { mutableStateOf<Preview?>(null) }
     var finding by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf(go) }
     var muted by remember { mutableStateOf(false) }
@@ -264,7 +272,19 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         })
     }
     var fix: (Location) -> Unit = {} // onFix, below: it and startNav call each other
-    fun startNav(target: Place, mode: String, from: Location? = here) {
+    /** Directions on [route], from [from]: spoken, followed, the car's spot cleared for a car. */
+    fun begin(target: Place, mode: String, route: Route, from: Location) {
+        WriterLog.i("Maps: route by $mode, ${route.metres.toInt()} m, ${route.steps.size} steps, ${route.roads}")
+        val rerouted = nav?.target?.id == target.id
+        nav = Nav(target, mode, route, cumulative(route), System.currentTimeMillis())
+        selected = null; preview = null
+        if (!rerouted) route.steps.firstOrNull()?.let { say(it.text) }
+        follow(mode)
+        fix(from) // the first distance at once, not at the next fix
+    }
+
+    /** [choose]: the ways there shown to pick from (a place's Car / Walk / Bike); else the fastest at once (Home's one tap, a new route). */
+    fun startNav(target: Place, mode: String, from: Location? = here, choose: Boolean = false) {
         // directions start from a live fix: Android's stored last one can be hours old and towns away
         if (from == null || !live) { pending = target.copy(mode = mode); return }
         if (!File(graphDir, "properties").isFile) {
@@ -273,16 +293,15 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         if (mode == "car" && target.id != MapsFiles.PARKING) unpark("a car trip started")
         finding = "Finding the way…"
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), lang) } }
+            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.routes(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), lang) } }
             finding = null
-            r.onSuccess { route ->
-                WriterLog.i("Maps: route by $mode, ${route.metres.toInt()} m, ${route.steps.size} steps")
-                val rerouted = nav?.target?.id == target.id
-                nav = Nav(target, mode, route, cumulative(route), System.currentTimeMillis())
-                selected = null
-                if (!rerouted) route.steps.firstOrNull()?.let { say(it.text) }
-                follow(mode)
-                fix(from) // the first distance at once, not at the next fix
+            r.onSuccess { routes ->
+                if (choose && routes.size > 1) {
+                    preview = Preview(target, mode, routes, 0, from); selected = null
+                    val b = LatLngBounds.Builder()
+                    routes.forEach { rt -> rt.lats.indices.forEach { i -> b.include(LatLng(rt.lats[i], rt.lngs[i])) } }
+                    runCatching { mapRef?.animateCamera(CameraUpdateFactory.newLatLngBounds(b.build(), 120)) }
+                } else begin(target, mode, routes.first(), from)
             }.onFailure {
                 WriterLog.e("Maps: no route by $mode", it)
                 Toast.makeText(context, "No way found: ${it.message ?: "the routing graph could not be read"}", Toast.LENGTH_LONG).show()
@@ -298,6 +317,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         if (fast == 3 && nav?.mode != "foot" && nav?.mode != "bike") unpark("driving")
         mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }?.forceLocationUpdate(loc)
         road = roadAt(mapRef, loc)
+        speed = if (loc.hasSpeed()) Math.round(loc.speed * 3.6f) else null
+        // the limit at most every two seconds, off the main thread (the graph is opened the first time)
+        if (System.currentTimeMillis() - limitAsked > 2000 && File(graphDir, "properties").isFile) {
+            limitAsked = System.currentTimeMillis()
+            scope.launch { limit = withContext(Dispatchers.IO) { runCatching { MapsRouting.limitAt(graphDir, loc.latitude, loc.longitude) }.getOrNull() } }
+        }
         val n = nav ?: return
         val (p, i) = progress(n.route, n.cum, loc.latitude, loc.longitude, n.index)
         val car = n.mode == "car"
@@ -410,11 +435,23 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 ?.let { CameraPosition.Builder().target(LatLng(it.lat, it.lng)).zoom(14.0).build() }
                 ?: CameraPosition.Builder().target(LatLng(38.4, 23.8)).zoom(5.6).build()
             map.setStyle(Style.Builder().fromJson(json)) { style ->
+                style.addSource(GeoJsonSource("alts"))
+                style.addLayer(LineLayer("alts-line", "alts").withProperties(PropertyFactory.lineColor("#9E9E9E"), PropertyFactory.lineWidth(6f),
+                    PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND), PropertyFactory.lineOpacity(0.8f)))
                 style.addSource(GeoJsonSource("route"))
                 style.addLayer(LineLayer("route-casing", "route").withProperties(PropertyFactory.lineColor("#1A237E"), PropertyFactory.lineWidth(9f),
                     PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
                 style.addLayer(LineLayer("route-line", "route").withProperties(PropertyFactory.lineColor("#7986CB"), PropertyFactory.lineWidth(6f),
                     PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
+                // places put into the map's own data by hand (added-places.tsv): a small dot and the name, as the map's own
+                val dark = MapsPrefs.mapTheme(context) == "dark"
+                style.addSource(GeoJsonSource("added"))
+                style.addLayer(CircleLayer("added-dot", "added").withProperties(PropertyFactory.circleRadius(5f), PropertyFactory.circleColor("#7E57C2"),
+                    PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(1.5f)))
+                style.addLayer(SymbolLayer("added-name", "added").withProperties(PropertyFactory.textField("{name}"), PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
+                    PropertyFactory.textSize(12f), PropertyFactory.textOffset(arrayOf(0f, 1.1f)), PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
+                    PropertyFactory.textColor(if (dark) "#E0E0E0" else "#4A3A70"), PropertyFactory.textHaloColor(if (dark) "#000000" else "#FFFFFF"),
+                    PropertyFactory.textHaloWidth(1.2f), PropertyFactory.textOptional(true)))
                 style.addSource(GeoJsonSource("places"))
                 style.addLayer(CircleLayer("places-dot", "places").withProperties(PropertyFactory.circleRadius(8f), PropertyFactory.circleColor("#5C6BC0"),
                     PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(2.5f)))
@@ -439,10 +476,13 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     val mineHit = map.queryRenderedFeatures(box, "places-dot").firstOrNull()?.getStringProperty("id")?.let { id -> places.firstOrNull { it.id == id } }
                     val resultHit = map.queryRenderedFeatures(box, "results-dot").firstOrNull()?.let { f -> (f.geometry() as? Point)?.let { g ->
                         results.minByOrNull { metresBetween(g.latitude(), g.longitude(), it.lat, it.lng) } } }
+                    val addedHit = map.queryRenderedFeatures(box, "added-dot").firstOrNull()?.let { f -> (f.geometry() as? Point)?.let { g ->
+                        added.minByOrNull { metresBetween(g.latitude(), g.longitude(), it.lat, it.lng) } } }
                     val mapHit = map.queryRenderedFeatures(box, "pois").firstOrNull { it.geometry() is Point && it.hasProperty("name") }
                     when {
                         mineHit != null -> { selected = mineHit; detail = MapsSearch.near(all, mineHit.lat, mineHit.lng, mineHit.name, 25.0) }
                         resultHit != null -> { detail = resultHit; selected = resultHit.place() }
+                        addedHit != null -> { detail = addedHit; selected = addedHit.place() }
                         mapHit != null -> {
                             val g = mapHit.geometry() as Point
                             val name = mapHit.getStringProperty("name").orEmpty()
@@ -475,6 +515,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         map.locationComponent.renderMode = RenderMode.COMPASS
         here?.let { map.locationComponent.forceLocationUpdate(it) }
     }
+    // the added ones, but not where one of my places stands on it (the five work schools are both)
+    LaunchedEffect(mapRef, places) {
+        (mapRef?.style?.getSource("added") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(added
+            .filter { a -> places.none { metresBetween(it.lat, it.lng, a.lat, a.lng) < 30 } }
+            .map { a -> Feature.fromGeometry(Point.fromLngLat(a.lng, a.lat)).apply { addStringProperty("name", a.title) } }))
+    }
     LaunchedEffect(mapRef, places) {
         (mapRef?.style?.getSource("places") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(places.map { p ->
             Feature.fromGeometry(Point.fromLngLat(p.lng, p.lat)).apply { addStringProperty("id", p.id); addStringProperty("name", p.name) }
@@ -486,9 +532,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         (mapRef?.style?.getSource("results") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures((shown.map { Point.fromLngLat(it.lng, it.lat) } +
             listOfNotNull(pin?.let { Point.fromLngLat(it.lng, it.lat) })).map { Feature.fromGeometry(it) }))
     }
-    LaunchedEffect(mapRef, nav?.route) {
+    LaunchedEffect(mapRef, nav?.route, preview) {
         val src = mapRef?.style?.getSource("route") as? GeoJsonSource ?: return@LaunchedEffect
-        val r = nav?.route
+        fun line(r: Route) = Feature.fromGeometry(LineString.fromLngLats(r.lats.indices.map { Point.fromLngLat(r.lngs[it], r.lats[it]) }))
+        (mapRef?.style?.getSource("alts") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(
+            preview?.let { p -> p.routes.filterIndexed { i, _ -> i != p.chosen }.map(::line) }.orEmpty()))
+        val r = nav?.route ?: preview?.let { it.routes[it.chosen] }
         src.setGeoJson(if (r == null) FeatureCollection.fromFeatures(emptyList()) else
             FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(r.lats.indices.map { Point.fromLngLat(r.lngs[it], r.lats[it]) }))))
     }
@@ -497,8 +546,8 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         mapView.keepScreenOn = nav != null
         onDispose { mapView.keepScreenOn = false }
     }
-    BackHandler(nav != null || selected != null || tab != null) {
-        when { selected != null -> selected = null; tab != null -> tab = null; else -> stopNav() }
+    BackHandler(nav != null || selected != null || tab != null || preview != null) {
+        when { preview != null -> { selected = preview?.target; preview = null }; selected != null -> selected = null; tab != null -> tab = null; else -> stopNav() }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -508,6 +557,23 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             Text("The map of Greece is not on this device yet", style = MaterialTheme.typography.titleLarge)
             Text("It comes from the computer: tools/maps-greece.sh makes greece.pmtiles (about 500 MB) and the routing graph greece-gh, " +
                 "and Local Sync brings them here into Tetra/Maps.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        // bottom left: the speed limit as its sign, red when I am over it (by more than 3 km/h), my speed under it
+        limit?.takeIf { live }?.let { l ->
+            val over = (speed ?: 0) > l + 3
+            Column(Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 12.dp, bottom = 76.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(shape = CircleShape, color = if (over) androidx.compose.ui.graphics.Color(0xFFD32F2F) else androidx.compose.ui.graphics.Color.White,
+                    border = androidx.compose.foundation.BorderStroke(5.dp, androidx.compose.ui.graphics.Color(0xFFD32F2F)), modifier = Modifier.size(58.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("$l", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge,
+                            color = if (over) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Black)
+                    }
+                }
+                speed?.let { Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.padding(top = 4.dp)) {
+                    Text("$it km/h", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                } }
+            }
         }
 
         // top left: back and the road I am on, with its code (the user, 21 Oct: "To the top left no title. info about the road the code")
@@ -524,9 +590,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 }
             }
         }
-        // top right: the next turn in a small window (the user: "A small window will open at the top right to tell me what lane to take"), or P and where I am
+        // top right: the next turn in a small window (the user: "A small window will open at the top right to tell me what lane to take")
         if (n != null) NavBanner(n, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
-        else Row(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // bottom right, above the island: P and where I am (the user, 21 Oct: at the top they covered the map's compass);
+        // away while a panel or a place's page is open
+        if (n == null && tab == null && selected == null && preview == null) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 12.dp, bottom = 76.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Island(R.drawable.ic_parking, "I parked here") {
                 val h = here
                 if (h == null || !live) Toast.makeText(context, if (granted) "Waiting for your location…" else "Location is off for Tetra.", Toast.LENGTH_SHORT).show()
@@ -561,14 +630,18 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     IconButton(onClick = { muted = !muted; if (muted) tts.value?.stop() }) {
                         Icon(painterResource(if (muted) R.drawable.ic_volume_off else R.drawable.ic_volume_up), contentDescription = if (muted) "Voice on" else "Voice off")
                     }
-                    Button(onClick = {
+                    Button(colors = panelButton(), onClick = {
                         stopNav()
                         if (n.mode == "car" && MapsPrefs.autoPark(context)) here?.let { park(it, "a car trip stopped") }
                     }) { Text("Stop") }
                 }
+            } else if (preview != null) {
+                val pv = preview!!
+                RoutesPanel(pv.routes, pv.chosen, { i -> preview = pv.copy(chosen = i) }, { preview = null; selected = pv.target },
+                    { begin(pv.target, pv.mode, pv.routes[pv.chosen], here ?: pv.from) })
             } else if (s != null) {
                 val saved = s.id.isNotEmpty() && places.any { it.id == s.id }
-                PlaceCard(s, detail, address, saved, away(s.lat, s.lng), rolling, lists, go = { m -> startNav(s, m) },
+                PlaceCard(s, detail, address, saved, away(s.lat, s.lng), rolling, lists, go = { m -> startNav(s, m, choose = true) },
                     save = { editing = s.copy(name = if (s.name == "Dropped pin") "" else s.name) },
                     edit = { editing = s }, delete = { deleting = s }, close = { selected = null; detail = null }) {
                     // what is around it, in Search: nearest first, the pills to narrow it
@@ -675,6 +748,7 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
 /** A place's name, icon, Home slot and how its Home tap goes; a new one (no id) gets its id here. */
 @Composable private fun PlaceDialog(p: Place, all: List<Place>, lists: List<PlaceList>, dismiss: () -> Unit, save: (Place) -> Unit) {
     var inLists by remember { mutableStateOf(p.lists.toSet()) }
+    var label by remember { mutableStateOf(p.label) }
     var name by remember { mutableStateOf(p.name) }
     var icon by remember { mutableStateOf(p.icon) }
     var slot by remember { mutableStateOf(p.slot) }
@@ -697,7 +771,8 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
                     FilterChip(slot == n, { slot = n }, label = { Text(if (taken != null && slot != n) "$n·" else "$n") })
                 }
             }
-            all.firstOrNull { it.slot == slot && slot > 0 && it.id != p.id }?.let { Text("Takes slot $slot from ${it.name}.", style = MaterialTheme.typography.bodySmall) }
+            all.firstOrNull { it.slot == slot && slot > 0 && it.id != p.id }?.let { Text("Takes slot $slot from ${it.short}.", style = MaterialTheme.typography.bodySmall) }
+            if (slot > 0) OutlinedTextField(label, { label = it }, label = { Text("Name on Home (if shorter)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             if (lists.isNotEmpty()) {
                 Text("In lists", style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -712,7 +787,7 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
             }
         } },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
-            save(p.copy(id = p.id.ifEmpty { MapsFiles.newId() }, name = name.trim(), icon = icon, slot = slot, mode = mode, lists = lists.map { it.id }.filter { it in inLists }))
+            save(p.copy(id = p.id.ifEmpty { MapsFiles.newId() }, name = name.trim(), icon = icon, slot = slot, mode = mode, lists = lists.map { it.id }.filter { it in inLists }, label = label.trim()))
         }) { Text("Save") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }

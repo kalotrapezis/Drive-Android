@@ -1101,12 +1101,23 @@ private fun Home(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeArtCard("Maps", R.drawable.maps_art, { openMaps(null) }, Modifier.weight(1f), artSize = 76)
             Column(Modifier.weight(if (wide) 3f else 1.6f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // a tablet: all twelve, six a row; a phone: the first six, three a row (the user, 21 Oct: "very big on the tablet we can double them")
-                (if (wide) slots.chunked(6) else slots.take(MapsFiles.PHONE_SLOTS).chunked(3)).forEach { row ->
+                // a tablet: all twelve, six a row; a phone: the first eight, half-size, two a row (the user, 21 Oct: "very big on
+                // the tablet we can double them"; the phone: "half the size, so we can have 8"); each by its Home name
+                val tint = lookTint(Color(0xFF9FA8DA), Color(0xFF3949AB))
+                if (wide) slots.chunked(6).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         row.forEach { p ->
-                            if (p == null) HomeTile("Add", R.drawable.ic_add, lookTint(Color(0xFF9FA8DA), Color(0xFF3949AB)).copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
-                            else HomeTile(p.name, placeIcon(p.icon), lookTint(Color(0xFF9FA8DA), Color(0xFF3949AB)), Modifier.weight(1f)) { openMaps(p) }
+                            if (p == null) HomeTile("Add", R.drawable.ic_add, tint.copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
+                            else HomeTile(p.short, placeIcon(p.icon), tint, Modifier.weight(1f)) { openMaps(p) }
+                        }
+                    }
+                } else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    slots.take(MapsFiles.PHONE_SLOTS).chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { p ->
+                                if (p == null) HomeMiniTile("Add", R.drawable.ic_add, tint.copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
+                                else HomeMiniTile(p.short, placeIcon(p.icon), tint, Modifier.weight(1f)) { openMaps(p) }
+                            }
                         }
                     }
                 }
@@ -1171,6 +1182,16 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
         Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
             Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+}
+
+/** Half a HomeTile, its icon beside its name: Maps' places on a phone, eight beside the art. */
+@Composable private fun HomeMiniTile(label: String, icon: Int, tint: Color, modifier: Modifier, click: () -> Unit) {
+    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = modifier.height(34.dp).clickable(onClick = click)) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -1862,9 +1883,9 @@ private fun SettingsTab(
                     importScope.launch {
                         val r = withContext(Dispatchers.IO) { runCatching {
                             val name = mapsContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "import.zip"
-                            val bytes = mapsContext.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                            val entries = mapsContext.contentResolver.openInputStream(uri)!!.use { MapsImport.read(name, it) }
                             val root = MapsFiles.root(driveRoot())
-                            MapsImport.apply(root, MapsSearch.load(root), MapsImport.read(name, bytes))
+                            MapsImport.into(root, MapsSearch.load(root), entries)
                         } }
                         importing = false
                         r.onSuccess { imported = it; WriterLog.i("Maps: imported ${it.places} places, ${it.missed.size} not placed") }
@@ -1872,7 +1893,7 @@ private fun SettingsTab(
                     }
                 }
                 Text("Import from Google Maps", style = MaterialTheme.typography.titleSmall)
-                Text("Your saved lists and starred places from Google Takeout (takeout.google.com › Saved and Maps (your places)): the .zip, or one list's .csv. " +
+                Text("Your saved lists and starred places from Google Takeout: choose only Saved and Maps (your places) at takeout.google.com (the others, as YouTube and Maps, carry videos and photos), then the .zip here, or one list's .csv. " +
                     "Each list becomes a list here; a place without its spot in the file is found by its name, the others are named for you to find.", style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(enabled = !importing, onClick = { pickTakeout.launch(arrayOf("application/zip", "text/csv", "text/comma-separated-values", "application/json", "*/*")) }) {
                     Text(if (importing) "Importing…" else "Choose the file")

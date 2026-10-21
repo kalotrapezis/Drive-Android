@@ -92,12 +92,12 @@ class MapsImportTest {
         assertEquals(2, g.size); assertEquals(37.9715, g[0].lat!!, 1e-9); assertNull(g[1].lat)
         // into Tetra: the unplaced one found by its exact name in the search list, the other missed
         val root = Files.createTempDirectory("import").toFile()
-        val r = MapsImport.apply(root, listOf(Poi("pharmacy", 41.13, 24.88, "Φαρμακείο Χ")), es + g)
+        val r = MapsImport.into(root, listOf(Poi("pharmacy", 41.13, 24.88, "Φαρμακείο Χ")), es + g)
         assertEquals(4, r.places); assertEquals(listOf("Nowhere (Starred places)"), r.missed)
         assertEquals(setOf("Want to go", "Starred places"), MapsFiles.lists(root).map { it.name }.toSet())
         assertEquals("🚩", MapsFiles.lists(root).first { it.name == "Want to go" }.emoji)
         // a second import adds nothing new
-        assertEquals(4, MapsImport.apply(root, emptyList(), es.take(1) + g.take(1)).places + 2)
+        assertEquals(4, MapsImport.into(root, emptyList(), es.take(1) + g.take(1)).places + 2)
         assertEquals(4, MapsFiles.places(root).size)
     }
 }
@@ -126,5 +126,76 @@ class MapsMotorwayTest {
         val r = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car")
         r.steps.forEach { println("${it.sign}\t${it.metres.toInt()} m\t${it.text}\t[${it.ref}] ${it.street}") }
         assertTrue(r.steps.none { it.metres > 20_000 && it.street.isEmpty() })
+    }
+}
+
+class MapsGreeklishTest {
+    @Test fun greeklishFindsGreek() {
+        val all = listOf(Poi("village", 37.36, 22.44, "Κρεώνας", "Kreonas"), Poi("village", 37.21, 22.55, "Σκάλα"),
+            Poi("primary_school", 37.27, 22.58, "Δημοτικό Σχολείο Αγίου Λουκά"), Poi("city", 41.13, 24.88, "Ξάνθη", "Xanthi"))
+        for (q in listOf("krewnas", "Kreonas", "κρεωνας", "Κρεώνας")) assertEquals(q, "Κρεώνας", MapsSearch.search(all, q, 38.0, 23.0).firstOrNull()?.name)
+        assertEquals("Σκάλα", MapsSearch.search(all, "skala", 38.0, 23.0).firstOrNull()?.name)
+        assertEquals("Δημοτικό Σχολείο Αγίου Λουκά", MapsSearch.search(all, "agiou louka", 38.0, 23.0).firstOrNull()?.name)
+        assertEquals("Ξάνθη", MapsSearch.search(all, "xanthi", 38.0, 23.0).firstOrNull()?.name)
+    }
+}
+
+class MapsImportZipTest {
+    /** A Takeout zip, read as a stream: the lists and starred places taken, the rest (a big video) passed over. */
+    @Test fun zipStreamsAndKeepsOnlyTheLists() {
+        val out = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(out).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("Takeout/YouTube and YouTube Music/videos/a.mp4")); z.write(ByteArray(2_000_000)); z.closeEntry()
+            z.putNextEntry(java.util.zip.ZipEntry("Takeout/Saved/Want to go.csv")); z.write("Title,Note,URL\nA,,\"https://www.google.com/maps/search/40.64,+22.94\"\n".toByteArray()); z.closeEntry()
+            z.putNextEntry(java.util.zip.ZipEntry("Takeout/Maps (your places)/Saved Places.json"))
+            z.write("""{"features":[{"geometry":{"coordinates":[23.7,37.9]},"properties":{"location":{"name":"B"}}}]}""".toByteArray()); z.closeEntry()
+        }
+        val es = MapsImport.read("takeout-1.zip", out.toByteArray().inputStream())
+        assertEquals(listOf("Want to go" to "A", "Saved Places" to "B"), es.map { it.list to it.name })
+    }
+}
+
+class MapsTakeoutRunTest {
+    /** Opt-in (TETRA_TAKEOUT=<zip> TETRA_IMPORT_OUT=<dir>): a real Takeout imported into a folder of its own, with the computer's search list and addresses. */
+    @Test fun importARealTakeout() {
+        val zip = System.getenv("TETRA_TAKEOUT"); val out = System.getenv("TETRA_IMPORT_OUT")
+        assumeTrue(zip != null && out != null)
+        val maps = File(System.getProperty("user.home"), "Tetra-maps")
+        val root = File(out!!).apply { mkdirs() }
+        listOf(MapsSearch.FILE, MapsSearch.EOPYY, MapsAddresses.FILE).forEach { n -> File(maps, n).takeIf { it.isFile }?.copyTo(File(root, n), overwrite = true) }
+        val entries = File(zip!!).inputStream().use { MapsImport.read(File(zip).name, it) }
+        println("entries: ${entries.size} " + entries.groupingBy { it.list }.eachCount())
+        val r = MapsImport.into(root, MapsSearch.load(root), entries)
+        println("placed ${r.places}, lists ${r.lists}, missed ${r.missed.size}: ${r.missed}")
+    }
+}
+
+class MapsLimitFerryTest {
+    /** On the computer's graph, when it is there: a motorway's limit, and the ferry to Samothraki said as a ferry. */
+    @Test fun limitsAndFerries() {
+        val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
+        assumeTrue(File(dir, "properties").isFile)
+        // Egnatia near Kavala, and Panepistimiou in Athens
+        val r = MapsRouting.route(dir, 41.149912, 24.146884, 40.475293, 25.473550, "car")
+        // along the route to Samothraki: the limits known on the way (on a road, not beside it)
+        val limits = (0 until r.lats.size step maxOf(1, r.lats.size / 40)).map { MapsRouting.limitAt(dir, r.lats[it], r.lngs[it]) }
+        println("limits: $limits")
+        assertTrue(limits.count { it != null } > limits.size / 3)
+        val ferry = r.steps.filter { it.text.contains("πλοίο") }
+        println("ferry: " + ferry.map { "${it.text} ${it.metres.toInt()} m" })
+        assertTrue(ferry.isNotEmpty() && ferry.all { it.metres > 30_000 })
+    }
+}
+
+class MapsAlternativesTest {
+    /** Άγιος Λουκάς to the 2nd school of Κρεώνας, beside Google's two (21 Oct): the motorway and the local roads, no tracks, fastest first. */
+    @Test fun twoWaysThere() {
+        val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
+        assumeTrue(File(dir, "properties").isFile)
+        val rs = MapsRouting.routes(dir, 37.277768, 22.585572, 37.3713423, 22.4651517, "car")
+        rs.forEach { println("${it.millis / 60000} min ${(it.metres / 100).toInt() / 10.0} km ${it.roads}") }
+        assertTrue(rs.size >= 2 && rs.none { it.roads == "track" })
+        assertEquals(rs.sortedBy { it.millis }, rs)
+        assertTrue(rs.any { it.roads == "motorway" } && rs.any { it.roads != "motorway" })
     }
 }

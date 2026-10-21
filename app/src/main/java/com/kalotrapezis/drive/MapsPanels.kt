@@ -46,6 +46,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+/** Buttons on the dark panels: Maps' blue in both looks (the light look's dark primary was lost on the dark glass). */
+@Composable internal fun panelButton() = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF5C6BC0), contentColor = Color.White)
+
 /** The bottom island's three (the user, 21 Oct: "an Island at the bottom with navigation, favorites, search"). */
 internal enum class MapsTab(val label: String, val icon: Int) {
     Navigate("Directions", R.drawable.ic_navigation), Favorites("Saved", R.drawable.ic_favorite), Search("Search", R.drawable.ic_search)
@@ -218,7 +221,7 @@ internal fun modeLabelOf(mode: String, rolling: Boolean) = when (mode) { "foot" 
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Place.MODES.forEach { m ->
-                    Button(onClick = { go(m) }, modifier = Modifier.weight(1f)) {
+                    Button(onClick = { go(m) }, modifier = Modifier.weight(1f), colors = panelButton()) {
                         Icon(painterResource(modeIcon(m, rolling)), contentDescription = null, modifier = Modifier.size(18.dp)); Text(" " + modeLabelOf(m, rolling))
                     }
                 }
@@ -256,4 +259,27 @@ internal fun modeLabelOf(mode: String, rolling: Boolean) = when (mode) { "foot" 
             delete?.let { TextButton(onClick = it) { Text("Delete list") } }
             TextButton(onClick = dismiss) { Text("Cancel") }
         } })
+}
+
+/** The ways there to pick from: each its time, length and roads; Start goes by the chosen one (drawn bold). */
+@Composable internal fun RoutesPanel(routes: List<Route>, chosen: Int, choose: (Int) -> Unit, cancel: () -> Unit, start: () -> Unit) = MapsPanel {
+    routes.forEachIndexed { i, r ->
+        val on = i == chosen
+        Surface(shape = MaterialTheme.shapes.large, color = if (on) Color.White.copy(alpha = 0.18f) else Color.Transparent,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).clickable { choose(i) }) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val minutes = Math.round(r.millis / 60_000.0)
+                Text(if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal)
+                Text(metresText(r.metres), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
+                Text(when (r.roads) { "motorway" -> "Motorway"; "main" -> "Main roads"; "track" -> "Tracks"; else -> "Local roads" },
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                if (i == 0) Text("Fastest", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FA8DA))
+            }
+        }
+    }
+    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = start, modifier = Modifier.weight(1f), colors = panelButton()) { Text("Start") }
+        OutlinedButton(onClick = cancel) { Text("Cancel", color = Color.White) }
+    }
 }

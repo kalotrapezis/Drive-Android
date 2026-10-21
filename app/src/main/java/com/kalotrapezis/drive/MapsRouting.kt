@@ -25,7 +25,9 @@ import java.util.Locale
 /** One leg of a route's spoken and shown directions; [at] is the index in [Route.points] where it begins. */
 internal data class Step(val text: String, val sign: Int, val metres: Double, val at: Int, val street: String, val ref: String = "")
 
-internal data class Route(val mode: String, val lats: DoubleArray, val lngs: DoubleArray, val metres: Double, val millis: Long, val steps: List<Step>)
+/** [roads]: what it mostly runs on — "motorway", "main" or "local" — for the choice between routes. */
+internal data class Route(val mode: String, val lats: DoubleArray, val lngs: DoubleArray, val metres: Double, val millis: Long, val steps: List<Step>,
+    val roads: String = "")
 
 /**
  * Offline routing on the phone: the graph the computer built (tools/maps-greece.sh, tools/maps-graph.yml) opened read-only
@@ -72,16 +74,36 @@ internal object MapsRouting {
     }
 
     /** A route by [mode] (car, foot, bike), its directions in [lang] (el or en: GraphHopper's own translations). */
-    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el"): Route {
+    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el"): Route =
+        routes(dir, fromLat, fromLng, toLat, toLng, mode, lang).first()
+
+    /**
+     * Up to three ways there, the fastest first (the user, 21 Oct, beside Google Maps: "can our map have alternative routs with
+     * tolls or without, main roads over roral roads"): GraphHopper's alternatives on the same graph; for a car, none that
+     * runs a tenth of its way on tracks.
+     */
+    fun routes(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el"): List<Route> {
         val gh = open(dir)
         val locale = Locale.forLanguageTag(lang)
         val mode = if (mode == "wheelchair" && "wheelchair" !in profiles(dir)) "foot" else mode // a graph from before Rolling
-        val rsp = gh.route(GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale)
-            .setPathDetails(listOf("street_name", "street_ref")))
+        val req = GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale).setAlgorithm(Parameters.Algorithms.ALT_ROUTE)
+            .setPathDetails(listOf("street_name", "street_ref", "road_environment", "road_class"))
+        req.hints.putObject("alternative_route.max_paths", 3)
+        var rsp = gh.route(req)
+        if (rsp.hasErrors()) rsp = gh.route(req.setAlgorithm("")) // alternatives not to be had here: the one way
         check(!rsp.hasErrors()) { rsp.errors.firstOrNull()?.message ?: "No route." }
-        val best = rsp.best
         val tr = gh.translationMap.getWithFallBack(locale)
+        val all = rsp.all.map { build(it, tr, lang, mode) }
+        val usable = all.filter { r -> mode != "car" || r.roads != "track" }.ifEmpty { all }
+        return usable.sortedBy { it.millis }
+    }
+
+    private fun build(best: com.graphhopper.ResponsePath, tr: com.graphhopper.util.Translation, lang: String, mode: String): Route {
         val names = best.pathDetails["street_name"].orEmpty(); val refs = best.pathDetails["street_ref"].orEmpty()
+        val environment = best.pathDetails["road_environment"].orEmpty()
+        /** Whether a leg is mostly a ferry (GraphHopper 10 has no ferry instruction: it said "turn left" for 58 km of sea). */
+        fun ferry(from: Int, to: Int) = environment.filter { it.value?.toString().equals("ferry", true) }
+            .sumOf { maxOf(0, minOf(it.last, to) - maxOf(it.first, from)) } * 2 > (to - from)
         /** The road a leg [from]..[to] (point indexes) mostly runs on: its code and name, as "Α8 Ολυμπία Οδός". */
         fun mostly(from: Int, to: Int): String {
             fun longest(ds: List<com.graphhopper.util.details.PathDetail>) = ds.filter { it.last > from && it.first < to && (it.value as? String).orEmpty().isNotBlank() }
@@ -92,6 +114,10 @@ internal object MapsRouting {
         val steps = best.instructions.map { ins ->
             var text = ins.getTurnDescription(tr)
             var street = ins.name.orEmpty(); var ref = (ins.extraInfoJSON["street_ref"] as? String).orEmpty()
+            if (ferry(at, at + ins.points.size())) {
+                text = (if (lang == "en") "take the ferry" else "πάρτε το πλοίο") + (if (street.isNotEmpty()) " ($street)" else "")
+                street = if (lang == "en") "Ferry" else "Πλοίο"
+            }
             // a turn onto a ramp with no name says where the ramp leads (the user, 21 Oct, on motorways: "Στρίψτε αριστερά" for 61 km)
             if (street.isEmpty() && ins.sign != com.graphhopper.util.Instruction.FINISH) {
                 val road = mostly(at, at + ins.points.size())
@@ -103,7 +129,37 @@ internal object MapsRouting {
             Step(text.replaceFirstChar { it.uppercase() }, ins.sign, ins.distance, at, street, ref).also { at += ins.points.size() }
         }
         val pts = best.points
-        return Route(mode, DoubleArray(pts.size()) { pts.getLat(it) }, DoubleArray(pts.size()) { pts.getLon(it) }, best.distance, best.time, steps)
+        // what it runs on, by share of its length (a motorway has few points for many kilometres)
+        val share = HashMap<String, Double>()
+        best.pathDetails["road_class"].orEmpty().forEach { d ->
+            var m = 0.0
+            for (i in d.first until minOf(d.last, pts.size() - 1)) m += metresBetween(pts.getLat(i), pts.getLon(i), pts.getLat(i + 1), pts.getLon(i + 1))
+            share.merge(d.value?.toString()?.lowercase().orEmpty(), m, Double::plus)
+        }
+        val total = share.values.sum().coerceAtLeast(1.0)
+        fun part(vararg k: String) = (k.sumOf { share[it] ?: 0.0 } * 100 / total).toInt()
+        val roads = when {
+            part("track") >= 10 -> "track"
+            part("motorway", "trunk") >= 25 -> "motorway"
+            part("motorway", "trunk", "primary", "secondary") >= 50 -> "main"
+            else -> "local"
+        }
+        return Route(mode, DoubleArray(pts.size()) { pts.getLat(it) }, DoubleArray(pts.size()) { pts.getLon(it) }, best.distance, best.time, steps, roads)
+    }
+
+    /**
+     * The speed limit of the road nearest [lat],[lng] in km/h, from OSM's maxspeed in the graph (the user, 21 Oct: "ξέρουμε και
+     * όρια ταχύτητας; να το βάλουμε να κοκκινίζει όταν το περνάω;"); null where it is not known or no road is near.
+     */
+    fun limitAt(dir: File, lat: Double, lng: Double): Int? {
+        val gh = open(dir)
+        val em = gh.encodingManager
+        val access = em.getBooleanEncodedValue("car_access"); val max = em.getDecimalEncodedValue("max_speed")
+        val snap = gh.locationIndex.findClosest(lat, lng) { e -> e.get(access) || e.getReverse(access) }
+        if (!snap.isValid || snap.queryDistance > 40) return null
+        val e = snap.closestEdge
+        val v = listOf(e.get(max), e.getReverse(max)).filter { it.isFinite() && it > 0 }.minOrNull() ?: return null
+        return Math.round(v).toInt()
     }
 
     private class TetraHopper : GraphHopper() {

@@ -1732,6 +1732,18 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       warnings follow the speed (dueWarning: 2 km ahead over 80 km/h, ~20 s ahead, ~5 s ahead; "Σε 2 χιλιόμετρα, …").
       Not there: lanes (below), exit numbers, the word "έξοδος", tolls. GraphHopper chose the Θηβών–Ελευσίνας road over the
       Αθηνών–Λαμίας + Αττική Οδός for Σχηματάρι → Ναύπλιο (shorter; to be judged by the user on the road).
+- [x] (maps-link session, 21 Oct) Ways to choose (the user, beside Google Maps on the tablet: "can our map have alternative
+      routs with tolls or without, main roads over roral roads"): a place's Car / Walk / Bike shows up to three routes
+      (GraphHopper's alternative_route on the CH graph), fastest first, each with its time, length and roads (Motorway / Main
+      roads / Local roads, by share of length; tracks dropped for a car); Start goes by the chosen one; Home's one tap still
+      starts the fastest at once. Άγιος Λουκάς → 2ο Κρεώνα: 23 min motorway / 25 min local roads (Google: 30 tolls / 31 none).
+      Also: the speed limit as its sign bottom left, red over it by 3 km/h (OSM maxspeed in the graph, 71–89 % of the roads
+      tried); the ferry said as a ferry; the user's schools as system places (added-places.tsv, drawn on the map, in Search)
+      with Home names (Place.label); 8 half-size Home slots on a phone; P and where-I-am at the bottom right (the compass);
+      Greeklish search; Google Takeout in Greek (Αποθηκευμένα, Χάρτες (τα μέρη σας), Μέρη με ετικέτα), streamed, links'
+      ?q= positions, addresses looked up in the address list in the right town: the user's first Takeout part gave 53 of 65.
+- [ ] Tolls: GraphHopper's toll encoded value is not in the graph; with it (a rebuild) a "no tolls" profile, and the routes
+      marked with tolls. The user stopped a rebuild on 21 Oct (distance influence 30 for the car); to be asked again.
 - [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane
       you should take - keep?"): now only GraphHopper's keep left/right at forks. GraphHopper 10 keeps no lanes, so the
       computer's build reads OSM's turn:lanes tags itself (a pass over greece-latest.osm.pbf beside the graph, by way id),

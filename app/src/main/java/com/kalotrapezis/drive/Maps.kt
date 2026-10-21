@@ -13,7 +13,9 @@ import java.io.File
  *   Places/<id>.json one saved place each:
  *     {"id":"k3f9a2","name":"Home","lat":37.9715,"lng":23.7257,"icon":"home","slot":1,"mode":"car","lists":["fav"]}
  *     slot 1–12 puts it on Home's Maps card (0: not there; a phone shows 1–6); mode is how its one tap there goes (car,
- *     foot, bike); lists are the ids of the lists it is in.
+ *     foot, bike); lists are the ids of the lists it is in; label, when there, is its name on the Home card (the place
+ *     itself, "Πύργος", where the map shows the whole name, "Δημοτικό Σχολείο Πύργου"; the user, 21 Oct).
+ *   added-places.tsv places put into the map's own data by hand, in the search list's form (the user's schools, 21 Oct)
  *   Lists/<id>.json  one list each, {"id":"fav","name":"Favourites","emoji":"❤️"} (the user, 21 Oct: "make lists with names
  *     and emojes and add favs in there")
  *   greece-places.tsv the offline search list (tools/maps-places.py): towns and places of Search's kinds
@@ -28,9 +30,12 @@ internal data class Place(
     val mode: String = "car",
     val file: File? = null,
     val lists: List<String> = emptyList(),
+    val label: String = "",
 ) {
     fun json(): String = JSONObject().put("id", id).put("name", name).put("lat", lat).put("lng", lng).put("icon", icon)
-        .put("slot", slot).put("mode", mode).put("lists", org.json.JSONArray(lists)).toString(1) + "\n"
+        .put("slot", slot).put("mode", mode).put("lists", org.json.JSONArray(lists)).apply { if (label.isNotBlank()) put("label", label) }.toString(1) + "\n"
+    /** Its name on the Home card. */
+    val short get() = label.ifBlank { name }
 
     companion object {
         /** Emblems by tab (the user, 21 Oct: "pharmases, hospitals, relatives travel locations, nature like waterfalls rivers beaches … in tabs with categories"). */
@@ -53,7 +58,8 @@ internal data class Place(
             Place(o.optString("id").ifEmpty { file?.nameWithoutExtension ?: return null }, o.optString("name").ifEmpty { "Place" }, lat, lng,
                 o.optString("icon").takeIf { it in ICONS } ?: "pin", o.optInt("slot", 0).takeIf { it in 0..MapsFiles.SLOTS } ?: 0,
                 o.optString("mode").takeIf { it in MODES } ?: "car", file,
-                o.optJSONArray("lists")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty())
+                o.optJSONArray("lists")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty(),
+                o.optString("label"))
         }.getOrNull()
     }
 }
@@ -65,7 +71,7 @@ internal object MapsFiles {
     const val PLACES = "Places"
     /** Home's Maps card: twelve places on a tablet, the first six on a phone (the user, 20 Oct: "slots for 6 locations"; 21 Oct, the tablet: "very big … we can double them"). */
     const val SLOTS = 12
-    const val PHONE_SLOTS = 6
+    const val PHONE_SLOTS = 8 // half-size tiles on a phone (the user, 21 Oct: "half the size, so we can have 8")
     const val LISTS = "Lists"
     /** Where the car is: one place with this id ("My car"), saved over by the next parking. */
     const val PARKING = "parking"
@@ -218,8 +224,8 @@ internal data class Poi(
     val kind: String, val lat: Double, val lng: Double, val name: String, val nameEn: String = "", val more: String = "",
     val hours: String = "", val phone: String = "", val web: String = "", val wheelchair: String = "", val note: String = "",
 ) {
-    /** Accent-blind, Greek and English names together, for search. */
-    val key = MapsSearch.fold("$name $nameEn")
+    /** Accent-blind, Greek and English names together, and the Greek one in Latin letters (Greeklish), for search. */
+    val key = MapsSearch.fold("$name $nameEn").let { "$it ${MapsSearch.latin(MapsSearch.fold(name))}" }
     val title get() = name.ifEmpty { nameEn }.ifEmpty { MapsSearch.label(kind) }
     fun place() = Place("", title, lat, lng, MapsSearch.emblem(kind))
 }
@@ -232,6 +238,8 @@ internal object MapsSearch {
     const val FILE = "greece-places.tsv"
     /** EOPYY's own pharmacies (tools/maps-eopyy.py), kind "eopyy" (the user, 21 Oct: "add them as a list as well as a pill"). */
     const val EOPYY = "greece-eopyy.tsv"
+    /** Places put into the map's own data by hand (the user's schools, 21 Oct: "keep them as system locations"). */
+    const val ADDED = "added-places.tsv"
     data class Kind(val key: String, val label: String, val emoji: String, val emblem: String)
     /** Search's pills, in this order. */
     val PILLS = listOf(
@@ -258,6 +266,21 @@ internal object MapsSearch {
     fun fold(s: String): String = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
         .replace(Regex("\\p{Mn}+"), "").replace('ς', 'σ')
 
+    private val GREEK = mapOf('α' to "a", 'β' to "v", 'γ' to "g", 'δ' to "d", 'ε' to "e", 'ζ' to "z", 'η' to "i", 'θ' to "th", 'ι' to "i", 'κ' to "k",
+        'λ' to "l", 'μ' to "m", 'ν' to "n", 'ξ' to "ks", 'ο' to "o", 'π' to "p", 'ρ' to "r", 'σ' to "s", 'τ' to "t", 'υ' to "i", 'φ' to "f", 'χ' to "x",
+        'ψ' to "ps", 'ω' to "o")
+
+    /**
+     * Greek and Greeklish brought to one spelling, so "krewnas", "kreonas" and "Κρεώνας" meet (the user typed "Krewnas", 21 Oct):
+     * ω/ο → o, η/ι/υ/ει/οι → i, αι → e, ου → ou, θ → th, χ → x; in Latin, w → o, y/h → i (not in th), 8 → th.
+     */
+    fun latin(folded: String): String {
+        val g = folded.replace("ου", "\u0001").replace("ει", "ι").replace("οι", "ι").replace("αι", "ε")
+        val b = StringBuilder()
+        for (c in g) b.append(if (c == '\u0001') "ou" else GREEK[c] ?: c.toString())
+        return b.toString().replace("8", "th").replace('w', 'o').replace('y', 'i').replace(Regex("(?<![tcp])h"), "i").replace("ch", "x")
+    }
+
     fun parse(line: String): Poi? {
         val c = line.split('\t')
         if (c.size < 4) return null
@@ -268,9 +291,12 @@ internal object MapsSearch {
 
     private var cache: Triple<String, Long, List<Poi>>? = null
 
+    /** The places put in by hand (added-places.tsv), drawn on the map always, as the map's own. */
+    fun added(root: File): List<Poi> = File(root, ADDED).takeIf { it.isFile }?.readLines()?.mapNotNull(::parse).orEmpty()
+
     /** The search list in [root] with EOPYY's, read once (about 140 000 places) and kept while the files are the same. */
     @Synchronized fun load(root: File): List<Poi> {
-        val files = listOf(File(root, FILE), File(root, EOPYY)).filter { it.isFile }
+        val files = listOf(File(root, FILE), File(root, EOPYY), File(root, ADDED)).filter { it.isFile }
         if (files.isEmpty()) return emptyList()
         val stamp = files.sumOf { it.lastModified() }
         cache?.let { (path, at, all) -> if (path == root.path && at == stamp) return all }
@@ -289,8 +315,9 @@ internal object MapsSearch {
         if (q.isEmpty() && kind == null) return if (!nearby) emptyList() else all.asSequence().filter { !settlement(it.kind) && Math.abs(it.lat - lat) < 0.05 && Math.abs(it.lng - lng) < 0.065 }
             .sortedBy { metresBetween(lat, lng, it.lat, it.lng) }.take(limit).toList()
         val words = q.split(' ').filter { it.isNotEmpty() }
+        val greeklish = latin(q).split(' ').filter { it.isNotEmpty() }
         return all.asSequence()
-            .filter { (kind == null || it.kind == kind) && words.all { w -> it.key.contains(w) } }
+            .filter { (kind == null || it.kind == kind) && (words.all { w -> it.key.contains(w) } || greeklish.all { w -> it.key.contains(w) }) }
             .map { p -> p to metresBetween(lat, lng, p.lat, p.lng) }
             .sortedWith(compareBy({ (p, _) -> if (q.isEmpty() || p.key.startsWith(q) || p.key.contains(" $q")) 0 else 1 },
                 { (p, _) -> if (kind == null && q.isNotEmpty() && !settlement(p.kind)) 1 else 0 }, { (_, d) -> d }))
@@ -328,6 +355,32 @@ internal object MapsAddresses {
         return All(f.path, f.lastModified(), lat.toDoubleArray(), lng.toDoubleArray(), rest.toTypedArray()).also { cache = it }
     }
 
+    /**
+     * Where an address written as Google writes it is ("Φωκίωνος 5, Δράμα 661 32, Ελλάδα"): the same street and number in
+     * the address list, in that postcode when it has one; null when not there.
+     */
+    fun locate(root: File, address: String, pois: List<Poi> = emptyList()): Pair<Double, Double>? {
+        val a = load(root) ?: return null
+        val first = address.substringBefore(',').trim()
+        val m = Regex("""^(.*\S)\s+(\d+[A-Za-zΑ-Ωα-ω]?)$""").find(first) ?: return null
+        val street = MapsSearch.fold(m.groupValues[1]); val number = m.groupValues[2].lowercase()
+        val rest = address.substringAfter(',', "")
+        val post = Regex("""\b(\d{3})\s?(\d{2})\b""").find(rest)?.let { it.groupValues[1] + it.groupValues[2] }
+        // the town ("Ξάνθη 671 00" → Ξάνθη): the same street and number are in many towns ("Τσιμισκή 30" went to Δράμα)
+        val town = MapsSearch.fold(rest.substringBefore(',').replace(Regex("""\d"""), "").trim())
+        val towns = if (town.isEmpty()) emptyList() else pois.filter { MapsSearch.settlement(it.kind) && (MapsSearch.fold(it.name) == town || MapsSearch.fold(it.nameEn) == town) }
+        for (i in a.lat.indices) {
+            val r = a.rest[i].split('\t')
+            if (r.getOrNull(1)?.lowercase() != number || MapsSearch.fold(r[0]) != street) continue
+            val rowPost = r.getOrNull(2)?.replace(" ", "").orEmpty(); val rowTown = MapsSearch.fold(r.getOrNull(3).orEmpty())
+            if (post != null && rowPost.isNotEmpty() && rowPost != post) continue
+            val sure = (post != null && rowPost == post) || (town.isNotEmpty() && rowTown == town) ||
+                towns.any { metresBetween(it.lat, it.lng, a.lat[i], a.lng[i]) < 20_000 }
+            if (sure) return a.lat[i] to a.lng[i]
+        }
+        return null
+    }
+
     /** "Οδός 12, 67100 Ξάνθη": the nearest address within 60 m; else the town and the nearest postcode (within 1.5 km). */
     fun describe(root: File, pois: List<Poi>, lat: Double, lng: Double): String? {
         val a = load(root)
@@ -355,14 +408,16 @@ internal object MapsAddresses {
  * offline search list; what cannot be placed is reported to be found by hand.
  */
 internal object MapsImport {
+    /** [note]: the list's note, or the address Takeout gives a starred or labelled place. */
     data class Entry(val list: String, val name: String, val note: String, val lat: Double?, val lng: Double?)
     data class Result(val places: Int, val lists: Int, val missed: List<String>)
 
     private val D34 = Regex("""!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)""")
     private val AT = Regex("""@(-?\d+\.\d+),(-?\d+\.\d+)""")
     private val SEARCH = Regex("""/maps/search/(-?\d+\.\d+),\+?(-?\d+\.\d+)""")
+    private val Q = Regex("""[?&]q=(-?\d+\.\d+),\+?(-?\d+\.\d+)""")
 
-    fun coords(url: String): Pair<Double, Double>? = (D34.find(url) ?: AT.find(url) ?: SEARCH.find(url))
+    fun coords(url: String): Pair<Double, Double>? = (D34.find(url) ?: AT.find(url) ?: SEARCH.find(url) ?: Q.find(url))
         ?.let { m -> m.groupValues[1].toDouble() to m.groupValues[2].toDouble() }?.takeIf { it.first in -90.0..90.0 && it.second in -180.0..180.0 && (it.first != 0.0 || it.second != 0.0) }
 
     /** One CSV line's cells (quotes and doubled quotes as Google writes them). */
@@ -405,38 +460,55 @@ internal object MapsImport {
             if (lat == null || lng == null || lat.isNaN() || lng.isNaN() || (lat == 0.0 && lng == 0.0)) {
                 val at = (p.optString("google_maps_url").ifEmpty { p.optString("Google Maps URL") }).let(::coords); lat = at?.first; lng = at?.second
             }
-            val name = loc?.optString("name").orEmpty().ifEmpty { p.optString("name").ifEmpty { p.optString("Title") } }.ifEmpty { loc?.optString("address").orEmpty() }
-            if (name.isEmpty() && lat == null) null else Entry(list, name, loc?.optString("address").orEmpty(), lat, lng)
+            // Takeout's starred places without a location keep it in the link: ?q=lat,lng, or ?q=the address
+            val q = Regex("""[?&]q=([^&]+)""").find(p.optString("google_maps_url"))?.groupValues?.get(1)
+                ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull() }?.takeIf { lat == null && coords("?q=$it") == null }
+            val address = loc?.optString("address").orEmpty().ifEmpty { p.optString("address") }.ifEmpty { q.orEmpty() }
+            val name = loc?.optString("name").orEmpty().ifEmpty { p.optString("name").ifEmpty { p.optString("Title") } }.ifEmpty { address }
+            if (name.isEmpty() && lat == null) null else Entry(list, name, address, lat, lng)
         }
     }.getOrDefault(emptyList())
 
-    /** The entries of a Takeout .zip, or of one .csv / .json given by itself ([fileName] names its list). */
-    fun read(fileName: String, bytes: ByteArray): List<Entry> {
+    /**
+     * The entries of a Takeout .zip, read as it streams by (a Takeout can be gigabytes: YouTube's videos, Maps' photos; only
+     * the lists' .csv files and the places' .json files are kept), or of one .csv / .json given by itself ([fileName] names its list).
+     */
+    fun read(fileName: String, input: java.io.InputStream): List<Entry> =
+        if (fileName.endsWith(".zip", true)) read(fileName, ByteArray(0), input) else read(fileName, input.readBytes())
+
+    fun read(fileName: String, bytes: ByteArray, stream: java.io.InputStream? = null): List<Entry> {
         fun one(name: String, data: ByteArray): List<Entry> {
             val base = name.substringAfterLast('/').substringBeforeLast('.')
             val text = data.toString(Charsets.UTF_8)
             return when {
                 name.endsWith(".csv", true) -> csv(base, text)
-                name.endsWith(".json", true) -> geojson(if (base.equals("Saved Places", true)) "Starred places" else base, text)
+                name.endsWith(".json", true) -> geojson(base, text)
                 else -> emptyList()
             }
         }
         if (!fileName.endsWith(".zip", true)) return one(fileName, bytes)
         val out = ArrayList<Entry>()
-        java.util.zip.ZipInputStream(bytes.inputStream()).use { z ->
+        java.util.zip.ZipInputStream(stream ?: bytes.inputStream()).use { z ->
             generateSequence { z.nextEntry }.forEach { e ->
                 val n = e.name
-                if (!e.isDirectory && (("/Saved/" in "/$n" && n.endsWith(".csv", true)) || ("Maps (your places)/" in n && n.endsWith(".json", true)))) out += one(n, z.readBytes())
+                // English or Greek Takeout: Saved / Αποθηκευμένα (the lists), Maps (your places) / Χάρτες (τα μέρη σας) (starred),
+                // and the labelled places (Labeled places / Μέρη με ετικέτα); reviews and the rest passed over
+                val file = n.substringAfterLast('/')
+                val wanted = (("/Saved/" in "/$n" || "/Αποθηκευμένα/" in "/$n") && n.endsWith(".csv", true)) ||
+                    (("Maps (your places)/" in n || "Χάρτες (τα μέρη σας)/" in n) && n.endsWith(".json", true) && file !in setOf("Reviews.json", "Κριτικές.json")) ||
+                    file in setOf("Labeled places.json", "Μέρη με ετικέτα.json")
+                if (!e.isDirectory && wanted) out += one(n, z.readBytes())
             }
         }
         return out
     }
 
     fun emoji(list: String) = when (list.lowercase()) {
-        "favourite places", "favorite places", "αγαπημένα μέρη" -> "❤️"
+        "favourite places", "favorite places", "αγαπημένα μέρη", "αγαπημένα" -> "❤️"
         "want to go", "θέλω να πάω" -> "🚩"
-        "starred places", "με αστέρι" -> "⭐"
+        "starred places", "saved places", "με αστέρι", "αποθηκευμένα μέρη" -> "⭐"
         "travel plans", "ταξιδιωτικά σχέδια" -> "✈️"
+        "labeled places", "μέρη με ετικέτα" -> "🏷️"
         else -> "📌"
     }
 
@@ -444,19 +516,23 @@ internal object MapsImport {
      * Into Tetra: a list for each Google list (one of the same name is reused), a place for each entry placed (a place of
      * the same name within 30 m is reused and joins the list), the rest named in [Result.missed].
      */
-    fun apply(root: File, pois: List<Poi>, entries: List<Entry>): Result {
+    fun into(root: File, pois: List<Poi>, entries: List<Entry>): Result {
         var lists = MapsFiles.lists(root)
         val missed = ArrayList<String>(); var count = 0
         val byName = pois.filter { it.name.isNotEmpty() }.groupBy { MapsSearch.fold(it.name) }
         for ((listName, es) in entries.groupBy { it.list }) {
             val list = lists.firstOrNull { it.name.equals(listName, true) } ?: MapsFiles.saveList(root, PlaceList(MapsFiles.newId(), listName, emoji(listName))).also { lists = lists + it }
             for (e in es) {
+                // its own spot; else its name, when one place in Greece has it; else its address in the address list
                 val at = if (e.lat != null && e.lng != null) e.lat to e.lng
                     else byName[MapsSearch.fold(e.name)]?.takeIf { it.size == 1 }?.first()?.let { it.lat to it.lng }
+                    ?: MapsAddresses.locate(root, e.note, pois)
                 if (at == null) { missed += "${e.name} ($listName)"; continue }
-                val same = MapsFiles.places(root).firstOrNull { MapsSearch.fold(it.name) == MapsSearch.fold(e.name) && metresBetween(it.lat, it.lng, at.first, at.second) < 30 }
+                // a spot with no name of its own is named by its address
+                val name = e.name.ifEmpty { runCatching { MapsAddresses.describe(root, pois, at.first, at.second) }.getOrNull()?.substringBefore(',').orEmpty() }
+                val same = MapsFiles.places(root).firstOrNull { MapsSearch.fold(it.name) == MapsSearch.fold(name) && metresBetween(it.lat, it.lng, at.first, at.second) < 30 }
                 MapsFiles.save(root, same?.copy(lists = (same.lists + list.id).distinct())
-                    ?: Place(MapsFiles.newId(), e.name.ifEmpty { "Saved place" }, at.first, at.second, lists = listOf(list.id)))
+                    ?: Place(MapsFiles.newId(), name.ifEmpty { "Saved place" }, at.first, at.second, lists = listOf(list.id)))
                 count++
             }
         }

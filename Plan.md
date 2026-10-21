@@ -1719,6 +1719,12 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       the computer sends a location request over the paired connection, the phone answers with one GPS fix (asking for the
       location permission if it has none); the desktop shows "Waiting for the phone's location…" meanwhile, and says so
       when the phone is not reachable. Built with desktop Maps.
+- [x] (maps-link session, 21 Oct) Nearby (the user: "πατάω αναζήτηση πατάω πύργο και βγάζει την καρτέλα … βάλε και ένα κουμπί
+      Nearby και βγάλε σημεία ενιδαφέροντος"): a place's card › Nearby opens Search around it ("Near Πύργος"), nearest first,
+      distances from it, the pills narrowing it. Search's panel now rides above the keyboard, and says it is loading.
+      The user's work schools put in by hand (Places/sch-*.json, list Work 💼, Home slots 1–5): Πύργος and Σκάλα at the
+      village's middle (no school in OSM there), the 2nd of Κρεώνα at the user's link, the 1st
+      of Κρεώνα (not a work one) at the village's middle.
 - [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane
       you should take - keep?"): now only GraphHopper's keep left/right at forks. GraphHopper 10 keeps no lanes, so the
       computer's build reads OSM's turn:lanes tags itself (a pass over greece-latest.osm.pbf beside the graph, by way id),

@@ -263,9 +263,11 @@ internal object MapsSearch {
      * What [query] finds, of [kind] when one is given, nearest to [lat],[lng] (the map's middle) first; a name that starts
      * with the query before one that has it inside, and towns before shops when only words are given.
      */
-    fun search(all: List<Poi>, query: String, lat: Double, lng: Double, kind: String? = null, limit: Int = 60): List<Poi> {
+    fun search(all: List<Poi>, query: String, lat: Double, lng: Double, kind: String? = null, limit: Int = 60, nearby: Boolean = false): List<Poi> {
         val q = fold(query.trim())
-        if (q.isEmpty() && kind == null) return emptyList()
+        // Nearby with no words or kind: what is around, not the towns (the user, 21 Oct: "βάλε και ένα κουμπί Nearby")
+        if (q.isEmpty() && kind == null) return if (!nearby) emptyList() else all.asSequence().filter { !settlement(it.kind) && Math.abs(it.lat - lat) < 0.05 && Math.abs(it.lng - lng) < 0.065 }
+            .sortedBy { metresBetween(lat, lng, it.lat, it.lng) }.take(limit).toList()
         val words = q.split(' ').filter { it.isNotEmpty() }
         return all.asSequence()
             .filter { (kind == null || it.kind == kind) && words.all { w -> it.key.contains(w) } }

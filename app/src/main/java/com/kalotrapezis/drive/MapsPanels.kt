@@ -82,15 +82,20 @@ internal enum class MapsTab(val label: String, val icon: Int) {
 
 /** Search: words, or a pill of a kind, nearest the map's middle first (the area or town on the screen). */
 @Composable internal fun SearchPanel(query: String, setQuery: (String) -> Unit, pill: String?, setPill: (String?) -> Unit, results: List<Poi>,
-    distance: (Poi) -> Double?, hasList: Boolean, open: (Poi) -> Unit) = MapsPanel {
-    MapsSearchField(query, "Search places and towns", setQuery)
+    distance: (Poi) -> Double?, hasList: Boolean, near: String?, clearNear: () -> Unit, loading: Boolean, open: (Poi) -> Unit) = MapsPanel {
+    near?.let { n -> Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        FilterChip(true, clearNear, label = { Text("Near $n", maxLines = 1, overflow = TextOverflow.Ellipsis) }, colors = chipColors(),
+            trailingIcon = { Icon(painterResource(R.drawable.ic_close), contentDescription = "Anywhere", modifier = Modifier.size(16.dp)) })
+    } }
+    MapsSearchField(query, if (near != null) "Search near $near" else "Search places and towns", setQuery)
     Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         MapsSearch.PILLS.forEach { k -> FilterChip(pill == k.key, { setPill(if (pill == k.key) null else k.key) }, label = { Text("${k.emoji} ${k.label}") }, colors = chipColors()) }
     }
     when {
+        loading -> Text("Loading the search list…", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
         !hasList -> Text("The search list is not on this device yet: tools/maps-greece.sh makes greece-places.tsv on the computer, and Local Sync brings it into Tetra/Maps.",
             style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
-        query.isBlank() && pill == null -> Text("Type a name or a town, or pick a kind: the nearest to the middle of the map come first.",
+        query.isBlank() && pill == null && near == null -> Text("Type a name or a town, or pick a kind: the nearest to the middle of the map come first.",
             style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
         results.isEmpty() -> Text("Nothing found here.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
         else -> LazyColumn { items(results) { p -> PoiRow(p, distance(p)) { open(p) } } }
@@ -175,7 +180,7 @@ internal fun modeLabelOf(mode: String, rolling: Boolean) = when (mode) { "foot" 
  * Maps for reviews and photos when online.
  */
 @Composable internal fun PlaceCard(place: Place, poi: Poi?, address: String?, saved: Boolean, metres: Double?, rolling: Boolean, lists: List<PlaceList>,
-    go: (String) -> Unit, save: () -> Unit, edit: () -> Unit, delete: () -> Unit, close: () -> Unit) {
+    go: (String) -> Unit, save: () -> Unit, edit: () -> Unit, delete: () -> Unit, close: () -> Unit, nearby: () -> Unit) {
     val context = LocalContext.current
     fun open(uri: String) = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
@@ -219,6 +224,7 @@ internal fun modeLabelOf(mode: String, rolling: Boolean) = when (mode) { "foot" 
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = nearby) { Text("Nearby", color = Color.White) }
                 if (!saved) OutlinedButton(onClick = save) { Text("Save", color = Color.White) }
                 // online: Google's page of the place, with its reviews and photos
                 OutlinedButton(onClick = {

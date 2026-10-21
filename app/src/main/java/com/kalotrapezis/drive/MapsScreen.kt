@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -187,7 +188,9 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var listEditing by remember { mutableStateOf<PlaceList?>(null) }
     var detail by remember { mutableStateOf<Poi?>(null) } // what the search list knows of the place shown
     var all by remember { mutableStateOf<List<Poi>>(emptyList()) }
+    var listLoading by remember { mutableStateOf(true) }
     var center by remember { mutableStateOf(LatLng(38.4, 23.8)) }
+    var near by remember { mutableStateOf<Place?>(null) } // Nearby: Search around this place instead of the map's middle
     var results by remember { mutableStateOf<List<Poi>>(emptyList()) }
     var navResults by remember { mutableStateOf<List<Poi>>(emptyList()) }
     var road by remember { mutableStateOf<Pair<String, String>?>(null) } // the road under me: name, code
@@ -349,13 +352,18 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         startNav(p, p.mode)
     }
 
-    LaunchedEffect(Unit) { all = withContext(Dispatchers.IO) { runCatching { MapsSearch.load(root) }.onFailure { WriterLog.e("Maps: search list", it) }.getOrDefault(emptyList()) } }
+    LaunchedEffect(Unit) {
+        all = withContext(Dispatchers.IO) { runCatching { MapsSearch.load(root) }.onFailure { WriterLog.e("Maps: search list", it) }.getOrDefault(emptyList()) }
+        listLoading = false
+    }
     // the user's own accessible places count as disabled parking (OSM knows few: none in Xanthi on 21 Oct)
     fun mine(kind: String?) = if (kind == "disabled_parking") places.filter { it.icon == "accessible" }.map { Poi(kind, it.lat, it.lng, it.name, more = "Saved") } else emptyList()
-    LaunchedEffect(query, pill, center, all, places) {
-        results = withContext(Dispatchers.Default) { (mine(pill) + MapsSearch.search(all, query, center.latitude, center.longitude, pill)).let { r ->
-            if (pill == "disabled_parking") r.sortedBy { metresBetween(center.latitude, center.longitude, it.lat, it.lng) } else r } }
+    LaunchedEffect(query, pill, center, all, places, near) {
+        val c = near?.let { LatLng(it.lat, it.lng) } ?: center
+        results = withContext(Dispatchers.Default) { (mine(pill) + MapsSearch.search(all, query, c.latitude, c.longitude, pill, nearby = near != null)).let { r ->
+            if (pill == "disabled_parking") r.sortedBy { metresBetween(c.latitude, c.longitude, it.lat, it.lng) } else r } }
     }
+    LaunchedEffect(tab) { if (tab != MapsTab.Search) near = null }
     LaunchedEffect(selected, all) {
         val s = selected ?: run { address = null; return@LaunchedEffect }
         address = null
@@ -525,7 +533,8 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         }
 
         // bottom: directions running; or a place's page; or a panel and the island
-        Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp).widthIn(max = 560.dp).fillMaxWidth(),
+        // above the keyboard while one is typing in Search or Directions
+        Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding().padding(12.dp).widthIn(max = 560.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             finding?.let { Pill(it) }
             if (pending != null && nav == null && finding == null) Pill(if (granted) "Waiting for your location…" else "Location is off for Tetra: directions need it.")
@@ -554,10 +563,17 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 val saved = s.id.isNotEmpty() && places.any { it.id == s.id }
                 PlaceCard(s, detail, address, saved, away(s.lat, s.lng), rolling, lists, go = { m -> startNav(s, m) },
                     save = { editing = s.copy(name = if (s.name == "Dropped pin") "" else s.name) },
-                    edit = { editing = s }, delete = { deleting = s }, close = { selected = null; detail = null })
+                    edit = { editing = s }, delete = { deleting = s }, close = { selected = null; detail = null }) {
+                    // what is around it, in Search: nearest first, the pills to narrow it
+                    near = s; query = ""; pill = null; selected = null; detail = null; tab = MapsTab.Search
+                    mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(s.lat, s.lng), 15.0))
+                }
             } else if (mapFile.isFile) {
                 when (tab) {
-                    MapsTab.Search -> SearchPanel(query, { query = it }, pill, { pill = it }, results, { away(it.lat, it.lng) }, all.isNotEmpty()) { p ->
+                    // Nearby: how far from the place it is around, not from me
+                    MapsTab.Search -> SearchPanel(query, { query = it }, pill, { pill = it }, results,
+                        { p -> near?.let { n -> metresBetween(n.lat, n.lng, p.lat, p.lng) } ?: away(p.lat, p.lng) }, all.isNotEmpty() || listLoading,
+                        near?.name, { near = null }, listLoading) { p ->
                         detail = p; selected = p.place(); tab = null
                         mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), if (MapsSearch.settlement(p.kind)) 13.0 else 16.5))
                     }

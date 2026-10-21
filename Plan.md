@@ -1759,6 +1759,10 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       as it draws them); my places keep Maps' indigo circle with their emblem. A tavern emblem.
       ATMs (the user: "Can we find a map of all the ATMs in greece"): no open per-ATM list found (the banks' union publishes
       counts only, ~6 000); OSM has 3 405, all in Search's ATMs pill.
+- [x] (maps-link session, 21 Oct) Search's OK (the user: "να πατάω απλά ρεστοράντ και να πατάω οκ και να βγάζει τα ρεστοράντ σε
+      αυτό το κομάτι που βλέπω … ή και λίγο μεγαλήτερο"): a pill or words, then OK (or the keyboard's search key): up to 300
+      of them on the screen and half a screen round it stay on the map, the panel goes, a "🍽️ Restaurants · n ✕" pill clears
+      them; none there: the nearest 20, the map moved to them.
 - [ ] Tolls: GraphHopper's toll encoded value is not in the graph; with it (a rebuild) a "no tolls" profile, and the routes
       marked with tolls. The user stopped a rebuild on 21 Oct (distance influence 30 for the car); to be asked again.
 - [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane

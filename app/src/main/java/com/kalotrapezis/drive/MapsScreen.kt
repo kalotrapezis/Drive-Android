@@ -269,6 +269,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var center by remember { mutableStateOf(LatLng(38.4, 23.8)) }
     var near by remember { mutableStateOf<Place?>(null) } // Nearby: Search around this place instead of the map's middle
     var results by remember { mutableStateOf<List<Poi>>(emptyList()) }
+    var onMap by remember { mutableStateOf<Pair<String, List<Poi>>?>(null) } // Search's OK: what it found, left on the map, and its name
     var navResults by remember { mutableStateOf<List<Poi>>(emptyList()) }
     var road by remember { mutableStateOf<Pair<String, String>?>(null) } // the road under me: name, code
     var limit by remember { mutableStateOf<Int?>(null) } // its speed limit, km/h
@@ -555,7 +556,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     val box = android.graphics.RectF(pt.x - 24, pt.y - 24, pt.x + 24, pt.y + 24)
                     val mineHit = map.queryRenderedFeatures(box, "places-dot").firstOrNull()?.getStringProperty("id")?.let { id -> places.firstOrNull { it.id == id } }
                     val resultHit = map.queryRenderedFeatures(box, "results-dot").firstOrNull()?.let { f -> (f.geometry() as? Point)?.let { g ->
-                        results.minByOrNull { metresBetween(g.latitude(), g.longitude(), it.lat, it.lng) } } }
+                        (if (tab == MapsTab.Search) results else onMap?.second.orEmpty()).minByOrNull { metresBetween(g.latitude(), g.longitude(), it.lat, it.lng) } } }
                     val addedHit = map.queryRenderedFeatures(box, "added-dot").firstOrNull()?.let { f -> (f.geometry() as? Point)?.let { g ->
                         added.minByOrNull { metresBetween(g.latitude(), g.longitude(), it.lat, it.lng) } } }
                     val mapHit = map.queryRenderedFeatures(box, "pois").firstOrNull { it.geometry() is Point && it.hasProperty("name") }
@@ -607,7 +608,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         }))
     }
     LaunchedEffect(mapRef, results, tab, selected) {
-        val shown = if (tab == MapsTab.Search) results else emptyList()
+        val shown = if (tab == MapsTab.Search) results else onMap?.second.orEmpty()
         val pin = selected?.takeIf { s -> s.id.isEmpty() }
         (mapRef?.style?.getSource("results") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(
             shown.map { Feature.fromGeometry(Point.fromLngLat(it.lng, it.lat)).apply { addStringProperty("icon", markerOf(it.kind)) } } +
@@ -745,6 +746,15 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding().padding(12.dp).widthIn(max = 560.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             finding?.let { Pill(it) }
+            // what Search's OK left on the map, and its ✕
+            onMap?.takeIf { nav == null && tab == null && selected == null }?.let { (name, found) ->
+                Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.clickable { onMap = null }) {
+                    Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("$name · ${found.size}", style = MaterialTheme.typography.bodyMedium)
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
             if (reckoning && nav != null) Pill("No GPS signal: going on along the route")
             if (pending != null && nav == null && finding == null) Pill(if (granted) "Waiting for your location…" else "Location is off for Tetra: directions need it.")
             val s = selected
@@ -800,7 +810,31 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     // Nearby: how far from the place it is around, not from me
                     MapsTab.Search -> SearchPanel(query, { query = it }, pill, { pill = it }, results,
                         { p -> near?.let { n -> metresBetween(n.lat, n.lng, p.lat, p.lng) } ?: away(p.lat, p.lng) }, all.isNotEmpty() || listLoading,
-                        near?.name, { near = null }, listLoading) { p ->
+                        near?.name, { near = null }, listLoading, ok = {
+                            // what is on the screen and a little round it (half a screen each way), else the nearest found
+                            val map = mapRef
+                            val b = map?.projection?.visibleRegion?.latLngBounds
+                            val c = near?.let { LatLng(it.lat, it.lng) } ?: center
+                            scope.launch {
+                                val found = withContext(Dispatchers.Default) {
+                                    val many = (mine(pill) + MapsSearch.search(all, query, c.latitude, c.longitude, pill, limit = 2000, nearby = near != null))
+                                    val inView = if (b == null) many else {
+                                        val dLat = (b.latitudeNorth - b.latitudeSouth) / 2; val dLng = (b.longitudeEast - b.longitudeWest) / 2
+                                        many.filter { it.lat in (b.latitudeSouth - dLat)..(b.latitudeNorth + dLat) && it.lng in (b.longitudeWest - dLng)..(b.longitudeEast + dLng) }
+                                    }
+                                    inView.ifEmpty { many.take(20) }.take(300)
+                                }
+                                val name = pill?.let { k -> MapsSearch.PILLS.firstOrNull { it.key == k }?.let { "${it.emoji} ${it.label}" } } ?: query.trim()
+                                onMap = name to found
+                                tab = null
+                                WriterLog.i("Maps: OK on \"$name\", ${found.size} on the map")
+                                if (found.isNotEmpty() && (b == null || found.none { b.contains(LatLng(it.lat, it.lng)) })) {
+                                    val bb = LatLngBounds.Builder(); found.forEach { bb.include(LatLng(it.lat, it.lng)) }
+                                    if (found.size > 1) runCatching { mapRef?.animateCamera(CameraUpdateFactory.newLatLngBounds(bb.build(), 120)) }
+                                    else mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(found[0].lat, found[0].lng), 15.0))
+                                }
+                            }
+                        }) { p ->
                         detail = p; selected = p.place(); tab = null
                         mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), if (MapsSearch.settlement(p.kind)) 13.0 else 16.5))
                     }

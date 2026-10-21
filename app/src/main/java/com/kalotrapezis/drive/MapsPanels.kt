@@ -47,7 +47,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /** Buttons on the dark panels: Maps' blue in both looks (the light look's dark primary was lost on the dark glass). */
-@Composable internal fun panelButton() = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF5C6BC0), contentColor = Color.White)
+@Composable internal fun panelButton() = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF5C6BC0), contentColor = Color.White,
+    disabledContainerColor = Color(0xFF5C6BC0).copy(alpha = 0.35f), disabledContentColor = Color.White.copy(alpha = 0.55f))
 
 /** The bottom island's three (the user, 21 Oct: "an Island at the bottom with navigation, favorites, search"). */
 internal enum class MapsTab(val label: String, val icon: Int) {
@@ -75,7 +76,9 @@ internal enum class MapsTab(val label: String, val icon: Int) {
 @Composable private fun chipColors() = FilterChipDefaults.filterChipColors(labelColor = Color.White, selectedContainerColor = Color.White.copy(alpha = 0.22f),
     selectedLabelColor = Color.White, iconColor = Color.White, selectedLeadingIconColor = Color.White)
 
-@Composable internal fun MapsSearchField(query: String, hint: String, change: (String) -> Unit) = OutlinedTextField(query, change, singleLine = true,
+@Composable internal fun MapsSearchField(query: String, hint: String, change: (String) -> Unit, done: (() -> Unit)? = null) = OutlinedTextField(query, change, singleLine = true,
+    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { done?.invoke() }),
     placeholder = { Text(hint) }, leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
     trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { change("") }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear") } },
     colors = TextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color.Transparent,
@@ -85,12 +88,17 @@ internal enum class MapsTab(val label: String, val icon: Int) {
 
 /** Search: words, or a pill of a kind, nearest the map's middle first (the area or town on the screen). */
 @Composable internal fun SearchPanel(query: String, setQuery: (String) -> Unit, pill: String?, setPill: (String?) -> Unit, results: List<Poi>,
-    distance: (Poi) -> Double?, hasList: Boolean, near: String?, clearNear: () -> Unit, loading: Boolean, open: (Poi) -> Unit) = MapsPanel {
+    distance: (Poi) -> Double?, hasList: Boolean, near: String?, clearNear: () -> Unit, loading: Boolean, ok: () -> Unit, open: (Poi) -> Unit) = MapsPanel {
     near?.let { n -> Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         FilterChip(true, clearNear, label = { Text("Near $n", maxLines = 1, overflow = TextOverflow.Ellipsis) }, colors = chipColors(),
             trailingIcon = { Icon(painterResource(R.drawable.ic_close), contentDescription = "Anywhere", modifier = Modifier.size(16.dp)) })
     } }
-    MapsSearchField(query, if (near != null) "Search near $near" else "Search places and towns", setQuery)
+    // OK: what is picked, on the map around what is on the screen, the panel out of the way (the user, 21 Oct: "να πατάω απλά
+    // ρεστοράντ και να πατάω οκ και να βγάζει τα ρεστοράντ σε αυτό το κομάτι που βλέπω … ή και λίγο μεγαλήτερο")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { MapsSearchField(query, if (near != null) "Search near $near" else "Search places and towns", setQuery, ok) }
+        Button(onClick = ok, enabled = query.isNotBlank() || pill != null, colors = panelButton(), modifier = Modifier.padding(end = 12.dp)) { Text("OK") }
+    }
     Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         MapsSearch.PILLS.forEach { k -> FilterChip(pill == k.key, { setPill(if (pill == k.key) null else k.key) }, label = { Text("${k.emoji} ${k.label}") }, colors = chipColors()) }
     }

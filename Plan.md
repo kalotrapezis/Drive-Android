@@ -1695,13 +1695,40 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       the computer sends a location request over the paired connection, the phone answers with one GPS fix (asking for the
       location permission if it has none); the desktop shows "Waiting for the phone's location…" meanwhile, and says so
       when the phone is not reachable. Built with desktop Maps.
+- [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane
+      you should take - keep?"): now only GraphHopper's keep left/right at forks. GraphHopper 10 keeps no lanes, so the
+      computer's build reads OSM's turn:lanes tags itself (a pass over greece-latest.osm.pbf beside the graph, by way id),
+      and the phone draws the lanes under the next turn, the ones to take lit.
+- [ ] Map Update from the computer (the user, 21 Oct: "a map updater in the app settings in the applets section and a map
+      managment to downlad or update a map"): Settings › Maps shows what is installed (done, 21 Oct) and how updates come;
+      the Update button asks desktop Tetra to run the build (tools/maps-greece.sh's steps) and sync brings the files —
+      with desktop Maps. More regions than Greece then too (the same script with another Geofabrik extract).
+- [x] (maps-link session, 21 Oct) Parking (the user, 21 Oct: "save park location button, when user stops or and when the
+      Android auto turns off … save automaticaly and have the map start from location to that parking spot automaticaly at
+      the next open. Option in settings. The parking spot resets at the next car moveon not legs or bike, based on speed or
+      car bluetooth"): the map's P button; Settings › Maps › Save where I park (on: the end or Stop of a car trip saves it)
+      and Open the map at my car (directions on foot to it at the next open); cleared by a new car trip or 3 fixes over
+      40 km/h. One place, Places/parking.json ("My car"), so it syncs and shows like the others.
+- [ ] Parking from the car's Bluetooth and Android Auto: saved when the car's Bluetooth (chosen in Settings) or Android
+      Auto disconnects, cleared when it connects again. Needs "Allow all the time" location (the app is in the background
+      then) and BLUETOOTH_CONNECT; with Android Auto.
+- [x] (maps-link session, 21 Oct) Rolling (the user: "diferent modes on the map? Walking/Rolling"; "Add it as an option in
+      the settings Walking to be changed the icon to rolling"): Settings › Maps › On foot: Walking / Rolling; Rolling routes
+      with the graph's wheelchair profile (maps-graph.yml: foot.json without steps or hike/mtb-rated paths, ≤ 4 km/h) and
+      shows the wheelchair icon. A graph from before it falls back to walking.
+- [ ] Public transport (the user: "public trasport (can we have that are there info about bases or trains or ships…)"):
+      GraphHopper's GTFS module routes on timetables. Open feeds: Athens OASA (buses, trolleys) and STASY (metro, tram);
+      Thessaloniki OASTH to check; Hellenic Train and ferries have no open feed (ferries: none known). Offline on the phone
+      it needs GraphHopper's PT graph built on the computer like the road one; a big piece, after the road directions.
 - [ ] Android Auto (the user, 21 Oct: "Can it work with Android auto?"): Tetra's directions on the car screen with the
       Android for Cars App Library (NavigationTemplate: the next turn, the route drawn on a surface). Android Auto shows
       only Play-installed navigation apps unless Developer settings › Unknown sources is on in Android Auto, so this works
       for the user's own sideloaded Tetra that way. After the phone's turn-by-turn is tried on the road.
 - [x] (maps-link session, 21 Oct) Emblems in tabs (the user, 21 Oct: "Add more emblims for pharmases, hospitals,
       relatives travel locations, nature like waterfalls rivers beaches and have them in tabs with categories"): General,
-      People, Health, Travel, Nature (25 emblems) in the place dialog, and the saved-places list in the same tabs.
+      People, Health, Travel, Nature (26 emblems) in the place dialog, and the saved-places list in the same tabs; the
+      accessible (wheelchair) mark in General and beside Parking (the user: "a disability mark to have for my parking spots
+      and accessible places").
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

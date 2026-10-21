@@ -12,10 +12,23 @@ graphhopper:
       custom_model_files: [foot.json]
     - name: bike
       custom_model_files: [bike.json]
+    # Rolling (a wheelchair; the user, 21 Oct: "Walking/Rolling"): foot.json without steps or rough paths, at most 4 km/h.
+    # Inline, so the phone (MapsRouting.CONFIG) reads the very same model: GraphHopper compares the two by hash.
+    - name: wheelchair
+      custom_model:
+        priority:
+          - { if: "!foot_access || hike_rating >= 1", multiply_by: "0" }
+          - { if: "road_class == STEPS", multiply_by: "0" }
+          - { if: "mtb_rating > 1", multiply_by: "0" }
+          - { else: "", multiply_by: "foot_priority" }
+        speed:
+          - { if: "true", limit_to: "foot_average_speed" }
+          - { if: "true", limit_to: "4" }
   profiles_ch:
     - profile: car
     - profile: foot
     - profile: bike
+    - profile: wheelchair
   profiles_lm: []
   graph.encoded_values: car_access, car_average_speed, foot_access, hike_rating, mtb_rating, foot_priority, foot_average_speed, bike_priority, bike_access, roundabout, bike_average_speed, road_class, road_environment, max_speed
   import.osm.ignored_highways: ""   # foot and bike need footways, paths and steps

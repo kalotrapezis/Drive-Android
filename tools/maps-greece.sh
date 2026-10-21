@@ -49,10 +49,14 @@ if [ ! -f greece-latest.osm.pbf ]; then
   mv greece-latest.osm.pbf.part greece-latest.osm.pbf
 fi
 
-if [ ! -f greece-gh/properties ]; then
+# a new graph is built beside the old one and swapped in when whole (REBUILD=1 makes a new one when one is there)
+if [ ! -f greece-gh/properties ] || [ "${REBUILD:-0}" = 1 ]; then
   [ -f bin/graphhopper-web-10.2.jar ] || curl -fL -o bin/graphhopper-web-10.2.jar https://github.com/graphhopper/graphhopper/releases/download/10.2/graphhopper-web-10.2.jar
-  rm -rf greece-gh
-  "${JAVA:-/usr/lib/jvm/java-17-openjdk-amd64/bin/java}" -Xmx${GH_HEAP:-4g} -jar bin/graphhopper-web-10.2.jar import "$HERE/maps-graph.yml"
+  rm -rf greece-gh.new
+  "${JAVA:-/usr/lib/jvm/java-17-openjdk-amd64/bin/java}" -Xmx${GH_HEAP:-4g} -Ddw.graphhopper.graph.location=greece-gh.new \
+    -jar bin/graphhopper-web-10.2.jar import "$HERE/maps-graph.yml"
+  rm -f greece-gh.new/gh.lock
+  rm -rf greece-gh.old; [ -d greece-gh ] && mv greece-gh greece-gh.old; mv greece-gh.new greece-gh; rm -rf greece-gh.old
 fi
 
 bin/pmtiles show greece.pmtiles | head -20

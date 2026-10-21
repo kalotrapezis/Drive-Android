@@ -35,11 +35,21 @@ internal data class Route(val mode: String, val lats: DoubleArray, val lngs: Dou
  */
 internal object MapsRouting {
     /** maps-graph.yml's profiles, as Jackson reads them there: GraphHopper compares their hash with the graph's. */
-    private const val CONFIG = """{"profiles":[
-        {"name":"car","turn_costs":{"vehicle_types":["motorcar","motor_vehicle"]},"custom_model_files":["car.json"]},
-        {"name":"foot","custom_model_files":["foot.json"]},
-        {"name":"bike","custom_model_files":["bike.json"]}],
-      "profiles_ch":[{"profile":"car"},{"profile":"foot"},{"profile":"bike"}],"profiles_lm":[]}"""
+    private val PROFILES = linkedMapOf(
+        "car" to """{"name":"car","turn_costs":{"vehicle_types":["motorcar","motor_vehicle"]},"custom_model_files":["car.json"]}""",
+        "foot" to """{"name":"foot","custom_model_files":["foot.json"]}""",
+        "bike" to """{"name":"bike","custom_model_files":["bike.json"]}""",
+        "wheelchair" to """{"name":"wheelchair","custom_model":{"priority":[{"if":"!foot_access || hike_rating >= 1","multiply_by":"0"},""" +
+            """{"if":"road_class == STEPS","multiply_by":"0"},{"if":"mtb_rating > 1","multiply_by":"0"},{"else":"","multiply_by":"foot_priority"}],""" +
+            """"speed":[{"if":"true","limit_to":"foot_average_speed"},{"if":"true","limit_to":"4"}]}}""",
+    )
+
+    /** The profiles [dir]'s graph was built with (properties.txt), in maps-graph.yml's order: an older graph lacks the newer ones. */
+    fun profiles(dir: File): List<String> {
+        val built = runCatching { File(dir, "properties.txt").readLines().firstOrNull { it.startsWith("profiles=") } }.getOrNull()
+            ?.substringAfter("=")?.split(",")?.map { it.substringBefore("|") }.orEmpty()
+        return PROFILES.keys.filter { it in built }.ifEmpty { listOf("car", "foot", "bike") }
+    }
 
     private var hopper: GraphHopper? = null
     private var loaded: File? = null
@@ -47,7 +57,9 @@ internal object MapsRouting {
     /** The graph in [dir], opened once and kept (opening maps the files, it reads nothing much). */
     @Synchronized fun open(dir: File): GraphHopper {
         hopper?.let { if (loaded == dir) return it; it.close() }
-        val config = Jackson.newObjectMapper().readValue(CONFIG, GraphHopperConfig::class.java)
+        val names = profiles(dir)
+        val json = """{"profiles":[${names.joinToString(",") { PROFILES.getValue(it) }}],"profiles_ch":[${names.joinToString(",") { "{\"profile\":\"$it\"}" }}],"profiles_lm":[]}"""
+        val config = Jackson.newObjectMapper().readValue(json, GraphHopperConfig::class.java)
             .putObject("graph.location", dir.absolutePath)
             .putObject("graph.dataaccess.default_type", "MMAP_RO")
             .putObject("import.osm.ignored_highways", "")
@@ -59,10 +71,11 @@ internal object MapsRouting {
         return gh
     }
 
-    /** A route by [mode] (car, foot, bike), with Greek directions (GraphHopper's own el translation). */
-    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String): Route {
+    /** A route by [mode] (car, foot, bike), its directions in [lang] (el or en: GraphHopper's own translations). */
+    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el"): Route {
         val gh = open(dir)
-        val locale = Locale.forLanguageTag("el")
+        val locale = Locale.forLanguageTag(lang)
+        val mode = if (mode == "wheelchair" && "wheelchair" !in profiles(dir)) "foot" else mode // a graph from before Rolling
         val rsp = gh.route(GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale))
         check(!rsp.hasErrors()) { rsp.errors.firstOrNull()?.message ?: "No route." }
         val best = rsp.best
@@ -109,6 +122,19 @@ internal object MapsRouting {
                             var v = 1.0
                             if (!e.v(access, r) || e.v(hike, r) >= 2) v *= 0.0
                             if (e.v(mtb, r) > 2) v *= 0.0 else v *= e.v(prio, r)
+                            v
+                        }, { prio.maxOrMaxStorableDecimal }, 0.0, heading)
+                }
+                "wheelchair" -> { // maps-graph.yml's inline model: foot.json without steps or rough paths, at most 4 km/h
+                    val access = b("foot_access"); val speed = d("foot_average_speed"); val prio = d("foot_priority")
+                    val hike = i("hike_rating"); val mtb = i("mtb_rating")
+                    val road = em.getEnumEncodedValue(com.graphhopper.routing.ev.RoadClass.KEY, com.graphhopper.routing.ev.RoadClass::class.java)
+                    CustomWeighting.Parameters({ e, r -> minOf(999.0, e.v(speed, r), 4.0) }, { minOf(speed.maxOrMaxStorableDecimal, 4.0) },
+                        { e, r ->
+                            var v = 1.0
+                            if (!e.v(access, r) || e.v(hike, r) >= 1) v *= 0.0
+                            if (e.get(road) == com.graphhopper.routing.ev.RoadClass.STEPS) v *= 0.0
+                            if (e.v(mtb, r) > 1) v *= 0.0 else v *= e.v(prio, r)
                             v
                         }, { prio.maxOrMaxStorableDecimal }, 0.0, heading)
                 }

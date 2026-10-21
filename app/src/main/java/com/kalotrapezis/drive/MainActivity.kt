@@ -1803,6 +1803,55 @@ private fun SettingsTab(
         }
         item { SettingsCard("Calendar", Category.Calendar) { CalendarSettings() } }
         item { SettingsCard("Timer", Category.Timer) { ShareWithClaude("tetra-timer", "Timer", "Lets Claude start, pause and stop your timers by editing their files.") } }
+        // Maps (21 Oct): what is installed, where updates come from, and the directions' language and voice
+        item {
+            val mapsContext = LocalContext.current
+            var lang by remember { mutableStateOf(MapsPrefs.lang(mapsContext)) }
+            val files by produceState<List<Pair<String, String>>?>(null) { value = withContext(Dispatchers.IO) { MapsFiles.installed(MapsFiles.root(driveRoot())) } }
+            SettingsCard("Maps", Category.Maps) {
+                Text("Installed", style = MaterialTheme.typography.titleSmall)
+                files?.forEach { (what, about) -> Text("$what — $about", style = MaterialTheme.typography.bodySmall) }
+                Text("Maps are made on the computer and come here with Local Sync, into Tetra/Maps: tools/maps-greece.sh downloads " +
+                    "the newest map of Greece and builds the routing for it (an Update button in desktop Tetra is planned).", style = MaterialTheme.typography.bodySmall)
+                var rolling by remember { mutableStateOf(MapsPrefs.rolling(mapsContext)) }
+                Text("On foot", style = MaterialTheme.typography.titleSmall)
+                Text(if (rolling) "Rolling: routes for a wheelchair, without steps or rough paths, and its icon." else "Walking: every footpath and step.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf(false to "Walking", true to "Rolling"), rolling) { rolling = it; MapsPrefs.setRolling(mapsContext, it) }
+                var autoPark by remember { mutableStateOf(MapsPrefs.autoPark(mapsContext)) }
+                Row(Modifier.fillMaxWidth().clickable { autoPark = !autoPark; MapsPrefs.setAutoPark(mapsContext, autoPark) }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Save where I park", style = MaterialTheme.typography.titleSmall)
+                        Text("When directions by car end or are stopped, the spot is saved as My car (the map's P button saves it any time). " +
+                            "It is cleared when the car moves on: a new car trip, or car speed while the map is open.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = autoPark, onCheckedChange = { autoPark = it; MapsPrefs.setAutoPark(mapsContext, it) })
+                }
+                var openAtCar by remember { mutableStateOf(MapsPrefs.openAtCar(mapsContext)) }
+                Row(Modifier.fillMaxWidth().clickable { openAtCar = !openAtCar; MapsPrefs.setOpenAtCar(mapsContext, openAtCar) }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Open the map at my car", style = MaterialTheme.typography.titleSmall)
+                        Text("While a parking spot is saved, Maps opens with directions on foot to it (not when you are already by it).", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = openAtCar, onCheckedChange = { openAtCar = it; MapsPrefs.setOpenAtCar(mapsContext, it) })
+                }
+                Text("Directions in", style = MaterialTheme.typography.titleSmall)
+                Text("The words on the screen and the voice. The voice is Android's text-to-speech; its voices are in Android's settings.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf("el" to "Greek", "en" to "English"), lang) { lang = it; MapsPrefs.setLang(mapsContext, it) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        var t: android.speech.tts.TextToSpeech? = null
+                        t = android.speech.tts.TextToSpeech(mapsContext.applicationContext) { ok ->
+                            if (ok == android.speech.tts.TextToSpeech.SUCCESS) {
+                                val r = t?.setLanguage(MapsPrefs.ttsLocale(lang)) ?: -2
+                                if (r < 0) Toast.makeText(mapsContext, "No ${if (lang == "en") "English" else "Greek"} voice: add it in Android's voice settings.", Toast.LENGTH_LONG).show()
+                                else t?.speak(MapsPrefs.sample(lang), android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "test")
+                            }
+                        }
+                    }) { Text("Test voice") }
+                    OutlinedButton(onClick = { runCatching { mapsContext.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text("Voice settings") }
+                }
+            }
+        }
         item {
             // a launcher icon for each part (asked 17 Oct): on the home screen and in the app list, opening straight into it
             SettingsCard("App icons") {

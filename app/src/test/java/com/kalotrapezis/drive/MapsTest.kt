@@ -40,6 +40,13 @@ class MapsTest {
             assertTrue(r.metres in 800.0..3000.0)
             assertTrue(r.steps.isNotEmpty() && r.lats.size == r.lngs.size)
         }
+        // the hand-written custom models give GraphHopper's own answers (its server on the same graph, 21 Oct)
+        val gh = mapOf("car" to (471079.0 to 19950L), "foot" to (359126.0 to 230982L), "bike" to (463242.0 to 98452L))
+        for ((mode, want) in gh) {
+            val r = MapsRouting.route(dir, 37.9838, 23.7275, 40.6401, 22.9444, mode)
+            println("$mode Athens–Thessaloniki: ${r.metres.toInt()} m, ${r.millis / 1000} s")
+            assertEquals(want.first, r.metres, 2.0); assertEquals(want.second.toDouble(), r.millis / 1000.0, 2.0)
+        }
     }
 }
 

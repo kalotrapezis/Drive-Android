@@ -94,6 +94,7 @@ private val GREECE = LatLngBounds.from(42.2, 30.2, 34.2, 18.6)
 internal fun placeIcon(icon: String) = when (icon) {
     "star" -> R.drawable.ic_star
     "heart" -> R.drawable.ic_favorite
+    "accessible" -> R.drawable.ic_accessible
     "home" -> R.drawable.ic_home
     "work" -> R.drawable.ic_work
     "school" -> R.drawable.ic_school
@@ -119,19 +120,40 @@ internal fun placeIcon(icon: String) = when (icon) {
     else -> R.drawable.ic_place
 }
 
-internal fun modeIcon(mode: String) = when (mode) {
-    "foot" -> R.drawable.ic_directions_walk
+/** [rolling]: Settings › Maps › On foot is Rolling, a wheelchair (the user, 21 Oct: "Walking to be changed the icon to rolling"). */
+internal fun modeIcon(mode: String, rolling: Boolean = false) = when (mode) {
+    "foot" -> if (rolling) R.drawable.ic_accessible else R.drawable.ic_directions_walk
     "bike" -> R.drawable.ic_directions_bike
     else -> R.drawable.ic_directions_car
 }
 
-private fun modeLabel(mode: String) = when (mode) { "foot" -> "Walk"; "bike" -> "Bike"; else -> "Car" }
+private fun modeLabel(mode: String, rolling: Boolean = false) = when (mode) { "foot" -> if (rolling) "Roll" else "Walk"; "bike" -> "Bike"; else -> "Car" }
 
 /** A navigation running: the route, where on it the last fix was, and what has been said. */
 private data class Nav(
     val target: Place, val mode: String, val route: Route, val cum: DoubleArray, val since: Long,
     val index: Int = 0, val p: Progress? = null, val offFixes: Int = 0, val said: Set<String> = emptySet(),
 )
+
+/**
+ * Settings › Maps. The directions' language, words and voice alike (the user, 21 Oct: "at what loaguage will I be able to
+ * change it? Eng or Gr?"); on foot walking or rolling; where the car is parked, kept and opened (the user, 21 Oct: "save
+ * park location … save automaticaly and have the map start from location to that parking spot automaticaly at the next open").
+ */
+internal object MapsPrefs {
+    private fun prefs(c: Context) = c.getSharedPreferences("maps", Context.MODE_PRIVATE)
+    fun rolling(c: Context) = prefs(c).getBoolean("rolling", false)
+    fun setRolling(c: Context, on: Boolean) = prefs(c).edit().putBoolean("rolling", on).apply()
+    fun autoPark(c: Context) = prefs(c).getBoolean("auto_park", true)
+    fun setAutoPark(c: Context, on: Boolean) = prefs(c).edit().putBoolean("auto_park", on).apply()
+    fun openAtCar(c: Context) = prefs(c).getBoolean("open_at_car", false)
+    fun setOpenAtCar(c: Context, on: Boolean) = prefs(c).edit().putBoolean("open_at_car", on).apply()
+    fun lang(c: Context) = prefs(c).getString("lang", "el") ?: "el"
+    fun setLang(c: Context, lang: String) = prefs(c).edit().putString("lang", lang).apply()
+    fun ttsLocale(lang: String): Locale = Locale.forLanguageTag(if (lang == "en") "en-GB" else "el-GR")
+    fun inMetres(lang: String, m: Long, then: String) = if (lang == "en") "In $m metres, $then" else "Σε $m μέτρα, $then"
+    fun sample(lang: String) = if (lang == "en") "In 300 metres, turn right onto Panepistimiou" else "Σε 300 μέτρα, στρίψτε δεξιά στην Πανεπιστημίου"
+}
 
 private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -155,6 +177,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var showList by remember { mutableStateOf(false) }
     var listTab by remember { mutableStateOf("All") }
     var here by remember { mutableStateOf<Location?>(null) }
+    var live by remember { mutableStateOf(false) } // a fix came while the map is open (not Android's stored last one)
     var granted by remember { mutableStateOf(hasLocation(context)) }
     var nav by remember { mutableStateOf<Nav?>(null) }
     var finding by remember { mutableStateOf<String?>(null) }
@@ -165,28 +188,65 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted = hasLocation(context) }
     LaunchedEffect(Unit) { if (!granted) ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }
 
-    // the voice: Greek, as the directions
+    // the voice: the directions' language (Settings › Maps)
+    val lang = remember { MapsPrefs.lang(context) }
+    val rolling = remember { MapsPrefs.rolling(context) }
+    fun profile(mode: String) = if (mode == "foot" && rolling) "wheelchair" else mode
+    var fast by remember { mutableStateOf(0) } // fixes in a row at car speed
     val tts = remember { mutableStateOf<TextToSpeech?>(null) }
     DisposableEffect(Unit) {
         var t: TextToSpeech? = null
-        t = TextToSpeech(context.applicationContext) { ok -> if (ok == TextToSpeech.SUCCESS) { t?.language = Locale.forLanguageTag("el-GR"); tts.value = t } }
+        t = TextToSpeech(context.applicationContext) { ok -> if (ok == TextToSpeech.SUCCESS) { t?.language = MapsPrefs.ttsLocale(lang); tts.value = t } }
         onDispose { t.stop(); t.shutdown() }
     }
-    fun say(text: String) { if (!muted) tts.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "maps") }
+    fun say(text: String) { WriterLog.i("Maps: say \"$text\"${if (muted) " (muted)" else ""}"); if (!muted) tts.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "maps") }
+
+    /** The car is here: one place, "My car", saved over the last one. */
+    fun park(loc: Location, why: String) {
+        WriterLog.i("Maps: parked ($why)")
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { MapsFiles.save(root, Place(MapsFiles.PARKING, "My car", loc.latitude, loc.longitude, "parking", mode = "foot")) } }
+            places = withContext(Dispatchers.IO) { MapsFiles.places(root) }
+            Toast.makeText(context, "Parking saved", Toast.LENGTH_SHORT).show()
+        }
+    }
+    /** The car moves on: the parking spot goes (on foot or by bike it stays). */
+    fun unpark(why: String) {
+        if (places.none { it.id == MapsFiles.PARKING }) return
+        WriterLog.i("Maps: parking cleared ($why)")
+        scope.launch {
+            withContext(Dispatchers.IO) { places.firstOrNull { it.id == MapsFiles.PARKING }?.let { MapsFiles.delete(root, it) } }
+            places = withContext(Dispatchers.IO) { MapsFiles.places(root) }
+        }
+    }
 
     fun stopNav() {
         nav = null
         mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }?.apply { cameraMode = CameraMode.NONE; renderMode = RenderMode.COMPASS }
     }
 
+    /** The camera on me, turned the way I go; zoom and tilt through the tracking itself (a camera move of ours would end it). */
+    fun follow(mode: String) {
+        val lc = mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated } ?: return
+        lc.renderMode = RenderMode.GPS
+        lc.setCameraMode(CameraMode.TRACKING_GPS, object : org.maplibre.android.location.OnLocationCameraTransitionListener {
+            override fun onLocationCameraTransitionFinished(cameraMode: Int) {
+                lc.zoomWhileTracking(if (mode == "car") 16.5 else 17.5); lc.tiltWhileTracking(if (mode == "car") 45.0 else 0.0)
+            }
+            override fun onLocationCameraTransitionCanceled(cameraMode: Int) = Unit
+        })
+    }
+    var fix: (Location) -> Unit = {} // onFix, below: it and startNav call each other
     fun startNav(target: Place, mode: String, from: Location? = here) {
-        if (from == null) { pending = target.copy(mode = mode); return }
+        // directions start from a live fix: Android's stored last one can be hours old and towns away
+        if (from == null || !live) { pending = target.copy(mode = mode); return }
         if (!File(graphDir, "properties").isFile) {
             Toast.makeText(context, "No routing graph yet: put greece-gh in Tetra/Maps (the computer's tools/maps-greece.sh makes it).", Toast.LENGTH_LONG).show(); return
         }
+        if (mode == "car" && target.id != MapsFiles.PARKING) unpark("a car trip started")
         finding = "Finding the way…"
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, mode) } }
+            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), lang) } }
             finding = null
             r.onSuccess { route ->
                 WriterLog.i("Maps: route by $mode, ${route.metres.toInt()} m, ${route.steps.size} steps")
@@ -194,10 +254,8 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 nav = Nav(target, mode, route, cumulative(route), System.currentTimeMillis())
                 selected = null
                 if (!rerouted) route.steps.firstOrNull()?.let { say(it.text) }
-                mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }?.apply {
-                    cameraMode = CameraMode.TRACKING_GPS; renderMode = RenderMode.GPS
-                    zoomWhileTracking(if (mode == "car") 16.5 else 17.5)
-                }
+                follow(mode)
+                fix(from) // the first distance at once, not at the next fix
             }.onFailure {
                 WriterLog.e("Maps: no route by $mode", it)
                 Toast.makeText(context, "No way found: ${it.message ?: "the routing graph could not be read"}", Toast.LENGTH_LONG).show()
@@ -207,7 +265,10 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
 
     /** Each fix: where on the route, what to say, and a new route when off it for three fixes in a row. */
     fun onFix(loc: Location) {
-        here = loc
+        here = loc; live = true
+        // at car speed (40 km/h) for three fixes: driving, so the car is no longer where it was parked
+        fast = if (loc.hasSpeed() && loc.speed > 11f) fast + 1 else 0
+        if (fast == 3 && nav?.mode != "foot" && nav?.mode != "bike") unpark("driving")
         mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }?.forceLocationUpdate(loc)
         val n = nav ?: return
         val (p, i) = progress(n.route, n.cum, loc.latitude, loc.longitude, n.index)
@@ -215,12 +276,18 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         if (p.off > (if (car) 50.0 else 30.0)) {
             val off = n.offFixes + 1
             nav = n.copy(offFixes = off)
-            if (off >= 3 && System.currentTimeMillis() - n.since > 10_000 && finding == null) startNav(n.target, n.mode, loc)
+            if (off >= 3 && System.currentTimeMillis() - n.since > 10_000 && finding == null) {
+                WriterLog.i("Maps: off the route by ${p.off.toInt()} m, a new one"); startNav(n.target, n.mode, loc)
+            }
             return
         }
         var said = n.said
-        if (p.left < (if (car) 30.0 else 15.0)) {
-            say(n.route.steps.lastOrNull()?.text ?: "Φτάσατε"); stopNav()
+        // there: at the route's end, or near the place itself (a place saved off the road ends its route short of it)
+        if (p.left < (if (car) 50.0 else 20.0) || metresBetween(loc.latitude, loc.longitude, n.target.lat, n.target.lng) < (if (car) 60.0 else 25.0)) {
+            WriterLog.i("Maps: arrived, ${p.left.toInt()} m left on the route")
+            if ("n${n.route.steps.lastIndex}" !in said) say(n.route.steps.lastOrNull()?.text ?: "")
+            stopNav()
+            if (car && MapsPrefs.autoPark(context)) park(loc, "a car trip ended")
             Toast.makeText(context, "Arrived: ${n.target.name}", Toast.LENGTH_LONG).show(); return
         }
         val step = n.route.steps[p.next]
@@ -228,11 +295,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         if (p.toNext <= near && "n${p.next}" !in said) { say(step.text); said = said + "n${p.next}" + "f${p.next}" }
         else if (p.toNext <= far && p.toNext > near * 2 && "f${p.next}" !in said) {
             val round = if (car) 50 else 10
-            say("Σε ${(Math.round(p.toNext / round) * round)} μέτρα, ${step.text}"); said = said + "f${p.next}"
+            say(MapsPrefs.inMetres(lang, Math.round(p.toNext / round) * round, step.text)); said = said + "f${p.next}"
         }
         nav = n.copy(index = i, p = p, offFixes = 0, said = said)
     }
 
+    fix = ::onFix
     DisposableEffect(granted) {
         val lm = context.getSystemService(LocationManager::class.java)
         val listener = LocationListener { loc ->
@@ -251,9 +319,17 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         }
         onDispose { lm?.removeUpdates(listener) }
     }
-    LaunchedEffect(pending, here) {
+    // the next open after parking: on foot to the car (Settings › Maps), unless already by it
+    LaunchedEffect(Unit) {
+        if (go == null && MapsPrefs.openAtCar(context)) places.firstOrNull { it.id == MapsFiles.PARKING }?.let { pending = it.copy(mode = "foot") }
+    }
+    LaunchedEffect(pending, here, live) {
         val p = pending ?: return@LaunchedEffect
-        if (here != null) { pending = null; startNav(p, p.mode) }
+        val h = here ?: return@LaunchedEffect
+        if (!live) return@LaunchedEffect
+        pending = null
+        if (p.id == MapsFiles.PARKING && go == null && metresBetween(h.latitude, h.longitude, p.lat, p.lng) < 80) return@LaunchedEffect
+        startNav(p, p.mode)
     }
 
     val mapView = remember {
@@ -315,7 +391,9 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         val map = mapRef ?: return@LaunchedEffect
         val style = map.style ?: return@LaunchedEffect
         if (!granted || map.locationComponent.isLocationComponentActivated) return@LaunchedEffect
-        map.locationComponent.activateLocationComponent(LocationComponentActivationOptions.builder(context, style).useDefaultLocationEngine(false).build())
+        // a small arrow, so the road under it shows (the user, 21 Oct: "The arrow seams too big for the road")
+        map.locationComponent.activateLocationComponent(LocationComponentActivationOptions.builder(context, style).useDefaultLocationEngine(false)
+            .locationComponentOptions(org.maplibre.android.location.LocationComponentOptions.builder(context).maxZoomIconScale(0.6f).minZoomIconScale(0.45f).build()).build())
         map.locationComponent.isLocationComponentEnabled = true
         map.locationComponent.renderMode = RenderMode.COMPASS
         here?.let { map.locationComponent.forceLocationUpdate(it) }
@@ -357,6 +435,11 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 Text("Maps", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
             }
             Box(Modifier.weight(1f))
+            Island(R.drawable.ic_parking, "I parked here") {
+                val h = here
+                if (h == null || !live) Toast.makeText(context, if (granted) "Waiting for your location…" else "Location is off for Tetra.", Toast.LENGTH_SHORT).show()
+                else park(h, "the P button")
+            }
             Island(R.drawable.ic_view_list, "Saved places") { showList = !showList; selected = null }
             Island(R.drawable.ic_my_location, "Where I am") {
                 val h = here
@@ -394,8 +477,10 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         // bottom: the chosen place, directions running, or a hint
         Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp).widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             finding?.let { Pill(it) }
-            if (pending != null && here == null) Pill(if (granted) "Waiting for your location…" else "Location is off for Tetra: directions need it.")
+            if (pending != null && nav == null && finding == null) Pill(if (granted) "Waiting for your location…" else "Location is off for Tetra: directions need it.")
             val s = selected
+            // the road I am on: the street of the leg being driven (the user: "will I be able to see on what road I am on?")
+            n?.let { nn -> nn.route.steps.getOrNull(((nn.p?.next ?: 1) - 1).coerceAtLeast(0))?.street?.takeIf { it.isNotBlank() } }?.let { Pill(it) }
             if (n != null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
                 Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -404,13 +489,16 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                         Text("${metresText(left)} · ${if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"}", style = MaterialTheme.typography.titleMedium)
                         Text(n.target.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    IconButton(onClick = { mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }?.cameraMode = CameraMode.TRACKING_GPS }) {
+                    IconButton(onClick = { follow(n.mode) }) {
                         Icon(painterResource(R.drawable.ic_navigation), contentDescription = "Follow me")
                     }
                     IconButton(onClick = { muted = !muted; if (muted) tts.value?.stop() }) {
                         Icon(painterResource(if (muted) R.drawable.ic_volume_off else R.drawable.ic_volume_up), contentDescription = if (muted) "Voice on" else "Voice off")
                     }
-                    Button(onClick = ::stopNav) { Text("Stop") }
+                    Button(onClick = {
+                        stopNav()
+                        if (n.mode == "car" && MapsPrefs.autoPark(context)) here?.let { park(it, "a car trip stopped") }
+                    }) { Text("Stop") }
                 }
             } else if (s != null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -426,7 +514,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Place.MODES.forEach { m ->
                             Button(onClick = { startNav(s, m) }, modifier = Modifier.weight(1f)) {
-                                Icon(painterResource(modeIcon(m)), contentDescription = null, modifier = Modifier.size(18.dp)); Text(" " + modeLabel(m))
+                                Icon(painterResource(modeIcon(m, rolling)), contentDescription = null, modifier = Modifier.size(18.dp)); Text(" " + modeLabel(m, rolling))
                             }
                         }
                     }
@@ -504,8 +592,9 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             all.firstOrNull { it.slot == slot && slot > 0 && it.id != p.id }?.let { Text("Takes slot $slot from ${it.name}.", style = MaterialTheme.typography.bodySmall) }
             Text("Its Home tap goes", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Place.MODES.forEach { m -> FilterChip(mode == m, { mode = m }, label = { Text(modeLabel(m)) },
-                    leadingIcon = { Icon(painterResource(modeIcon(m)), contentDescription = null, modifier = Modifier.size(16.dp)) }) }
+                val rolling = MapsPrefs.rolling(LocalContext.current)
+                Place.MODES.forEach { m -> FilterChip(mode == m, { mode = m }, label = { Text(modeLabel(m, rolling)) },
+                    leadingIcon = { Icon(painterResource(modeIcon(m, rolling)), contentDescription = null, modifier = Modifier.size(16.dp)) }) }
             }
         } },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {

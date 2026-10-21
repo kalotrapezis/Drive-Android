@@ -30,13 +30,13 @@ internal data class Place(
     companion object {
         /** Emblems by tab (the user, 21 Oct: "pharmases, hospitals, relatives travel locations, nature like waterfalls rivers beaches … in tabs with categories"). */
         val CATEGORIES = linkedMapOf(
-            "General" to listOf("pin", "star", "heart", "home", "work", "school"),
+            "General" to listOf("pin", "star", "heart", "accessible", "home", "work", "school"),
             "People" to listOf("family", "friend"),
             "Health" to listOf("pharmacy", "hospital", "doctor"),
-            "Travel" to listOf("travel", "hotel", "food", "cafe", "shop", "fuel", "parking"),
+            "Travel" to listOf("travel", "hotel", "food", "cafe", "shop", "fuel", "parking", "accessible"),
             "Nature" to listOf("beach", "waterfall", "river", "lake", "mountain", "forest", "camping"),
         )
-        val ICONS = CATEGORIES.values.flatten()
+        val ICONS = CATEGORIES.values.flatten().distinct() // the accessible mark is in General and beside Parking (the user, 21 Oct: "a disability mark … for my parking spots and accessible places")
         fun category(icon: String) = CATEGORIES.entries.firstOrNull { icon in it.value }?.key ?: "General"
         val MODES = listOf("car", "foot", "bike")
 
@@ -59,6 +59,8 @@ internal object MapsFiles {
     const val PLACES = "Places"
     /** Home's Maps card holds six places (the user, 20 Oct: "slots for 6 locations"). */
     const val SLOTS = 6
+    /** Where the car is: one place with this id ("My car"), saved over by the next parking. */
+    const val PARKING = "parking"
 
     fun root(tetra: File) = File(tetra, FOLDER)
     fun map(root: File) = File(root, MAP)
@@ -88,6 +90,17 @@ internal object MapsFiles {
     }
 
     fun delete(root: File, p: Place) { File(File(root, PLACES), "${p.id}.json").delete() }
+
+    /** What is in Tetra/Maps, for Settings: the map and the routing, each with its size and date. */
+    fun installed(root: File): List<Pair<String, String>> {
+        val day = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.ENGLISH)
+        fun about(f: File, size: Long) = if (!f.exists()) "not here yet" else
+            "${size / 1_000_000} MB, ${java.time.Instant.ofEpochMilli(f.lastModified()).atZone(java.time.ZoneId.systemDefault()).format(day)}"
+        val g = graph(root)
+        return listOf("Map of Greece" to about(map(root), map(root).length()),
+            "Routing (car, walk, bike)" to about(File(g, "properties"), g.listFiles().orEmpty().sumOf { it.length() }),
+            "Saved places" to "${places(root).size}")
+    }
 
     fun newId(): String = java.util.UUID.randomUUID().toString().replace("-", "").take(6)
 }

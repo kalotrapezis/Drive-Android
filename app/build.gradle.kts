@@ -84,6 +84,17 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
     implementation("org.dmfs:lib-recur:0.17.1") // Calendar: iCalendar RRULE repeats (Apache 2.0)
+    // Maps: offline routing on the graph the computer builds (Apache 2.0). Only what reading a graph needs: Janino (run-time
+    // bytecode, which Android cannot load — MapsRouting writes the custom models out), the OSM reader, XML and logback stay out.
+    implementation("com.graphhopper:graphhopper-core:10.2") {
+        exclude(group = "org.codehaus.janino")
+        exclude(group = "org.openstreetmap.osmosis")
+        exclude(group = "com.fasterxml.jackson.dataformat")
+        exclude(group = "org.apache.xmlgraphics")
+        exclude(group = "de.westnordost")
+        exclude(group = "ch.qos.logback")
+        exclude(group = "org.jetbrains.kotlin")
+    }
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
     testImplementation("org.json:json:20240303") // real org.json for JVM tests (Android stubs it)

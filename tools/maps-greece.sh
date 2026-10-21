@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Builds Tetra's offline map of Greece on the computer (Plan.md § Maps): the Protomaps basemap cut to Greece's border
 # (greece.pmtiles — one file MapLibre opens on Android and, later, on the desktop) and Geofabrik's OSM extract of Greece
-# (greece-latest.osm.pbf, for routing and search later). Long and heavy: ~0.5 GB + 0.35 GB of downloads.
+# (greece-latest.osm.pbf), and from it the routing graph for car, foot and bike (greece-gh/, GraphHopper 10.2).
+# Long and heavy: ~0.5 GB + 0.35 GB of downloads, then several minutes and ~4 GB of memory for the graph.
 # Usage: tools/maps-greece.sh [out-dir]   (default ~/Tetra-maps; MAXZOOM=15 by default)
 set -euo pipefail
+HERE=$(dirname "$(readlink -f "$0")")
 OUT=${1:-$HOME/Tetra-maps}
 MAXZOOM=${MAXZOOM:-15}
 PMTILES_VERSION=1.31.2
@@ -45,6 +47,12 @@ if [ ! -f greece-latest.osm.pbf ]; then
   curl -fL -C - -o greece-latest.osm.pbf.part https://download.geofabrik.de/europe/greece-latest.osm.pbf
   curl -fsL https://download.geofabrik.de/europe/greece-latest.osm.pbf.md5 | sed 's/greece-latest.osm.pbf/greece-latest.osm.pbf.part/' | md5sum -c -
   mv greece-latest.osm.pbf.part greece-latest.osm.pbf
+fi
+
+if [ ! -f greece-gh/properties ]; then
+  [ -f bin/graphhopper-web-10.2.jar ] || curl -fL -o bin/graphhopper-web-10.2.jar https://github.com/graphhopper/graphhopper/releases/download/10.2/graphhopper-web-10.2.jar
+  rm -rf greece-gh
+  "${JAVA:-/usr/lib/jvm/java-17-openjdk-amd64/bin/java}" -Xmx${GH_HEAP:-4g} -jar bin/graphhopper-web-10.2.jar import "$HERE/maps-graph.yml"
 fi
 
 bin/pmtiles show greece.pmtiles | head -20

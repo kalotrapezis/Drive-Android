@@ -326,6 +326,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
+    var mapsGo by remember { mutableStateOf<Place?>(null) } // a place on Home's Maps card: directions to it start at once
     var calendarNew by remember { mutableStateOf<NewKind?>(null) } // Home's tiles: the Calendar opens on a new one of that kind
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
@@ -633,6 +634,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
             Applet.Calendar -> { calendarNew = null; screen = Screen.Calendar }
             Applet.Timer -> screen = Screen.Timer
+            Applet.Maps -> { mapsGo = null; screen = Screen.Maps }
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -689,6 +691,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Pdf -> Unit
                 Screen.Calendar -> Unit
                 Screen.Timer -> Unit
+                Screen.Maps -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -733,6 +736,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     openCalendar = { calendarNew = null; screen = Screen.Calendar },
                     newEvent = { kind -> calendarNew = kind; screen = Screen.Calendar },
                     openTimer = { screen = Screen.Timer },
+                    openMaps = { place -> mapsGo = place; screen = Screen.Maps },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -790,6 +794,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 }, startKind = calendarNew)
+                Screen.Maps -> MapsScreen(MapsFiles.root(driveRoot()), mapsGo, back = { mapsGo = null; screen = Screen.Home })
                 Screen.Timer -> TimerScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -862,7 +867,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer, Maps }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -903,6 +908,7 @@ private fun Home(
     openCalendar: () -> Unit,
     newEvent: (NewKind) -> Unit,
     openTimer: () -> Unit,
+    openMaps: (Place?) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -1039,7 +1045,34 @@ private fun Home(
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         } else items(groups) { it() }
+        item { HomeMapsGroup(wide, openMaps) }
         if (!wide) item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
+    }
+}
+
+/**
+ * Maps (21 Oct): indigo, the whole width on a tablet (the user, 20 Oct: "A home tab doeble the size, with slots for 6
+ * locations"); six saved places beside the map, each one tap to directions there (the user, 21 Oct: "favorite locations
+ * navigation with one click"), an empty slot opening the map to save one.
+ */
+@Composable private fun HomeMapsGroup(wide: Boolean, openMaps: (Place?) -> Unit) {
+    val slots by produceState(List<Place?>(MapsFiles.SLOTS) { null }) {
+        value = withContext(Dispatchers.IO) { MapsFiles.slots(MapsFiles.places(MapsFiles.root(driveRoot()))) }
+    }
+    HomeGroup(Category.Maps.color) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HomeArtCard("Maps", R.drawable.maps_art, { openMaps(null) }, Modifier.weight(1f), artSize = 76)
+            Column(Modifier.weight(if (wide) 3f else 1.6f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                slots.chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { p ->
+                            if (p == null) HomeTile("Add", R.drawable.ic_add, Color(0xFF9FA8DA).copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
+                            else HomeTile(p.name, placeIcon(p.icon), Color(0xFF9FA8DA), Modifier.weight(1f)) { openMaps(p) }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1875,6 +1908,7 @@ internal enum class Category(val color: Color, val icon: Int) {
     Text(Color(0xFF8E5BD8), R.drawable.ic_file_text),
     Calendar(Color(0xFFF41879), R.drawable.ic_calendar_today),
     Timer(Color(0xFF00796B), R.drawable.ic_timer),
+    Maps(Color(0xFF5C6BC0), R.drawable.ic_map),
 }
 
 @Composable

@@ -1,0 +1,26 @@
+# GraphHopper 10.2's import of Greece for Tetra's offline routing (tools/maps-greece.sh). The phone loads the same graph
+# with graphhopper-core 10.2, so the two versions must match; CH for each profile keeps a route on the phone fast.
+graphhopper:
+  datareader.file: greece-latest.osm.pbf
+  graph.location: greece-gh
+  profiles:
+    - name: car
+      turn_costs:
+        vehicle_types: [motorcar, motor_vehicle]
+      custom_model_files: [car.json]
+    - name: foot
+      custom_model_files: [foot.json]
+    - name: bike
+      custom_model_files: [bike.json]
+  profiles_ch:
+    - profile: car
+    - profile: foot
+    - profile: bike
+  profiles_lm: []
+  graph.encoded_values: car_access, car_average_speed, foot_access, hike_rating, mtb_rating, foot_priority, foot_average_speed, bike_priority, bike_access, roundabout, bike_average_speed, road_class, road_environment, max_speed
+  import.osm.ignored_highways: ""   # foot and bike need footways, paths and steps
+  prepare.min_network_size: 200
+  prepare.subnetworks.threads: 4
+  prepare.ch.threads: 3
+  routing.snap_preventions_default: tunnel, bridge, ferry
+  graph.dataaccess.default_type: RAM_STORE

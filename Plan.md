@@ -1690,6 +1690,18 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
 - [ ] 3. Offline search.
 - [ ] 4. Routing (car, foot, bike), turn by turn, voice, the next turn in HyperIsland; reroute offline.
 - [ ] Later: the desktop app builds and refreshes the files monthly by itself; Maps on desktop Tetra; a `tetra-maps` skill.
+- [ ] Desktop Maps asks the phone where it is (the user, 21 Oct: "when I click the corent location or a rute is calculated it
+      will ask the phone while showing Waiting phone for location … from the internet it will be off by half a county"):
+      the computer sends a location request over the paired connection, the phone answers with one GPS fix (asking for the
+      location permission if it has none); the desktop shows "Waiting for the phone's location…" meanwhile, and says so
+      when the phone is not reachable. Built with desktop Maps.
+- [ ] Android Auto (the user, 21 Oct: "Can it work with Android auto?"): Tetra's directions on the car screen with the
+      Android for Cars App Library (NavigationTemplate: the next turn, the route drawn on a surface). Android Auto shows
+      only Play-installed navigation apps unless Developer settings › Unknown sources is on in Android Auto, so this works
+      for the user's own sideloaded Tetra that way. After the phone's turn-by-turn is tried on the road.
+- [x] (maps-link session, 21 Oct) Emblems in tabs (the user, 21 Oct: "Add more emblims for pharmases, hospitals,
+      relatives travel locations, nature like waterfalls rivers beaches and have them in tabs with categories"): General,
+      People, Health, Travel, Nature (25 emblems) in the place dialog, and the saved-places list in the same tabs.
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

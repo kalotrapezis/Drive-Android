@@ -1746,8 +1746,13 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       it needs GraphHopper's PT graph built on the computer like the road one; a big piece, after the road directions.
 - [x] (maps-link session, 21 Oct) The map light or dark, apart from the app (the user: "add in the settings a separate
       togle for dark and light theme, because I dont like the dark theme on the map"): Settings › Maps › Map, light by default.
-- [ ] Tetra in light (the user, 21 Oct: "after that we sould check every page and polise the light theme of the android
-      app and make it an option light or dark"): Roadmap F; every page checked in light, Settings › Appearance Light / Dark.
+- [~] (maps-link session, 21 Oct) Tetra in light (the user, 21 Oct: "after that we sould check every page and polise the
+      light theme of the android app and make it an option light or dark"): Settings › Appearance › Theme Dark / Light
+      (TetraLook; dark by default), a light palette (TetraLightColors), status-bar icons that follow it; Home's Scanner/Codes
+      cards and tile icons, and the page headers (ModuleHeader) fixed for light. Checked on the emulator in light: Home,
+      Files, Notes, Calendar (and its event editor), Timer, Text editor, Settings, Sync, Office's start page, Maps. The
+      floating dark-glass islands stay dark in both. Not yet: Office's editors (Words, Tables, Slides, PDF) keep their dark
+      frame and ribbon in light — their own colours, a pass of their own; Photos with photos in it; the phone size.
 - [ ] Android Auto (the user, 21 Oct: "Can it work with Android auto?"): Tetra's directions on the car screen with the
       Android for Cars App Library (NavigationTemplate: the next turn, the route drawn on a surface). Android Auto shows
       only Play-installed navigation apps unless Developer settings › Unknown sources is on in Android Auto, so this works

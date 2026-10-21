@@ -121,6 +121,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -242,12 +243,42 @@ class MainActivity : ComponentActivity() {
         val calendar = calendarFile(intent)?.also { CalendarInbox.pending.value = it }
         val external = intent.takeIf { office == null && calendar == null && it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, type) }
         OfficeUi.load(this)
+        TetraLook.load(this)
         SystemFolderChoice.load(this)
         // a mouse or a finger noticed anywhere, for Office's ribbon (at the top with a mouse)
         if (savedInstanceState == null) applet.value = intent.getStringExtra(Applet.EXTRA) ?: calendar?.let { Applet.Calendar.name }
         setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office, applet) } }
     }
 }
+
+/**
+ * Light or dark, the user's choice (21 Oct: "polise the light theme of the android app and make it an option light or
+ * dark"), Settings › Appearance; dark unless chosen. One choice for the whole app; Maps' map has its own (MapsPrefs).
+ */
+internal object TetraLook {
+    var light by mutableStateOf(false)
+        private set
+    private fun prefs(c: Context) = c.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+    fun load(c: Context) { light = prefs(c).getString("theme", "dark") == "light" }
+    fun set(c: Context, light: Boolean) { this.light = light; prefs(c).edit().putString("theme", if (light) "light" else "dark").apply() }
+    val colors get() = if (light) TetraLightColors else TetraColors
+}
+
+/** The light palette: the dark one's neutral greys turned over, the same blue-green tint in the surfaces. */
+internal val TetraLightColors = lightColorScheme(
+    primary = Color(0xFF1F2322), onPrimary = Color.White,
+    primaryContainer = Color(0xFFDCE1DF), onPrimaryContainer = Color(0xFF111413),
+    tertiaryContainer = Color(0xFFCFE2F0), onTertiaryContainer = Color(0xFF15232D),
+    background = Color(0xFFF6F8F7), onBackground = Color(0xFF181C1B),
+    surface = Color(0xFFF6F8F7), onSurface = Color(0xFF181C1B),
+    surfaceVariant = Color(0xFFDDE4E1), onSurfaceVariant = Color(0xFF3F4946),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF0F3F2), surfaceContainer = Color(0xFFEAEFED),
+    surfaceContainerHigh = Color(0xFFE4E9E7), surfaceContainerHighest = Color(0xFFDEE4E1),
+    outline = Color(0xFF6F7975), outlineVariant = Color(0xFFBEC9C5),
+)
+
+/** A colour for the dark look and its darker twin for the light one (a pale tint on a pale card cannot be seen). */
+internal fun lookTint(dark: Color, light: Color) = if (TetraLook.light) light else dark
 
 internal val TetraColors = darkColorScheme(
     primary = Color(0xFFE6E6E6), onPrimary = Color.Black,
@@ -259,7 +290,7 @@ internal val TetraColors = darkColorScheme(
 )
 
 /** Tetra's look, for a screen outside the main app (the text editor opened from another app). */
-@Composable internal fun TetraTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = TetraColors) {
+@Composable internal fun TetraTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = TetraLook.colors) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) { content() }
 }
 
@@ -707,8 +738,15 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     // One palette, on every device (24 September). Dynamic colour read the wallpaper, so the same home screen
     // was blue on the phone and purple on the tablet; following the system's light mode gave a half-built light
     // theme where the red Scanner card had dark text on it. These are the phone's own colours, measured off it,
-    // held fixed. Light is Roadmap F and is not built; when it is, this is the one place that decides.
-    MaterialTheme(colorScheme = TetraColors) {
+    // held fixed. Light (Roadmap F) is the user's choice since 21 Oct: TetraLook, the one place that decides.
+    val view = androidx.compose.ui.platform.LocalView.current
+    // dark icons on light pages; Office's editors and the cameras keep their dark frames in both looks, so light icons there
+    val lightBars = TetraLook.light && screen !in setOf(Screen.Writer, Screen.Sheet, Screen.Slides, Screen.Pdf, Screen.Scanner, Screen.ScanDocument, Screen.Codes)
+    androidx.compose.runtime.SideEffect {
+        (view.context as? Activity)?.window?.let { w -> WindowCompat.getInsetsController(w, view).run {
+            isAppearanceLightStatusBars = lightBars; isAppearanceLightNavigationBars = lightBars } }
+    }
+    MaterialTheme(colorScheme = TetraLook.colors) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
         Column(Modifier.fillMaxSize()) {
             if (externalSingle && external != null) ExternalMediaViewer(external, ::closeExternal)
@@ -982,7 +1020,7 @@ private fun Home(
                     // four tiles as Office's (the user, 18 Oct: "New : Shedule : burthday : reminder"), each the editor for its kind
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         listOf(listOf(NewKind.Event, NewKind.Schedule), listOf(NewKind.Birthday, NewKind.Reminder)).forEach { row ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeTile(k.label, k.icon, Color(0xFFF77FB3), Modifier.weight(1f)) { newEvent(k) } } }
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeTile(k.label, k.icon, lookTint(Color(0xFFF77FB3), Color(0xFFC2185B)), Modifier.weight(1f)) { newEvent(k) } } }
                         }
                     }
                 }
@@ -998,7 +1036,7 @@ private fun Home(
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         listOf(listOf(6, 15), listOf(20, 30)).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                row.forEach { m -> HomeTile("$m min", R.drawable.ic_play, Color(0xFF80CBC4), Modifier.weight(1f)) {
+                                row.forEach { m -> HomeTile("$m min", R.drawable.ic_play, lookTint(Color(0xFF80CBC4), Color(0xFF00796B)), Modifier.weight(1f)) {
                                     Thread {
                                         val failed = runCatching { TimerControl.start(context, m * 60L) }.onFailure { WriterLog.e("Timer: Home's $m min failed", it) }.exceptionOrNull()
                                         android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, failed?.let { it.message ?: "The timer could not start" } ?: "$m min timer started", Toast.LENGTH_SHORT).show() }
@@ -1067,8 +1105,8 @@ private fun Home(
                 (if (wide) slots.chunked(6) else slots.take(MapsFiles.PHONE_SLOTS).chunked(3)).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         row.forEach { p ->
-                            if (p == null) HomeTile("Add", R.drawable.ic_add, Color(0xFF9FA8DA).copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
-                            else HomeTile(p.name, placeIcon(p.icon), Color(0xFF9FA8DA), Modifier.weight(1f)) { openMaps(p) }
+                            if (p == null) HomeTile("Add", R.drawable.ic_add, lookTint(Color(0xFF9FA8DA), Color(0xFF3949AB)).copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
+                            else HomeTile(p.name, placeIcon(p.icon), lookTint(Color(0xFF9FA8DA), Color(0xFF3949AB)), Modifier.weight(1f)) { openMaps(p) }
                         }
                     }
                 }
@@ -1160,7 +1198,7 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
 @Composable
 private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, click: (() -> Unit)? = null) = Surface(
     shape = MaterialTheme.shapes.extraLarge,
-    color = Color(0xFF651B1B),
+    color = if (TetraLook.light) MaterialTheme.colorScheme.surface.copy(alpha = 0.72f) else Color(0xFF651B1B), // as the other cards in light
     modifier = modifier.height(156.dp).then(if (click == null) Modifier else Modifier.clickable(onClick = click)),
 ) {
     Box(Modifier.fillMaxSize().padding(18.dp)) {
@@ -1904,8 +1942,11 @@ private fun SettingsTab(
         }
         item {
             SettingsCard("Appearance") {
-                Text("Follow system", style = MaterialTheme.typography.titleMedium)
-                Text("Tetra is a dark app, and the same one on every device: it does not follow the system light theme or the wallpaper's colours.", style = MaterialTheme.typography.bodyMedium)
+                val lookContext = LocalContext.current
+                Text("Theme", style = MaterialTheme.typography.titleMedium)
+                Text("Dark or light, the same on every page; it does not follow the system or the wallpaper's colours. Maps' map has its own choice (Settings › Maps).",
+                    style = MaterialTheme.typography.bodyMedium)
+                Choices(listOf(false to "Dark", true to "Light"), TetraLook.light) { TetraLook.set(lookContext, it) }
             }
         }
             item { Box(Modifier.heightIn(min = 32.dp)) }
@@ -1931,14 +1972,17 @@ private fun SearchQualityOption(title: String, detail: String, selected: Boolean
 
 @Composable
 internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier, art: Int? = null) {
-    Surface(color = islandColor(), contentColor = islandContentColor(), modifier = modifier.fillMaxWidth()) {
+    // the page's own colour in light (a dark glass bar over a light page reads as grey); the dark glass in dark
+    val bar = if (TetraLook.light) MaterialTheme.colorScheme.background.copy(alpha = 0.95f) else islandColor()
+    val on = if (TetraLook.light) MaterialTheme.colorScheme.onBackground else islandContentColor()
+    Surface(color = bar, contentColor = on, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.statusBarsPadding().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home") }
                 Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 art?.let { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(34.dp)) }
             }
-            Box(Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 1.dp, max = 1.dp).background(islandContentColor().copy(alpha = 0.35f)))
+            Box(Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 1.dp, max = 1.dp).background(on.copy(alpha = 0.35f)))
         }
     }
 }

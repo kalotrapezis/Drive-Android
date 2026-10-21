@@ -1766,6 +1766,11 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       αυτό το κομάτι που βλέπω … ή και λίγο μεγαλήτερο"): a pill or words, then OK (or the keyboard's search key): up to 300
       of them on the screen and half a screen round it stay on the map, the panel goes, a "🍽️ Restaurants · n ✕" pill clears
       them; none there: the nearest 20, the map moved to them.
+- [x] (maps-link session, 21 Oct) ΑμεΑ spots by the user himself (none in any data for Καβάλα or Ξάνθη): after parking (P or
+      a car trip's end) "♿ ΑμεΑ spot? Add it" for 20 s puts one at the car's GPS spot; a long press's dialog has "♿ ΑμεΑ
+      parking here" at the top, one tap. Not done: looking for them by eye in Google's imagery (its terms forbid taking data
+      from it; its satellite pictures too coarse with cars on the spots, 21 Oct). Mapillary's street photos (CC-BY-SA) and
+      their detected signs could give them lawfully; needs a Mapillary token (the user's account).
 - [ ] Tolls: GraphHopper's toll encoded value is not in the graph; with it (a rebuild) a "no tolls" profile, and the routes
       marked with tolls. The user stopped a rebuild on 21 Oct (distance influence 30 for the car); to be asked again.
 - [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane

@@ -276,6 +276,8 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var speed by remember { mutableStateOf<Int?>(null) } // mine, km/h
     var limitAsked by remember { mutableStateOf(0L) }
     var lastReal by remember { mutableStateOf<Location?>(null) } // the last fix from the GPS itself
+    // after parking: "was it an ΑμεΑ spot?", one tap puts it on the map (the user, 21 Oct: the spots he knows in Καβάλα and Ξάνθη)
+    var askAmea by remember { mutableStateOf<Pair<Location, Long>?>(null) }
     var lastRealAt by remember { mutableStateOf(0L) } // when it came, by this device's clock (a fix's own stamp can be empty)
     var reckoning by remember { mutableStateOf(false) } // no signal: going on along the route at the last speed
     var address by remember { mutableStateOf<String?>(null) } // of the place shown
@@ -309,6 +311,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     /** The car is here: one place, "My car", saved over the last one. */
     fun park(loc: Location, why: String) {
         WriterLog.i("Maps: parked ($why)")
+        askAmea = loc to System.currentTimeMillis()
         scope.launch {
             withContext(Dispatchers.IO) { runCatching { MapsFiles.save(root, Place(MapsFiles.PARKING, "My car", loc.latitude, loc.longitude, "parking", mode = "foot")) } }
             places = withContext(Dispatchers.IO) { MapsFiles.places(root) }
@@ -769,6 +772,21 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding().padding(12.dp).widthIn(max = 560.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             finding?.let { Pill(it) }
+            askAmea?.let { (loc, at) ->
+                LaunchedEffect(at) { delay(20_000); if (askAmea?.second == at) askAmea = null }
+                val known = added.any { it.kind == "disabled_parking" && metresBetween(it.lat, it.lng, loc.latitude, loc.longitude) < 8 }
+                if (!known) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                    Row(Modifier.padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("♿ ΑμεΑ spot?", style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = {
+                            askAmea = null
+                            scope.launch { withContext(Dispatchers.IO) { runCatching { MapsShare.add(root, Poi("disabled_parking", loc.latitude, loc.longitude, "")) } }; reloadAdded() }
+                            Toast.makeText(context, "ΑμεΑ spot added to the map", Toast.LENGTH_SHORT).show()
+                        }) { Text("Add it", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
+                        IconButton(onClick = { askAmea = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "No", modifier = Modifier.size(18.dp)) }
+                    }
+                }
+            }
             // what Search's OK left on the map, and its ✕
             onMap?.takeIf { nav == null && tab == null && selected == null }?.let { (name, found) ->
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.clickable { onMap = null }) {
@@ -1012,8 +1030,12 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
     var mode by remember { mutableStateOf(p.mode) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(if (p.id.isEmpty()) "Save place" else "Place") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (p.id.isEmpty() && onMap != null) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(true, {}, label = { Text("My place") }); FilterChip(false, { toMap = true }, label = { Text("On the map") })
+            if (p.id.isEmpty() && onMap != null) {
+                // one tap: an ΑμεΑ spot here, on the map
+                Button(onClick = { onMap(Poi("disabled_parking", p.lat, p.lng, "")) }, colors = panelButton(), modifier = Modifier.fillMaxWidth()) { Text("♿  ΑμεΑ parking here") }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(true, {}, label = { Text("My place") }); FilterChip(false, { toMap = true }, label = { Text("On the map") })
+                }
             }
             OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             var tab by remember { mutableStateOf(Place.category(p.icon)) }

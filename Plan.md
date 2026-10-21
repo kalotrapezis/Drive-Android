@@ -1771,6 +1771,11 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       parking here" at the top, one tap. Not done: looking for them by eye in Google's imagery (its terms forbid taking data
       from it; its satellite pictures too coarse with cars on the spots, 21 Oct). Mapillary's street photos (CC-BY-SA) and
       their detected signs could give them lawfully; needs a Mapillary token (the user's account).
+- [~] ΑμεΑ spots from Διαύγεια (tools/maps-diavgeia.py, the open API, half a year at a time from 2012): Ξάνθη 59 decisions
+      ("δημιουργία θέσης στάθμευσης ΑΜΕΑ επί της οδού Πλάτωνος 44" …), Δράμα 44 (mostly exclusive Ρ-72 spots for named people
+      and their cars: personal, left out), Καβάλα none. Placing them: OSM has 440 house numbers in Ξάνθη and Δράμα, so only 2
+      of 34 addresses with a number are found. To do with the user: a checklist of the official addresses in the app, each
+      placed by him on the map (he knows the town), or another lawful geocoder.
 - [ ] Tolls: GraphHopper's toll encoded value is not in the graph; with it (a rebuild) a "no tolls" profile, and the routes
       marked with tolls. The user stopped a rebuild on 21 Oct (distance influence 30 for the car); to be asked again.
 - [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane

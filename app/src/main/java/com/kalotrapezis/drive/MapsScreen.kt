@@ -631,31 +631,54 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(r.lats.indices.map { Point.fromLngLat(r.lngs[it], r.lats[it]) }))))
     }
     /*
-     * A tunnel (the user, 21 Oct: "What if I loose GPS sygnal on a tannel … will it come back after the return of the sygnal"):
-     * with no fix for 3 s while directions run at speed, the arrow goes on along the route at the last speed, a second at a
-     * time, for at most 10 km; the first real fix takes over again (and a new route only if that fix is off the route).
+     * A tunnel (the user, 21 Oct: "What if I loose GPS sygnal on a tannel"; "μπορεί για 5 λεπτά να μην έχω GPS … μπορεί να
+     * χρησιμοποιεί τους αισθητήρες του κινητού … μέχρι να ξανά έρθει το GPS"): with no fix for 3 s while directions run at
+     * speed, the arrow goes on along the route, a second at a time, for up to 15 minutes or the route's end. The speed is the
+     * last one the GPS gave; the accelerometer tells when the car stands (in a tunnel's traffic): the arrow waits, and after
+     * a stop goes on at 30 km/h (or the last speed if lower). The first real fix takes over (a new route only if it is off).
      */
+    val still = remember { StillDetector() }
+    DisposableEffect(nav != null) {
+        val sm = context.getSystemService(android.hardware.SensorManager::class.java)
+        val sensor = sm?.getDefaultSensor(android.hardware.Sensor.TYPE_LINEAR_ACCELERATION)
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(e: android.hardware.SensorEvent) { still.add(e.timestamp, e.values[0], e.values[1], e.values[2]) }
+            override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) = Unit
+        }
+        if (nav != null && sensor != null) sm.registerListener(listener, sensor, android.hardware.SensorManager.SENSOR_DELAY_GAME)
+        onDispose { sm?.unregisterListener(listener) }
+    }
     LaunchedEffect(nav != null) {
+        var along = -1.0 // how far along the route the arrow is, while there is no fix
+        var stopped = false
+        var lastTick = android.os.SystemClock.elapsedRealtimeNanos()
         while (nav != null) {
             delay(1000)
+            val now = android.os.SystemClock.elapsedRealtimeNanos(); val dt = (now - lastTick) / 1e9; lastTick = now
             val n = nav ?: break
             val real = lastReal ?: continue
-            val quiet = android.os.SystemClock.elapsedRealtimeNanos() - lastRealAt
+            val quiet = now - lastRealAt
             val v = if (real.hasSpeed()) real.speed.toDouble() else 0.0
-            val p = n.p ?: continue
-            if (quiet < 3_000_000_000L || v < 3 || p.left < 50) { reckoning = false; continue }
-            val gone = v * quiet / 1e9
-            if (gone > 10_000) { reckoning = false; continue }
-            val start = progress(n.route, n.cum, real.latitude, real.longitude).first.along
-            val at = (start + gone).coerceAtMost(n.cum.last())
+            if (quiet < 3_000_000_000L) { along = -1.0; stopped = false; reckoning = false; continue }
+            if (along < 0) {
+                if (v < 3) continue // it was not moving when the signal went
+                along = progress(n.route, n.cum, real.latitude, real.longitude).first.along + v * quiet / 1e9
+                WriterLog.i("Maps: no GPS fix for ${quiet / 1_000_000_000} s, going on along the route at ${(v * 3.6).toInt()} km/h")
+            } else {
+                val standing = still.still() == true
+                if (standing && !stopped) WriterLog.i("Maps: no GPS, standing still")
+                if (standing) stopped = true
+                along += if (standing) 0.0 else dt * (if (stopped) minOf(v, 30 / 3.6) else v)
+            }
+            if (quiet > 15 * 60_000_000_000L || along >= n.cum.last() - 30) { reckoning = false; continue }
+            val at = along.coerceAtMost(n.cum.last())
             val i = n.cum.indexOfLast { it <= at }.coerceIn(0, n.cum.size - 2)
             val t = ((at - n.cum[i]) / (n.cum[i + 1] - n.cum[i]).coerceAtLeast(0.01)).coerceIn(0.0, 1.0)
             val lat = n.route.lats[i] + t * (n.route.lats[i + 1] - n.route.lats[i]); val lng = n.route.lngs[i] + t * (n.route.lngs[i + 1] - n.route.lngs[i])
-            if (!reckoning) WriterLog.i("Maps: no GPS fix for ${quiet / 1_000_000_000} s, going on along the route at ${(v * 3.6).toInt()} km/h")
             reckoning = true
             fix(Location("tetra-reckoning").apply {
-                setLatitude(lat); setLongitude(lng); setSpeed(v.toFloat()); setTime(System.currentTimeMillis())
-                setElapsedRealtimeNanos(android.os.SystemClock.elapsedRealtimeNanos()); setAccuracy(50f)
+                setLatitude(lat); setLongitude(lng); setSpeed(if (still.still() == true) 0f else v.toFloat()); setTime(System.currentTimeMillis())
+                setElapsedRealtimeNanos(now); setAccuracy(50f)
                 setBearing(Location("").apply { setLatitude(n.route.lats[i]); setLongitude(n.route.lngs[i]) }
                     .bearingTo(Location("").apply { setLatitude(n.route.lats[i + 1]); setLongitude(n.route.lngs[i + 1]) }))
             })

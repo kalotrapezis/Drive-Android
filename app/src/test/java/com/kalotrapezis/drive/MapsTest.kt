@@ -240,3 +240,17 @@ class MapsShareTest {
         assertEquals(listOf("disabled_parking"), MapsSearch.added(b).map { it.kind })
     }
 }
+
+class StillDetectorTest {
+    @Test fun standingAndDriving() {
+        val r = java.util.Random(7)
+        val d = StillDetector()
+        assertNull(d.still())
+        // standing, engine idling: ±0.03 m/s²
+        for (i in 0 until 100) d.add(i * 25_000_000L, (r.nextGaussian() * 0.03).toFloat(), (r.nextGaussian() * 0.03).toFloat(), (r.nextGaussian() * 0.03).toFloat())
+        assertEquals(true, d.still())
+        // driving on a tunnel's road: ±0.6 m/s²
+        for (i in 100 until 200) d.add(i * 25_000_000L, (r.nextGaussian() * 0.6).toFloat(), (r.nextGaussian() * 0.6).toFloat(), (r.nextGaussian() * 0.4).toFloat())
+        assertEquals(false, d.still())
+    }
+}

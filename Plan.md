@@ -1753,7 +1753,10 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
 - [x] (maps-link session, 21 Oct) Tunnels (the user: "What if I loose GPS sygnal on a tannel"): 3 s without a GPS fix in
       directions at speed, the arrow goes on along the route at the last speed (≤10 km), "No GPS signal" shown; a cell fix
       does not stand for the GPS for 2 min after it; the first GPS fix takes over. Tried on the emulator with location off
-      for 8 s at 107 km/h: it went on and said the next turn, then took the real fix back.
+      for 8 s at 107 km/h: it went on and said the next turn, then took the real fix back. Then (the user: "μπορεί για 5
+      λεπτά να μην έχω GPS … να χρησιμοποιεί τους αισθητήρες"): up to 15 min or the route's end (no 10 km cap); the
+      accelerometer (StillDetector: the spread of linear acceleration over 2 s) holds the arrow while the car stands, and
+      after a stop it goes on at 30 km/h (or less). Emulator, sensors set by hand: on, held, on again. Not tried in a tunnel.
       Markers (the user: "my personal keep our style what I save as public info gets the maps own style"): search results
       and map additions in the map's own icon style (its sprite for restaurant, café, supermarket, school…, the rest drawn
       as it draws them); my places keep Maps' indigo circle with their emblem. A tavern emblem.

@@ -650,3 +650,26 @@ internal object MapsShare {
         return Imported(places, added, skipped)
     }
 }
+
+/**
+ * Standing still or moving, from the phone's accelerometer, for a long tunnel (the user, 21 Oct: "μπορεί για 5 λεπτά να μην
+ * έχω GPS … μπορεί να χρησιμοποιεί τους αισθητήρες του κινητού"): a moving car shakes the phone with the road; a standing
+ * one, engine running or not, hardly at all. The spread of the acceleration's size over the last two seconds tells them
+ * apart (a speed cannot be had from the sensors alone: the error grows too fast).
+ */
+internal class StillDetector(private val windowNanos: Long = 2_000_000_000L, private val threshold: Double = 0.12) {
+    private val times = ArrayDeque<Long>(); private val sizes = ArrayDeque<Double>()
+
+    /** One reading of linear acceleration (gravity taken out), m/s², at [nanos]. */
+    fun add(nanos: Long, x: Float, y: Float, z: Float) {
+        times.addLast(nanos); sizes.addLast(Math.sqrt((x * x + y * y + z * z).toDouble()))
+        while (times.isNotEmpty() && nanos - times.first() > windowNanos) { times.removeFirst(); sizes.removeFirst() }
+    }
+
+    /** Standing still: a full window of readings that hardly move; null while there are too few to tell. */
+    fun still(): Boolean? {
+        if (sizes.size < 20 || times.last() - times.first() < windowNanos * 3 / 4) return null
+        val mean = sizes.average()
+        return Math.sqrt(sizes.sumOf { (it - mean) * (it - mean) } / sizes.size) < threshold
+    }
+}

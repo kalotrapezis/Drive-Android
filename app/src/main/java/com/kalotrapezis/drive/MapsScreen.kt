@@ -169,8 +169,9 @@ private fun addMarkers(context: Context, style: Style) {
         }
         return b
     }
+    // the favourites a little bigger than the map's own (20 dp), not half again (the user, 21 Oct: "The favories are huge")
     fun round(icon: Int): android.graphics.Bitmap {
-        val px = (28 * d).toInt(); val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+        val px = (22 * d).toInt(); val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
         val c = android.graphics.Canvas(b); val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
         paint.color = android.graphics.Color.WHITE; c.drawCircle(px / 2f, px / 2f, px / 2f, paint)
         paint.color = 0xFF5C6BC0.toInt(); c.drawCircle(px / 2f, px / 2f, px / 2f - px / 14f, paint)
@@ -377,7 +378,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 } else begin(target, mode, routes.first(), from)
             }.onFailure {
                 WriterLog.e("Maps: no route by $mode", it)
-                Toast.makeText(context, "No way found: ${it.message ?: "the routing graph could not be read"}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, it.message ?: "No way found: the routing graph could not be read", Toast.LENGTH_LONG).show()
             }
         }
     }

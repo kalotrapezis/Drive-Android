@@ -52,7 +52,8 @@ class MapsTest {
         for ((mode, want) in gh) {
             val r = MapsRouting.route(dir, 37.9838, 23.7275, 40.6401, 22.9444, mode)
             println("$mode Athens–Thessaloniki: ${r.metres.toInt()} m, ${r.millis / 1000} s")
-            assertEquals(want.first, r.metres, 2.0); assertEquals(want.second.toDouble(), r.millis / 1000.0, 2.0)
+            assertEquals(want.first, r.metres, 2.0)
+            assertEquals(want.second * (if (mode == "car") MapsRouting.CAR_TIME else 1.0), r.millis / 1000.0, 3.0)
         }
     }
 }
@@ -252,5 +253,74 @@ class StillDetectorTest {
         // driving on a tunnel's road: ±0.6 m/s²
         for (i in 100 until 200) d.add(i * 25_000_000L, (r.nextGaussian() * 0.6).toFloat(), (r.nextGaussian() * 0.6).toFloat(), (r.nextGaussian() * 0.4).toFloat())
         assertEquals(false, d.still())
+    }
+}
+
+/**
+ * Routes with edge cases, on the computer's graph when it is there (the user, 21 Oct: "try deferent rutes that have edge cases
+ * to find bugs"): each is routed, then checked as the app uses it — steps said, progress along it, tolls, the voice's
+ * warnings — and whatever looks wrong is printed; the test fails on anything thrown that a user would see as a crash.
+ */
+class MapsEdgeCaseTest {
+    private data class Case(val name: String, val from: Pair<Double, Double>, val to: Pair<Double, Double>, val mode: String = "car", val expectRoute: Boolean = true)
+
+    @Test fun edgeCases() {
+        val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
+        assumeTrue(File(dir, "properties").isFile)
+        val all = MapsSearch.load(File(System.getProperty("user.home"), "Tetra-maps"))
+        val cases = listOf(
+            Case("Άγιος Λουκάς → Χαλκίδα (time ~30 min)", 37.277768 to 22.585572, 38.462274 to 23.594611),
+            Case("same point", 37.2777 to 22.5855, 37.2777 to 22.5855),
+            Case("one metre apart", 37.27770 to 22.58550, 37.27771 to 22.58550),
+            Case("from the sea off Πειραιάς", 37.90 to 23.55, 37.9420 to 23.6465),
+            Case("to Σόφια, outside the map", 41.1381 to 24.8864, 42.6977 to 23.3219, expectRoute = false),
+            Case("ferry Πειραιάς → Αίγινα", 37.9420 to 23.6465, 37.7465 to 23.4280),
+            Case("Αλεξανδρούπολη → Καλαμάτα", 40.8457 to 25.8739, 37.0389 to 22.1142),
+            Case("Ρίο → Αντίρριο bridge", 38.3115 to 21.7880, 38.3800 to 21.7680),
+            Case("Ηράκλειο → Χανιά", 35.3387 to 25.1442, 35.5138 to 24.0180),
+            Case("Κέρκυρα → Ηγουμενίτσα (ferry)", 39.6243 to 19.9217, 39.5036 to 20.2650),
+            Case("Ξάνθη old town, one-ways", 41.1440 to 24.8890, 41.1365 to 24.8836),
+            Case("Μέτσοβο → Βωβούσα, mountains", 39.7700 to 21.1830, 39.9370 to 21.0480),
+            Case("Καστελλόριζο → Ρόδος", 36.1497 to 29.5940, 36.4349 to 28.2176),
+            Case("bike on the Egnatia's line", 40.9709 to 24.3373, 41.0300 to 24.6000, "bike"),
+            Case("on foot across Αθήνα", 37.9755 to 23.7348, 38.0350 to 23.7880, "foot"),
+            Case("wheelchair through Πλάκα's steps", 37.9715 to 23.7300, 37.9740 to 23.7255, "wheelchair"),
+        )
+        val problems = ArrayList<String>()
+        for (c in cases) {
+            val t0 = System.nanoTime()
+            val rs = runCatching { MapsRouting.routes(dir, c.from.first, c.from.second, c.to.first, c.to.second, c.mode) }
+            val ms = (System.nanoTime() - t0) / 1_000_000
+            rs.onFailure { e ->
+                println("✗ ${c.name}: ${e.javaClass.simpleName}: ${e.message} ($ms ms)")
+                if (e !is IllegalStateException) problems += "${c.name}: ${e.javaClass.simpleName} ${e.message}"
+                else if (c.expectRoute) problems += "${c.name}: no route (${e.message})"
+            }
+            rs.onSuccess { list ->
+                val r = list.first()
+                val cum = cumulative(r)
+                val tolls = tollsOn(r, cum, all)
+                println("✓ ${c.name}: ${list.size} way(s), ${(r.metres / 100).toInt() / 10.0} km, ${r.millis / 60000} min, ${r.roads}, ${r.steps.size} steps, tolls ${tolls.size}, $ms ms")
+                if (!c.expectRoute) problems += "${c.name}: a route where none should be"
+                if (r.lats.size < 2 && r.metres > 1) problems += "${c.name}: ${r.lats.size} points for ${r.metres} m"
+                r.steps.filter { it.text.isBlank() }.forEach { problems += "${c.name}: a step without words at ${it.at}" }
+                r.steps.filter { it.metres > 20_000 && it.street.isEmpty() && "πλοίο" !in it.text }.forEach { problems += "${c.name}: ${(it.metres / 1000).toInt()} km on '${it.text}' with no road named" }
+                if (r.steps.lastOrNull()?.sign != 4) problems += "${c.name}: last step is not the arrival (${r.steps.lastOrNull()?.text})"
+                // the end of the route reads as arrived; its middle has a next turn; warnings come in order
+                if (r.lats.size >= 2) {
+                    val (end, _) = progress(r, cum, r.lats.last(), r.lngs.last())
+                    if (end.left > 5) problems += "${c.name}: ${end.left.toInt()} m left at the route's end"
+                    val mid = r.lats.size / 2
+                    val (p, _) = progress(r, cum, r.lats[mid], r.lngs[mid])
+                    if (p.off > 1) problems += "${c.name}: ${p.off.toInt()} m off the route on its own line"
+                    if (p.next !in r.steps.indices) problems += "${c.name}: next step ${p.next} out of ${r.steps.size}"
+                }
+                if (r.millis <= 0 && r.metres > 10) problems += "${c.name}: no time for ${r.metres} m"
+                if (c.mode == "car" && r.metres > 1000 && r.metres / (r.millis / 3_600_000.0) / 1000 > 130) problems += "${c.name}: average over 130 km/h"
+                list.drop(1).forEach { alt -> if (alt.millis < r.millis) problems += "${c.name}: an alternative faster than the first" }
+            }
+        }
+        println("\nPROBLEMS (${problems.size}):"); problems.forEach { println(" - $it") }
+        assertTrue(problems.filter { "Exception" in it || "Error" in it }.joinToString("\n"), problems.none { "Exception" in it || "Error" in it })
     }
 }

@@ -36,6 +36,12 @@ internal data class Route(val mode: String, val lats: DoubleArray, val lngs: Dou
  * the same rules as GraphHopper's car.json, foot.json and bike.json, which the graph's shortcuts were made with.
  */
 internal object MapsRouting {
+    /**
+     * A car's times as GraphHopper gives them, at the limits, are short of a real drive (the user, 21 Oct: Άγιος Λουκάς →
+     * Χαλκίδα "is 30 min in reality, our map says 25"): a fifth more.
+     */
+    const val CAR_TIME = 1.2
+
     /** maps-graph.yml's profiles, as Jackson reads them there: GraphHopper compares their hash with the graph's. */
     private val PROFILES = linkedMapOf(
         "car" to """{"name":"car","turn_costs":{"vehicle_types":["motorcar","motor_vehicle"]},"custom_model_files":["car.json"]}""",
@@ -91,11 +97,24 @@ internal object MapsRouting {
         req.hints.putObject("alternative_route.max_paths", 3)
         var rsp = gh.route(req)
         if (rsp.hasErrors()) rsp = gh.route(req.setAlgorithm("")) // alternatives not to be had here: the one way
-        check(!rsp.hasErrors()) { rsp.errors.firstOrNull()?.message ?: "No route." }
+        check(!rsp.hasErrors()) { words(rsp.errors.firstOrNull(), lang) }
         val tr = gh.translationMap.getWithFallBack(locale)
         val all = rsp.all.map { build(it, tr, lang, mode) }
         val usable = all.filter { r -> mode != "car" || r.roads != "track" }.ifEmpty { all }
         return usable.sortedBy { it.millis }
+    }
+
+    /** GraphHopper's error in the user's words (it said "Cannot find point 0: 37.9,23.55" for a spot at sea). */
+    fun words(e: Throwable?, lang: String): String {
+        val m = e?.message.orEmpty(); val en = lang == "en"
+        return when {
+            e is com.graphhopper.util.exceptions.PointNotFoundException || "Cannot find point" in m ->
+                if ((e as? com.graphhopper.util.exceptions.PointNotFoundException)?.pointIndex == 0 || "point 0" in m)
+                    (if (en) "You are not near a road the map knows (or outside Greece)." else "Δεν είστε κοντά σε δρόμο του χάρτη (ή είστε εκτός Ελλάδας).")
+                else (if (en) "The destination is not near a road the map knows (or outside Greece)." else "Ο προορισμός δεν είναι κοντά σε δρόμο του χάρτη (ή είναι εκτός Ελλάδας).")
+            "Connection between locations not found" in m -> if (en) "No way there by this means." else "Δεν υπάρχει δρόμος ως εκεί με αυτό το μέσο."
+            else -> m.ifEmpty { if (en) "No route." else "Δεν βρέθηκε διαδρομή." }
+        }
     }
 
     private fun build(best: com.graphhopper.ResponsePath, tr: com.graphhopper.util.Translation, lang: String, mode: String): Route {
@@ -144,7 +163,8 @@ internal object MapsRouting {
             part("motorway", "trunk", "primary", "secondary") >= 50 -> "main"
             else -> "local"
         }
-        return Route(mode, DoubleArray(pts.size()) { pts.getLat(it) }, DoubleArray(pts.size()) { pts.getLon(it) }, best.distance, best.time, steps, roads)
+        val millis = if (mode == "car") (best.time * CAR_TIME).toLong() else best.time
+        return Route(mode, DoubleArray(pts.size()) { pts.getLat(it) }, DoubleArray(pts.size()) { pts.getLon(it) }, best.distance, millis, steps, roads)
     }
 
     /**

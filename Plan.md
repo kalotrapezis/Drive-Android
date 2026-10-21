@@ -164,6 +164,14 @@ How to write here:
       (a corrupt deletions.json still reads as empty, not a crash). Files — Copy and Empty trash refuse a folder holding a link
       (on main Empty trash deleted what an escaping link pointed at). NotesTest +6, DriveFilesTest +2; unit 547, 0 failing, 8 skipped.
 - [-] (the user, 20 Oct: "no map scrap it the app will get 2GB") **Maps** (§ Maps below): dropped; worktree and branch `maps` removed.
+- [x] (maps-link session, 21 Oct) Timer: its waste files cleared (the user, 21 Oct: "some kind of a garbige collector be cause
+      the timer app creates a lot of duplicat files what is nessesary and what is waste … on the phone I dont know about the
+      desktop"): 23 of the 28 files on the PC and the tablet were sync's "<id> (n).json" copies from the 18 Oct bug (fixed
+      since: one file per device). TimerFiles.clean / desktop timer.js clean, the same rule: every copy goes, the timer kept
+      as it is (its newest state, pin and all, written into the device's own file first when only a copy held it). Runs
+      when the Timer opens (phone) and when desktop Tetra starts. Sync never deletes, so the copies stop coming back only
+      once every device has the new version (phone, tablet, PC .deb). Dry run on a copy of the PC's folder: 23 removed,
+      the five timers unchanged. Tests: TimerTest, desktop test/timer.test.js.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

@@ -33,7 +33,7 @@ import java.time.format.DateTimeFormatter
 /** The Timer's changes, from the screen, Home or a notification's button: the file written once, then sent at once. */
 internal object TimerControl {
     fun dir() = TimerFiles.root(TetraFolder.root(Environment.getExternalStorageDirectory()))
-    private fun device() = Build.MODEL ?: "Android"
+    fun device() = Build.MODEL ?: "Android"
 
     /** The clock opens on the length last started here (five minutes the first time). */
     fun last(c: Context) = c.getSharedPreferences("timer", Context.MODE_PRIVATE).getLong("last", 300L)

@@ -274,3 +274,17 @@ class CalendarTest {
         assertTrue(!DriveScope.contains("timer", "Calendar/Work/a.ics")) // a scope not known: nothing
     }
 }
+
+class CalendarPlaceTest {
+    @Test fun links() {
+        assertEquals("geo:37.9715,23.7257?q=37.9715,23.7257", CalendarPlace.uri("https://www.google.com/maps/place/Acropolis/@37.9715,23.7257,17z/data=!3m1"))
+        assertEquals("geo:40.6401,22.9444?q=40.6401,22.9444", CalendarPlace.uri("https://maps.google.com/?q=40.6401,22.9444"))
+        assertEquals("geo:37.9838,23.7275?q=37.9838,23.7275", CalendarPlace.uri("https://wego.here.com/?map=37.9838,23.7275,15,normal"))
+        assertEquals("geo:37.97,23.72?q=37.97,23.72", CalendarPlace.uri("https://www.openstreetmap.org/#map=17/37.970/23.720"))
+        assertEquals("https://maps.app.goo.gl/AbC123", CalendarPlace.uri("Café Nikos, https://maps.app.goo.gl/AbC123"))
+        assertEquals("Café Nikos", CalendarPlace.label("Café Nikos, https://maps.app.goo.gl/AbC123"))
+        assertEquals("", CalendarPlace.label("https://maps.app.goo.gl/AbC123"))
+        assertEquals("geo:0,0?q=Ermou%2010%2C%20Athens", CalendarPlace.uri("Ermou 10, Athens"))
+        assertEquals(null, CalendarPlace.uri("  "))
+    }
+}

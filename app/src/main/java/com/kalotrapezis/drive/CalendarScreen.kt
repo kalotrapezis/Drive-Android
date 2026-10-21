@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -1013,6 +1014,18 @@ private fun dayBlocks(d: LocalDate, occ: List<Occurrence>, zone: ZoneId): List<T
     return blocks
 }
 
+/** Text with its web links tappable (they open in the browser or the app that owns them). */
+private fun linked(text: String, color: Color) = androidx.compose.ui.text.buildAnnotatedString {
+    var i = 0
+    Regex("""https?://\S+""").findAll(text).forEach { m ->
+        append(text.substring(i, m.range.first))
+        withLink(androidx.compose.ui.text.LinkAnnotation.Url(m.value, androidx.compose.ui.text.TextLinkStyles(androidx.compose.ui.text.SpanStyle(color = color,
+            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)))) { append(m.value) }
+        i = m.range.last + 1
+    }
+    append(text.substring(i))
+}
+
 /** An event's card: when, how often, which calendar, its reminders, place and notes. */
 @Composable private fun EventCard(o: Occurrence, close: () -> Unit, edit: () -> Unit, delete: () -> Unit, keep: () -> Unit) {
     val context = LocalContext.current
@@ -1039,13 +1052,22 @@ private fun dayBlocks(d: LocalDate, occ: List<Occurrence>, zone: ZoneId): List<T
                 }
                 Text(whenText, style = MaterialTheme.typography.bodyLarge)
                 (o.file.master ?: e).let { m -> repeatText(m.rrule, m.start) }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (e.place.isNotEmpty()) Text(e.place, style = MaterialTheme.typography.bodyMedium)
+                if (e.place.isNotEmpty()) CalendarPlace.label(e.place).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                CalendarPlace.uri(e.place)?.let { uri ->
+                    OutlinedButton(onClick = {
+                        runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri))) }
+                            .onFailure { android.widget.Toast.makeText(context, "No app here opens maps", android.widget.Toast.LENGTH_SHORT).show() }
+                    }) {
+                        Icon(painterResource(R.drawable.ic_map), contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp)); Text("Open in Maps")
+                    }
+                }
                 // a birthday with its year: the age that day
                 o.file.comps.flatMap { c -> c.comps("VEVENT") }.firstOrNull { it.prop("RECURRENCE-ID") == null }?.prop("X-TETRA-BIRTH-YEAR")?.value?.trim()?.toIntOrNull()
                     ?.let { y -> if (o.start.year > y) Text("Turns ${o.start.year - y}", style = MaterialTheme.typography.bodyMedium) }
                 Text(o.calendar.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 e.alarms.forEach { Text("🔔 " + alarmText(it, e.allDay, o.start), style = MaterialTheme.typography.bodyMedium) }
-                if (e.notes.isNotEmpty()) Text(e.notes, style = MaterialTheme.typography.bodyMedium)
+                if (e.notes.isNotEmpty()) Text(linked(e.notes, MaterialTheme.colorScheme.primary), style = MaterialTheme.typography.bodyMedium)
                 if (o.file.versions > 1) {
                     Text("${o.file.versions} versions of this event came from a sync (changed on two devices); the newest is shown.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     TextButton(onClick = keep) { Text("Keep this one") }

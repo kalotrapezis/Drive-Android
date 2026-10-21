@@ -1563,6 +1563,13 @@ And for Home: "On the default buttons at home add New : Shedule : burthday : rem
       day moved (shiftRepeat), desktop and Android (a test in each, the staff-meeting fixture). Both suites pass; not
       tried in the apps by hand.
 
+- [x] (maps-link session, 21 Oct) **A place opens in the maps app** (the user: "when I add a location link … from Google
+      maps here maps or what ever … make it a button"): the event card shows the place without its link and an "Open in
+      Maps" button — a link with coordinates (Google's @lat,lng / q=, HERE's map=, OSM's #map=) or a plain address goes as
+      geo: to the default maps app, a short link (maps.app.goo.gl) opens as itself; web links in the notes are tappable.
+      `CalendarPlace` + CalendarPlaceTest; seen on the emulator (opened Google Maps at the link's point). Android only —
+      the desktop's card not yet; not on the phone/tablet yet (neither connected).
+
 
 ## Timer (18 Oct, timer session; branches `timer` in both repos, worktrees Drive-Android-worktrees/timer-b50bfc and Drive-worktrees/timer)
 

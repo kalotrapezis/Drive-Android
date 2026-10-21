@@ -664,3 +664,24 @@ object CalendarTransfer {
         return tz
     }
 }
+
+/** An event's place as something to open in the maps app: a link pasted from Google Maps, HERE WeGo and the like, or an address. */
+object CalendarPlace {
+    private val URL = Regex("""https?://\S+""")
+    // lat,lng inside a link: Google's @lat,lng and q=lat,lng, HERE's map=lat,lng, OSM's #map=z/lat/lng
+    private val COORDS = Regex("""(-?\d{1,2}\.\d{3,})(?:,|%2C|/)\s*(-?\d{1,3}\.\d{3,})""")
+
+    fun link(place: String): String? = URL.find(place)?.value?.trimEnd('.', ',', ')', ';')
+
+    /** The place without its link, for showing; empty when the place is only a link. */
+    fun label(place: String): String = place.replace(URL, "").trim().trim(',', '-', '·').trim()
+
+    /** A geo: URI when the place has coordinates or is plain text, so the default maps app opens it; else the link itself. */
+    fun uri(place: String): String? {
+        if (place.isBlank()) return null
+        val link = link(place) ?: return "geo:0,0?q=" + java.net.URLEncoder.encode(place.trim(), "UTF-8").replace("+", "%20")
+        val m = COORDS.find(link)
+        val lat = m?.groupValues?.get(1)?.toDoubleOrNull(); val lng = m?.groupValues?.get(2)?.toDoubleOrNull()
+        return if (lat != null && lng != null && lat in -90.0..90.0 && lng in -180.0..180.0) "geo:$lat,$lng?q=$lat,$lng" else link
+    }
+}

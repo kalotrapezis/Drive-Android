@@ -141,6 +141,11 @@ internal class PdfComment(val page: Int, val index: Int, val kind: String, val w
 /** A bookmark (the file's contents): its title, page, depth. */
 internal class PdfMark(val title: String, val page: Int, val depth: Int)
 
+/** A list's marker at a line's start (Edit in Words): a bullet, or a number or letter with . or ). */
+internal val LIST_BULLET = Regex("""^[•◦▪▫●○■□‣⁃∙·\-–—*\uF0B7\uF0A7]\s*""")
+internal val LIST_NUMBER = Regex("""^(\d{1,3}|[a-zα-ω]|[ivx]{1,4})[.)](\s+|$)""", RegexOption.IGNORE_CASE)
+internal fun isMarkerOnly(t: String) = t.isNotBlank() && (LIST_BULLET.replace(t.trim(), "").isEmpty() || LIST_NUMBER.replace(t.trim(), "").isEmpty())
+
 /** A piece of a PDF's line between wide gaps (Edit in Words): a table's cell when it lines up with others, else words. */
 internal class PdfSeg(val text: String, val x0: Float, val x1: Float, val y: Float, val size: Float, val bold: Boolean, val italic: Boolean, val color: Int)
 
@@ -343,15 +348,20 @@ internal class PdfDoc(private val file: File, password: String? = null) {
      *  - a header or footer (the same words on most pages, numbers aside) left out.
      */
     fun toWords(): OfficeDoc = synchronized(this) {
-        class Block(val lines: List<List<PdfSeg>>)
+        class Block(val lines: List<List<PdfSeg>>, val image: com.artifex.mupdf.fitz.Rect? = null)
         val pages = sizes.indices.map { i -> page(i) { p ->
-            val t = p.toStructuredText()
+            val t = p.toStructuredText("preserve-images") // the pictures' places too (left out by default)
             try {
                 val json = org.json.JSONObject(t.asJSON())
                 // the JSON has the fonts, the blocks the letters' places and colours: matched by where each line starts
                 val lineChars = t.blocks.orEmpty().flatMap { b -> b.lines.orEmpty().map { l -> Triple(l.bbox.x0, l.bbox.y0, l) } }
                 val blocks = json.optJSONArray("blocks") ?: org.json.JSONArray()
-                (0 until blocks.length()).mapNotNull { b -> blocks.getJSONObject(b).takeIf { it.optString("type") == "text" }?.optJSONArray("lines")?.let { ls ->
+                (0 until blocks.length()).mapNotNull { b -> val jb = blocks.getJSONObject(b)
+                    // a picture: where it is, cut from the page below
+                    if (jb.optString("type") == "image") return@mapNotNull jb.optJSONObject("bbox")?.let { bb ->
+                        val x = bb.optDouble("x").toFloat(); val y = bb.optDouble("y").toFloat()
+                        Block(emptyList(), com.artifex.mupdf.fitz.Rect(x, y, x + bb.optDouble("w").toFloat(), y + bb.optDouble("h").toFloat())) }
+                    jb.takeIf { it.optString("type") == "text" }?.optJSONArray("lines")?.let { ls ->
                     Block((0 until ls.length()).map { k ->
                         val l = ls.getJSONObject(k); val font = l.optJSONObject("font"); val bb = l.optJSONObject("bbox")
                         val x = bb?.optDouble("x", 0.0)?.toFloat() ?: 0f; val y = bb?.optDouble("y", 0.0)?.toFloat() ?: 0f
@@ -387,6 +397,8 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         val kept = pages.map { bs -> bs.filter { b -> bare(b.lines.joinToString(" ") { textOf(it) }) !in repeated } }
         // the body's size: the one most letters have
         val body = kept.flatten().flatMap { it.lines }.flatten().groupBy { Math.round(it.size * 2) / 2f }.maxByOrNull { (_, ss) -> ss.sumOf { it.text.length } }?.key ?: 11f
+        // the headings' sizes, biggest first: the biggest is level 1, the next 2, the next 3 (a title over sections over sub-sections)
+        val headingSizes = kept.flatten().flatMap { it.lines }.flatten().map { Math.round(it.size * 2) / 2f }.filter { it >= body * 1.15f }.distinct().sortedDescending().take(3)
         // the PDF's bookmarks: a block with a bookmark's title is a heading of its depth
         val marks = bookmarks().filter { it.title.isNotBlank() }.associate { MapsSearch.fold(it.title.trim()) to (it.depth + 1).coerceAtMost(3) }
         // a contents line: words, then dots or spaces, then a page number
@@ -399,11 +411,14 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             var first = pi > 0 && out.isNotEmpty() // the page's first paragraph starts a page, as in the PDF
             fun add(p: DocPara) { out += if (first) p.copy(keep = OfficeFormats.withPageBreak(p.keep, OfficeKind.Docx, true)) else p; first = false }
             // a contents page: most of its lines end in a page number
-            val pageLines = blocks.flatMap { it.lines }.map { textOf(it) }.filter { it.isNotBlank() }
-            if (pageLines.size >= 4 && pageLines.count { contentsLine.matches(it.trim()) } * 2 > pageLines.size) {
-                if (contentsAt == null) { contentsAt = out.size; add(DocPara(listOf(DocRun("")))) }
-                return@forEachIndexed
-            }
+            // a contents page: three or more lines that end in a page number — they and their title make way for Words' own
+            val contentsTitle = Regex("""^(περιεχόμενα|πίνακας περιεχομένων|contents|table of contents)$""", RegexOption.IGNORE_CASE)
+            fun isContents(b: Block) = b.lines.isNotEmpty() && b.lines.all { l -> textOf(l).trim().let { contentsLine.matches(it) || contentsTitle.matches(it) } }
+            val blocks = if (contentsAt == null && blocks.flatMap { it.lines }.count { contentsLine.matches(textOf(it).trim()) } >= 3) {
+                val firstAt = blocks.indexOfFirst(::isContents)
+                blocks.filterIndexed { k, b -> !isContents(b) || k == firstAt }.map { b -> if (isContents(b)) Block(emptyList(), null).also { } else b }
+                    .also { contentsAt = -1 } // placed below, where its first block was
+            } else blocks
             // the page's lines in rows by where they sit (a table's columns can come as separate blocks)
             val all = blocks.flatMap { it.lines }.filter { it.isNotEmpty() }
             val rows = all.sortedBy { it.first().y }.fold(ArrayList<MutableList<PdfSeg>>()) { acc, line ->
@@ -415,20 +430,52 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             val tableOf = HashMap<PdfSeg, Int>(); val tables = ArrayList<List<List<PdfSeg>>>()
             var k = 0
             while (k < rows.size) {
-                if (rows[k].size < 2) { k++; continue }
+                if (rows[k].size < 2 || isMarkerOnly(rows[k].first().text)) { k++; continue }
                 var e = k + 1
                 // a cell lines up with a column by its left edge, its right edge or its middle (centred columns); the run's
                 // columns grow with each row taken in
                 val seen = ArrayList(rows[k])
                 fun lines(a: PdfSeg, b: PdfSeg) = kotlin.math.abs(a.x0 - b.x0) < body * 2 || kotlin.math.abs(a.x1 - b.x1) < body * 2 ||
                     kotlin.math.abs((a.x0 + a.x1) - (b.x0 + b.x1)) < body * 4
-                fun aligned(b: List<PdfSeg>) = b.size >= 2 && b.all { s -> seen.any { lines(it, s) } }
+                fun aligned(b: List<PdfSeg>) = b.size >= 2 && !isMarkerOnly(b.first().text) && b.all { s -> seen.any { lines(it, s) } }
                 while (e < rows.size && aligned(rows[e]) && rows[e].first().y - rows[e - 1].first().y < body * 4) { seen.addAll(rows[e]); e++ }
                 if (e - k >= 2) { val t = rows.subList(k, e).toList(); t.flatten().forEach { tableOf[it] = tables.size }; tables += t }
                 k = maxOf(e, k + 1)
             }
             val emitted = HashSet<Int>()
-            for (b in blocks) {
+            // the page drawn once (150 dpi) when it has pictures, each cut from it as the PDF shows it
+            val drawn by lazy { page(pi) { p -> val o = p.bounds; com.artifex.mupdf.fitz.android.AndroidDrawDevice.drawPage(p, com.artifex.mupdf.fitz.Matrix.Scale(150f / 72f)) to o } }
+            // a list's level from how far its marker is in from the page's least indented marker (level 1 there)
+            val left = blocks.flatMap { it.lines }.mapNotNull { it.firstOrNull() }.filter { sg -> sg.size < body * 1.15f && (isMarkerOnly(sg.text) ||
+                LIST_BULLET.containsMatchIn(sg.text.trimStart().take(2)) || LIST_NUMBER.find(sg.text.trimStart()) != null) }.minOfOrNull { it.x0 } ?: 0f
+            var pending: PdfSeg? = null // a bullet or number standing alone (its own line or block): put before the words after it
+            fun withPending(ls: List<List<PdfSeg>>): List<List<PdfSeg>> {
+                val out = ArrayList<List<PdfSeg>>()
+                for (l in ls) {
+                    if (l.size == 1 && isMarkerOnly(l[0].text)) { pending = l[0]; continue }
+                    val m = pending
+                    if (m != null && l.isNotEmpty()) { out += listOf(PdfSeg(m.text.trim() + " " + l[0].text, m.x0, l[0].x1, l[0].y, l[0].size, l[0].bold, l[0].italic, l[0].color)) + l.drop(1); pending = null }
+                    else out += l
+                }
+                return out
+            }
+            for (b0 in blocks) {
+                // the contents' place: an empty paragraph Words' contents replace
+                if (b0.image == null && b0.lines.isEmpty()) { if (contentsAt == -1) { contentsAt = out.size; add(DocPara(listOf(DocRun("")))) }; continue }
+                val b = if (b0.image != null) b0 else Block(withPending(b0.lines))
+                if (b.image == null && b.lines.isEmpty()) continue
+                b.image?.let { r ->
+                    if (r.x1 - r.x0 < 24 || r.y1 - r.y0 < 24) return@let // a rule or a dot, not a picture
+                    runCatching {
+                        val (bmp, o) = drawn; val k = 150f / 72f
+                        val cx = ((r.x0 - o.x0) * k).toInt().coerceIn(0, bmp.width - 1); val cy = ((r.y0 - o.y0) * k).toInt().coerceIn(0, bmp.height - 1)
+                        val cut = Bitmap.createBitmap(bmp, cx, cy, ((r.x1 - r.x0) * k).toInt().coerceIn(1, bmp.width - cx), ((r.y1 - r.y0) * k).toInt().coerceIn(1, bmp.height - cy))
+                        val jpg = java.io.ByteArrayOutputStream().also { cut.compress(Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
+                        val w = (r.x1 - r.x0).coerceAtMost(sizes[pi].width - 2 * 56f); val h = w * (r.y1 - r.y0) / (r.x1 - r.x0)
+                        add(DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = DocImage("n" + java.util.UUID.randomUUID(), null, w, h, null, jpg, "jpg")))))
+                    }.onFailure { WriterLog.w("PDF: a picture to Words", it) }
+                    continue
+                }
                 val inTable = b.lines.flatten().firstOrNull { it in tableOf }?.let { tableOf[it] }
                 if (inTable != null) {
                     if (emitted.add(inTable)) {
@@ -447,13 +494,13 @@ internal class PdfDoc(private val file: File, password: String? = null) {
                     // the block's lines that are not the table's stay text
                     val rest = b.lines.filter { l -> l.none { it in tableOf } }
                     if (rest.isEmpty()) continue
-                    paragraph(rest, ::add, body, marks, ::run)
-                } else paragraph(b.lines, ::add, body, marks, ::run)
+                    paragraph(rest, ::add, body, headingSizes, marks, left, ::run)
+                } else paragraph(b.lines, ::add, body, headingSizes, marks, left, ::run)
             }
         }
         var doc = OfficeDoc(out)
         // the contents: where the PDF's were, or at the start when it had bookmarks but no such page
-        val at = contentsAt ?: if (marks.isNotEmpty() && doc.paras.any { it.heading > 0 }) 0 else null
+        val at = contentsAt?.takeIf { it >= 0 } ?: if (marks.isNotEmpty() && doc.paras.any { it.heading > 0 }) 0 else null
         if (at != null && doc.paras.any { it.heading > 0 }) runCatching {
             val styles = DocStyles.of(OfficeKind.Docx, null)
             doc = Contents.insert(doc, OfficeKind.Docx, styles, at, 3) { d, pg -> OfficePages.layout(d, styles, pg) { null } }
@@ -461,21 +508,35 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         doc
     }
 
-    /** [lines] as one paragraph (a heading by size or by a bookmark's title) given to [add]. */
-    private fun paragraph(lines: List<List<PdfSeg>>, add: (DocPara) -> Unit, body: Float, marks: Map<String, Int>, run: (PdfSeg, String, Int) -> DocRun) {
-        val segs = lines.flatten()
-        if (segs.isEmpty()) return
-        val text = StringBuilder()
-        for (l in lines) { val w = l.joinToString(" ") { it.text }.trim(); if (w.isEmpty()) continue
-            if (text.isNotEmpty()) { if (text.endsWith("-") && w.first().isLowerCase()) text.setLength(text.length - 1) else text.append(' ') }
-            text.append(w) }
-        if (text.isBlank()) return
-        val size = segs.maxOf { it.size }
-        val heading = marks[MapsSearch.fold(text.toString().trim())] ?: if (text.length > 160) 0 else when {
-            size >= body * 1.6f -> 1; size >= body * 1.3f -> 2; size >= body * 1.15f -> 3; else -> 0 }
-        // the paragraph's look: its most common letters' (colour, size, bold) — one run, as the block is one paragraph
-        val main = segs.groupBy { Triple(it.color, Math.round(it.size * 2), it.bold) }.maxBy { (_, ss) -> ss.sumOf { it.text.length } }.value.first()
-        add(DocPara(listOf(run(main, text.toString(), heading)), heading = heading))
+    /**
+     * [lines] as paragraphs given to [add]: one, a heading by size or by a bookmark's title; or, where lines start with a
+     * bullet (• ◦ ▪ – - *) or a number (1. 2) a. α.), a list item each, its level from how far it is in from [left].
+     */
+    private fun paragraph(lines: List<List<PdfSeg>>, add: (DocPara) -> Unit, body: Float, headingSizes: List<Float>, marks: Map<String, Int>, left: Float,
+        run: (PdfSeg, String, Int) -> DocRun) {
+        val bullet = LIST_BULLET; val number = LIST_NUMBER
+        fun marker(l: List<PdfSeg>) = l.firstOrNull()?.text?.trimStart()?.let { t -> bullet.find(t)?.let { false to it.value } ?: number.find(t)?.let { true to it.value } }
+        // the lines in groups: a new one at each line that starts with a marker
+        val groups = ArrayList<MutableList<List<PdfSeg>>>()
+        for (l in lines) { if (l.isEmpty()) continue; if (groups.isEmpty() || marker(l) != null) groups += mutableListOf(l) else groups.last() += l }
+        for (g in groups) {
+            val segs = g.flatten()
+            val text = StringBuilder()
+            for (l in g) { val w = l.joinToString(" ") { it.text }.trim(); if (w.isEmpty()) continue
+                if (text.isNotEmpty()) { if (text.endsWith("-") && w.first().isLowerCase()) text.setLength(text.length - 1) else text.append(' ') }
+                text.append(w) }
+            if (text.isBlank()) continue
+            // a number in a heading's bigger letters ("1. Introduction") is the heading's, not a list's
+            val m = marker(g.first())?.takeIf { mk -> !mk.first || g.flatten().maxOf { it.size } < body * 1.15f }
+            val words = if (m != null) text.toString().trimStart().removePrefix(m.second).trim() else text.toString()
+            val size = segs.maxOf { it.size }
+            val heading = if (m != null) 0 else marks[MapsSearch.fold(words.trim())] ?: if (words.length > 160) 0
+                else headingSizes.indexOfFirst { kotlin.math.abs(it - Math.round(size * 2) / 2f) < 0.6f }.let { if (it < 0) 0 else it + 1 }
+            // the paragraph's look: its most common letters' (colour, size, bold) — one run, as the block is one paragraph
+            val main = segs.groupBy { Triple(it.color, Math.round(it.size * 2), it.bold) }.maxBy { (_, ss) -> ss.sumOf { it.text.length } }.value.first()
+            val list = m?.let { DocList(ordered = it.first, level = ((g.first().first().x0 - left) / 18f).toInt().coerceIn(0, 4)) }
+            add(DocPara(listOf(run(main, words, heading)), heading = heading, list = list))
+        }
     }
 
     /** Page [i] drawn for reading: about 300 dpi, its long edge at most 3300 px (a phone's memory). */

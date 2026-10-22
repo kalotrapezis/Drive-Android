@@ -141,6 +141,9 @@ internal class PdfComment(val page: Int, val index: Int, val kind: String, val w
 /** A bookmark (the file's contents): its title, page, depth. */
 internal class PdfMark(val title: String, val page: Int, val depth: Int)
 
+/** A piece of a PDF's line between wide gaps (Edit in Words): a table's cell when it lines up with others, else words. */
+internal class PdfSeg(val text: String, val x0: Float, val x1: Float, val y: Float, val size: Float, val bold: Boolean, val italic: Boolean, val color: Int)
+
 /** A form's field tapped: what it is ("text", "check", "radio", "choice", other), its name, value and choices. */
 internal class PdfField(val kind: String, val name: String, val value: String, val options: List<String>, val multiline: Boolean, val readOnly: Boolean)
 
@@ -329,55 +332,150 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     fun hasText(i: Int): Boolean = synchronized(this) { page(i) { p -> p.toStructuredText().let { t -> t.asText().isNotBlank().also { t.destroy() } } } }
 
     /**
-     * The file's words as Words paragraphs: each block of text one paragraph (its lines joined, a word broken by a hyphen at a
-     * line's end made whole), a page's end a page break; a block in bigger letters than most of the text a heading (1.6×
-     * level 1, 1.3× level 2, 1.15× level 3, when short), bold where its lines are bold.
+     * The file's words as a Words document (the user, 22 Oct: "make it in to words"; "can we make a table and content table
+     * transfer correctly … assume the output was a table and fix it after the fact"):
+     *  - each block of text a paragraph (its lines joined, a word broken by a hyphen made whole), a page's end a page break;
+     *    a block in bigger letters than most a heading (1.6× level 1, 1.3× 2, 1.15× 3), or the level the PDF's bookmarks give
+     *    it; colours, sizes, bold, italic as the PDF has them;
+     *  - rows of words split by wide gaps, two or more of them with their columns lined up, a Words table;
+     *  - a contents page (lines ending in a page number, with dots or not, most of the page) Words' own table of contents,
+     *    made from the headings; also when the PDF has bookmarks and no such page, at the start;
+     *  - a header or footer (the same words on most pages, numbers aside) left out.
      */
-    fun toWords(): List<DocPara> = synchronized(this) {
-        class Line(val text: String, val size: Float, val bold: Boolean, val italic: Boolean, val color: Int)
+    fun toWords(): OfficeDoc = synchronized(this) {
+        class Block(val lines: List<List<PdfSeg>>)
         val pages = sizes.indices.map { i -> page(i) { p ->
             val t = p.toStructuredText()
             try {
                 val json = org.json.JSONObject(t.asJSON())
-                // each line's colour: its first letter's, found by where the line is (the JSON has no colours)
-                val colours = t.blocks.orEmpty().flatMap { b -> b.lines.orEmpty().mapNotNull { l ->
-                    l.chars.orEmpty().firstOrNull { !it.isWhitespace }?.let { c -> Triple(l.bbox.x0, l.bbox.y0, c.argb and 0xFFFFFF) } } }
+                // the JSON has the fonts, the blocks the letters' places and colours: matched by where each line starts
+                val lineChars = t.blocks.orEmpty().flatMap { b -> b.lines.orEmpty().map { l -> Triple(l.bbox.x0, l.bbox.y0, l) } }
                 val blocks = json.optJSONArray("blocks") ?: org.json.JSONArray()
                 (0 until blocks.length()).mapNotNull { b -> blocks.getJSONObject(b).takeIf { it.optString("type") == "text" }?.optJSONArray("lines")?.let { ls ->
-                    (0 until ls.length()).map { k -> val l = ls.getJSONObject(k); val font = l.optJSONObject("font"); val bb = l.optJSONObject("bbox")
+                    Block((0 until ls.length()).map { k ->
+                        val l = ls.getJSONObject(k); val font = l.optJSONObject("font"); val bb = l.optJSONObject("bbox")
                         val x = bb?.optDouble("x", 0.0)?.toFloat() ?: 0f; val y = bb?.optDouble("y", 0.0)?.toFloat() ?: 0f
-                        val colour = colours.minByOrNull { (cx, cy, _) -> kotlin.math.abs(cx - x) + kotlin.math.abs(cy - y) }?.third ?: 0
-                        Line(l.optString("text"), font?.optDouble("size", 11.0)?.toFloat() ?: 11f, font?.optString("weight") == "bold", font?.optString("style") == "italic", colour) }
+                        val size = font?.optDouble("size", 11.0)?.toFloat() ?: 11f
+                        val bold = font?.optString("weight") == "bold"; val italic = font?.optString("style") == "italic"
+                        val line = lineChars.minByOrNull { (cx, cy, _) -> kotlin.math.abs(cx - x) + kotlin.math.abs(cy - y) }?.third
+                        val chars = line?.chars.orEmpty().toList()
+                        if (chars.isEmpty()) listOf(PdfSeg(l.optString("text"), x, x + (bb?.optDouble("w", 0.0)?.toFloat() ?: 0f), y, size, bold, italic, 0))
+                        else {
+                            // split where the gap between two letters is wider than a letter and a half
+                            val out = ArrayList<PdfSeg>(); var from = 0
+                            for (c in 1..chars.size) {
+                                val gap = if (c < chars.size) chars[c].quad.ul_x - chars[c - 1].quad.ur_x else Float.MAX_VALUE
+                                if (gap > size * 1.5f) {
+                                    val part = chars.subList(from, c)
+                                    val text = part.joinToString("") { String(Character.toChars(it.c)) }.trim()
+                                    if (text.isNotEmpty()) out += PdfSeg(text, part.first().quad.ul_x, part.last().quad.ur_x, y, size, bold, italic,
+                                        part.firstOrNull { !it.isWhitespace }?.argb?.and(0xFFFFFF) ?: 0)
+                                    from = c
+                                }
+                            }
+                            out
+                        }
+                    })
                 } }
             } finally { t.destroy() }
         } }
-        // a header or footer (the same words, page numbers aside, on most pages) left out: in Words it is the page's own
+        fun textOf(line: List<PdfSeg>) = line.joinToString(" ") { it.text }
+        // headers and footers: the same words, numbers aside, on most pages
         fun bare(t: String) = t.replace(Regex("\\d+"), "#").trim()
-        val repeated = if (pages.size < 3) emptySet() else pages.flatMap { b -> b.map { ls -> bare(ls.joinToString(" ") { it.text }) }.distinct() }
+        val repeated = if (pages.size < 3) emptySet() else pages.flatMap { bs -> bs.map { b -> bare(b.lines.joinToString(" ") { textOf(it) }) }.distinct() }
             .groupingBy { it }.eachCount().filter { (t, n) -> t.isNotBlank() && n * 2 > pages.size }.keys
-        val pagesKept = pages.map { b -> b.filter { ls -> bare(ls.joinToString(" ") { it.text }) !in repeated } }
+        val kept = pages.map { bs -> bs.filter { b -> bare(b.lines.joinToString(" ") { textOf(it) }) !in repeated } }
         // the body's size: the one most letters have
-        val body = pagesKept.flatten().flatten().groupBy { Math.round(it.size * 2) / 2f }.maxByOrNull { (_, ls) -> ls.sumOf { it.text.length } }?.key ?: 11f
+        val body = kept.flatten().flatMap { it.lines }.flatten().groupBy { Math.round(it.size * 2) / 2f }.maxByOrNull { (_, ss) -> ss.sumOf { it.text.length } }?.key ?: 11f
+        // the PDF's bookmarks: a block with a bookmark's title is a heading of its depth
+        val marks = bookmarks().filter { it.title.isNotBlank() }.associate { MapsSearch.fold(it.title.trim()) to (it.depth + 1).coerceAtMost(3) }
+        // a contents line: words, then dots or spaces, then a page number
+        val contentsLine = Regex("""^(.{2,}?)[\s.·…_]{2,}(\d{1,4})$""")
+        fun run(seg: PdfSeg, text: String = seg.text, heading: Int = 0) = DocRun(text, bold = seg.bold && heading == 0, italic = seg.italic,
+            color = seg.color.takeIf { it != 0 }, sizePt = if (heading == 0) Math.round(seg.size * 2) / 2f else null)
         val out = ArrayList<DocPara>()
-        pagesKept.forEachIndexed { pi, blocks ->
+        var contentsAt: Int? = null
+        kept.forEachIndexed { pi, blocks ->
             var first = pi > 0 && out.isNotEmpty() // the page's first paragraph starts a page, as in the PDF
-            for (lines in blocks) {
-                val text = StringBuilder()
-                for (l in lines) { val w = l.text.trim(); if (w.isEmpty()) continue
-                    if (text.isNotEmpty()) { if (text.endsWith("-") && w.first().isLowerCase()) text.setLength(text.length - 1) else text.append(' ') }
-                    text.append(w) }
-                if (text.isBlank()) continue
-                val size = lines.maxOf { it.size }; val bold = lines.count { it.bold } * 2 > lines.size; val italic = lines.count { it.italic } * 2 > lines.size
-                val heading = if (text.length > 160) 0 else when { size >= body * 1.6f -> 1; size >= body * 1.3f -> 2; size >= body * 1.15f -> 3; else -> 0 }
-                // its colour (black left as the document's own), and its size when not a heading's
-                val colour = lines.groupingBy { it.color }.eachCount().maxByOrNull { it.value }?.key?.takeIf { it != 0 && it != 0x000000 }
-                out += DocPara(listOf(DocRun(text.toString(), bold = bold && heading == 0, italic = italic, color = colour,
-                    sizePt = if (heading == 0) lines.groupingBy { Math.round(it.size * 2) }.eachCount().maxBy { it.value }.key / 2f else null)), heading = heading,
-                    keep = if (first) OfficeFormats.withPageBreak(null, OfficeKind.Docx, true) else null)
-                first = false
+            fun add(p: DocPara) { out += if (first) p.copy(keep = OfficeFormats.withPageBreak(p.keep, OfficeKind.Docx, true)) else p; first = false }
+            // a contents page: most of its lines end in a page number
+            val pageLines = blocks.flatMap { it.lines }.map { textOf(it) }.filter { it.isNotBlank() }
+            if (pageLines.size >= 4 && pageLines.count { contentsLine.matches(it.trim()) } * 2 > pageLines.size) {
+                if (contentsAt == null) { contentsAt = out.size; add(DocPara(listOf(DocRun("")))) }
+                return@forEachIndexed
+            }
+            // the page's lines in rows by where they sit (a table's columns can come as separate blocks)
+            val all = blocks.flatMap { it.lines }.filter { it.isNotEmpty() }
+            val rows = all.sortedBy { it.first().y }.fold(ArrayList<MutableList<PdfSeg>>()) { acc, line ->
+                val last = acc.lastOrNull()
+                if (last != null && kotlin.math.abs(last.first().y - line.first().y) < line.first().size * 0.5f) last.addAll(line) else acc += line.toMutableList()
+                acc
+            }.map { r -> r.sortedBy { it.x0 } }
+            // runs of rows of two cells or more, their cells starting where the run's columns do: tables
+            val tableOf = HashMap<PdfSeg, Int>(); val tables = ArrayList<List<List<PdfSeg>>>()
+            var k = 0
+            while (k < rows.size) {
+                if (rows[k].size < 2) { k++; continue }
+                var e = k + 1
+                // a cell lines up with a column by its left edge, its right edge or its middle (centred columns); the run's
+                // columns grow with each row taken in
+                val seen = ArrayList(rows[k])
+                fun lines(a: PdfSeg, b: PdfSeg) = kotlin.math.abs(a.x0 - b.x0) < body * 2 || kotlin.math.abs(a.x1 - b.x1) < body * 2 ||
+                    kotlin.math.abs((a.x0 + a.x1) - (b.x0 + b.x1)) < body * 4
+                fun aligned(b: List<PdfSeg>) = b.size >= 2 && b.all { s -> seen.any { lines(it, s) } }
+                while (e < rows.size && aligned(rows[e]) && rows[e].first().y - rows[e - 1].first().y < body * 4) { seen.addAll(rows[e]); e++ }
+                if (e - k >= 2) { val t = rows.subList(k, e).toList(); t.flatten().forEach { tableOf[it] = tables.size }; tables += t }
+                k = maxOf(e, k + 1)
+            }
+            val emitted = HashSet<Int>()
+            for (b in blocks) {
+                val inTable = b.lines.flatten().firstOrNull { it in tableOf }?.let { tableOf[it] }
+                if (inTable != null) {
+                    if (emitted.add(inTable)) {
+                        val t = tables[inTable]
+                        // the columns: where the cells start, the widest row's
+                        val cols = t.maxBy { it.size }.map { (it.x0 + it.x1) / 2 }
+                        val width = (sizes[pi].width - 2 * 56f).coerceAtLeast(200f)
+                        val table = TableEdit.newTable(t.size, cols.size, width).let { tb ->
+                            tb.copy(rows = tb.rows.mapIndexed { r, row -> row.copy(cells = row.cells.mapIndexed { c, cell ->
+                                val inCell = t[r].filter { s -> cols.indices.minBy { kotlin.math.abs(cols[it] - (s.x0 + s.x1) / 2) } == c }
+                                cell.copy(paras = listOf(DocPara(if (inCell.isEmpty()) listOf(DocRun("")) else inCell.mapIndexed { n, s -> run(s, (if (n > 0) " " else "") + s.text) })))
+                            }) })
+                        }
+                        add(DocPara(listOf(DocRun(OBJECT_MARK.toString())), table = table))
+                    }
+                    // the block's lines that are not the table's stay text
+                    val rest = b.lines.filter { l -> l.none { it in tableOf } }
+                    if (rest.isEmpty()) continue
+                    paragraph(rest, ::add, body, marks, ::run)
+                } else paragraph(b.lines, ::add, body, marks, ::run)
             }
         }
-        out
+        var doc = OfficeDoc(out)
+        // the contents: where the PDF's were, or at the start when it had bookmarks but no such page
+        val at = contentsAt ?: if (marks.isNotEmpty() && doc.paras.any { it.heading > 0 }) 0 else null
+        if (at != null && doc.paras.any { it.heading > 0 }) runCatching {
+            val styles = DocStyles.of(OfficeKind.Docx, null)
+            doc = Contents.insert(doc, OfficeKind.Docx, styles, at, 3) { d, pg -> OfficePages.layout(d, styles, pg) { null } }
+        }.onFailure { WriterLog.e("PDF: contents", it) }
+        doc
+    }
+
+    /** [lines] as one paragraph (a heading by size or by a bookmark's title) given to [add]. */
+    private fun paragraph(lines: List<List<PdfSeg>>, add: (DocPara) -> Unit, body: Float, marks: Map<String, Int>, run: (PdfSeg, String, Int) -> DocRun) {
+        val segs = lines.flatten()
+        if (segs.isEmpty()) return
+        val text = StringBuilder()
+        for (l in lines) { val w = l.joinToString(" ") { it.text }.trim(); if (w.isEmpty()) continue
+            if (text.isNotEmpty()) { if (text.endsWith("-") && w.first().isLowerCase()) text.setLength(text.length - 1) else text.append(' ') }
+            text.append(w) }
+        if (text.isBlank()) return
+        val size = segs.maxOf { it.size }
+        val heading = marks[MapsSearch.fold(text.toString().trim())] ?: if (text.length > 160) 0 else when {
+            size >= body * 1.6f -> 1; size >= body * 1.3f -> 2; size >= body * 1.15f -> 3; else -> 0 }
+        // the paragraph's look: its most common letters' (colour, size, bold) — one run, as the block is one paragraph
+        val main = segs.groupBy { Triple(it.color, Math.round(it.size * 2), it.bold) }.maxBy { (_, ss) -> ss.sumOf { it.text.length } }.value.first()
+        add(DocPara(listOf(run(main, text.toString(), heading)), heading = heading))
     }
 
     /** Page [i] drawn for reading: about 300 dpi, its long edge at most 3300 px (a phone's memory). */
@@ -842,10 +940,10 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         val d = doc ?: return; val f = file ?: return
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching {
-                val paras = d.toWords()
-                if (paras.none { it.text.isNotBlank() }) error("No text: a scan needs Edit › Pages › Recognize text first")
+                val words = d.toWords()
+                if (words.paras.none { it.text.isNotBlank() || it.table != null }) error("No text: a scan needs Edit › Pages › Recognize text first")
                 val to = run { var n = 0; var t: File; do { n++; t = File(f.parentFile, "${f.nameWithoutExtension}${if (n > 1) " $n" else ""}.docx") } while (t.exists()); t }
-                to.writeBytes(OfficeFormats.write(OfficeDoc(paras), OfficeKind.Docx)); to
+                to.writeBytes(OfficeFormats.write(words, OfficeKind.Docx)); to
             } }
             r.onSuccess { to -> WriterLog.i("PDF: to Words, ${to.length() / 1024} KB"); Toast.makeText(context, "Saved as ${to.name}", Toast.LENGTH_SHORT).show(); openWords(Uri.fromFile(to).toString()) }
                 .onFailure { WriterLog.e("PDF: to Words", it); Toast.makeText(context, it.message ?: "Could not make the document.", Toast.LENGTH_LONG).show() }

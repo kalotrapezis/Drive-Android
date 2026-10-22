@@ -142,7 +142,15 @@ internal enum class PdfTool(val label: String, val icon: Int) {
     Pen("Pen", R.drawable.ic_ink_pen), Marker("Highlighter", R.drawable.ic_ink_highlighter), Erase("Delete comment", R.drawable.ic_delete),
     Text("Text", R.drawable.ic_text_fields), Tick("Tick", R.drawable.ic_check), Cross("Cross", R.drawable.ic_close), Dot("Dot", R.drawable.ic_circle),
     Date("Date", R.drawable.ic_calendar_today), Sign("Sign", R.drawable.ic_draw), Redact("Mark area", R.drawable.ic_crop_square),
+    TextBox("Text box", R.drawable.ic_text_fields), Stamp("Stamp", R.drawable.ic_branding_watermark),
 }
+
+/** PDF's standard stamps, as every reader names and draws them. */
+internal val STAMPS = listOf("Approved", "Draft", "Final", "Confidential", "Experimental", "Expired", "NotApproved", "ForComment", "AsIs", "Sold",
+    "Departmental", "NotForPublicRelease", "TopSecret", "ForPublicRelease")
+
+/** The PDF app's menus: white words and icons on the black menu. */
+@Composable internal fun PDF_MENU_ITEM() = androidx.compose.material3.MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White)
 
 /** A word found: its page and its boxes there (in the page's points). */
 internal class PdfMatch(val page: Int, val boxes: List<RectF>)
@@ -469,6 +477,22 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         w.update(); true
     }
 
+    /** A standard stamp ([name] one of [STAMPS]: Approved, Draft, …) centred on [at], drawn by MuPDF in the stamp's own look. */
+    fun stampAt(i: Int, at: Offset, name: String) = annotate(i, "Stamp") { p, x0, y0 ->
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STAMP).apply {
+            setIcon(name); setRect(com.artifex.mupdf.fitz.Rect(at.x + x0 - 75, at.y + y0 - 22, at.x + x0 + 75, at.y + y0 + 22)); update()
+        }; true
+    }
+
+    /** A text box from [a] to [b]: [words] inside a frame of [color], as a comment others' readers show and let you edit. */
+    fun textBox(i: Int, a: Offset, b: Offset, words: String, color: Int) = annotate(i, "Text box") { p, x0, y0 ->
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(minOf(a.x, b.x) + x0, minOf(a.y, b.y) + y0, maxOf(a.x, b.x) + x0, maxOf(a.y, b.y) + y0))
+            setDefaultAppearance("Helv", 11f, rgb(0x000000)); setContents(words.replace('—', '-').replace('–', '-'))
+            setBorderWidth(1f); update() // its colour would fill it (a text box's colour is its background): a clear box, a thin frame
+        }; true
+    }
+
     /** The comment under [at] (the topmost, a few points round it), deleted: false when there is none. */
     fun deleteAt(i: Int, at: Offset) = annotate(i, "Delete comment") { p, x0, y0 ->
         val x = at.x + x0; val y = at.y + y0; val slop = 6f
@@ -655,6 +679,8 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     val signatureFile = remember { File(context.filesDir, "pdf-signature.png") }
     var signing by remember { mutableStateOf(false) } // drawing the signature
     var asking by remember { mutableStateOf<String?>(null) } // Insert's and Protect's windows: "header", "watermark", "password", "bookmark"
+    var boxing by remember { mutableStateOf<Triple<Int, Offset, Offset>?>(null) } // a text box drawn: its words asked for
+    var stampName by remember { mutableStateOf("Approved") }
     var pane by remember { mutableStateOf<String?>(null) } // "Comments" or "Bookmarks", beside the pages (a phone: over their lower half)
     var version by remember { mutableStateOf(0) } // after each change: the pages drawn again
     var organize by remember { mutableStateOf(false) }
@@ -730,6 +756,8 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             }
             PdfTool.Note -> writing = i to a
             PdfTool.Redact -> if ((b - a).getDistance() > 4f) change { d.markRedaction(i, a, b) }
+            PdfTool.TextBox -> if ((b - a).getDistance() > 10f) boxing = Triple(i, a, b)
+            PdfTool.Stamp -> change { d.stampAt(i, a, stampName) }
             PdfTool.Rectangle, PdfTool.Oval, PdfTool.Arrow -> if ((b - a).getDistance() > 4f) change {
                 d.shape(i, when (t) { PdfTool.Oval -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_CIRCLE; PdfTool.Arrow -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_LINE
                     else -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_SQUARE }, a, b, if (markColour == 0xFFEB3B) 0xE53935 else markColour, 2f)
@@ -798,6 +826,14 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     if (signing) DrawDialog(200f, { signing = false }, boxAspect = 0.4f) { png, _, _, _, _ ->
         signing = false
         runCatching { signatureFile.writeBytes(png) }.onSuccess { tool = PdfTool.Sign; Toast.makeText(context, "Signature kept: tap where it goes", Toast.LENGTH_LONG).show() }
+    }
+    boxing?.let { (i, a0, b0) ->
+        var words by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { boxing = null }, title = { Text("Text box") },
+            text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 2, placeholder = { Text("What it says") }) },
+            confirmButton = { androidx.compose.material3.TextButton(enabled = words.isNotBlank(), onClick = { boxing = null
+                doc?.let { d -> change { d.textBox(i, a0, b0, words.trim(), if (markColour == 0xFFEB3B) 0xE53935 else markColour) } } }) { Text("Put in") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { boxing = null }) { Text("Cancel") } })
     }
     filling?.let { (i, at0, f) ->
         var value by remember { mutableStateOf(f.value) }
@@ -899,19 +935,23 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                         var more by remember { mutableStateOf(false) }
                         Box {
                             IconButton(onClick = { more = true }) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More") }
-                            DropdownMenu(more, { more = false }) {
+                            // black with round corners, as the islands (the user, 22 Oct: "a nice black menu with rounded corners")
+                            DropdownMenu(more, { more = false }, shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), containerColor = Color(0xFF151515),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))) {
+                                androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Color.White) {
                                 if (Pdf.hasText && doc != null) DropdownMenuItem({ Text("Copy this page's text") }, { more = false; copyPage() },
-                                    leadingIcon = { Icon(painterResource(R.drawable.ic_copy), contentDescription = null) })
+                                    colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_copy), contentDescription = null) })
                                 DropdownMenuItem({ Text("Open in another app") }, { more = false; openElsewhere(context, f) },
-                                    leadingIcon = { Icon(painterResource(R.drawable.ic_open_with), contentDescription = null) })
+                                    colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_open_with), contentDescription = null) })
                                 fav?.let { h -> DropdownMenuItem({ Text(if (h.on) "Remove from favourites" else "Add to favourites") }, { more = false; h.toggle() },
-                                    leadingIcon = { Icon(painterResource(if (h.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = null) }) }
+                                    colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(if (h.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = null) }) }
                                 if (doc != null) {
-                                    DropdownMenuItem({ Text("Comments") }, { more = false; pane = "Comments" }, leadingIcon = { Icon(painterResource(R.drawable.ic_comment), contentDescription = null) })
-                                    DropdownMenuItem({ Text("Bookmarks") }, { more = false; pane = "Bookmarks" }, leadingIcon = { Icon(painterResource(R.drawable.ic_bookmark), contentDescription = null) })
+                                    DropdownMenuItem({ Text("Comments") }, { more = false; pane = "Comments" }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_comment), contentDescription = null) })
+                                    DropdownMenuItem({ Text("Bookmarks") }, { more = false; pane = "Bookmarks" }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_bookmark), contentDescription = null) })
                                 }
                                 if (versions(context, f).isNotEmpty()) DropdownMenuItem({ Text("Versions") }, { more = false; showVersions = true },
-                                    leadingIcon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) })
+                                    colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) })
+                                }
                             }
                         }
                     }
@@ -1029,7 +1069,14 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                         if (tab == "Review") {
                             ToolButton(PdfTool.Highlight); ToolButton(PdfTool.Underline); ToolButton(PdfTool.Strike)
                             RibbonDivider(w)
-                            ToolButton(PdfTool.Note); ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
+                            ToolButton(PdfTool.Note); ToolButton(PdfTool.TextBox); ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
+                            // Stamp: the kind chosen in a strip (✓/×, as Office's options), then a tap on the page puts it there
+                            val stampStrip = officeStrip("Stamp", ok = { st -> (st.picked as? String)?.let { stampName = it; tool = PdfTool.Stamp } }) { st ->
+                                STAMPS.forEach { n -> RibbonButton(n.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, on = st.picked == n) { st.picked = n } }
+                            }
+                            RibbonButton(if (tool == PdfTool.Stamp) stampName.replace(Regex("(?<=[a-z])(?=[A-Z])"), " ") else "Stamp", w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) {
+                                if (stampStrip != null) stampStrip() else tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp
+                            }
                             Swatches(w, R.drawable.ic_palette, "Colour", listOf(0xFFEB3B, 0x92D050, 0x00B0F0, 0xE53935, 0x7030A0, 0x000000).map { Color(0xFF000000.toInt() or it) }) { c ->
                                 c?.let { markColour = (it.toArgb() and 0xFFFFFF) } }
                             RibbonDivider(w)
@@ -1134,7 +1181,7 @@ private fun androidx.compose.foundation.layout.BoxScope.PdfDrawLayer(page: Size,
     val c = Color(0xFF000000.toInt() or colour)
     Canvas(Modifier.matchParentSize().pointerInput(tool) {
         val k = size.width / page.width
-        if (tool == null || tool == PdfTool.Note || tool == PdfTool.Erase || tool in PdfTool.Text..PdfTool.Sign) detectTapGestures { p -> done(listOf(p / k)) }
+        if (tool == null || tool == PdfTool.Note || tool == PdfTool.Erase || tool == PdfTool.Stamp || tool in PdfTool.Text..PdfTool.Sign) detectTapGestures { p -> done(listOf(p / k)) }
         else detectDragGestures(
             onDragStart = { p -> path = listOf(p) },
             onDrag = { ch, _ -> ch.consume(); path = path + ch.position },
@@ -1147,7 +1194,7 @@ private fun androidx.compose.foundation.layout.BoxScope.PdfDrawLayer(page: Size,
             PdfTool.Pen, PdfTool.Marker -> drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(a.x, a.y); path.drop(1).forEach { lineTo(it.x, it.y) } },
                 c.copy(alpha = if (tool == PdfTool.Marker) 0.4f else 1f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (tool == PdfTool.Marker) 24f else 5f,
                     cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
-            PdfTool.Rectangle -> drawRect(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
+            PdfTool.Rectangle, PdfTool.TextBox -> drawRect(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
             PdfTool.Redact -> drawRect(Color.Black.copy(alpha = 0.5f), Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)))
             PdfTool.Oval -> drawOval(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
             PdfTool.Arrow -> drawLine(c, a, b, 4f)

@@ -5343,14 +5343,15 @@ private fun PhotoViewer(
     var photoText by remember(selectedUri) { mutableStateOf<String?>(null) } // "" while reading
     val ocrScope = rememberCoroutineScope()
     photoText?.let { t ->
+        val pick = remember(t) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(t)) }
         AlertDialog(onDismissRequest = { photoText = null }, title = { Text("Text in the photo") },
             text = { if (t.isEmpty()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp)); Text("Reading…") }
                 else if (t == NO_TEXT) Text("No words found in this photo.")
-                else androidx.compose.foundation.text.selection.SelectionContainer { Text(t, Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) } },
+                else ChoosableText(pick) },
             confirmButton = { if (t.isNotEmpty() && t != NO_TEXT) TextButton(onClick = {
-                context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("Text", t))
-                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show(); photoText = null }) { Text("Copy all") } },
+                context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("Text", pick.value.chosen()))
+                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show(); photoText = null }) { Text(if (pick.value.selection.collapsed) "Copy all" else "Copy selected") } },
             dismissButton = { TextButton(onClick = { photoText = null }) { Text("Close") } })
     }
     var actionError by remember(selectedUri) { mutableStateOf<String?>(null) }

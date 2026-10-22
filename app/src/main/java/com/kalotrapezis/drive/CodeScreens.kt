@@ -54,7 +54,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -275,10 +278,11 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                     is CodeResult.Payment -> PaymentCodeBlock(context, current.code, large = true)
                     is CodeResult.Code -> {
                         Text(if (current.url != null) "Link" else "Code", style = MaterialTheme.typography.titleLarge)
-                        SelectionContainer { Text(current.value, style = MaterialTheme.typography.bodyLarge, maxLines = 8) }
+                        val pick = remember(current) { mutableStateOf(TextFieldValue(current.value)) }
+                        ChoosableText(pick)
                         current.url?.let { url -> DriveWideAction(R.drawable.ic_open_in_browser, "Open in browser") { openLink(context, url); dismiss() } }
-                        DriveWideAction(R.drawable.ic_copy, "Copy") { copyText(context, current.value); dismiss() }
-                        DriveWideAction(R.drawable.ic_share, "Share") { shareText(context, current.value) }
+                        DriveWideAction(R.drawable.ic_copy, if (pick.value.selection.collapsed) "Copy" else "Copy selected") { copyText(context, pick.value.chosen()); dismiss() }
+                        DriveWideAction(R.drawable.ic_share, "Share") { shareText(context, pick.value.chosen()) }
                     }
                     is CodeResult.Pairing -> {
                         Text("Tetra computer", style = MaterialTheme.typography.titleLarge)
@@ -289,18 +293,28 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                     is CodeResult.Text -> {
                         current.payment?.let { PaymentCodeBlock(context, it, large = false) }
                         Text("Text", style = MaterialTheme.typography.titleLarge)
-                        Text("Long-press to select part of it.", style = MaterialTheme.typography.bodySmall)
-                        SelectionContainer(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-                            Text(current.text, style = MaterialTheme.typography.bodyLarge)
-                        }
-                        DriveWideAction(R.drawable.ic_copy, "Copy all") { copyText(context, current.text); dismiss() }
-                        DriveWideAction(R.drawable.ic_share, "Share") { shareText(context, current.text) }
+                        val pick = remember(current) { mutableStateOf(TextFieldValue(current.text)) }
+                        ChoosableText(pick)
+                        DriveWideAction(R.drawable.ic_copy, if (pick.value.selection.collapsed) "Copy all" else "Copy selected") { copyText(context, pick.value.chosen()); dismiss() }
+                        DriveWideAction(R.drawable.ic_share, "Share") { shareText(context, pick.value.chosen()) }
                     }
                 }
             }
         }
     }
 }
+
+/** Read text the user can pick part of (and fix) before copying; the hint says how (the user, 22 Oct: "I want to be able to choose what I want to copy"). */
+@Composable
+internal fun ChoosableText(value: MutableState<TextFieldValue>, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Hold a word, then drag the handles to choose what to copy. You can fix the words here too.", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(value.value, { value.value = it }, Modifier.fillMaxWidth().heightIn(max = 360.dp), textStyle = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** The chosen part, or all of it when nothing is chosen. */
+internal fun TextFieldValue.chosen() = if (selection.collapsed) text else text.substring(selection.min, selection.max)
 
 @Composable
 private fun PaymentCodeBlock(context: Context, code: String, large: Boolean) {

@@ -1834,8 +1834,12 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       with its Developer settings › Unknown sources on. Seen 22 Oct on the desktop head unit through the user's phone
       (Start head unit server, adb forward tcp:5277; DHU needs libc++1 and an open stdin), full screen and beside Spotify:
       zoom (+/−, pinch), pan and back to me; the speed-limit sign drawn on the map (the user: "where is the speed limit?").
-      Start page (22 Oct): the phone Home's 8 places as cards, Favourites (all the other saved ones), Nearby, then the recent
-      destinations not saved (MapsPrefs.recent, phone and car); Search (as you type, parked) and Map. On the map a column
+      Places on the map (22 Oct, replacing a GridTemplate start page that left the small card blank): with no directions
+      the big side shows cards over the dimmed map — the phone Home's 8, Favourites (all the other saved ones), Nearby, the
+      recent destinations not saved (MapsPrefs.recent, phone and car) — tapped through SurfaceCallback.onClick; Map hides
+      them, a tap on the map drops a pin (Go / ✕); Search (as you type, parked). The small card is told apart by the visible
+      area lying on one side of the surface's middle (the surface is always the whole screen). The column goes to the
+      driver's side by the network's country (right where traffic keeps left). On the map a column
       with no background — speed, the limit's sign, "€ Tolls n" lit while the route has tolls ahead, "No GPS" after 10 s
       without a fix — and ⚙ Voice: every direction / important only (wrong way, new route, no GPS, arrival) / off.
       Sizes follow the car screen (the column a hundredth of its height per unit, at the driver's side, left). The small

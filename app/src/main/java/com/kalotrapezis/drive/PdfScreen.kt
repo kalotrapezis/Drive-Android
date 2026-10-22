@@ -332,15 +332,20 @@ internal class PdfDoc(private val file: File, password: String? = null) {
      * level 1, 1.3× level 2, 1.15× level 3, when short), bold where its lines are bold.
      */
     fun toWords(): List<DocPara> = synchronized(this) {
-        class Line(val text: String, val size: Float, val bold: Boolean, val italic: Boolean)
+        class Line(val text: String, val size: Float, val bold: Boolean, val italic: Boolean, val color: Int)
         val pages = sizes.indices.map { i -> page(i) { p ->
             val t = p.toStructuredText()
             try {
                 val json = org.json.JSONObject(t.asJSON())
+                // each line's colour: its first letter's, found by where the line is (the JSON has no colours)
+                val colours = t.blocks.orEmpty().flatMap { b -> b.lines.orEmpty().mapNotNull { l ->
+                    l.chars.orEmpty().firstOrNull { !it.isWhitespace }?.let { c -> Triple(l.bbox.x0, l.bbox.y0, c.argb and 0xFFFFFF) } } }
                 val blocks = json.optJSONArray("blocks") ?: org.json.JSONArray()
                 (0 until blocks.length()).mapNotNull { b -> blocks.getJSONObject(b).takeIf { it.optString("type") == "text" }?.optJSONArray("lines")?.let { ls ->
-                    (0 until ls.length()).map { k -> val l = ls.getJSONObject(k); val font = l.optJSONObject("font")
-                        Line(l.optString("text"), font?.optDouble("size", 11.0)?.toFloat() ?: 11f, font?.optString("weight") == "bold", font?.optString("style") == "italic") }
+                    (0 until ls.length()).map { k -> val l = ls.getJSONObject(k); val font = l.optJSONObject("font"); val bb = l.optJSONObject("bbox")
+                        val x = bb?.optDouble("x", 0.0)?.toFloat() ?: 0f; val y = bb?.optDouble("y", 0.0)?.toFloat() ?: 0f
+                        val colour = colours.minByOrNull { (cx, cy, _) -> kotlin.math.abs(cx - x) + kotlin.math.abs(cy - y) }?.third ?: 0
+                        Line(l.optString("text"), font?.optDouble("size", 11.0)?.toFloat() ?: 11f, font?.optString("weight") == "bold", font?.optString("style") == "italic", colour) }
                 } }
             } finally { t.destroy() }
         } }
@@ -362,7 +367,10 @@ internal class PdfDoc(private val file: File, password: String? = null) {
                 if (text.isBlank()) continue
                 val size = lines.maxOf { it.size }; val bold = lines.count { it.bold } * 2 > lines.size; val italic = lines.count { it.italic } * 2 > lines.size
                 val heading = if (text.length > 160) 0 else when { size >= body * 1.6f -> 1; size >= body * 1.3f -> 2; size >= body * 1.15f -> 3; else -> 0 }
-                out += DocPara(listOf(DocRun(text.toString(), bold = bold && heading == 0, italic = italic)), heading = heading,
+                // its colour (black left as the document's own), and its size when not a heading's
+                val colour = lines.groupingBy { it.color }.eachCount().maxByOrNull { it.value }?.key?.takeIf { it != 0 && it != 0x000000 }
+                out += DocPara(listOf(DocRun(text.toString(), bold = bold && heading == 0, italic = italic, color = colour,
+                    sizePt = if (heading == 0) lines.groupingBy { Math.round(it.size * 2) }.eachCount().maxBy { it.value }.key / 2f else null)), heading = heading,
                     keep = if (first) OfficeFormats.withPageBreak(null, OfficeKind.Docx, true) else null)
                 first = false
             }

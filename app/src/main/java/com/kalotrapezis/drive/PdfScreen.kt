@@ -127,6 +127,15 @@ internal object Pdf {
 }
 
 /** A comment on a page, as the Comments pane lists it: its kind, words, place (page points) and [index] among the page's. */
+/** Find & redact's ready patterns (the user, 22 Oct: "text redaction in data level"): what people most often black out. */
+internal val REDACT_PATTERNS = listOf(
+    "Phone numbers" to Regex("""(?<!\d)(?:\+30[\s-]?)?(?:2\d|69)\d(?:[\s-]?\d){7}(?!\d)"""),
+    "Emails" to Regex("""[\w.+-]+@[\w-]+(?:\.[\w-]+)+"""),
+    "ΑΦΜ (9 digits)" to Regex("""(?<!\d)\d{9}(?!\d)"""),
+    "ΑΜΚΑ (11 digits)" to Regex("""(?<!\d)\d{11}(?!\d)"""),
+    "IBAN" to Regex("""\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,4})?\b"""),
+)
+
 internal class PdfComment(val page: Int, val index: Int, val kind: String, val words: String, val at: Offset)
 
 /** A bookmark (the file's contents): its title, page, depth. */
@@ -142,7 +151,7 @@ internal enum class PdfTool(val label: String, val icon: Int) {
     Pen("Pen", R.drawable.ic_ink_pen), Marker("Highlighter", R.drawable.ic_ink_highlighter), Erase("Delete comment", R.drawable.ic_delete),
     Text("Text", R.drawable.ic_text_fields), Tick("Tick", R.drawable.ic_check), Cross("Cross", R.drawable.ic_close), Dot("Dot", R.drawable.ic_circle),
     Date("Date", R.drawable.ic_calendar_today), Sign("Sign", R.drawable.ic_draw), Redact("Mark area", R.drawable.ic_crop_square),
-    TextBox("Text box", R.drawable.ic_text_fields), Stamp("Stamp", R.drawable.ic_branding_watermark),
+    TextBox("Text box", R.drawable.ic_text_fields), Stamp("Stamp", R.drawable.ic_branding_watermark), RedactText("Select text", R.drawable.ic_format_strikethrough),
 }
 
 /** PDF's standard stamps, as every reader names and draws them. */
@@ -238,7 +247,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
 
     /** Highlight, underline or strike out ([type]) the words from [a] to [b], as a finger went over them: false when none. */
     fun markText(i: Int, a: Offset, b: Offset, type: Int, color: Int) = annotate(i, when (type) {
-        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_UNDERLINE -> "Underline"; com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STRIKE_OUT -> "Strikethrough"; else -> "Highlight" }) { p, x0, y0 ->
+        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_UNDERLINE -> "Underline"; com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STRIKE_OUT -> "Strikethrough"; com.artifex.mupdf.fitz.PDFAnnotation.TYPE_REDACT -> "Mark for redaction"; else -> "Highlight" }) { p, x0, y0 ->
         val t = p.toStructuredText()
         try {
             val quads = t.highlight(com.artifex.mupdf.fitz.Point(a.x + x0, a.y + y0), com.artifex.mupdf.fitz.Point(b.x + x0, b.y + y0)).orEmpty()
@@ -307,6 +316,80 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             setRect(com.artifex.mupdf.fitz.Rect(at.x + x0, at.y + y0, at.x + x0 + width, at.y + y0 + width * aspect))
             setAppearance(com.artifex.mupdf.fitz.Image(png)); update()
         }; true
+    }
+
+    // —— Recognize text (OCR): a scan's words, invisible over it, so Find, Copy and other apps read it ——
+
+    private var ocrFont: com.artifex.mupdf.fitz.PDFObject? = null
+    private val greek = charset("ISO-8859-7") // MuPDF's Greek simple encoding: ASCII and Greek in one byte each
+
+    /** Page [i] has words of its own (not a scan, or read already). */
+    fun hasText(i: Int): Boolean = synchronized(this) { page(i) { p -> p.toStructuredText().let { t -> t.asText().isNotBlank().also { t.destroy() } } } }
+
+    /** Page [i] drawn for reading: about 300 dpi, its long edge at most 3300 px (a phone's memory). */
+    fun scanOf(i: Int): Pair<Bitmap, Float> = synchronized(this) { page(i) { p ->
+        val s = sizes[i]; val k = minOf(300f / 72f, 3300f / maxOf(s.width, s.height))
+        com.artifex.mupdf.fitz.android.AndroidDrawDevice.drawPage(p, com.artifex.mupdf.fitz.Matrix.Scale(k)) to k
+    } }
+
+    /** [words] (boxes in the pixels of a drawing [k] times the page's points) put on page [i] as invisible text, one undo step. */
+    fun addTextLayer(i: Int, words: List<OcrWord>, k: Float) = edit("Recognize text, page ${i + 1}") { pdf ->
+        if (words.isEmpty()) return@edit
+        val font = com.artifex.mupdf.fitz.Font("Helvetica")
+        val ref = ocrFont ?: pdf.addSimpleFont(font, com.artifex.mupdf.fitz.Font.SIMPLE_ENCODING_GREEK).also { ocrFont = it }
+        val obj = pdf.findPage(i)
+        val res = obj.get("Resources").takeIf { !it.isNull } ?: pdf.newDictionary().also { r ->
+            obj.getInheritable("Resources").takeIf { !it.isNull }?.let { inh -> for (key in listOf("Font", "XObject", "ExtGState", "ColorSpace", "Pattern", "Shading", "ProcSet")) inh.get(key).takeIf { !it.isNull }?.let { r.put(key, it) } }
+            obj.put("Resources", r) }
+        val fonts = res.get("Font").takeIf { !it.isNull } ?: pdf.newDictionary().also { res.put("Font", it) }
+        fonts.put("TetraOCR", ref)
+        // from the drawing's top-left pixels to the PDF's own space (its origin bottom left, any turn the page has)
+        val toPdf = page(i) { p -> val o = p.bounds; com.artifex.mupdf.fitz.Matrix.Inverted((p as com.artifex.mupdf.fitz.PDFPage).transform).let { inv ->
+            com.artifex.mupdf.fitz.Matrix(com.artifex.mupdf.fitz.Matrix.Scale(1f / k), com.artifex.mupdf.fitz.Matrix(com.artifex.mupdf.fitz.Matrix.Translate(o.x0, o.y0), inv)) } }
+        val sb = StringBuilder("q BT 3 Tr\n")
+        for (w in words) {
+            val bytes = w.text.toByteArray(greek)
+            val adv = w.text.sumOf { c -> font.advanceGlyph(font.encodeCharacter(c.code)).toDouble() }.toFloat().coerceAtLeast(0.1f)
+            val bl = com.artifex.mupdf.fitz.Point(w.box.left, w.box.bottom).transform(toPdf)
+            val tl = com.artifex.mupdf.fitz.Point(w.box.left, w.box.top).transform(toPdf)
+            val br = com.artifex.mupdf.fitz.Point(w.box.right, w.box.bottom).transform(toPdf)
+            val hx = tl.x - bl.x; val hy = tl.y - bl.y; val wx = br.x - bl.x; val wy = br.y - bl.y
+            // the word's own matrix: along its width, up its height, the font's em that tall and stretched to the box
+            sb.append("/TetraOCR 1 Tf ").append(f(wx / adv)).append(' ').append(f(wy / adv)).append(' ').append(f(hx)).append(' ').append(f(hy)).append(' ')
+                .append(f(bl.x)).append(' ').append(f(bl.y)).append(" Tm <").append(bytes.joinToString("") { "%02x".format(it) }).append("> Tj\n")
+        }
+        sb.append("ET Q\n")
+        val before = pdf.addStream("q\n"); val after = pdf.addStream("Q\n" + sb)
+        val old = obj.get("Contents")
+        val list = pdf.newArray(); list.push(before)
+        if (old.isArray) for (j in 0 until old.size()) list.push(old.get(j)) else if (!old.isNull) list.push(old)
+        list.push(after)
+        obj.put("Contents", list)
+    }
+    private fun f(v: Float) = "%.3f".format(java.util.Locale.ROOT, v)
+
+    // —— Find and redact: words or patterns marked everywhere, then taken out of the file ——
+
+    /** Every place [query] is (or, a pattern, every match of [regex] in a page's text) marked for redaction: how many. */
+    fun markAll(query: String?, regex: Regex?): Int {
+        var n = 0
+        edit("Mark for redaction") { _ ->
+            sizes.indices.forEach { i -> page(i) { p ->
+                val pp = p as com.artifex.mupdf.fitz.PDFPage
+                val hits: List<Array<com.artifex.mupdf.fitz.Quad>> = if (query != null) p.search(query).orEmpty().toList()
+                else {
+                    val t = p.toStructuredText()
+                    try {
+                        val text = t.asText()
+                        // each match looked for as words on the page (StructuredText.search crashes MuPDF 1.28.5's JNI; Page.search is Find's own)
+                        regex!!.findAll(text).map { it.value.trim() }.distinct().flatMap { v -> p.search(v).orEmpty().toList() }.toList()
+                    } finally { t.destroy() }
+                }
+                hits.forEach { quads -> pp.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_REDACT).apply { setQuadPoints(quads); update() }; n++ }
+                pp.update()
+            } }
+        }
+        return n
     }
 
     // —— the Comments pane and Bookmarks ——
@@ -681,6 +764,8 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     var asking by remember { mutableStateOf<String?>(null) } // Insert's and Protect's windows: "header", "watermark", "password", "bookmark"
     var boxing by remember { mutableStateOf<Triple<Int, Offset, Offset>?>(null) } // a text box drawn: its words asked for
     var stampName by remember { mutableStateOf("Approved") }
+    var reading2 by remember { mutableStateOf<Pair<Int, Int>?>(null) } // Recognize text running: the page, of how many
+    var ocrJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var pane by remember { mutableStateOf<String?>(null) } // "Comments" or "Bookmarks", beside the pages (a phone: over their lower half)
     var version by remember { mutableStateOf(0) } // after each change: the pages drawn again
     var organize by remember { mutableStateOf(false) }
@@ -748,6 +833,11 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             d.noteAt(i, pts[0])?.let { reading = it.ifBlank { "(an empty note)" } }; return }
         val a = pts.first(); val b = pts.last()
         when (t) {
+            PdfTool.RedactText -> change {
+                // the words a finger crossed, marked to be taken out (the user, 22 Oct: "cant we do select and reduct?")
+                if (!d.markText(i, a, b, com.artifex.mupdf.fitz.PDFAnnotation.TYPE_REDACT, 0x000000))
+                    Toast.makeText(context, "No words there: on a scan, Pages › Recognize text first, or Mark area", Toast.LENGTH_SHORT).show()
+            }
             PdfTool.Highlight, PdfTool.Underline, PdfTool.Strike -> change {
                 val type = when (t) { PdfTool.Underline -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_UNDERLINE; PdfTool.Strike -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STRIKE_OUT
                     else -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_HIGHLIGHT }
@@ -861,6 +951,28 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                     doc?.let { d -> change { d.headerFooter(head.trim(), foot.trim(), 10f) } } }) { Text("Put in") } },
                 dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } })
         }
+        "redact" -> {
+            var words by remember { mutableStateOf("") }
+            var pattern by remember { mutableStateOf<Int?>(null) }
+            androidx.compose.material3.AlertDialog(onDismissRequest = { asking = null }, title = { Text("Find & redact") },
+                text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Every place it is in the file is marked; Redact marked then takes them out of the file itself.", style = MaterialTheme.typography.bodySmall)
+                    androidx.compose.material3.OutlinedTextField(words, { words = it; if (it.isNotEmpty()) pattern = null }, Modifier.fillMaxWidth(), label = { Text("Words") }, singleLine = true)
+                    Text("Or every:", style = MaterialTheme.typography.labelLarge)
+                    REDACT_PATTERNS.forEachIndexed { k, (label, _) ->
+                        Row(Modifier.fillMaxWidth().clickable { pattern = k; words = "" }, verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.RadioButton(pattern == k, { pattern = k; words = "" }); Text(label)
+                        }
+                    }
+                } },
+                confirmButton = { androidx.compose.material3.TextButton(enabled = words.isNotBlank() || pattern != null, onClick = { asking = null
+                    val d = doc ?: return@TextButton
+                    var n = 0
+                    change { n = d.markAll(words.trim().ifEmpty { null }, pattern?.let { REDACT_PATTERNS[it].second }) }
+                    Toast.makeText(context, if (n == 0) "Not found (a scan needs Pages › Recognize text first)" else "$n marked: look them over, then Redact marked", Toast.LENGTH_LONG).show()
+                }) { Text("Mark") } },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } })
+        }
         "bookmark" -> {
             var title by remember { mutableStateOf("Page ${at + 1}") }
             androidx.compose.material3.AlertDialog(onDismissRequest = { asking = null }, title = { Text("Bookmark page ${at + 1}") },
@@ -892,6 +1004,14 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                     doc?.protect(pw); version++; Toast.makeText(context, "Save puts the password on the file", Toast.LENGTH_LONG).show() }) { Text("OK") } },
                 dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } })
         }
+    }
+    reading2?.let { (k, n) ->
+        androidx.compose.material3.AlertDialog(onDismissRequest = {}, title = { Text("Recognizing text") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Page $k of $n. A page takes a few seconds.")
+                androidx.compose.material3.LinearProgressIndicator(progress = { (k - 1f) / n }, modifier = Modifier.fillMaxWidth())
+            } },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { ocrJob?.cancel(); reading2 = null }) { Text("Stop") } })
     }
     reading?.let { words ->
         androidx.compose.material3.AlertDialog(onDismissRequest = { reading = null }, title = { Text("Note") }, text = { Text(words) },
@@ -1095,7 +1215,9 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                             if (password != null) RibbonButton("Remove password", w, R.drawable.ic_lock_open) { d.protect(null); version++
                                 Toast.makeText(context, "The next Save leaves the file without its password", Toast.LENGTH_LONG).show() }
                             RibbonDivider(w)
+                            ToolButton(PdfTool.RedactText)
                             ToolButton(PdfTool.Redact)
+                            RibbonButton("Find & redact", w, R.drawable.ic_search) { asking = "redact" }
                             RibbonButton("Redact marked", w, R.drawable.ic_check) {
                                 var n = 0; change { n = d.applyRedactions() }
                                 Toast.makeText(context, if (n == 0) "Mark areas first (Mark area, then drag over them)" else "Taken out of $n page${if (n == 1) "" else "s"}: Save writes the file anew without them", Toast.LENGTH_LONG).show()
@@ -1134,6 +1256,23 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                         RibbonButton("Blank page", w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
                         RibbonButton("Insert PDF", w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
                         RibbonButton("Bookmarks", w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
+                        RibbonButton("Recognize text", w, R.drawable.ic_text_fields) {
+                            // every page without words of its own read (a scan, a photo), each one undo step; Find and Copy then work on it
+                            ocrJob = scope.launch {
+                                val todo = withContext(Dispatchers.IO) { d.sizes.indices.filter { !d.hasText(it) } }
+                                if (todo.isEmpty()) { Toast.makeText(context, "Every page has its text already", Toast.LENGTH_SHORT).show(); return@launch }
+                                var words = 0
+                                for ((k, i) in todo.withIndex()) {
+                                    reading2 = k + 1 to todo.size
+                                    val got = withContext(Dispatchers.Default) { runCatching { val (bmp, sc) = d.scanOf(i); Ocr.words(context, bmp).also { ws -> d.addTextLayer(i, ws, sc) } } }
+                                    got.onFailure { WriterLog.e("PDF: recognize text", it) }.onSuccess { words += it.size }
+                                    version++
+                                }
+                                reading2 = null
+                                WriterLog.i("PDF: recognized ${todo.size} pages, $words words")
+                                Toast.makeText(context, "$words words read on ${todo.size} page${if (todo.size == 1) "" else "s"}: Find and Copy work on them now", Toast.LENGTH_LONG).show()
+                            }
+                        }
                         RibbonButton("Reduce size", w, R.drawable.ic_compress) {
                             d.shrink(); version++
                             Toast.makeText(context, "Save writes the file anew, smaller (now ${(file?.length() ?: 0) / 1024} KB)", Toast.LENGTH_LONG).show()

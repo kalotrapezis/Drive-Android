@@ -85,6 +85,7 @@ dependencies {
     implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
     implementation("androidx.car.app:app:1.4.0") // Maps on the car's screen: Android Auto's templates (Apache 2.0)
     implementation("com.artifex.mupdf:fitz:1.28.5") // PDF: drawing (annotations too), editing, pages, forms (AGPL-3.0; Tetra is free software)
+    implementation("com.github.adaptech-cz.Tesseract4Android:tesseract4android:4.8.0") // PDF › Recognize text: Greek and English OCR (Apache 2.0)
     implementation("org.dmfs:lib-recur:0.17.1") // Calendar: iCalendar RRULE repeats (Apache 2.0)
     // Maps: offline routing on the graph the computer builds (Apache 2.0). Only what reading a graph needs: Janino (run-time
     // bytecode, which Android cannot load — MapsRouting writes the custom models out), the OSM reader, XML and logback stay out.

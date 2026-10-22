@@ -85,6 +85,19 @@ class MapsCarService : CarAppService() {
     }
 }
 
+/**
+ * The phone's map and the car's screen, one trip (the user, 22 Oct: "In Gogole maps when in Android auto I cant open the map
+ * on the phone, is it the same with tetra … we need a good UI and UX on bouth"): while the car is connected a place picked on
+ * the phone starts its directions on the car's screen, and the phone shows them (no second route or voice). One process, so
+ * a shared object is enough.
+ */
+internal object CarLink {
+    val connected = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val nav = kotlinx.coroutines.flow.MutableStateFlow<Nav?>(null)
+    var go: ((Place) -> Unit)? = null
+    var stop: (() -> Unit)? = null
+}
+
 /** The map, the next turn over it while directions run, and Places / Nearby / Stop. */
 private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObserver {
     private val root = MapsFiles.root(TetraFolder.root(Environment.getExternalStorageDirectory()))
@@ -229,9 +242,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
         // a tap: on a card, that place; on the map with no directions, a pin there (Go, or ✕)
         override fun onClick(x: Float, y: Float) {
-            if (nav != null) return
+            val hit = Rect()
+            if (nav != null) {
+                if (!compact) etaTaps.firstOrNull { (v, _) -> v.getGlobalVisibleRect(hit) && hit.contains(x.toInt(), y.toInt()) }?.second?.invoke()
+                return
+            }
             if (faves?.visibility == android.view.View.VISIBLE) {
-                val hit = Rect()
                 faveCells.firstOrNull { (v, _) -> v.getGlobalVisibleRect(hit) && hit.contains(x.toInt(), y.toInt()) }?.second?.tap?.invoke()
             } else if (!compact) map?.let { setPin(it.projection.fromScreenLocation(android.graphics.PointF(x, y))) }
         }
@@ -245,7 +261,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
 
         override fun onSurfaceDestroyed(c: SurfaceContainer) {
-            map = null; sign = null; speedText = null; tollView = null; gpsView = null; panel = null; faves = null; gridKey = ""
+            map = null; sign = null; speedText = null; tollView = null; gpsView = null; panel = null; faves = null; gridKey = ""; etaBox = null; etaTaps = emptyList()
             view?.run { onPause(); onStop(); onDestroy() }; view = null
             presentation?.dismiss(); presentation = null
             display?.release(); display = null
@@ -310,12 +326,32 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     /** The card as wide as the part [r] shown, its arrow and words as big as that width allows. */
+    // the bottom card: time, arrival, distance; on the big side under it ✕ end, other routes, a stop on the way (the user,
+    // 22 Oct: "Can we add X to end rout, add stop, rerout options?"), tapped through onClick like the places
+    private var etaBox: android.widget.LinearLayout? = null
     private var eta: android.widget.TextView? = null
+    private var etaButtons: android.widget.LinearLayout? = null
+    private var etaTaps: List<Pair<android.view.View, () -> Unit>> = emptyList()
 
-    private fun etaCard(c: android.content.Context) = android.widget.TextView(c).also { eta = it }.apply {
-        gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); typeface = android.graphics.Typeface.DEFAULT_BOLD
-        background = android.graphics.drawable.GradientDrawable().apply { setColor(0xF0303134.toInt()); cornerRadius = 3 * u }
-        visibility = android.view.View.GONE
+    private fun etaCard(c: android.content.Context): android.view.View {
+        eta = android.widget.TextView(c).apply { gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); typeface = android.graphics.Typeface.DEFAULT_BOLD }
+        fun button(icon: Int, color: Int, tap: () -> Unit) = android.widget.ImageView(c).apply {
+            setImageResource(icon); setColorFilter(Color.WHITE); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = 100 * u }
+        }.also { etaTaps = etaTaps + (it to tap) }
+        etaTaps = emptyList()
+        etaButtons = android.widget.LinearLayout(c).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER
+            addView(button(R.drawable.ic_close, 0xFFC62828.toInt()) { stop() })
+            addView(button(R.drawable.ic_call_split, 0xFF5F6368.toInt()) { nav?.let { screenManager.push(RoutesScreen(it.target)) } })
+            addView(button(R.drawable.ic_add_location, 0xFF5F6368.toInt()) { screenManager.push(KindsScreen(stop = true)) })
+        }
+        return android.widget.LinearLayout(c).also { etaBox = it }.apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(0xF0303134.toInt()); cornerRadius = 3 * u }
+            addView(eta); addView(etaButtons)
+            visibility = android.view.View.GONE
+        }
     }
 
     /** The cards' width: the small card's, or on the big side a column at the driver's side. */
@@ -341,11 +377,19 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         panelText?.setTextSize(px, textPx)
         panelHint?.setTextSize(px, smallPx)
         // the bottom card: the card's width, a little less tall than the turn card
-        eta?.apply {
-            setTextSize(px, textPx); setPadding(pad, pad, pad, pad)
+        eta?.setTextSize(px, textPx)
+        etaBox?.apply {
+            setPadding(pad, pad, pad, pad)
             layoutParams = android.widget.FrameLayout.LayoutParams(cw, -2, android.view.Gravity.BOTTOM or android.view.Gravity.START)
                 .apply { setMargins(cl, 0, 0, surfaceH - r.bottom + r.width() / 25) }
         }
+        // the buttons big enough for a finger at a glance, only where the car passes taps on (the big side)
+        val b = (iconPx * 0.8f).toInt()
+        etaButtons?.apply {
+            visibility = if (compact) android.view.View.GONE else android.view.View.VISIBLE
+            for (i in 0 until childCount) getChildAt(i).layoutParams = android.widget.LinearLayout.LayoutParams(0, b, 1f).apply { setMargins(pad, pad, pad, 0) }
+        }
+        etaTaps.forEach { (v, _) -> (v as android.widget.ImageView).setPadding(b / 5, b / 5, b / 5, b / 5) }
     }
 
     // —— no directions running: the places as cards over the map. The small card: the phone Home's 8, 2 by 4 (the user, 22
@@ -421,7 +465,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         gridKey = if (grid) key else ""
         faves?.visibility = if (grid) android.view.View.VISIBLE else android.view.View.GONE
         panel?.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
-        eta?.visibility = panel?.visibility ?: android.view.View.GONE
+        etaBox?.visibility = panel?.visibility ?: android.view.View.GONE
         if (!on) return
         val left = secondsLeft(n!!, p!!).toLong()
         val time = java.time.LocalTime.now().plusSeconds(left).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
@@ -523,7 +567,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             .target(here?.let { org.maplibre.android.geometry.LatLng(it.latitude, it.longitude) } ?: org.maplibre.android.geometry.LatLng(38.4, 23.8))
             .zoom(if (here != null) 15.0 else 5.6).build()
         if (granted()) {
-            activateArrow(carContext, m, style)
+            activateArrow(carContext, m, style, scale = 1.1f) // the car's screen is seen from further than the phone's
             m.locationComponent.isLocationComponentEnabled = true
             here?.let { m.locationComponent.forceLocationUpdate(it) }
             follow()
@@ -557,6 +601,9 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     override fun onCreate(owner: LifecycleOwner) {
+        CarLink.go = { p -> WriterLog.i("Maps car: from the phone, ${p.name}"); pick(p) }
+        CarLink.stop = { stop() }
+        CarLink.connected.value = true
         // the graph opened now, so the first route does not wait for it (it took 25 s on 22 Oct)
         lifecycleScope.launch(Dispatchers.IO) { if (File(graphDir, "properties").isFile) runCatching { MapsRouting.open(graphDir) } }
         if (!granted()) return
@@ -581,6 +628,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     /** The car disconnected: it is parked where the last fix was (Settings › Maps › Save where I park). */
     override fun onDestroy(owner: LifecycleOwner) {
+        CarLink.connected.value = false; CarLink.nav.value = null; CarLink.go = null; CarLink.stop = null
         carContext.getSystemService(LocationManager::class.java)?.removeUpdates(listener)
         if (nav != null) navigation.navigationEnded()
         here?.takeIf { MapsPrefs.autoPark(carContext) && System.currentTimeMillis() - it.time < 5 * 60_000 }?.let { park(it, "Android Auto disconnected") }
@@ -615,6 +663,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         if (p.left < 50.0 || metresBetween(loc.latitude, loc.longitude, n.target.lat, n.target.lng) < 60.0) {
             if ("n${n.route.steps.lastIndex}" !in n.said) say(n.route.steps.lastOrNull()?.text ?: "", important = true)
+            // a stop on the way reached: on to the trip's end
+            after?.let { next -> after = null; CarToast.makeText(carContext, "On to ${next.name}", CarToast.LENGTH_LONG).show(); go(next); return }
             stop()
             if (MapsPrefs.autoPark(carContext)) park(loc, "a car trip ended")
             CarToast.makeText(carContext, "Arrived: ${n.target.name}", CarToast.LENGTH_LONG).show(); return
@@ -635,18 +685,30 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, true, step.text)); said = said + "e${p.next}" }
         }
         nav = n.copy(index = i, p = p, offFixes = 0, said = said)
+        CarLink.nav.value = nav
         invalidate()
     }
 
     // —— directions ——
 
     /** By car to [target], the fastest way, from the last fix. */
-    fun go(target: Place) {
+    /** Where to go on after a stop on the way (fuel, ΑμεΑ parking…): the trip's own end. */
+    private var after: Place? = null
+
+    /** A stop on the way: there first, then on to where the trip was going. */
+    private fun pickStop(p: Place) {
+        after = nav?.target ?: after
+        WriterLog.i("Maps car: a stop on the way, then ${after?.name}")
+        screenManager.popToRoot(); go(p)
+    }
+
+    /** By car to [target]: [chosen] when one of the other routes was picked, else the fastest from the last fix. */
+    fun go(target: Place, chosen: Route? = null) {
         val from = here ?: run { CarToast.makeText(carContext, "Waiting for the GPS", CarToast.LENGTH_SHORT).show(); return }
         if (!File(graphDir, "properties").isFile) { CarToast.makeText(carContext, "No routing graph yet in Tetra/Maps", CarToast.LENGTH_LONG).show(); return }
         finding = "Finding the way…"; showSpeed(); invalidate()
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang) }
+            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang) }
                 .onSuccess { MapsSearch.load(root) } } // the tolls on it, below, from the search list (read once)
             finding = null
             r.onSuccess { route ->
@@ -672,8 +734,10 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     fun stop() {
+        after = null
         if (nav == null) return
         nav = null; tolls = emptyList(); tollsAhead = 0; showPlaces = true
+        CarLink.nav.value = null
         navigation.navigationEnded()
         drawRoute(); follow(); showSpeed(); invalidate()
     }
@@ -836,18 +900,49 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     // —— Nearby: what a driver looks for, then the nearest of it ——
 
-    private inner class KindsScreen : Screen(carContext) {
+    /** The ways to [target] from here, fastest first, with their roads and tolls: one picked goes instead. */
+    private inner class RoutesScreen(private val target: Place) : Screen(carContext) {
+        private var routes: List<Route>? = null
+        private var tollCounts: List<Int> = emptyList()
+        init {
+            val h = here
+            lifecycleScope.launch {
+                routes = if (h == null) emptyList() else withContext(Dispatchers.IO) {
+                    runCatching { MapsRouting.routes(graphDir, h.latitude, h.longitude, target.lat, target.lng, "car", lang) }.getOrDefault(emptyList())
+                        .also { rs -> tollCounts = rs.map { r -> runCatching { tollsOn(r, cumulative(r), MapsSearch.load(root)).size }.getOrDefault(0) } }
+                }
+                invalidate()
+            }
+        }
+
+        override fun onGetTemplate(): Template {
+            val t = ListTemplate.Builder().setTitle("Routes to ${target.name}").setHeaderAction(Action.BACK)
+            val rs = routes ?: return t.setLoading(true).build()
+            val items = ItemList.Builder().setNoItemsMessage("No other way found")
+            rs.forEachIndexed { i, r ->
+                val min = (r.millis / 60000).toInt()
+                val time = if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"
+                val roads = when (r.roads) { "motorway" -> "Motorway"; "main" -> "Main roads"; "local" -> "Local roads"; else -> r.roads.replaceFirstChar { it.uppercase() } }
+                val tolls = tollCounts.getOrElse(i) { 0 }.let { if (it == 0) "no tolls" else if (it == 1) "1 toll" else "$it tolls" }
+                items.addItem(Row.Builder().setTitle("$time · ${metresText(r.metres)}").addText("$roads · $tolls")
+                    .setOnClickListener { screenManager.popToRoot(); go(target, r) }.build())
+            }
+            return t.setSingleList(items.build()).build()
+        }
+    }
+
+    private inner class KindsScreen(private val stop: Boolean = false) : Screen(carContext) {
         override fun onGetTemplate(): Template {
             val items = ItemList.Builder()
             listOf("disabled_parking", "fuel", "charging", "parking", "pharmacy", "eopyy", "supermarket", "toilets", "hospital").take(limit()).forEach { k ->
                 val kind = MapsSearch.PILLS.first { it.key == k }
-                items.addItem(Row.Builder().setTitle("${kind.emoji} ${kind.label}").setBrowsable(true).setOnClickListener { screenManager.push(FoundScreen(kind)) }.build())
+                items.addItem(Row.Builder().setTitle("${kind.emoji} ${kind.label}").setBrowsable(true).setOnClickListener { screenManager.push(FoundScreen(kind, stop)) }.build())
             }
-            return ListTemplate.Builder().setTitle("Nearby").setHeaderAction(Action.BACK).setSingleList(items.build()).build()
+            return ListTemplate.Builder().setTitle(if (stop) "Add a stop" else "Nearby").setHeaderAction(Action.BACK).setSingleList(items.build()).build()
         }
     }
 
-    private inner class FoundScreen(private val kind: MapsSearch.Kind) : Screen(carContext) {
+    private inner class FoundScreen(private val kind: MapsSearch.Kind, private val stop: Boolean = false) : Screen(carContext) {
         private var found: List<Poi>? = null
         init {
             lifecycleScope.launch {
@@ -865,7 +960,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             val items = ItemList.Builder().setNoItemsMessage(if (here == null) "Waiting for the GPS" else "None near here")
             f.forEach { poi ->
                 items.addItem(Row.Builder().setTitle(poi.title).apply { listOf(away(poi.lat, poi.lng), poi.more).filter { it.isNotEmpty() }.joinToString(" · ").takeIf { it.isNotEmpty() }?.let(::addText) }
-                    .setOnClickListener { pick(Place("", poi.title, poi.lat, poi.lng)) }.build())
+                    .setOnClickListener { Place("", poi.title, poi.lat, poi.lng).let { if (stop) pickStop(it) else pick(it) } }.build())
             }
             return t.setSingleList(items.build()).build()
         }

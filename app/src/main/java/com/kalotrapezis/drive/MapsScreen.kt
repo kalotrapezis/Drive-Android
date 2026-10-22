@@ -47,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -301,6 +302,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var live by remember { mutableStateOf(false) } // a fix came while the map is open (not Android's stored last one)
     var granted by remember { mutableStateOf(hasLocation(context)) }
     var nav by remember { mutableStateOf<Nav?>(null) }
+    val carNav by CarLink.nav.collectAsState() // directions running on the car's screen, shown here too
     var preview by remember { mutableStateOf<Preview?>(null) }
     var navSheet by remember { mutableStateOf(false) } // the handle's sheet over the directions bar: tolls and the turns ahead
     var finding by remember { mutableStateOf<String?>(null) }
@@ -374,6 +376,11 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
 
     /** [choose]: the ways there shown to pick from (a place's Car / Walk / Bike); else the fastest at once (Home's one tap, a new route). */
     fun startNav(target: Place, mode: String, from: Location? = here, choose: Boolean = false) {
+        // the car connected: by car on its screen, which the phone then shows
+        if (CarLink.connected.value && mode == "car") {
+            CarLink.go?.invoke(target); selected = null; preview = null; tab = null
+            Toast.makeText(context, "On the car's screen: ${target.name}", Toast.LENGTH_SHORT).show(); return
+        }
         // directions start from a live fix: Android's stored last one can be hours old and towns away
         if (from == null || !live) { pending = target.copy(mode = mode); return }
         if (!File(graphDir, "properties").isFile) {
@@ -645,12 +652,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         val shown = if (nav != null) navTolls else previewTolls.getOrNull(preview?.chosen ?: -1).orEmpty()
         (mapRef?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(shown.map { (t, _) -> Feature.fromGeometry(Point.fromLngLat(t.lng, t.lat)) }))
     }
-    LaunchedEffect(mapRef, nav?.route, preview) {
+    LaunchedEffect(mapRef, nav?.route, carNav?.route, preview) {
         val src = mapRef?.style?.getSource("route") as? GeoJsonSource ?: return@LaunchedEffect
         fun line(r: Route) = Feature.fromGeometry(LineString.fromLngLats(r.lats.indices.map { Point.fromLngLat(r.lngs[it], r.lats[it]) }))
         (mapRef?.style?.getSource("alts") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(
             preview?.let { p -> p.routes.filterIndexed { i, _ -> i != p.chosen }.map(::line) }.orEmpty()))
-        val r = nav?.route ?: preview?.let { it.routes[it.chosen] }
+        val r = nav?.route ?: carNav?.route ?: preview?.let { it.routes[it.chosen] }
         src.setGeoJson(routeFeatures(r))
     }
     /*
@@ -745,7 +752,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
 
         // top left: back and the road I am on, with its code (the user, 21 Oct: "To the top left no title. info about the road the code");
         // no Back while directions run (the user: "the back button remove it when in active navigation")
-        val n = nav
+        val n = nav ?: carNav
         val step = n?.let { nn -> nn.route.steps.getOrNull(((nn.p?.next ?: 1) - 1).coerceAtLeast(0)) }
         val roadName = step?.street?.ifEmpty { null } ?: road?.first?.ifEmpty { null }
         val roadCode = step?.ref?.ifEmpty { null } ?: road?.second?.ifEmpty { null }
@@ -835,8 +842,10 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                         val left = n.p?.left ?: n.route.metres
                         val minutes = Math.round(n.route.millis / 60_000.0 * (left / n.route.metres.coerceAtLeast(1.0)))
                         Text("${metresText(left)} · ${if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"}", style = MaterialTheme.typography.titleMedium)
-                        Text(n.target.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(if (nav == null) "🚗 On the car's screen · ${n.target.name}" else n.target.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    if (nav == null) Button(colors = panelButton(), onClick = { CarLink.stop?.invoke() }) { Text("Stop") }
+                    else {
                     IconButton(onClick = { follow(n.mode) }) {
                         Icon(painterResource(R.drawable.ic_navigation), contentDescription = "Follow me")
                     }
@@ -847,6 +856,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                         stopNav()
                         if (n.mode == "car" && MapsPrefs.autoPark(context)) here?.let { park(it, "a car trip stopped") }
                     }) { Text("Stop") }
+                    }
                 }
               }
             } else if (placing != null) {
@@ -991,9 +1001,9 @@ internal fun routeFeatures(r: Route?): FeatureCollection = if (r == null) Featur
     FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(r.lats.indices.map { Point.fromLngLat(r.lngs[it], r.lats[it]) })))
 
 /** Where I am: a small arrow, so the road under it shows (the user, 21 Oct: "The arrow seams too big for the road"); fixes are ours. */
-internal fun activateArrow(context: Context, map: MapLibreMap, style: Style) =
+internal fun activateArrow(context: Context, map: MapLibreMap, style: Style, scale: Float = 0.6f) =
     map.locationComponent.activateLocationComponent(LocationComponentActivationOptions.builder(context, style).useDefaultLocationEngine(false)
-        .locationComponentOptions(org.maplibre.android.location.LocationComponentOptions.builder(context).maxZoomIconScale(0.6f).minZoomIconScale(0.45f).build()).build())
+        .locationComponentOptions(org.maplibre.android.location.LocationComponentOptions.builder(context).maxZoomIconScale(scale).minZoomIconScale(scale * 0.75f).build()).build())
 
 /** The next turn's arrow, turned from straight ahead by a GraphHopper sign. */
 internal fun turnDegrees(sign: Int) = when (sign) { 1 -> 45f; 2 -> 90f; 3 -> 135f; 7 -> 20f; -1 -> -45f; -2 -> -90f; -3 -> -135f; -7 -> -20f; 8, -8, -98 -> 180f; else -> 0f }

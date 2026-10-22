@@ -121,6 +121,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -242,12 +243,42 @@ class MainActivity : ComponentActivity() {
         val calendar = calendarFile(intent)?.also { CalendarInbox.pending.value = it }
         val external = intent.takeIf { office == null && calendar == null && it.action in EXTERNAL_VIEW_ACTIONS }?.data?.let { ExternalMedia(it, type) }
         OfficeUi.load(this)
+        TetraLook.load(this)
         SystemFolderChoice.load(this)
         // a mouse or a finger noticed anywhere, for Office's ribbon (at the top with a mouse)
         if (savedInstanceState == null) applet.value = intent.getStringExtra(Applet.EXTRA) ?: calendar?.let { Applet.Calendar.name }
         setContent { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.noticePointer()) { LocalDriveApp(external, office, applet) } }
     }
 }
+
+/**
+ * Light or dark, the user's choice (21 Oct: "polise the light theme of the android app and make it an option light or
+ * dark"), Settings › Appearance; dark unless chosen. One choice for the whole app; Maps' map has its own (MapsPrefs).
+ */
+internal object TetraLook {
+    var light by mutableStateOf(false)
+        private set
+    private fun prefs(c: Context) = c.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+    fun load(c: Context) { light = prefs(c).getString("theme", "dark") == "light" }
+    fun set(c: Context, light: Boolean) { this.light = light; prefs(c).edit().putString("theme", if (light) "light" else "dark").apply() }
+    val colors get() = if (light) TetraLightColors else TetraColors
+}
+
+/** The light palette: the dark one's neutral greys turned over, the same blue-green tint in the surfaces. */
+internal val TetraLightColors = lightColorScheme(
+    primary = Color(0xFF1F2322), onPrimary = Color.White,
+    primaryContainer = Color(0xFFDCE1DF), onPrimaryContainer = Color(0xFF111413),
+    tertiaryContainer = Color(0xFFCFE2F0), onTertiaryContainer = Color(0xFF15232D),
+    background = Color(0xFFF6F8F7), onBackground = Color(0xFF181C1B),
+    surface = Color(0xFFF6F8F7), onSurface = Color(0xFF181C1B),
+    surfaceVariant = Color(0xFFDDE4E1), onSurfaceVariant = Color(0xFF3F4946),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF0F3F2), surfaceContainer = Color(0xFFEAEFED),
+    surfaceContainerHigh = Color(0xFFE4E9E7), surfaceContainerHighest = Color(0xFFDEE4E1),
+    outline = Color(0xFF6F7975), outlineVariant = Color(0xFFBEC9C5),
+)
+
+/** A colour for the dark look and its darker twin for the light one (a pale tint on a pale card cannot be seen). */
+internal fun lookTint(dark: Color, light: Color) = if (TetraLook.light) light else dark
 
 internal val TetraColors = darkColorScheme(
     primary = Color(0xFFE6E6E6), onPrimary = Color.Black,
@@ -259,7 +290,7 @@ internal val TetraColors = darkColorScheme(
 )
 
 /** Tetra's look, for a screen outside the main app (the text editor opened from another app). */
-@Composable internal fun TetraTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = TetraColors) {
+@Composable internal fun TetraTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = TetraLook.colors) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) { content() }
 }
 
@@ -326,6 +357,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
+    var mapsGo by remember { mutableStateOf<Place?>(null) } // a place on Home's Maps card: directions to it start at once
     var calendarNew by remember { mutableStateOf<NewKind?>(null) } // Home's tiles: the Calendar opens on a new one of that kind
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
@@ -633,6 +665,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
             Applet.Calendar -> { calendarNew = null; screen = Screen.Calendar }
             Applet.Timer -> screen = Screen.Timer
+            Applet.Maps -> { mapsGo = null; screen = Screen.Maps }
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -689,6 +722,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Pdf -> Unit
                 Screen.Calendar -> Unit
                 Screen.Timer -> Unit
+                Screen.Maps -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -704,8 +738,15 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     // One palette, on every device (24 September). Dynamic colour read the wallpaper, so the same home screen
     // was blue on the phone and purple on the tablet; following the system's light mode gave a half-built light
     // theme where the red Scanner card had dark text on it. These are the phone's own colours, measured off it,
-    // held fixed. Light is Roadmap F and is not built; when it is, this is the one place that decides.
-    MaterialTheme(colorScheme = TetraColors) {
+    // held fixed. Light (Roadmap F) is the user's choice since 21 Oct: TetraLook, the one place that decides.
+    val view = androidx.compose.ui.platform.LocalView.current
+    // dark icons on light pages; Office's editors and the cameras keep their dark frames in both looks, so light icons there
+    val lightBars = TetraLook.light && screen !in setOf(Screen.Writer, Screen.Sheet, Screen.Slides, Screen.Pdf, Screen.Scanner, Screen.ScanDocument, Screen.Codes)
+    androidx.compose.runtime.SideEffect {
+        (view.context as? Activity)?.window?.let { w -> WindowCompat.getInsetsController(w, view).run {
+            isAppearanceLightStatusBars = lightBars; isAppearanceLightNavigationBars = lightBars } }
+    }
+    MaterialTheme(colorScheme = TetraLook.colors) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
         Column(Modifier.fillMaxSize()) {
             if (externalSingle && external != null) ExternalMediaViewer(external, ::closeExternal)
@@ -733,6 +774,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     openCalendar = { calendarNew = null; screen = Screen.Calendar },
                     newEvent = { kind -> calendarNew = kind; screen = Screen.Calendar },
                     openTimer = { screen = Screen.Timer },
+                    openMaps = { place -> mapsGo = place; screen = Screen.Maps },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -790,6 +832,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 }, startKind = calendarNew)
+                Screen.Maps -> MapsScreen(MapsFiles.root(driveRoot()), mapsGo, back = { mapsGo = null; screen = Screen.Home })
                 Screen.Timer -> TimerScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -862,7 +905,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer, Maps }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -903,6 +946,7 @@ private fun Home(
     openCalendar: () -> Unit,
     newEvent: (NewKind) -> Unit,
     openTimer: () -> Unit,
+    openMaps: (Place?) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -976,7 +1020,7 @@ private fun Home(
                     // four tiles as Office's (the user, 18 Oct: "New : Shedule : burthday : reminder"), each the editor for its kind
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         listOf(listOf(NewKind.Event, NewKind.Schedule), listOf(NewKind.Birthday, NewKind.Reminder)).forEach { row ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeTile(k.label, k.icon, Color(0xFFF77FB3), Modifier.weight(1f)) { newEvent(k) } } }
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeTile(k.label, k.icon, lookTint(Color(0xFFF77FB3), Color(0xFFC2185B)), Modifier.weight(1f)) { newEvent(k) } } }
                         }
                     }
                 }
@@ -992,7 +1036,7 @@ private fun Home(
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         listOf(listOf(6, 15), listOf(20, 30)).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                row.forEach { m -> HomeTile("$m min", R.drawable.ic_play, Color(0xFF80CBC4), Modifier.weight(1f)) {
+                                row.forEach { m -> HomeTile("$m min", R.drawable.ic_play, lookTint(Color(0xFF80CBC4), Color(0xFF00796B)), Modifier.weight(1f)) {
                                     Thread {
                                         val failed = runCatching { TimerControl.start(context, m * 60L) }.onFailure { WriterLog.e("Timer: Home's $m min failed", it) }.exceptionOrNull()
                                         android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, failed?.let { it.message ?: "The timer could not start" } ?: "$m min timer started", Toast.LENGTH_SHORT).show() }
@@ -1039,7 +1083,46 @@ private fun Home(
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         } else items(groups) { it() }
+        item { HomeMapsGroup(wide, openMaps) }
         if (!wide) item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
+    }
+}
+
+/**
+ * Maps (21 Oct): indigo, the whole width on a tablet (the user, 20 Oct: "A home tab doeble the size, with slots for 6
+ * locations"); six saved places beside the map, each one tap to directions there (the user, 21 Oct: "favorite locations
+ * navigation with one click"), an empty slot opening the map to save one.
+ */
+@Composable private fun HomeMapsGroup(wide: Boolean, openMaps: (Place?) -> Unit) {
+    val slots by produceState(List<Place?>(MapsFiles.SLOTS) { null }) {
+        value = withContext(Dispatchers.IO) { MapsFiles.slots(MapsFiles.places(MapsFiles.root(driveRoot()))) }
+    }
+    HomeGroup(Category.Maps.color) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HomeArtCard("Maps", R.drawable.maps_art, { openMaps(null) }, Modifier.weight(1f), artSize = 76)
+            Column(Modifier.weight(if (wide) 3f else 1.6f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // a tablet: all twelve, six a row; a phone: the first eight, half-size, two a row (the user, 21 Oct: "very big on
+                // the tablet we can double them"; the phone: "half the size, so we can have 8"); each by its Home name
+                val tint = lookTint(Color(0xFF9FA8DA), Color(0xFF3949AB))
+                if (wide) slots.chunked(6).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { p ->
+                            if (p == null) HomeTile("Add", R.drawable.ic_add, tint.copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
+                            else HomeTile(p.short, placeIcon(p.icon), tint, Modifier.weight(1f)) { openMaps(p) }
+                        }
+                    }
+                } else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    slots.take(MapsFiles.PHONE_SLOTS).chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { p ->
+                                if (p == null) HomeMiniTile("Add", R.drawable.ic_add, tint.copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
+                                else HomeMiniTile(p.short, placeIcon(p.icon), tint, Modifier.weight(1f)) { openMaps(p) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1103,6 +1186,16 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     }
 }
 
+/** Half a HomeTile, its icon beside its name: Maps' places on a phone, eight beside the art. */
+@Composable private fun HomeMiniTile(label: String, icon: Int, tint: Color, modifier: Modifier, click: () -> Unit) {
+    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = modifier.height(34.dp).clickable(onClick = click)) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 /** A part's own card on Home: its art at the top, its name at the bottom (Notes, Text editor). */
 @Composable private fun HomeArtCard(title: String, art: Int, click: () -> Unit, modifier: Modifier = Modifier, artSize: Int = 100) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
@@ -1126,7 +1219,7 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
 @Composable
 private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, click: (() -> Unit)? = null) = Surface(
     shape = MaterialTheme.shapes.extraLarge,
-    color = Color(0xFF651B1B),
+    color = if (TetraLook.light) MaterialTheme.colorScheme.surface.copy(alpha = 0.72f) else Color(0xFF651B1B), // as the other cards in light
     modifier = modifier.height(156.dp).then(if (click == null) Modifier else Modifier.clickable(onClick = click)),
 ) {
     Box(Modifier.fillMaxSize().padding(18.dp)) {
@@ -1770,6 +1863,133 @@ private fun SettingsTab(
         }
         item { SettingsCard("Calendar", Category.Calendar) { CalendarSettings() } }
         item { SettingsCard("Timer", Category.Timer) { ShareWithClaude("tetra-timer", "Timer", "Lets Claude start, pause and stop your timers by editing their files.") } }
+        // Maps (21 Oct): what is installed, where updates come from, and the directions' language and voice
+        item {
+            val mapsContext = LocalContext.current
+            var lang by remember { mutableStateOf(MapsPrefs.lang(mapsContext)) }
+            val files by produceState<List<Pair<String, String>>?>(null) { value = withContext(Dispatchers.IO) { MapsFiles.installed(MapsFiles.root(driveRoot())) } }
+            SettingsCard("Maps", Category.Maps) {
+                Text("Installed", style = MaterialTheme.typography.titleSmall)
+                files?.forEach { (what, about) -> Text("$what — $about", style = MaterialTheme.typography.bodySmall) }
+                Text("Maps are made on the computer and come here with Local Sync, into Tetra/Maps: tools/maps-greece.sh downloads " +
+                    "the newest map of Greece and builds the routing for it (an Update button in desktop Tetra is planned).", style = MaterialTheme.typography.bodySmall)
+                // Google Maps' saved places from Takeout (the user, 21 Oct: "be able to bring stuff I saved over")
+                val importScope = androidx.compose.runtime.rememberCoroutineScope()
+                var imported by remember { mutableStateOf<MapsImport.Result?>(null) }
+                var importing by remember { mutableStateOf(false) }
+                val pickTakeout = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+                    if (uri == null) return@rememberLauncherForActivityResult
+                    importing = true
+                    importScope.launch {
+                        val r = withContext(Dispatchers.IO) { runCatching {
+                            val name = mapsContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "import.zip"
+                            val entries = mapsContext.contentResolver.openInputStream(uri)!!.use { MapsImport.read(name, it) }
+                            val root = MapsFiles.root(driveRoot())
+                            MapsImport.into(root, MapsSearch.load(root), entries)
+                        } }
+                        importing = false
+                        r.onSuccess { imported = it; WriterLog.i("Maps: imported ${it.places} places, ${it.missed.size} not placed") }
+                            .onFailure { WriterLog.e("Maps: import", it); Toast.makeText(mapsContext, "Could not read that file: ${it.message}", Toast.LENGTH_LONG).show() }
+                    }
+                }
+                // sharing: my places and the map's additions out as GeoJSON and in again (the user, 21 Oct: "μαζική εισαγωγή και εξαγωγή
+                // των προσωπικών ή των δημώσιων στειχείων για διαμηρασμό και εμπλούτευση του χάρτη κάθε χρήστη")
+                var exportWhat by remember { mutableStateOf<String?>(null) }
+                var shared by remember { mutableStateOf<MapsShare.Imported?>(null) }
+                val pickShared = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+                    if (uri == null) return@rememberLauncherForActivityResult
+                    importScope.launch {
+                        val r = withContext(Dispatchers.IO) { runCatching {
+                            MapsShare.import(MapsFiles.root(driveRoot()), mapsContext.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) })
+                        } }
+                        r.onSuccess { shared = it; WriterLog.i("Maps: imported $it") }
+                            .onFailure { WriterLog.e("Maps: import of a shared file", it); Toast.makeText(mapsContext, "Not a places file: ${it.message}", Toast.LENGTH_LONG).show() }
+                    }
+                }
+                Text("Share", style = MaterialTheme.typography.titleSmall)
+                Text("Your places and what you added to the map, as a GeoJSON file for another Tetra (or another map app); Import adds such a file's places and map additions to yours.",
+                    style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { exportWhat = "" }) { Text("Export") }
+                    OutlinedButton(onClick = { pickShared.launch(arrayOf("application/geo+json", "application/json", "*/*")) }) { Text("Import") }
+                }
+                exportWhat?.let { _ -> androidx.compose.material3.AlertDialog(onDismissRequest = { exportWhat = null }, title = { Text("Export") },
+                    text = { Text("What goes in the file?") },
+                    confirmButton = { Row {
+                        listOf("mine" to "My places", "map" to "Map additions", "both" to "Both").forEach { (k, label) -> TextButton(onClick = {
+                            exportWhat = null
+                            runCatching {
+                                val root = MapsFiles.root(driveRoot())
+                                val text = MapsShare.export(if (k == "map") emptyList() else MapsFiles.places(root), MapsFiles.lists(root), if (k == "mine") emptyList() else MapsSearch.added(root))
+                                val file = java.io.File(mapsContext.cacheDir, "share/tetra-places-${java.time.LocalDate.now()}.geojson").apply { parentFile?.mkdirs(); writeText(text) }
+                                val uri = androidx.core.content.FileProvider.getUriForFile(mapsContext, "${mapsContext.packageName}.files", file)
+                                mapsContext.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("application/geo+json").putExtra(Intent.EXTRA_STREAM, uri)
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share places"))
+                            }.onFailure { WriterLog.e("Maps: export", it); Toast.makeText(mapsContext, "Could not export: ${it.message}", Toast.LENGTH_LONG).show() }
+                        }) { Text(label) } }
+                    } },
+                    dismissButton = { TextButton(onClick = { exportWhat = null }) { Text("Cancel") } }) }
+                shared?.let { r -> androidx.compose.material3.AlertDialog(onDismissRequest = { shared = null }, title = { Text("Imported") },
+                    text = { Text("${r.places} places and ${r.added} map additions; ${r.skipped} already here or without a position.") },
+                    confirmButton = { TextButton(onClick = { shared = null }) { Text("OK") } }) }
+                Text("Import from Google Maps", style = MaterialTheme.typography.titleSmall)
+                Text("Your saved lists and starred places from Google Takeout: choose only Saved and Maps (your places) at takeout.google.com (the others, as YouTube and Maps, carry videos and photos), then the .zip here, or one list's .csv. " +
+                    "Each list becomes a list here; a place without its spot in the file is found by its name, the others are named for you to find.", style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(enabled = !importing, onClick = { pickTakeout.launch(arrayOf("application/zip", "text/csv", "text/comma-separated-values", "application/json", "*/*")) }) {
+                    Text(if (importing) "Importing…" else "Choose the file")
+                }
+                imported?.let { r -> androidx.compose.material3.AlertDialog(onDismissRequest = { imported = null }, title = { Text("Imported ${r.places} places") },
+                    text = { androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        item { Text("Into ${r.lists} lists." + if (r.missed.isEmpty()) "" else " These could not be placed — search for them in Maps and Save:", style = MaterialTheme.typography.bodyMedium) }
+                        items(r.missed.size) { i -> Text("• " + r.missed[i], style = MaterialTheme.typography.bodySmall) }
+                    } },
+                    confirmButton = { TextButton(onClick = { imported = null }) { Text("OK") } }) }
+                var mapTheme by remember { mutableStateOf(MapsPrefs.mapTheme(mapsContext)) }
+                Text("Map", style = MaterialTheme.typography.titleSmall)
+                Choices(listOf("light" to "Light", "dark" to "Dark"), mapTheme) { mapTheme = it; MapsPrefs.setMapTheme(mapsContext, it) }
+                var rolling by remember { mutableStateOf(MapsPrefs.rolling(mapsContext)) }
+                Text("On foot", style = MaterialTheme.typography.titleSmall)
+                Text(if (rolling) "Rolling: routes for a wheelchair, without steps or rough paths, and its icon." else "Walking: every footpath and step.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf(false to "Walking", true to "Rolling"), rolling) { rolling = it; MapsPrefs.setRolling(mapsContext, it) }
+                var autoPark by remember { mutableStateOf(MapsPrefs.autoPark(mapsContext)) }
+                Row(Modifier.fillMaxWidth().clickable { autoPark = !autoPark; MapsPrefs.setAutoPark(mapsContext, autoPark) }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Save where I park", style = MaterialTheme.typography.titleSmall)
+                        Text("When directions by car end or are stopped, the spot is saved as My car (the map's P button saves it any time). " +
+                            "It is cleared when the car moves on: a new car trip, or car speed while the map is open.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = autoPark, onCheckedChange = { autoPark = it; MapsPrefs.setAutoPark(mapsContext, it) })
+                }
+                var radius by remember { mutableStateOf(MapsPrefs.parkingRadius(mapsContext)) }
+                Text("ΑμεΑ parking near the destination", style = MaterialTheme.typography.titleSmall)
+                Text("How far from where you are going the car's Parking button looks for ΑμεΑ spots.", style = MaterialTheme.typography.bodySmall)
+                Choices(MapsPrefs.RADII, radius) { radius = it; MapsPrefs.setParkingRadius(mapsContext, it) }
+                var openAtCar by remember { mutableStateOf(MapsPrefs.openAtCar(mapsContext)) }
+                Row(Modifier.fillMaxWidth().clickable { openAtCar = !openAtCar; MapsPrefs.setOpenAtCar(mapsContext, openAtCar) }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Open the map at my car", style = MaterialTheme.typography.titleSmall)
+                        Text("While a parking spot is saved, Maps opens with directions on foot to it (not when you are already by it).", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = openAtCar, onCheckedChange = { openAtCar = it; MapsPrefs.setOpenAtCar(mapsContext, it) })
+                }
+                Text("Directions in", style = MaterialTheme.typography.titleSmall)
+                Text("The words on the screen and the voice. The voice is Android's text-to-speech; its voices are in Android's settings.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf("el" to "Greek", "en" to "English"), lang) { lang = it; MapsPrefs.setLang(mapsContext, it) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        var t: android.speech.tts.TextToSpeech? = null
+                        t = android.speech.tts.TextToSpeech(mapsContext.applicationContext) { ok ->
+                            if (ok == android.speech.tts.TextToSpeech.SUCCESS) {
+                                val r = t?.setLanguage(MapsPrefs.ttsLocale(lang)) ?: -2
+                                if (r < 0) Toast.makeText(mapsContext, "No ${if (lang == "en") "English" else "Greek"} voice: add it in Android's voice settings.", Toast.LENGTH_LONG).show()
+                                else t?.speak(MapsPrefs.sample(lang), android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "test")
+                            }
+                        }
+                    }) { Text("Test voice") }
+                    OutlinedButton(onClick = { runCatching { mapsContext.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text("Voice settings") }
+                }
+            }
+        }
         item {
             // a launcher icon for each part (asked 17 Oct): on the home screen and in the app list, opening straight into it
             SettingsCard("App icons") {
@@ -1787,8 +2007,11 @@ private fun SettingsTab(
         }
         item {
             SettingsCard("Appearance") {
-                Text("Follow system", style = MaterialTheme.typography.titleMedium)
-                Text("Tetra is a dark app, and the same one on every device: it does not follow the system light theme or the wallpaper's colours.", style = MaterialTheme.typography.bodyMedium)
+                val lookContext = LocalContext.current
+                Text("Theme", style = MaterialTheme.typography.titleMedium)
+                Text("Dark or light, the same on every page; it does not follow the system or the wallpaper's colours. Maps' map has its own choice (Settings › Maps).",
+                    style = MaterialTheme.typography.bodyMedium)
+                Choices(listOf(false to "Dark", true to "Light"), TetraLook.light) { TetraLook.set(lookContext, it) }
             }
         }
             item { Box(Modifier.heightIn(min = 32.dp)) }
@@ -1814,14 +2037,17 @@ private fun SearchQualityOption(title: String, detail: String, selected: Boolean
 
 @Composable
 internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier, art: Int? = null) {
-    Surface(color = islandColor(), contentColor = islandContentColor(), modifier = modifier.fillMaxWidth()) {
+    // the page's own colour in light (a dark glass bar over a light page reads as grey); the dark glass in dark
+    val bar = if (TetraLook.light) MaterialTheme.colorScheme.background.copy(alpha = 0.95f) else islandColor()
+    val on = if (TetraLook.light) MaterialTheme.colorScheme.onBackground else islandContentColor()
+    Surface(color = bar, contentColor = on, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.statusBarsPadding().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home") }
                 Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 art?.let { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(34.dp)) }
             }
-            Box(Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 1.dp, max = 1.dp).background(islandContentColor().copy(alpha = 0.35f)))
+            Box(Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 1.dp, max = 1.dp).background(on.copy(alpha = 0.35f)))
         }
     }
 }
@@ -1875,6 +2101,7 @@ internal enum class Category(val color: Color, val icon: Int) {
     Text(Color(0xFF8E5BD8), R.drawable.ic_file_text),
     Calendar(Color(0xFFF41879), R.drawable.ic_calendar_today),
     Timer(Color(0xFF00796B), R.drawable.ic_timer),
+    Maps(Color(0xFF5C6BC0), R.drawable.ic_map),
 }
 
 @Composable

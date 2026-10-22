@@ -164,6 +164,10 @@ How to write here:
       (a corrupt deletions.json still reads as empty, not a crash). Files — Copy and Empty trash refuse a folder holding a link
       (on main Empty trash deleted what an escaping link pointed at). NotesTest +6, DriveFilesTest +2; unit 547, 0 failing, 8 skipped.
 - [-] (the user, 20 Oct: "no map scrap it the app will get 2GB") **Maps** (§ Maps below): dropped; worktree and branch `maps` removed.
+- [~] (maps-link session, 21 Oct) **Maps restarted** (the user, 21 Oct: "I changed my mind start buidlding the map applet";
+      "we may transfer this map to the desktop as well"): branch `maps`, worktree Drive-Android-worktrees/maps; step 1's
+      files downloaded to ~/Tetra-maps by tools/maps-greece.sh (§ Maps below): greece.pmtiles 485 MB (Protomaps
+      20261021, zoom 0–15, Geofabrik's Greece border) and greece-latest.osm.pbf 327 MB (md5 checked), ~3 min.
 - [x] (maps-link session, 21 Oct) Timer: its waste files cleared (the user, 21 Oct: "some kind of a garbige collector be cause
       the timer app creates a lot of duplicat files what is nessesary and what is waste … on the phone I dont know about the
       desktop"): 23 of the 28 files on the PC and the tablet were sync's "<id> (n).json" copies from the 18 Oct bug (fixed
@@ -1672,7 +1676,10 @@ Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/T
       (Drive/desktop/release/local-drive-desktop_0.6.0-beta.1_amd64.deb, the user installs it with sudo dpkg -i); the phone
       and tablet get the debug APK when connected. No GitHub release of 0.6.0 Beta 1 yet.
 
-## Maps — dropped 20 Oct (the user: "no map scrap it the app will get 2GB"); the plan kept below for the record
+## Maps — dropped 20 Oct, restarted 21 Oct on branch `maps` (the user: "I changed my mind start buidlding the map applet")
+The user, 21 Oct: "Have in mind that we may transfer this map to the desktop as well" — so the files stay plain and
+shared: greece.pmtiles opens in MapLibre GL JS (pmtiles protocol) on the desktop as in MapLibre Android; routing and
+search files built so both can read them. The size worry stands: the map is a file in Tetra/Maps, not in the APK.
 The user, 20 Oct: "Greece as a map, offline, Map managment, Navigation, Turn nav voice, Import from Google Maps, Save loations
 with SVGs and names, A home tab doeble the size, with slots for 6 locations". Decided 20 Oct: the **computer builds** the map
 files and Tetra's sync carries them to the phone and tablet; routing for **car, walking and bike**.
@@ -1685,12 +1692,179 @@ from Geofabrik's Greece OSM extract (accent-blind); icons **Maki** (CC0) + the u
 Files: Tetra/Maps (hidden in Files like Calendar and Timer, synced): `greece.pmtiles` now; routing and search files later; saved
 places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 beside the repo's GPL-2.0 (as other libraries already).
 
-- [-] (dropped) 1. Greece offline map (512 MB at zoom 15, region polygon), my location, map management (packages,
+- [~] (maps-link session, 21 Oct) 1. Greece offline map (512 MB at zoom 15, region polygon), my location, map management (packages,
       size, date, delete to Trash); `tools/maps-greece.sh` makes the file on the computer.
-- [ ] 2. Saved places (name, SVG icon, list) as files; Home's Maps group double size with 6 place slots; Google Takeout import.
-- [ ] 3. Offline search.
+- [x] (maps-link session, 21 Oct) 2. Saved places (name, emblem, lists) as files; Home's Maps group double size with place slots; Google Takeout import.
+- [x] (maps-link session, 21 Oct) 3. Offline search, the bottom island, places' pages, lists (the user, 21 Oct: "an Island
+      at the bottom with navigation,favorites, search … make lists with names and emojes … nearby lcations in an area like
+      Google Maps … restorants and pharmases and supermarkets or petrol stations or charging stations add disability parking
+      … button pills"; "If I click touch on a place there is no info page"; "To click on a spot show the address the number
+      the postcode"; "the EOpYY farmacies … as a list as well as a pill"; schools "from kindengarden to Highschools"):
+      tools/maps-places.py makes greece-places.tsv (122 834 towns and places of 22 kinds, with hours, phone, website,
+      wheelchair) and greece-addresses.tsv (168 778 addresses); tools/maps-eopyy.py takes EOPYY's 39 pharmacies from
+      eopyy.gov.gr (with their map positions). Search: words (accent-blind, Greek or English names) or a pill, nearest the
+      map's middle first, as dots on the map; the user's accessible places count as disabled parking. Saved: all places by
+      emblem, lists with a name and an emoji (long-press to change), EOPYY's list built in. Directions: Car/Walk(Roll)/Bike,
+      "Where to?", Home's places and the car. A tap on the map: my place, a result, a place of the map's own (its page from
+      the list), or a dropped pin with the nearest address; the page has the address, hours, phone, website, wheelchair,
+      directions, Save (with lists), and Google Maps online for reviews and photos. Top left the road I am on with its code
+      (EO1, A2), top right the next turn in a small window. Home's card 12 slots on a tablet (6 a row), 6 on a phone.
+      Google Takeout import in Settings › Maps (lists' CSVs and starred places; unplaced ones listed). Not done: sch.gr's
+      school register (its terms forbid reuse without permission; OSM's schools only, thin in places: 9 in Xanthi); Google
+      Maps' data is not copied.
 - [ ] 4. Routing (car, foot, bike), turn by turn, voice, the next turn in HyperIsland; reroute offline.
 - [ ] Later: the desktop app builds and refreshes the files monthly by itself; Maps on desktop Tetra; a `tetra-maps` skill.
+- [ ] Desktop Maps asks the phone where it is (the user, 21 Oct: "when I click the corent location or a rute is calculated it
+      will ask the phone while showing Waiting phone for location … from the internet it will be off by half a county"):
+      the computer sends a location request over the paired connection, the phone answers with one GPS fix (asking for the
+      location permission if it has none); the desktop shows "Waiting for the phone's location…" meanwhile, and says so
+      when the phone is not reachable. Built with desktop Maps.
+- [x] (maps-link session, 21 Oct) Nearby (the user: "πατάω αναζήτηση πατάω πύργο και βγάζει την καρτέλα … βάλε και ένα κουμπί
+      Nearby και βγάλε σημεία ενιδαφέροντος"): a place's card › Nearby opens Search around it ("Near Πύργος"), nearest first,
+      distances from it, the pills narrowing it. Search's panel now rides above the keyboard, and says it is loading.
+      The user's work schools put in by hand (Places/sch-*.json, list Work 💼, Home slots 1–5): Πύργος and Σκάλα at the
+      village's middle (no school in OSM there), the 2nd of Κρεώνα at the user's link, the 1st
+      of Κρεώνα (not a work one) at the village's middle.
+- [x] (maps-link session, 21 Oct) Motorways (the user: "έκανες κανένα τέστ σε εγνατία οδό … σε 3χμ πάρτη την έξοδο στα δεξιά";
+      "Κάνε και Σχιματάρι Ναυπλιο"): tried Καβάλα → Ξάνθη and Σχηματάρι → Ναύπλιο on the graph. The exits say "μείνετε
+      δεξιά … προς Εύλαλο, Τοξότες" (OSM's destination signs) and "πάρτε τον δρόμο Α7 προς Τρίπολη"; a turn onto a nameless
+      ramp now says where it leads ("στρίψτε αριστερά προς Α8 Αθήνα - Πάτρα", from the path's street_name/ref); the spoken
+      warnings follow the speed (dueWarning: 2 km ahead over 80 km/h, ~20 s ahead, ~5 s ahead; "Σε 2 χιλιόμετρα, …").
+      Not there: lanes (below), exit numbers, the word "έξοδος", tolls. GraphHopper chose the Θηβών–Ελευσίνας road over the
+      Αθηνών–Λαμίας + Αττική Οδός for Σχηματάρι → Ναύπλιο (shorter; to be judged by the user on the road).
+- [x] (maps-link session, 21 Oct) Ways to choose (the user, beside Google Maps on the tablet: "can our map have alternative
+      routs with tolls or without, main roads over roral roads"): a place's Car / Walk / Bike shows up to three routes
+      (GraphHopper's alternative_route on the CH graph), fastest first, each with its time, length and roads (Motorway / Main
+      roads / Local roads, by share of length; tracks dropped for a car); Start goes by the chosen one; Home's one tap still
+      starts the fastest at once. Άγιος Λουκάς → 2ο Κρεώνα: 23 min motorway / 25 min local roads (Google: 30 tolls / 31 none).
+      Also: the speed limit as its sign bottom left, red over it by 3 km/h (OSM maxspeed in the graph, 71–89 % of the roads
+      tried); the ferry said as a ferry; the user's schools as system places (added-places.tsv, drawn on the map, in Search)
+      with Home names (Place.label); 8 half-size Home slots on a phone; P and where-I-am at the bottom right (the compass);
+      Greeklish search; Google Takeout in Greek (Αποθηκευμένα, Χάρτες (τα μέρη σας), Μέρη με ετικέτα), streamed, links'
+      ?q= positions, addresses looked up in the address list in the right town: the user's first Takeout part gave 53 of 65.
+- [x] (maps-link session, 21 Oct) More of the user's asks the same evening: a narrow screen's one pill (the road over the next
+      turn), no Back in directions; toll stations (OSM's 255 barrier=toll_booth, with operator and price where tagged) as
+      € dots on the route, counted on each route to choose ("💶 n", "No tolls" only for local roads: OSM misses some ramp
+      tolls, as Νέα Οδός' near Σχηματάρι), and under a handle on the directions bar with the turns ahead; a kind with a town's
+      name searched in that town ("agios loukas" + Supermarkets); mini markets under Supermarkets; the cities' own ΑμεΑ
+      spots from data.gov.gr (tools/maps-amea.py: 740 — Θεσσαλονίκη, Χανιά, Παπάγου-Χολαργός, Αθήνα, Χαλάνδρι, Νάξος; Λάρισα's
+      and Ηράκλειο's only as shapefile/document, not read); "Add to the map" (a long press: My place / On the map with its
+      kind, added-places.tsv, removable from its card); Export / Import as GeoJSON (my places, map additions or both).
+- [x] (maps-link session, 21 Oct) Tunnels (the user: "What if I loose GPS sygnal on a tannel"): 3 s without a GPS fix in
+      directions at speed, the arrow goes on along the route at the last speed (≤10 km), "No GPS signal" shown; a cell fix
+      does not stand for the GPS for 2 min after it; the first GPS fix takes over. Tried on the emulator with location off
+      for 8 s at 107 km/h: it went on and said the next turn, then took the real fix back. Then (the user: "μπορεί για 5
+      λεπτά να μην έχω GPS … να χρησιμοποιεί τους αισθητήρες"): up to 15 min or the route's end (no 10 km cap); the
+      accelerometer (StillDetector: the spread of linear acceleration over 2 s) holds the arrow while the car stands, and
+      after a stop it goes on at 30 km/h (or less). Emulator, sensors set by hand: on, held, on again. Not tried in a tunnel.
+      Markers (the user: "my personal keep our style what I save as public info gets the maps own style"): search results
+      and map additions in the map's own icon style (its sprite for restaurant, café, supermarket, school…, the rest drawn
+      as it draws them); my places keep Maps' indigo circle with their emblem. A tavern emblem.
+      ATMs (the user: "Can we find a map of all the ATMs in greece"): no open per-ATM list found (the banks' union publishes
+      counts only, ~6 000); OSM has 3 405, all in Search's ATMs pill.
+- [x] (maps-link session, 21 Oct) Search's OK (the user: "να πατάω απλά ρεστοράντ και να πατάω οκ και να βγάζει τα ρεστοράντ σε
+      αυτό το κομάτι που βλέπω … ή και λίγο μεγαλήτερο"): a pill or words, then OK (or the keyboard's search key): up to 300
+      of them on the screen and half a screen round it stay on the map, the panel goes, a "🍽️ Restaurants · n ✕" pill clears
+      them; none there: the nearest 20, the map moved to them.
+- [x] (maps-link session, 21 Oct) ΑμεΑ spots by the user himself (none in any data for Καβάλα or Ξάνθη): after parking (P or
+      a car trip's end) "♿ ΑμεΑ spot? Add it" for 20 s puts one at the car's GPS spot; a long press's dialog has "♿ ΑμεΑ
+      parking here" at the top, one tap. Not done: looking for them by eye in Google's imagery (its terms forbid taking data
+      from it; its satellite pictures too coarse with cars on the spots, 21 Oct). Mapillary's street photos (CC-BY-SA) and
+      their detected signs could give them lawfully; needs a Mapillary token (the user's account).
+- [x] (maps-link session, 21 Oct night) ΑμεΑ spots from Διαύγεια, all of Greece (tools/maps-diavgeia.py; the user: "Continue the
+      same way for all over Greece add what are you are serten of and I will check (give links) the rest"): 6 061 decisions
+      2012–2026; 5 740 left out (a spot given to one person or car — most of them —, requests, abolitions, regions' reviews);
+      2 placed for sure by address (greece-amea-diavgeia.tsv: Βόλος, Ξάνθη); 223 public ones to place by hand
+      (greece-amea-check.tsv: Ξάνθη 49, Βόλος 37, Μυτιλήνη 19, Ρέθυμνο 13, Πειραιάς 12 …), 129 of them at their street
+      (greece-streets.tsv, 212 167 named road pieces), 94 at the town. In the app: Saved › "♿ ΑμεΑ to place (n)", nearest
+      first; a tap shows the street and the decision; a long press places it (a map addition with the decision's link),
+      "Not there" drops it; amea-checked.txt keeps the done ones on every device. OSM has too few house numbers to do more.
+      Also: favourites' markers at 22 dp (were 28); car times ×1.2 (Άγιος Λουκάς → Χαλκίδα 30 min); routing errors in
+      plain words; map additions shown at once (a bug: they waited for a reopen); an edge-case route battery (MapsEdgeCaseTest:
+      ferries, bridges, islands, mountains, one-ways, outside Greece, at sea — no crash, sensible times). The user's Takeout:
+      18 favourites given their emblem (beaches, cafés, parkings, doctors…), 4 public additions (2 ΑμεΑ spots in Ναύπλιο,
+      Παραλία Δρεπάνου, River Cafe, a parking in Ξάνθη) — waiting for a device on USB (scratchpad emblems/, public-additions.tsv).
+- [x] (maps-link session, 22 Oct) More ΑμεΑ sources (the user, from Gemini: OSM/Overpass, the open data portals, open aerial
+      imagery): OSM holds ~290 tagged ΑμεΑ spots in all of Greece (parking_space=disabled, capacity:disabled, wheelchair on
+      parkings) — the list already had most; data.gov.gr searched with more words: + Κερατσίνι–Δραπετσώνα (173, WFS),
+      Ηράκλειο (79, CSV in cp1253 with "35.337.201" numbers), Λάρισα (49 general spots, a shapefile in ΕΓΣΑ87, converted
+      in maps-amea.py), Νάξος' signs (1): greece-amea.tsv 740 → 1 031. Aerial: Esri World Imagery (free, allowed for
+      mapping) is 0.45 m/px in Ξάνθη — a parking space is 5 pixels, its paint unseen; not a source.
+- [ ] Tolls: GraphHopper's toll encoded value is not in the graph; with it (a rebuild) a "no tolls" profile, and the routes
+      marked with tolls. The user stopped a rebuild on 21 Oct (distance influence 30 for the car); to be asked again.
+- [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane
+      you should take - keep?"): now only GraphHopper's keep left/right at forks. GraphHopper 10 keeps no lanes, so the
+      computer's build reads OSM's turn:lanes tags itself (a pass over greece-latest.osm.pbf beside the graph, by way id),
+      and the phone draws the lanes under the next turn, the ones to take lit.
+- [ ] Map Update from the computer (the user, 21 Oct: "a map updater in the app settings in the applets section and a map
+      managment to downlad or update a map"): Settings › Maps shows what is installed (done, 21 Oct) and how updates come;
+      the Update button asks desktop Tetra to run the build (tools/maps-greece.sh's steps) and sync brings the files —
+      with desktop Maps. More regions than Greece then too (the same script with another Geofabrik extract).
+- [x] (maps-link session, 21 Oct) Parking (the user, 21 Oct: "save park location button, when user stops or and when the
+      Android auto turns off … save automaticaly and have the map start from location to that parking spot automaticaly at
+      the next open. Option in settings. The parking spot resets at the next car moveon not legs or bike, based on speed or
+      car bluetooth"): the map's P button; Settings › Maps › Save where I park (on: the end or Stop of a car trip saves it)
+      and Open the map at my car (directions on foot to it at the next open); cleared by a new car trip or 3 fixes over
+      40 km/h. One place, Places/parking.json ("My car"), so it syncs and shows like the others.
+- [ ] Parking from the car's Bluetooth and Android Auto: saved when the car's Bluetooth (chosen in Settings) or Android
+      Auto disconnects, cleared when it connects again. Needs "Allow all the time" location (the app is in the background
+      then) and BLUETOOTH_CONNECT; with Android Auto.
+- [x] (maps-link session, 21 Oct) Rolling (the user: "diferent modes on the map? Walking/Rolling"; "Add it as an option in
+      the settings Walking to be changed the icon to rolling"): Settings › Maps › On foot: Walking / Rolling; Rolling routes
+      with the graph's wheelchair profile (maps-graph.yml: foot.json without steps or hike/mtb-rated paths, ≤ 4 km/h) and
+      shows the wheelchair icon. A graph from before it falls back to walking.
+- [ ] Public transport (the user: "public trasport (can we have that are there info about bases or trains or ships…)"):
+      GraphHopper's GTFS module routes on timetables. Open feeds: Athens OASA (buses, trolleys) and STASY (metro, tram);
+      Thessaloniki OASTH to check; Hellenic Train and ferries have no open feed (ferries: none known). Offline on the phone
+      it needs GraphHopper's PT graph built on the computer like the road one; a big piece, after the road directions.
+- [x] (maps-link session, 21 Oct) The map light or dark, apart from the app (the user: "add in the settings a separate
+      togle for dark and light theme, because I dont like the dark theme on the map"): Settings › Maps › Map, light by default.
+- [~] (maps-link session, 21 Oct) Tetra in light (the user, 21 Oct: "after that we sould check every page and polise the
+      light theme of the android app and make it an option light or dark"): Settings › Appearance › Theme Dark / Light
+      (TetraLook; dark by default), a light palette (TetraLightColors), status-bar icons that follow it; Home's Scanner/Codes
+      cards and tile icons, and the page headers (ModuleHeader) fixed for light. Checked on the emulator in light: Home,
+      Files, Notes, Calendar (and its event editor), Timer, Text editor, Settings, Sync, Office's start page, Maps. The
+      floating dark-glass islands stay dark in both. Not yet: Office's editors (Words, Tables, Slides, PDF) keep their dark
+      frame and ribbon in light — their own colours, a pass of their own; Photos with photos in it; the phone size.
+- [~] Android Auto (the user, 21 Oct: "Can it work with Android auto?"; 22 Oct: "its not on the list of the available
+      Apps can we add it?"): MapsCar.kt, built 22 Oct — androidx.car.app 1.4 navigation app: the map on the car's surface
+      (a MapView in a Presentation on a VirtualDisplay), Places (Home's first, then nearest), Nearby (ΑμεΑ parking, fuel,
+      EV, parking, pharmacies, EOPYY, supermarkets, toilets, hospitals), car directions with the phone's guidance and voice
+      (ducking the music), parking saved when Android Auto disconnects. Android Auto lists a sideloaded navigation app only
+      with its Developer settings › Unknown sources on. Seen 22 Oct on the desktop head unit through the user's phone
+      (Start head unit server, adb forward tcp:5277; DHU needs libc++1 and an open stdin), full screen and beside Spotify:
+      zoom (+/−, pinch), pan and back to me; the speed-limit sign drawn on the map (the user: "where is the speed limit?").
+      Places on the map (22 Oct, replacing a GridTemplate start page that left the small card blank): with no directions
+      the big side shows cards over the dimmed map — the phone Home's 8, Favourites (all the other saved ones), Nearby, the
+      recent destinations not saved (MapsPrefs.recent, phone and car) — tapped through SurfaceCallback.onClick; Map hides
+      them, a tap on the map drops a pin (Go / ✕); Search (as you type, parked). The small card is told apart by the visible
+      area lying on one side of the surface's middle (the surface is always the whole screen). The column goes to the
+      driver's side by the network's country (right where traffic keeps left). On the map a column
+      with no background — speed, the limit's sign, "€ Tolls n" lit while the route has tolls ahead, "No GPS" after 10 s
+      without a fix — and ⚙ Voice: every direction / important only (wrong way, new route, no GPS, arrival) / off.
+      Sizes follow the car screen (the column a hundredth of its height per unit, at the driver's side, left). The small
+      card (beside Spotify): with directions the next turn only, big (arrow, distance, street) and the limit; without, the
+      Home's 8 places 2 by 4 (Android Auto opens Tetra on a tap there, so they show and do not start a route). The graph is
+      opened as the car connects (the first route took 25 s).
+      Phone and car one trip (CarLink, 22 Oct): with the car connected a place picked on the phone starts on the car's
+      screen and the phone shows those directions with Stop. In directions the arrival card holds End, Routes (up to 3, with
+      tolls), Stop (a place on the way, then on), and Parking — only when the destination has ΑμεΑ spots within Settings ›
+      Maps' distance (500 m–2 km), said ~1.5 km before. Tolls: "€ n" in the arrival card, said at the start and ~1 km
+      before each, € dots on the route.
+- [x] Trips (22 Oct; the user: "a plan mode for the phone … how many stops … point to the 1st stop, the second … saved as
+      a trip … start automaticaly for the next A B C D"): Directions › Plan a trip asks how many (2–10), then each stop in
+      turn (map tap, Search or Saved → "➕ Stop B"), lettered on the map; Save / Save and go. Files in Tetra/Maps/Trips. A
+      stop reached: the next leg starts when the car moves on (15 km/h or 150 m), kept 12 h in MapsPrefs.pendingTrip so it
+      survives the engine off; with the car connected the trip runs on its screen (Trips among the car's cards too).
+      For the drive (23 Oct): the speed column, € Tolls, wrong way and No GPS while moving; the voice over the car's speakers
+      and the important-only mode; how the user's car shows the small card (an ✕ there if it fits); updateTrip for the
+      cluster/HUD; the map dark at night (carContext.isDarkMode) — the user prefers the light map, ask; lanes.
+      Not in the car: alternative routes, the tunnel's dead reckoning.
+- [x] (maps-link session, 21 Oct) Emblems in tabs (the user, 21 Oct: "Add more emblims for pharmases, hospitals,
+      relatives travel locations, nature like waterfalls rivers beaches and have them in tabs with categories"): General,
+      People, Health, Travel, Nature (26 emblems) in the place dialog, and the saved-places list in the same tabs; the
+      accessible (wheelchair) mark in General and beside Parking (the user: "a disability mark to have for my parking spots
+      and accessible places").
 
 ## PDF — from viewer to editor (planned 22 Oct; research by an agent, nothing built yet)
 

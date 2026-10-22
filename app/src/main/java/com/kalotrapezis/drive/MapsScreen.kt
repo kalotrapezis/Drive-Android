@@ -217,6 +217,14 @@ internal object MapsPrefs {
     fun setAutoPark(c: Context, on: Boolean) = prefs(c).edit().putBoolean("auto_park", on).apply()
     fun openAtCar(c: Context) = prefs(c).getBoolean("open_at_car", false)
     fun setOpenAtCar(c: Context, on: Boolean) = prefs(c).edit().putBoolean("open_at_car", on).apply()
+    /** Places gone to that are not saved, newest first (the car's start page shows them after Home's). */
+    fun recent(c: Context): List<Place> = prefs(c).getString("recent", "").orEmpty().lines().mapNotNull { l ->
+        val f = l.split('\t'); if (f.size != 3) null else Place("", f[0], f[1].toDoubleOrNull() ?: return@mapNotNull null, f[2].toDoubleOrNull() ?: return@mapNotNull null)
+    }
+    fun addRecent(c: Context, p: Place) {
+        val all = listOf(p) + recent(c).filter { metresBetween(it.lat, it.lng, p.lat, p.lng) > 50 }
+        prefs(c).edit().putString("recent", all.take(20).joinToString("\n") { "${it.name.replace(Regex("[\t\n]"), " ")}\t${it.lat}\t${it.lng}" }).apply()
+    }
     fun lang(c: Context) = prefs(c).getString("lang", "el") ?: "el"
     fun setLang(c: Context, lang: String) = prefs(c).edit().putString("lang", lang).apply()
     fun ttsLocale(lang: String): Locale = Locale.forLanguageTag(if (lang == "en") "en-GB" else "el-GR")
@@ -369,6 +377,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             Toast.makeText(context, "No routing graph yet: put greece-gh in Tetra/Maps (the computer's tools/maps-greece.sh makes it).", Toast.LENGTH_LONG).show(); return
         }
         if (mode == "car" && target.id != MapsFiles.PARKING) unpark("a car trip started")
+        if (target.id.isEmpty()) MapsPrefs.addRecent(context, target)
         finding = "Finding the way…"
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.routes(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), lang) } }

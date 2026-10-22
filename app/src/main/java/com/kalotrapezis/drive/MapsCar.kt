@@ -33,6 +33,9 @@ import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.DateTimeWithZone
 import androidx.car.app.model.Distance
+import androidx.car.app.model.CarColor
+import androidx.car.app.model.GridItem
+import androidx.car.app.model.GridTemplate
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
@@ -74,7 +77,12 @@ class MapsCarService : CarAppService() {
     // the hosts Google signs (Android Auto, Android Automotive), the library's own list
     override fun createHostValidator() = HostValidator.Builder(applicationContext).addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample).build()
     override fun onCreateSession() = object : Session() {
-        override fun onCreateScreen(intent: Intent): Screen = MapsCarScreen(carContext)
+        // the map underneath, the start page over it: Home's places as cards, one tap and on our way
+        override fun onCreateScreen(intent: Intent): Screen {
+            val map = MapsCarScreen(carContext)
+            carContext.getCarService(androidx.car.app.ScreenManager::class.java).push(map)
+            return map.start()
+        }
     }
 }
 
@@ -92,7 +100,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     init {
         lifecycle.addObserver(this)
         navigation.setNavigationManagerCallback(object : NavigationManagerCallback { override fun onStopNavigation() = stop() })
-        car.getCarService(AppManager::class.java).setSurfaceCallback(MapSurface())
+        // the car can be gone already (unplugged as it starts): nothing to draw on then, and no crash
+        runCatching { car.getCarService(AppManager::class.java).setSurfaceCallback(MapSurface()) }.onFailure { WriterLog.e("Maps car: no surface", it) }
     }
 
     private fun granted() = ContextCompat.checkSelfPermission(carContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -101,8 +110,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         val n = nav; val p = n?.p
         val actions = ActionStrip.Builder()
         if (n == null) {
-            actions.addAction(action("Places") { screenManager.push(PlacesScreen()) })
-            actions.addAction(action("Nearby") { screenManager.push(KindsScreen()) })
+            actions.addAction(action("Places") { screenManager.push(StartScreen()) })
+            actions.addAction(action("Search") { screenManager.push(SearchScreen()) })
         } else actions.addAction(action("Stop") { stop() })
         // on the map: drag it (pan), zoom in and out, and back to me once moved (the user, 22 Oct: "it does not zoom?")
         val mapActions = ActionStrip.Builder().addAction(Action.PAN)
@@ -217,11 +226,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private fun speedSign(c: android.content.Context): android.view.View {
         val dp = c.resources.displayMetrics.density
         sign = android.widget.TextView(c).apply {
-            gravity = android.view.Gravity.CENTER; textSize = 22f; typeface = android.graphics.Typeface.DEFAULT_BOLD
-            layoutParams = android.widget.LinearLayout.LayoutParams((58 * dp).toInt(), (58 * dp).toInt())
+            gravity = android.view.Gravity.CENTER; textSize = 28f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            layoutParams = android.widget.LinearLayout.LayoutParams((72 * dp).toInt(), (72 * dp).toInt())
         }
         speedText = android.widget.TextView(c).apply {
-            textSize = 13f; setTextColor(Color.WHITE); setPadding((8 * dp).toInt(), (2 * dp).toInt(), (8 * dp).toInt(), (2 * dp).toInt())
+            // big enough to read at a glance (the user, 22 Oct: "The km/h make it bigger it bearly shows")
+            textSize = 22f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (4 * dp).toInt())
             background = android.graphics.drawable.GradientDrawable().apply { setColor(0xCC202124.toInt()); cornerRadius = 50 * dp }
         }
         showSpeed()
@@ -439,22 +449,75 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     private fun limit() = carContext.getCarService(ConstraintManager::class.java).getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_LIST)
 
-    /** A place picked: back to the map, and on our way. */
-    private fun pick(p: Place) { screenManager.popToRoot(); go(p) }
+    /** A place picked: back to the map, and on our way; one not saved is kept among the recent ones. */
+    private fun pick(p: Place) {
+        if (p.id.isEmpty()) MapsPrefs.addRecent(carContext, p)
+        screenManager.popToRoot(); go(p)
+    }
 
-    // —— Places: Home's places first, then the nearest of the rest ——
+    fun start(): Screen = StartScreen()
 
-    private inner class PlacesScreen : Screen(carContext) {
+    // —— the start page (the user, 22 Oct: "Add the home saves as cards, serch, and show map, so I can imediatly click and
+    // go, after the saved locations show the most resent that are not in the faves"): Home's places, Nearby, the recent
+    // ones not saved, then the other saved places by distance; Search and Map above ——
+
+    private inner class StartScreen : Screen(carContext) {
         override fun onGetTemplate(): Template {
             val all = MapsFiles.places(root)
             val home = MapsFiles.slots(all).filterNotNull()
             val h = here
-            val rest = (all - home.toSet()).sortedBy { if (h == null) 0.0 else metresBetween(h.latitude, h.longitude, it.lat, it.lng) }
-            val items = ItemList.Builder().setNoItemsMessage("No saved places yet")
-            (home + rest).take(limit()).forEach { p ->
+            fun dist(lat: Double, lng: Double) = if (h == null) 0.0 else metresBetween(h.latitude, h.longitude, lat, lng)
+            val recent = MapsPrefs.recent(carContext).filter { r -> all.none { metresBetween(it.lat, it.lng, r.lat, r.lng) < 50 } }
+            val rest = (all - home.toSet()).sortedBy { dist(it.lat, it.lng) }
+            val cards = home.map { p -> card(p.short, placeIcon(p.icon), away(p.lat, p.lng)) { pick(p) } } +
+                card("Nearby", R.drawable.ic_search, "Fuel, ΑμεΑ…") { screenManager.push(KindsScreen()) } +
+                recent.map { p -> card(p.name, R.drawable.ic_history, away(p.lat, p.lng)) { pick(p) } } +
+                rest.map { p -> card(p.short, placeIcon(p.icon), away(p.lat, p.lng)) { pick(p) } }
+            val items = ItemList.Builder()
+            cards.take(carContext.getCarService(ConstraintManager::class.java).getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_GRID)).forEach(items::addItem)
+            return GridTemplate.Builder().setTitle("Tetra Maps").setHeaderAction(Action.APP_ICON)
+                // one titled action at most on a grid: Search as its magnifier
+                .setActionStrip(ActionStrip.Builder().addAction(icon(R.drawable.ic_search) { screenManager.push(SearchScreen()) })
+                    .addAction(action("Map") { screenManager.popToRoot() }).build())
+                .setSingleList(items.build()).build()
+        }
+
+        private fun card(title: String, icon: Int, text: String, click: () -> Unit) = GridItem.Builder().setTitle(title.ifBlank { "Place" })
+            .apply { if (text.isNotEmpty()) setText(text) }
+            .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, icon)).setTint(CarColor.createCustom(0xFF5C6BC0.toInt(), 0xFF9FA8DA.toInt())).build())
+            .setOnClickListener(click).build()
+    }
+
+    // —— Search: saved places and the offline list, nearest first, as you type (the car lets typing only when parked) ——
+
+    private inner class SearchScreen : Screen(carContext) {
+        private var found: List<Place> = emptyList()
+        private var job: kotlinx.coroutines.Job? = null
+
+        private fun find(q: String) {
+            job?.cancel()
+            val h = here
+            job = lifecycleScope.launch {
+                found = withContext(Dispatchers.Default) {
+                    val f = MapsSearch.fold(q.trim())
+                    if (f.isEmpty()) return@withContext emptyList()
+                    val mine = MapsFiles.places(root).filter { MapsSearch.fold("${it.name} ${it.label}").contains(f) }
+                    val list = runCatching { MapsSearch.search(MapsSearch.load(root), q, h?.latitude ?: 38.4, h?.longitude ?: 23.8, limit = 30) }.getOrDefault(emptyList())
+                    mine + list.map { Place("", it.title, it.lat, it.lng) }
+                }
+                invalidate()
+            }
+        }
+
+        override fun onGetTemplate(): Template {
+            val items = ItemList.Builder()
+            found.take(limit()).forEach { p ->
                 items.addItem(Row.Builder().setTitle(p.name).apply { away(p.lat, p.lng).takeIf { it.isNotEmpty() }?.let(::addText) }.setOnClickListener { pick(p) }.build())
             }
-            return ListTemplate.Builder().setTitle("Places").setHeaderAction(Action.BACK).setSingleList(items.build()).build()
+            return androidx.car.app.model.SearchTemplate.Builder(object : androidx.car.app.model.SearchTemplate.SearchCallback {
+                override fun onSearchTextChanged(text: String) = find(text)
+                override fun onSearchSubmitted(text: String) = find(text)
+            }).setHeaderAction(Action.BACK).setSearchHint("Place, street, town").setShowKeyboardByDefault(true).setItemList(items.build()).build()
         }
     }
 

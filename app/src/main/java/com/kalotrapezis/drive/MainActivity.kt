@@ -1,6 +1,7 @@
 package com.kalotrapezis.drive
 
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.horizontalScroll
 import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
@@ -3188,6 +3189,7 @@ private fun PhotoTab(
     // A MediaStore id to open in the viewer once it is loaded: a photo opened from another app, or a just-saved edit.
     var pendingViewerId by remember { mutableStateOf(externalMediaId) }
     var editingEntry by remember { mutableStateOf<Entry?>(null) }
+    var editingHide by remember { mutableStateOf<PhotoHide?>(null) } // opened from the viewer's Hide eyes / Hide text
     // Opened from another app: closing the viewer returns there instead of to the Gallery.
     fun closeViewer() { if (closeExternal != null) closeExternal() else viewerUri = null }
     var viewingFaceGroup by remember { mutableStateOf<FaceGroup?>(null) }
@@ -3558,7 +3560,7 @@ private fun PhotoTab(
             editingEntry = null
             pendingViewerId = uri.lastPathSegment
             refresh()
-        })
+        }, hide = editingHide)
         return
     }
     val openViewerUri = viewerUri
@@ -3599,7 +3601,7 @@ private fun PhotoTab(
                 setPane(PhotosPane.Timeline)
             },
             // Hidden items live in the private vault; an edited copy would publish them, so no editing there.
-            if (filter == PhotoFilter.Hidden) null else { entry -> editingEntry = entry },
+            if (filter == PhotoFilter.Hidden) null else { entry, hide -> editingEntry = entry; editingHide = hide },
         )
         MoveSheet()
         collectionSheetFor?.let { targets -> CollectionPickerSheet(
@@ -5323,7 +5325,7 @@ private fun PhotoViewer(
     metadata: Map<String, PhotoState>, labelsByPhoto: Map<String, List<String>>, peopleNamesByPhoto: Map<String, List<String>>,
     metadataStore: PhotoMetadataStore, hasLocationAccess: Boolean, requestLocationAccess: () -> Unit,
     locationsUpdated: () -> Unit, openMap: (Entry) -> Unit,
-    editPhoto: ((Entry) -> Unit)?,
+    editPhoto: ((Entry, PhotoHide?) -> Unit)?,
 ) {
     val context = LocalContext.current
     val filmstripState = rememberLazyListState()
@@ -5426,9 +5428,7 @@ private fun PhotoViewer(
             motionEnded = { motionPlaying = false },
         )
     }
-    val actions: @Composable (Modifier) -> Unit = { modifier ->
-        ViewerActionsIsland(
-            readText = { selected.contentUri?.let { uri ->
+    val readText: () -> Unit = { selected.contentUri?.let { uri ->
                 // the photo's words, Greek and English (Ocr, the PDF editor's reader; the user, 22 Oct: "OCR would be nice for photos")
                 photoText = "" ; ocrScope.launch {
                     photoText = withContext(Dispatchers.Default) { runCatching {
@@ -5437,7 +5437,9 @@ private fun PhotoViewer(
                             dec.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE }
                         Ocr.text(context, bmp).trim()
                     }.onFailure { WriterLog.e("Photos: text", it) }.getOrDefault("") }.ifEmpty { NO_TEXT }
-                } } },
+                } } }
+    val actions: @Composable (Modifier) -> Unit = { modifier ->
+        ViewerActionsIsland(
             favorite = metadata[selected.photoKey].orDefault().favorite,
             isVideo = selected.isVideo && (!rotatedLandscape || manualFullscreen),
             fullscreen = fullscreen,
@@ -5447,7 +5449,7 @@ private fun PhotoViewer(
             add = addToCollection?.let { action -> { selected.contentUri?.let { action(setOf(it)) } } },
             restore = restore?.let { action -> { action(selected) } },
             removeFromCollection = removeFromCollection?.let { action -> { action(selected) } },
-            edit = editPhoto?.takeIf { !selected.isVideo }?.let { open -> { open(selected) } },
+            edit = editPhoto?.takeIf { !selected.isVideo }?.let { open -> { open(selected, null) } },
             toggleFullscreen = { manualFullscreen = !manualFullscreen },
             modifier = modifier,
         )
@@ -5482,6 +5484,14 @@ private fun PhotoViewer(
     val aiTags = labelsByPhoto[selected.photoKey].orEmpty().joinToString(" · ").ifBlank { "Not analyzed yet" }
     if (detailsOpen) ModalBottomSheet(onDismissRequest = { detailsOpen = false }) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // the photo's own tools, under the island (the user, 22 Oct: "Place ocr and reduct eyes and text options")
+            if (!selected.isVideo) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { detailsOpen = false; readText() }) { Icon(painterResource(R.drawable.ic_text_fields), null); Spacer(Modifier.width(8.dp)); Text("Text in the photo") }
+                editPhoto?.let { open ->
+                    OutlinedButton(onClick = { detailsOpen = false; open(selected, PhotoHide.Eyes) }) { Icon(painterResource(R.drawable.ic_visibility_off), null); Spacer(Modifier.width(8.dp)); Text("Hide eyes") }
+                    OutlinedButton(onClick = { detailsOpen = false; open(selected, PhotoHide.Text) }) { Icon(painterResource(R.drawable.ic_text_fields), null); Spacer(Modifier.width(8.dp)); Text("Hide text") }
+                }
+            }
             Text("Details", style = MaterialTheme.typography.titleMedium)
             Text("Name: ${selected.name}")
             Text("File: ${selected.relativePath ?: "Unavailable"}")
@@ -5559,7 +5569,7 @@ private fun ViewerActionsIsland(
     favorite: Boolean, isVideo: Boolean, fullscreen: Boolean,
     share: () -> Unit, details: () -> Unit, toggleFavorite: () -> Unit, add: (() -> Unit)?,
     restore: (() -> Unit)?, removeFromCollection: (() -> Unit)?, edit: (() -> Unit)?,
-    toggleFullscreen: () -> Unit, modifier: Modifier = Modifier, readText: (() -> Unit)? = null,
+    toggleFullscreen: () -> Unit, modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(true) }
     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
@@ -5580,7 +5590,6 @@ private fun ViewerActionsIsland(
                         Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = "Remove from this collection")
                     } }
                     edit?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") } }
-                    if (!isVideo) readText?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_text_fields), contentDescription = "Text in the photo") } }
                     if (isVideo) IconButton(onClick = toggleFullscreen) {
                         Icon(painterResource(if (fullscreen) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen), contentDescription = if (fullscreen) "Exit fullscreen" else "Fullscreen")
                     }

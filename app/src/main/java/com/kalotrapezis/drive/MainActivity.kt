@@ -800,7 +800,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     diskVersion = driveDiskVersion,
                     openFile = ::openDriveFile,
                 )
-                Screen.Photos -> PaperLook { PhotoTab({ screen = Screen.Home }, photosPane, { photosPane = it }, photoFilter, { photoFilter = it }, photoPermission(), photosState, photoMetadata, metadataVersion, {
+                Screen.Photos -> PhotoTab({ screen = Screen.Home }, photosPane, { photosPane = it }, photoFilter, { photoFilter = it }, photoPermission(), photosState, photoMetadata, metadataVersion, {
                     requestPhotos.launch(photoPermissions())
                 }, ::loadPhotos, ::movePhotosToTrash,
                     { uris, favorite -> metadataAction { photoMetadata.setFavorite(selectedEntries(uris).map { it.photoKey }, favorite) } },
@@ -814,7 +814,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     externalMediaId = externalMediaId,
                     externalMissing = { externalSingle = true },
                     closeExternal = if (external != null) ::closeExternal else null,
-                ) }
+                )
                 Screen.Sync -> SyncTab(back = { screen = Screen.Home })
                 Screen.Codes -> CodeScannerTab(back = { screen = Screen.Home })
                 Screen.TextEditor -> TextEditorScreen(back = { screen = Screen.Home }, start = editorStart)
@@ -3139,18 +3139,6 @@ private fun formatOpenedTime(time: Long): String = DateTimeFormatter.ofPattern("
 
 /** The width the phone layouts were drawn against, and the only thing the cell sizes are relative to. */
 private const val PHONE_WIDTH_DP = 406
-
-/** Photos' light look: cream paper instead of white (the user, 22 Oct: "on the light theme its like flashlight"). */
-@Composable
-private fun PaperLook(content: @Composable () -> Unit) {
-    if (!TetraLook.light) return content()
-    val paper = Color(0xFFF5EEDC)
-    MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(background = paper, surface = paper, surfaceContainerLowest = Color(0xFFFAF5E8),
-        surfaceContainerLow = Color(0xFFF0E8D3), surfaceContainer = Color(0xFFEBE2CB), surfaceContainerHigh = Color(0xFFE5DCC4), surfaceContainerHighest = Color(0xFFDFD5BC),
-        surfaceVariant = Color(0xFFE6DDC6))) {
-        Surface(Modifier.fillMaxSize(), color = paper, contentColor = MaterialTheme.colorScheme.onBackground) { content() }
-    }
-}
 
 @Composable internal fun islandColor(): Color = Color.Black.copy(alpha = 0.72f)
 @Composable internal fun islandContentColor(): Color = Color.White

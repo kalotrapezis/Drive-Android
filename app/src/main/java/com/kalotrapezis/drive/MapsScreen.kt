@@ -1187,7 +1187,7 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (road != null || code != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 code?.let { RoadCode(it) }
-                road?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = white.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                road?.let { Text(it, style = MaterialTheme.typography.titleLarge, color = white.copy(alpha = 0.9f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(painterResource(if (step.sign == 4) R.drawable.ic_place else R.drawable.ic_navigation), contentDescription = null,
@@ -1195,7 +1195,7 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
                 Text(n.p?.let { metresText(it.toNext) } ?: "", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             }
             val instruction = step.text.substringBefore(" στην ").substringBefore(" onto ").substringBefore(" στο ")
-            if (step.street.isNotEmpty()) Text(step.street, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (step.street.isNotEmpty()) Text(step.street, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(if (step.street.isEmpty()) step.text else instruction, style = MaterialTheme.typography.bodyMedium, color = white.copy(alpha = 0.75f),
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
         }

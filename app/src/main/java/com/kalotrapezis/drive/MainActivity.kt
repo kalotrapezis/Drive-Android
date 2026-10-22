@@ -5311,6 +5311,8 @@ private class ViewerZoomState {
     }
 }
 
+private const val NO_TEXT = "\u0000none"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PhotoViewer(
@@ -5338,6 +5340,19 @@ private fun PhotoViewer(
     val pagerState = rememberPagerState(initialPage = initialPage) { entries.size }
     val currentPage = pagerState.currentPage
     var detailsOpen by remember(selectedUri) { mutableStateOf(false) }
+    var photoText by remember(selectedUri) { mutableStateOf<String?>(null) } // "" while reading
+    val ocrScope = rememberCoroutineScope()
+    photoText?.let { t ->
+        AlertDialog(onDismissRequest = { photoText = null }, title = { Text("Text in the photo") },
+            text = { if (t.isEmpty()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp)); Text("Reading…") }
+                else if (t == NO_TEXT) Text("No words found in this photo.")
+                else androidx.compose.foundation.text.selection.SelectionContainer { Text(t, Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) } },
+            confirmButton = { if (t.isNotEmpty() && t != NO_TEXT) TextButton(onClick = {
+                context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("Text", t))
+                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show(); photoText = null }) { Text("Copy all") } },
+            dismissButton = { TextButton(onClick = { photoText = null }) { Text("Close") } })
+    }
     var actionError by remember(selectedUri) { mutableStateOf<String?>(null) }
     var manualFullscreen by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -5412,6 +5427,16 @@ private fun PhotoViewer(
     }
     val actions: @Composable (Modifier) -> Unit = { modifier ->
         ViewerActionsIsland(
+            readText = { selected.contentUri?.let { uri ->
+                // the photo's words, Greek and English (Ocr, the PDF editor's reader; the user, 22 Oct: "OCR would be nice for photos")
+                photoText = "" ; ocrScope.launch {
+                    photoText = withContext(Dispatchers.Default) { runCatching {
+                        val bmp = android.graphics.ImageDecoder.decodeBitmap(android.graphics.ImageDecoder.createSource(context.contentResolver, uri)) { dec, info, _ ->
+                            val k = minOf(1f, 2400f / maxOf(info.size.width, info.size.height)); dec.setTargetSize((info.size.width * k).toInt().coerceAtLeast(1), (info.size.height * k).toInt().coerceAtLeast(1))
+                            dec.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE }
+                        Ocr.text(context, bmp).trim()
+                    }.onFailure { WriterLog.e("Photos: text", it) }.getOrDefault("") }.ifEmpty { NO_TEXT }
+                } } },
             favorite = metadata[selected.photoKey].orDefault().favorite,
             isVideo = selected.isVideo && (!rotatedLandscape || manualFullscreen),
             fullscreen = fullscreen,
@@ -5533,7 +5558,7 @@ private fun ViewerActionsIsland(
     favorite: Boolean, isVideo: Boolean, fullscreen: Boolean,
     share: () -> Unit, details: () -> Unit, toggleFavorite: () -> Unit, add: (() -> Unit)?,
     restore: (() -> Unit)?, removeFromCollection: (() -> Unit)?, edit: (() -> Unit)?,
-    toggleFullscreen: () -> Unit, modifier: Modifier = Modifier,
+    toggleFullscreen: () -> Unit, modifier: Modifier = Modifier, readText: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(true) }
     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
@@ -5554,6 +5579,7 @@ private fun ViewerActionsIsland(
                         Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = "Remove from this collection")
                     } }
                     edit?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") } }
+                    if (!isVideo) readText?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_text_fields), contentDescription = "Text in the photo") } }
                     if (isVideo) IconButton(onClick = toggleFullscreen) {
                         Icon(painterResource(if (fullscreen) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen), contentDescription = if (fullscreen) "Exit fullscreen" else "Fullscreen")
                     }

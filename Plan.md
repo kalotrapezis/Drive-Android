@@ -1884,7 +1884,16 @@ Protect · View (+ Image, Comment when chosen); everyday on the ribbon with icon
 ✓/×, modals for many fields; Words' parts reused (Swatches, DesignGalleryStrip fonts, SizeStepper, Draw tab for ink and
 signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the original bytes; Greek text boxes embed a real font.
 
-- [ ] Phase 0 (1–2 days, no library): highlights/notes/text boxes/stamps shown on API 35+ (RenderParams flags), Find and copy
+- [x] (22 Oct) MuPDF in (com.artifex.mupdf:fitz 1.28.5, ~11 MB native per ABI): a file's comments drawn, Find/Copy on every
+      Android, password asked. Edit (view only first, as Words): Pages — Organize (the scanner's ReorderGrid, shared), rotate,
+      delete, blank page, insert another PDF, extract a page; Review — highlight/underline/strikethrough over the words a
+      finger crosses, notes (written; tapped to read), rectangle, oval, arrow, colour (Words' Swatches), delete a comment;
+      Draw — pen, highlighter, widths; Fill & Sign — text (Greek: MuPDF's URW fonts; long dashes made plain), tick, cross,
+      dot, date, a signature drawn once in Words' DrawDialog (kept in the app) placed by a tap; a form's own fields filled
+      by tapping them (text, boxes, round buttons, lists; Edit comes on by itself). Undo/redo (MuPDF's journal), Save
+      appending to the bytes as opened (incremental; Versions kept), Save or not on leaving. Emulator-checked each.
+      Not yet: text boxes with a box/colour, own stamps, the comments pane, bookmarks, Insert, Protect, phone layout check.
+- [~] Phase 0 (1–2 days, no library): superseded by MuPDF — highlights/notes/text boxes/stamps shown on API 35+ (RenderParams flags), Find and copy
       on Android 12–14 (PdfRendererPreV), password-protected files (LoadParams).
 - [ ] Phase 1 (2–3 weeks): MuPDF; every annotation drawn; Edit flow with an edit list (undo), incremental save, Versions; Pages
       (rotate, delete, insert blank/from file, move, extract, combine, split); highlight/underline/strike, note, text box, ink,

@@ -126,6 +126,9 @@ internal object Pdf {
     }
 }
 
+/** A form's field tapped: what it is ("text", "check", "radio", "choice", other), its name, value and choices. */
+internal class PdfField(val kind: String, val name: String, val value: String, val options: List<String>, val multiline: Boolean, val readOnly: Boolean)
+
 /** The editor's tools that work on the page itself (Review and Draw); a finger draws while one is on. */
 internal enum class PdfTool(val label: String, val icon: Int) {
     Highlight("Highlight", R.drawable.ic_highlighter), Underline("Underline", R.drawable.ic_format_underlined), Strike("Strikethrough", R.drawable.ic_format_strikethrough),
@@ -290,6 +293,35 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             setRect(com.artifex.mupdf.fitz.Rect(at.x + x0, at.y + y0, at.x + x0 + width, at.y + y0 + width * aspect))
             setAppearance(com.artifex.mupdf.fitz.Image(png)); update()
         }; true
+    }
+
+    // —— forms (their own fields: fill in, tick, choose) ——
+
+    /** The file has form fields to fill in. */
+    val hasForm: Boolean by lazy { synchronized(this) { runCatching { (pdf?.trailer?.get("Root")?.get("AcroForm")?.get("Fields")?.size() ?: 0) > 0 }.getOrDefault(false) } }
+
+    private fun widget(p: com.artifex.mupdf.fitz.Page, x: Float, y: Float) = (p as? com.artifex.mupdf.fitz.PDFPage)?.widgets.orEmpty()
+        .lastOrNull { w -> w.bounds.let { r -> x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1 } }
+
+    /** The field under [at]. */
+    fun fieldAt(i: Int, at: Offset): PdfField? = synchronized(this) { page(i) { p ->
+        val o = p.bounds
+        widget(p, at.x + o.x0, at.y + o.y0)?.let { w ->
+            PdfField(when { w.isText -> "text"; w.isCheckbox -> "check"; w.isRadioButton -> "radio"; w.isChoice -> "choice"; else -> "other" },
+                w.label?.ifBlank { null } ?: w.name.orEmpty(), w.value.orEmpty(), w.options?.toList().orEmpty(), w.isMultiline, w.isReadOnly)
+        }
+    } }
+
+    /** The field under [at] filled with [value] (text, a choice) or, a box or a round button, ticked or not. */
+    fun fill(i: Int, at: Offset, value: String?) = annotate(i, "Fill in") { p, x0, y0 ->
+        val w = widget(p, at.x + x0, at.y + y0) ?: return@annotate false
+        when {
+            w.isText -> w.setTextValue(value.orEmpty())
+            w.isCheckbox || w.isRadioButton -> w.toggle()
+            w.isChoice -> w.setChoiceValue(value.orEmpty())
+            else -> return@annotate false
+        }
+        w.update(); true
     }
 
     /** The comment under [at] (the topmost, a few points round it), deleted: false when there is none. */
@@ -470,6 +502,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     var writing by remember { mutableStateOf<Pair<Int, Offset>?>(null) } // a note being written: its page and place
     var reading by remember { mutableStateOf<String?>(null) } // a note tapped: its words
     var typing by remember { mutableStateOf<Pair<Int, Offset>?>(null) } // Fill & Sign › Text: where the words go
+    var filling by remember { mutableStateOf<Triple<Int, Offset, PdfField>?>(null) } // a form's text or choice field tapped
     var fillSize by remember { mutableStateOf(11f) }
     val signatureFile = remember { File(context.filesDir, "pdf-signature.png") }
     var signing by remember { mutableStateOf(false) } // drawing the signature
@@ -509,8 +542,18 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     /** What a finger did on page [i] with the tool on: [pts] its path in page points (a tap: one point). */
     fun onPage(i: Int, pts: List<Offset>) {
         val d = doc ?: return; val t = tool ?: run {
-            // no tool: a note tapped shows its words
-            if (pts.size == 1) d.noteAt(i, pts[0])?.let { reading = it.ifBlank { "(an empty note)" } }; return }
+            if (pts.size != 1) return
+            // no tool: a form's field is filled in (a box ticked at once), a note tapped shows its words
+            d.fieldAt(i, pts[0])?.let { f ->
+                if (f.readOnly) { Toast.makeText(context, "That field cannot be changed", Toast.LENGTH_SHORT).show(); return }
+                editing = true
+                when (f.kind) {
+                    "check", "radio" -> change { d.fill(i, pts[0], null) }
+                    "text", "choice" -> filling = Triple(i, pts[0], f)
+                }
+                return
+            }
+            d.noteAt(i, pts[0])?.let { reading = it.ifBlank { "(an empty note)" } }; return }
         val a = pts.first(); val b = pts.last()
         when (t) {
             PdfTool.Highlight, PdfTool.Underline, PdfTool.Strike -> change {
@@ -588,6 +631,19 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     if (signing) DrawDialog(200f, { signing = false }, boxAspect = 0.4f) { png, _, _, _, _ ->
         signing = false
         runCatching { signatureFile.writeBytes(png) }.onSuccess { tool = PdfTool.Sign; Toast.makeText(context, "Signature kept: tap where it goes", Toast.LENGTH_LONG).show() }
+    }
+    filling?.let { (i, at0, f) ->
+        var value by remember { mutableStateOf(f.value) }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { filling = null }, title = { Text(f.name.ifBlank { "Field" }) },
+            text = {
+                if (f.kind == "choice") Column { f.options.forEach { o ->
+                    Row(Modifier.fillMaxWidth().clickable { value = o }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.RadioButton(value == o, { value = o }); Text(o)
+                    } } }
+                else androidx.compose.material3.OutlinedTextField(value, { value = it }, Modifier.fillMaxWidth(), singleLine = !f.multiline, minLines = if (f.multiline) 3 else 1)
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { filling = null; doc?.let { d -> change { d.fill(i, at0, value) } } }) { Text("OK") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { filling = null }) { Text("Cancel") } })
     }
     reading?.let { words ->
         androidx.compose.material3.AlertDialog(onDismissRequest = { reading = null }, title = { Text("Note") }, text = { Text(words) },
@@ -725,7 +781,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                                 val marks = matches?.filter { it.page == i }.orEmpty()
                                 PdfPage(d, i, if (i == at) Pdf.renderWidth(px, settled, s.width / s.height) else px,
                                     Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).width(w), marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
-                                    if (editing) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
+                                    if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
                                 }
                             }
                         }

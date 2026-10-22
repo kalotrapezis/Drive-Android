@@ -15,7 +15,15 @@ import time
 import urllib.parse
 import urllib.request
 
-API = "https://data.gov.gr/api/3/action/package_search?rows=100&q=" + urllib.parse.quote("ΑμεΑ στάθμευσης")
+API = "https://data.gov.gr/api/3/action/package_search?rows=200&q="
+QUERIES = ("ΑμεΑ στάθμευσης", "ΑΜΕΑ θέσεις", "θέση ΑμεΑ", "πινακίδας ΑμεΑ")  # (22 Oct: "Θέσεις ΑΜΕΑ (GIS 2009)" has no "στάθμευσης")
+# datasets in other forms than a city's WFS: (data.gov.gr ZIP, the file in it, its reader)
+FILES = [
+    ("https://data.gov.gr/dataset/e8b5e0a1-da1d-4c37-b44c-444153748586/resource/7b3fba78-88bc-418b-b58e-2df613990085/download/"
+     "dhmosies-8eseis-sta8meyshs-amea-toy-dhmoy-hrakleioy1-56vtoepq.zip", "parking-areas-for-amea.csv", "Ηράκλειο", "heraklion"),
+    ("https://data.gov.gr/dataset/a685a43c-d821-42b8-9b82-10189ce75313/resource/a0311d54-5877-4167-a33f-cb3f6323d29d/download/"
+     "larissa-parking-amea.zip", "AMEA_GEN", "Λάρισα", "shp-egsa87"),
+]
 STREET = ("street", "odos", "odos_name", "dieythinsi", "dieuthinsi", "address", "onoma_odou", "οδός", "διεύθυνση")
 NUMBER = ("number", "arithmos", "ar", "αριθμός")
 TOWN = {"Αθηναίων": "Αθήνα", "Θεσσαλονίκης": "Θεσσαλονίκη", "Χανίων": "Χανιά", "Χαλανδρίου": "Χαλάνδρι", "Παπάγου-Χολαργού": "Παπάγου-Χολαργός",
@@ -65,8 +73,81 @@ def where(props, city):
     return " ".join(x for x in (street.title() if street.isupper() else street, number) if x) + (f", {city}" if street else city)
 
 
+def egsa87(x, y):
+    """Greek Grid (ΕΓΣΑ87, EPSG:2100) metres to WGS84 latitude and longitude: inverse transverse Mercator on GRS80, then
+    GGRS87's datum shift (-199.87, 74.79, 246.62 m) through geocentric coordinates. Good to a metre or two."""
+    import math
+    a, f = 6378137.0, 1 / 298.257222101
+    e2 = f * (2 - f); k0 = 0.9996; lon0 = math.radians(24)
+    x -= 500000; m = y / k0
+    mu = m / (a * (1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256))
+    e1 = (1 - math.sqrt(1 - e2)) / (1 + math.sqrt(1 - e2))
+    p = mu + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * math.sin(2 * mu) + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * math.sin(4 * mu) \
+        + (151 * e1 ** 3 / 96) * math.sin(6 * mu) + (1097 * e1 ** 4 / 512) * math.sin(8 * mu)
+    ep2 = e2 / (1 - e2); c1 = ep2 * math.cos(p) ** 2; t1 = math.tan(p) ** 2
+    n1 = a / math.sqrt(1 - e2 * math.sin(p) ** 2); r1 = a * (1 - e2) / (1 - e2 * math.sin(p) ** 2) ** 1.5; d = x / (n1 * k0)
+    lat = p - (n1 * math.tan(p) / r1) * (d ** 2 / 2 - (5 + 3 * t1 + 10 * c1 - 4 * c1 ** 2 - 9 * ep2) * d ** 4 / 24
+                                       + (61 + 90 * t1 + 298 * c1 + 45 * t1 ** 2 - 252 * ep2 - 3 * c1 ** 2) * d ** 6 / 720)
+    lon = lon0 + (d - (1 + 2 * t1 + c1) * d ** 3 / 6 + (5 - 2 * c1 + 28 * t1 - 3 * c1 ** 2 + 8 * ep2 + 24 * t1 ** 2) * d ** 5 / 120) / math.cos(p)
+    # GGRS87 → WGS84
+    n = a / math.sqrt(1 - e2 * math.sin(lat) ** 2)
+    X = n * math.cos(lat) * math.cos(lon) - 199.87; Y = n * math.cos(lat) * math.sin(lon) + 74.79; Z = n * (1 - e2) * math.sin(lat) + 246.62
+    lon = math.atan2(Y, X); pp = math.hypot(X, Y); lat = math.atan2(Z, pp * (1 - e2))
+    for _ in range(5):
+        n = a / math.sqrt(1 - e2 * math.sin(lat) ** 2); lat = math.atan2(Z + e2 * n * math.sin(lat), pp)
+    return math.degrees(lat), math.degrees(lon)
+
+
+def files():
+    """The datasets of FILES, as (lat, lng, where) rows."""
+    import io, zipfile, tempfile, os
+    out = []
+    for url, name, city, how in FILES:
+        try:
+            z = zipfile.ZipFile(io.BytesIO(get(url)))
+        except Exception as e:
+            print(f"{city}: {e}", file=sys.stderr); continue
+        n = 0
+        if how == "heraklion":  # cp1253, "35.337.201" for 35.337201
+            text = z.read(name).decode("cp1253", "replace")
+            for line in text.splitlines()[1:]:
+                c = line.split(";")
+                if len(c) < 3:
+                    continue
+                num = lambda v: float(v.replace(".", "")[:2] + "." + v.replace(".", "")[2:])
+                try:
+                    out.append((num(c[1]), num(c[2]), f"{clean(c[0])}, {city}" if clean(c[0]) else city, city)); n += 1
+                except ValueError:
+                    pass
+        elif how == "shp-egsa87":
+            import shapefile
+            with tempfile.TemporaryDirectory() as d:
+                z.extractall(d)
+                r = shapefile.Reader(os.path.join(d, name))
+                for sh, rec in zip(r.shapes(), r.records()):
+                    if not sh.points:
+                        continue
+                    x = sum(p[0] for p in sh.points) / len(sh.points); y = sum(p[1] for p in sh.points) / len(sh.points)
+                    lat, lng = egsa87(x, y)
+                    rd = rec.as_dict()
+                    street = clean(rd.get("address__1") or rd.get("name") or "")
+                    out.append((lat, lng, f"{street}, {city}" if street else city, city)); n += 1
+        print(f"{city}: {n}")
+    return out
+
+
 if __name__ == "__main__":
-    found = json.loads(get(API))["result"]["results"]
+    found = []
+    seen_ds = set()
+    for q in QUERIES:
+        for ds in json.loads(get(API + urllib.parse.quote(q)))["result"]["results"]:
+            if ds["id"] in seen_ds:
+                continue
+            seen_ds.add(ds["id"])
+            t = ds["title"].lower()
+            if any(k in t for k in ("αμεα", "α.μ.ε.α")) and any(k in t for k in ("στάθμευσ", "θέσ", "πινακίδ")) and \
+                    not any(k in t for k in ("αιτήσεις", "ράμπες", "πρόσβαση", "κέντρα", "δομές", "στοιχεία", "πράξη")):
+                found.append(ds)
     rows, skipped = [], []
     for ds in found:
         city = (ds.get("organization") or {}).get("title", "").replace("Δήμος ", "")
@@ -93,6 +174,9 @@ if __name__ == "__main__":
             rows.append(f"disabled_parking\t{at[0]:.6f}\t{at[1]:.6f}\tΑμεΑ parking\t\t{where(f.get('properties') or {}, city)}\t\t\t\t\t{city} (data.gov.gr)\n")
             n += 1
         print(f"{city}: {n}")
+    for lat, lng, where_, city in files():
+        if 34 < lat < 42 and 19 < lng < 30:
+            rows.append(f"disabled_parking\t{lat:.6f}\t{lng:.6f}\tΑμεΑ parking\t\t{where_}\t\t\t\t\t{city} (data.gov.gr)\n")
     # one spot once: some cities publish the same spots in two datasets
     kept = []
     for r in rows:

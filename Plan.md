@@ -1784,6 +1784,12 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       ferries, bridges, islands, mountains, one-ways, outside Greece, at sea — no crash, sensible times). The user's Takeout:
       18 favourites given their emblem (beaches, cafés, parkings, doctors…), 4 public additions (2 ΑμεΑ spots in Ναύπλιο,
       Παραλία Δρεπάνου, River Cafe, a parking in Ξάνθη) — waiting for a device on USB (scratchpad emblems/, public-additions.tsv).
+- [x] (maps-link session, 22 Oct) More ΑμεΑ sources (the user, from Gemini: OSM/Overpass, the open data portals, open aerial
+      imagery): OSM holds ~290 tagged ΑμεΑ spots in all of Greece (parking_space=disabled, capacity:disabled, wheelchair on
+      parkings) — the list already had most; data.gov.gr searched with more words: + Κερατσίνι–Δραπετσώνα (173, WFS),
+      Ηράκλειο (79, CSV in cp1253 with "35.337.201" numbers), Λάρισα (49 general spots, a shapefile in ΕΓΣΑ87, converted
+      in maps-amea.py), Νάξος' signs (1): greece-amea.tsv 740 → 1 031. Aerial: Esri World Imagery (free, allowed for
+      mapping) is 0.45 m/px in Ξάνθη — a parking space is 5 pixels, its paint unseen; not a source.
 - [ ] Tolls: GraphHopper's toll encoded value is not in the graph; with it (a rebuild) a "no tolls" profile, and the routes
       marked with tolls. The user stopped a rebuild on 21 Oct (distance influence 30 for the car); to be asked again.
 - [ ] Lane guidance (the user, 21 Oct: "where there are alot of laines does it tell you show you at the corner what lane

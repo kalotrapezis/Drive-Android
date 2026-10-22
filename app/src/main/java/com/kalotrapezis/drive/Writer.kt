@@ -2680,8 +2680,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
      * starts, as Word does — never between two letters of a word — [anchor] or the cursor's; at [place] on the page, or
      * (from the drawing box) at the paragraph's top left; the Picture tab moves it into the text if wanted.
      */
-    fun putDrawing(bytes: ByteArray, wPt: Float, hPt: Float, place: Pair<Float, Float>?, anchor: Int?) {
-        val img = DocImage("n" + java.util.UUID.randomUUID(), null, wPt, hPt, null, bytes, "png", PictureWrap.InFront, onPage = place)
+    fun putDrawing(bytes: ByteArray, wPt: Float, hPt: Float, place: Pair<Float, Float>?, anchor: Int?, key: String = "n" + java.util.UUID.randomUUID()) {
+        val img = DocImage(key, null, wPt, hPt, null, bytes, "png", PictureWrap.InFront, onPage = place)
         pictures[img.key] = img
         val text = state.annotatedString.text; val rich = state.toRichTextDocument()
         val cursor = state.selection
@@ -2696,13 +2696,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // editor's too, kept in the app (never in a file but where it is put), drawn once or taken from a picture of it
     val signatureFile = remember { File(context.filesDir, "pdf-signature.png") }
     var drawingSignature by remember { mutableStateOf(false) }
+    var redoSignature by remember { mutableStateOf<String?>(null) } // the signature in the document being redrawn
     fun insertSignature() {
         val bytes = runCatching { signatureFile.readBytes() }.getOrNull() ?: run { drawingSignature = true; return }
         val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
         android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
         // a picture box in front of the text (the user: "like an image box you can move rotate resize"): dragged, sized and
         // turned with its handles, as Draw's drawings
-        putDrawing(bytes, 150f, 150f * o.outHeight / o.outWidth.coerceAtLeast(1), null, null)
+        putDrawing(bytes, 150f, 150f * o.outHeight / o.outWidth.coerceAtLeast(1), null, null, key = SIGNATURE_KEY + java.util.UUID.randomUUID())
         message = "Signature put in: drag it where it goes; its handles size and turn it"
         WriterLog.i("signature put in")
     }
@@ -4131,6 +4132,22 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val (at, key) = selectedPicture ?: (0 to "")
                     val img = pictures[key]
                     val editable = img != null && PictureXml.editable(img)
+                    // a signature's own tab (the user, 22 Oct: "It is a signature not an image on the tab like the wordart and textbox")
+                    if (img != null && PictureXml.kind(img) == "Signature") {
+                        val floating = editable && PictureXml.wrapOf(img) != PictureWrap.InLine
+                        listOf({
+                            RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
+                            RibbonButton("Position", w, R.drawable.ic_open_with, enabled = floating) { position(key) }
+                            RibbonButton("Rotate", w, R.drawable.ic_rotate_right, enabled = floating) { rotating = key }
+                        }, {
+                            RibbonButton("Wrap text", w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
+                            RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front, enabled = floating) { arrange(key, front = true) }
+                            RibbonButton("Send to back", w, R.drawable.ic_flip_to_back, enabled = floating) { arrange(key, front = false) }
+                        }, {
+                            RibbonButton("Redraw", w, R.drawable.ic_draw) { redoSignature = key; drawingSignature = true }
+                            RibbonButton("Delete", w, R.drawable.ic_delete) { state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)) }
+                        })
+                    } else {
                     val hasBytes = img != null && pictureBytes(img) != null
                     // A drawing made in Writer: drawn on again (its strokes ride in its picture).
                     val drawn = remember(key, img) { img?.let { pictureBytes(it) }?.let { InkPicture.strokesOf(it) } != null }
@@ -4180,6 +4197,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         RibbonButton("Save as", w, R.drawable.ic_save, enabled = hasBytes) { savePicture(img!!) }
                         RibbonButton("Delete", w, R.drawable.ic_delete) { state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)) }
                     })
+                    }
                 }
                 WriterTab.Table -> {
                     val (at, _) = selectedPicture ?: (0 to "")
@@ -4745,7 +4763,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     if (drawingSignature) DrawDialog(200f, { drawingSignature = false }, boxAspect = 0.4f) { png, _, _, _, _ ->
         drawingSignature = false
-        runCatching { signatureFile.writeBytes(png) }.onSuccess { insertSignature() }
+        val redo = redoSignature; redoSignature = null
+        runCatching { signatureFile.writeBytes(png) }.onSuccess {
+            // Redraw: this one becomes the new signature, where it is, as wide as it was
+            val old = redo?.let { pictures[it] }
+            if (old != null) { val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }; android.graphics.BitmapFactory.decodeByteArray(png, 0, png.size, o)
+                change { changePicture(old.key, DocImage(old.key, null, old.widthPt, old.widthPt * o.outHeight / o.outWidth.coerceAtLeast(1), null, png, "png", PictureXml.wrapOf(old), onPage = old.onPage)) } }
+            else insertSignature()
+        }
     }
     drawing?.let { d ->
         DrawDialog(d.boxPt, { drawing = null }, d.pages, d.start, d.boxAspect, d.strokes) { bytes, wPt, hPt, place, k ->

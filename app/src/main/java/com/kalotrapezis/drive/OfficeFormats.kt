@@ -94,6 +94,9 @@ private fun <T> aside(notes: MutableSet<String>, comments: MutableSet<String>, r
  * file's own XML, which points at its [part] inside the package); a new one has its [bytes]. [part] is null for what
  * is not a picture — it shows as a grey box. Sizes in points.
  */
+/** Insert › Signature's pictures: their keys start so until the file is saved (then their name, "Signature n", says it). */
+internal const val SIGNATURE_KEY = "sig-"
+
 internal class DocImage(val key: String, val part: String?, val widthPt: Float, val heightPt: Float, val raw: String? = null,
     val bytes: ByteArray? = null, val extension: String = "png", val wrap: PictureWrap? = null /* null: as the file has it */,
     val table: DocTable? = null /* the editor's stand-in for a table */,
@@ -149,6 +152,7 @@ internal object PictureXml {
 
     /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
     fun kind(img: DocImage): String {
+        if (img.key.startsWith(SIGNATURE_KEY) || img.raw?.let { Regex("""<wp:docPr\b[^>]*\bname="Signature""").containsMatchIn(it) } == true) return "Signature"
         if (img.table != null) return "Table"
         if (img.math != null) return "Equation"
         if (video(img) != null) return "Video"
@@ -2224,7 +2228,8 @@ private object DocxWriter {
                         types = types.replace("</Types>", """<Default Extension="$ext" ContentType="video/${if (ext == "mov") "quicktime" else ext}"/></Types>""")
                     """<a:extLst><a:ext uri="$TETRA_VIDEO"><tv:film xmlns:tv="$TETRA_VIDEO" xmlns:r="$R" r:embed="${newRel(REL_MEDIA, film.removePrefix(dir), false)}"/></a:ext></a:extLst>"""
                 }.getOrNull() }
-                val named = if (web != null || own != null) "Video $id" else "Picture $id"
+                // a signature (Insert › Signature) keeps its name, so it opens again as one (and Word shows it so)
+                val named = if (web != null || own != null) "Video $id" else if (img.key.startsWith(SIGNATURE_KEY)) "Signature $id" else "Picture $id"
                 """<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="$cx" cy="$cy"/>""" +
                     (if (click == null) """<wp:docPr id="$id" name="$named"/>""" else """<wp:docPr id="$id" name="$named">$click</wp:docPr>""") +
                     """<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr>""" +

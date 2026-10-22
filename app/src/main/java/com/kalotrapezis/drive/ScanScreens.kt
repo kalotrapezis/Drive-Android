@@ -1001,9 +1001,17 @@ private fun ScanThumbnail(page: CapturedPage, modifier: Modifier) {
     }
 }
 
-/** Page grid with numbers; long-press a page and drag it to a new position. */
 @Composable
-private fun ScanReorderGrid(pages: List<CapturedPage>, move: (Int, Int) -> Unit, open: (Int) -> Unit, back: () -> Unit) {
+private fun ScanReorderGrid(pages: List<CapturedPage>, move: (Int, Int) -> Unit, open: (Int) -> Unit, back: () -> Unit) =
+    ReorderGrid(pages.map { it.key }, move, open, back) { i, m -> ScanThumbnail(pages[i], m) }
+
+/**
+ * Page grid with numbers; long-press a page and drag it to a new position. The scanner's pages and the PDF editor's
+ * (Pages › Organize): [keys] one per page, [thumb] draws page i.
+ */
+@Composable
+internal fun ReorderGrid(keys: List<String>, move: (Int, Int) -> Unit, open: (Int) -> Unit, back: () -> Unit, title: String = "Pages",
+    actions: @Composable () -> Unit = {}, thumb: @Composable (Int, Modifier) -> Unit) {
     val gridState = rememberLazyGridState()
     var draggingKey by remember { mutableStateOf<String?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
@@ -1011,7 +1019,7 @@ private fun ScanReorderGrid(pages: List<CapturedPage>, move: (Int, Int) -> Unit,
     fun androidx.compose.foundation.lazy.grid.LazyGridItemInfo.contains(point: Offset) =
         point.x >= offset.x && point.x < offset.x + size.width && point.y >= offset.y && point.y < offset.y + size.height
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        ModuleHeader("Pages", back)
+        ModuleHeader(title, back) { actions() }
         Text("Long-press a page and drag it to reorder.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
         LazyVerticalGrid(
             columns = gridColumns(3),
@@ -1040,8 +1048,8 @@ private fun ScanReorderGrid(pages: List<CapturedPage>, move: (Int, Int) -> Unit,
                 )
             },
         ) {
-            itemsIndexed(pages, key = { _, page -> page.key }) { index, page ->
-                val dragging = page.key == draggingKey
+            itemsIndexed(keys, key = { _, k -> k }) { index, k ->
+                val dragging = k == draggingKey
                 Column(
                     Modifier.zIndex(if (dragging) 1f else 0f)
                         .then(if (dragging) Modifier else Modifier.animateItem())
@@ -1052,7 +1060,7 @@ private fun ScanReorderGrid(pages: List<CapturedPage>, move: (Int, Int) -> Unit,
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    ScanThumbnail(page, Modifier.fillMaxWidth().aspectRatio(0.72f).clip(MaterialTheme.shapes.small))
+                    thumb(index, Modifier.fillMaxWidth().aspectRatio(0.72f).clip(MaterialTheme.shapes.small))
                     Text("${index + 1}", style = MaterialTheme.typography.titleSmall)
                 }
             }

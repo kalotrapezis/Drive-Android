@@ -2036,7 +2036,7 @@ private fun SearchQualityOption(title: String, detail: String, selected: Boolean
 }
 
 @Composable
-internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier, art: Int? = null) {
+internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = Modifier, art: Int? = null, actions: @Composable () -> Unit = {}) {
     // the page's own colour in light (a dark glass bar over a light page reads as grey); the dark glass in dark
     val bar = if (TetraLook.light) MaterialTheme.colorScheme.background.copy(alpha = 0.95f) else islandColor()
     val on = if (TetraLook.light) MaterialTheme.colorScheme.onBackground else islandContentColor()
@@ -2044,8 +2044,9 @@ internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = 
         Column(Modifier.statusBarsPadding().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home") }
-                Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 art?.let { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(34.dp)) }
+                actions()
             }
             Box(Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 1.dp, max = 1.dp).background(on.copy(alpha = 0.35f)))
         }

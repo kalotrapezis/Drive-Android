@@ -56,6 +56,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +64,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -133,16 +135,84 @@ internal class PdfPasswordException(val tried: Boolean) : Exception("password")
  * PdfRenderer leaves out, and it edits): every use takes the lock, off the main thread; its pages' sizes; a small cache
  * of drawn pages so scrolling back is instant.
  */
-internal class PdfDoc(file: File, password: String? = null) {
+internal class PdfDoc(private val file: File, password: String? = null) {
     private val doc: com.artifex.mupdf.fitz.Document = com.artifex.mupdf.fitz.Document.openDocument(file.path).also { d ->
         if (d.needsPassword() && (password == null || !d.authenticatePassword(password))) { d.destroy(); throw PdfPasswordException(password != null) }
     }
+    /** The PDF itself, for editing (every change an undo step of MuPDF's own journal). */
+    private val pdf: com.artifex.mupdf.fitz.PDFDocument? = doc.asPDF()?.also { p -> runCatching { p.enableJournal() }.onFailure { WriterLog.w("PDF: no undo", it) } }
     private var closed = false
     private var logged = false
 
-    /** Each page's size in points (1/72 in), read once: the list lays out every page before any is drawn. */
-    val sizes: List<Size> = synchronized(this) { (0 until doc.countPages()).map { i -> page(i) { p ->
-        val b = p.bounds; Size((b.x1 - b.x0).coerceAtLeast(1f), (b.y1 - b.y0).coerceAtLeast(1f)) } } }
+    /** Each page's size in points (1/72 in), read again after a change: the list lays out every page before any is drawn. */
+    var sizes: List<Size> = synchronized(this) { readSizes() }
+        private set
+    private fun readSizes() = (0 until doc.countPages()).map { i -> page(i) { p ->
+        val b = p.bounds; Size((b.x1 - b.x0).coerceAtLeast(1f), (b.y1 - b.y0).coerceAtLeast(1f)) } }
+
+    // —— editing (Plan.md § PDF, Phase 1: pages) ——
+
+    val editable get() = pdf != null
+    val canUndo get() = synchronized(this) { (pdf?.undoRedoPosition() ?: 0) > 0 }
+    val canRedo get() = synchronized(this) { pdf?.let { it.undoRedoPosition() < it.undoRedoSteps() } == true }
+    val dirty get() = synchronized(this) { pdf?.hasUnsavedChanges() == true }
+
+    /** One change, one undo step named [what]; the pages drawn again. */
+    fun edit(what: String, change: (com.artifex.mupdf.fitz.PDFDocument) -> Unit) = synchronized(this) {
+        val p = pdf ?: error("This file cannot be edited.")
+        WriterLog.i("PDF: $what")
+        p.beginOperation(what)
+        try { change(p) } finally { p.endOperation() }
+        changed()
+    }
+    fun undo() = synchronized(this) { if (canUndo) { pdf?.undo(); changed() } }
+    fun redo() = synchronized(this) { if (canRedo) { pdf?.redo(); changed() } }
+    private fun changed() { cache.evictAll(); sizes = readSizes() }
+
+    /** Pages [pages] turned by [by] degrees (90 right, -90 left). */
+    fun rotate(pages: Collection<Int>, by: Int) = edit("Rotate") { p ->
+        pages.forEach { i -> val o = p.findPage(i); o.put("Rotate", ((o.getInheritable("Rotate").asInteger() + by) % 360 + 360) % 360) }
+    }
+    fun delete(pages: Collection<Int>) = edit("Delete pages") { p -> pages.sortedDescending().forEach { p.deletePage(it) } }
+    /** The pages in a new order: [order][k] is the page that goes k-th. */
+    fun move(order: List<Int>) = edit("Move pages") { p -> p.rearrangePages(order.toIntArray()) }
+    /** An empty page at [at], the size of the one beside it. */
+    fun insertBlank(at: Int) = edit("Blank page") { p ->
+        val s = sizes.getOrNull(at.coerceAtMost(sizes.lastIndex).coerceAtLeast(0)) ?: Size(595f, 842f)
+        p.insertPage(at, p.addPage(com.artifex.mupdf.fitz.Rect(0f, 0f, s.width, s.height), 0, p.newDictionary(), ""))
+    }
+    /** Another PDF's pages at [at] (Combine): how many came. */
+    fun insertFile(at: Int, other: File): Int {
+        val src = com.artifex.mupdf.fitz.Document.openDocument(other.path)
+        try {
+            if (src.needsPassword()) error("That PDF has a password.")
+            val o = src.asPDF() ?: error("That file is not a PDF.")
+            val n = o.countPages()
+            edit("Insert ${other.name}") { p -> repeat(n) { k -> p.graftPage(at + k, o, k) } }
+            return n
+        } finally { src.destroy() }
+    }
+    /** Pages [pages] as a PDF of their own in [to] (Extract). */
+    fun extract(pages: List<Int>, to: File) = synchronized(this) {
+        val p = pdf ?: error("This file cannot be edited.")
+        val out = com.artifex.mupdf.fitz.PDFDocument()
+        try { pages.forEachIndexed { k, i -> out.graftPage(k, p, i) }; out.save(to.path, "garbage,compress") } finally { out.destroy() }
+    }
+
+    /**
+     * Saved over [file] (or into [to]): the changes appended to the bytes as they were opened (an incremental save, so all
+     * the file had stays, signatures too), through a copy beside it renamed over it; a file MuPDF had to repair is
+     * written whole. [base]: the file as opened, kept outside it for the next save.
+     */
+    fun save(base: File, to: File = file) = synchronized(this) {
+        val p = pdf ?: error("This file cannot be edited.")
+        if (!base.isFile) file.copyTo(base, overwrite = true)
+        val temp = File(to.parentFile, ".${to.name}.saving")
+        if (p.canBeSavedIncrementally()) { base.copyTo(temp, overwrite = true); p.save(temp.path, "incremental") }
+        else p.save(temp.path, "")
+        check(temp.renameTo(to)) { "Could not save the PDF." }
+        WriterLog.i("PDF: saved (${to.length() / 1024} KB)")
+    }
 
     private inline fun <T> page(i: Int, use: (com.artifex.mupdf.fitz.Page) -> T): T { val p = doc.loadPage(i); try { return use(p) } finally { p.destroy() } }
 
@@ -283,8 +353,79 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             .onSuccess { WriterLog.i("PDF: print") }.onFailure { WriterLog.e("PDF: print", it) }
     }
 
+    // —— editing (Plan.md § PDF): opened view only, Edit as Words' ——
+    var editing by remember { mutableStateOf(false) }
+    var version by remember { mutableStateOf(0) } // after each change: the pages drawn again
+    var organize by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
+    var showVersions by remember { mutableStateOf(false) }
+    val base = remember(file) { file?.let { File(File(context.cacheDir, "pdf-base").apply { mkdirs() }, "${it.absolutePath.hashCode().toUInt()}.pdf") } }
+    fun change(what: () -> Unit) {
+        runCatching(what).onFailure { WriterLog.e("PDF: change", it); Toast.makeText(context, it.message ?: "That could not be done.", Toast.LENGTH_LONG).show() }
+        version++
+    }
+    fun save(then: () -> Unit = {}) {
+        val d = doc ?: return; val f = file ?: return; val b = base ?: return
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { keepPrevious(context, f); d.save(b) } }
+            r.onFailure { WriterLog.e("PDF: save", it); Toast.makeText(context, "Could not save: ${it.message}", Toast.LENGTH_LONG).show() }
+                .onSuccess { version++; Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show(); then() }
+        }
+    }
+    // Pages › Insert PDF (Combine): another PDF's pages after the one shown
+    val pickPdf = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        val d = doc ?: return@rememberLauncherForActivityResult
+        if (uri == null) return@rememberLauncherForActivityResult
+        val at0 = at
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching {
+                val tmp = File(context.cacheDir, "pdf-insert.pdf")
+                context.contentResolver.openInputStream(uri)!!.use { i -> tmp.outputStream().use { i.copyTo(it) } }
+                d.insertFile(at0 + 1, tmp).also { tmp.delete() }
+            } }
+            r.onSuccess { n -> version++; Toast.makeText(context, "$n page${if (n == 1) "" else "s"} put in after page ${at0 + 1}", Toast.LENGTH_SHORT).show() }
+                .onFailure { WriterLog.e("PDF: insert", it); Toast.makeText(context, it.message ?: "Could not put that PDF in.", Toast.LENGTH_LONG).show() }
+        }
+    }
+    BackHandler(enabled = editing || organize) { if (organize) organize = false else if (doc?.dirty == true) leaving = true else editing = false }
+
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     var pages by remember { mutableStateOf(false) } // a phone's list of pages, brought out from the page label (asked 17 Oct)
+    // Pages › Organize: the scanner's grid (ReorderGrid), long-press and drag; Done puts the pages in that order, one undo step
+    val d1 = doc
+    if (organize && d1 != null) {
+        var order by remember { mutableStateOf(d1.sizes.indices.toList()) }
+        val density = LocalDensity.current
+        ReorderGrid(order.map { "p$it" }, { from, to -> order = order.toMutableList().apply { add(to, removeAt(from)) } },
+            open = { k -> organize = false; scope.launch { delay(50); goTo(k) } }, back = { organize = false }, title = "Organize",
+            actions = { RibbonButton("Done", MaterialTheme.colorScheme.onBackground, R.drawable.ic_check) {
+                if (order != d1.sizes.indices.toList()) change { d1.move(order) }
+                organize = false
+            } }) { k, m -> PdfPage(d1, order[k], with(density) { 160.dp.roundToPx() }, m.background(Color.White)) }
+        return
+    }
+    leaving.takeIf { it }?.let {
+        androidx.compose.material3.AlertDialog(onDismissRequest = { leaving = false }, title = { Text("Save the changes?") },
+            text = { Text("The file as it was stays in Versions.") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { leaving = false; save { editing = false } }) { Text("Save") } },
+            dismissButton = { Row {
+                androidx.compose.material3.TextButton(onClick = {
+                    leaving = false; editing = false
+                    // not saved: the file read again as it is
+                    val f = file; doc?.close(); doc = null; base?.delete()
+                    if (f != null) scope.launch { withContext(Dispatchers.IO) { runCatching { PdfDoc(f, password) } }.onSuccess { doc = it; version++ } }
+                }) { Text("Don't save") }
+                androidx.compose.material3.TextButton(onClick = { leaving = false }) { Text("Cancel") }
+            } })
+    }
+    if (showVersions) file?.let { f -> VersionsDialog(f, "", { showVersions = false }, about = "The file as it was before a save. Tapping one puts it back at once; the file as it is now goes into this list.") { v ->
+        showVersions = false
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { keepPrevious(context, f); doc?.close(); v.copyTo(f, overwrite = true); base?.delete() } }
+            withContext(Dispatchers.IO) { runCatching { PdfDoc(f, password) } }.onSuccess { doc = it; version++ }
+            Toast.makeText(context, "That version is back", Toast.LENGTH_SHORT).show()
+        }
+    } }
     Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B))) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.statusBarsPadding()) {
@@ -292,8 +433,18 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                     IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
                     Column(Modifier.weight(1f)) {
                         Text(file?.name ?: "PDF", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        doc?.let { Text("${it.sizes.size} page${if (it.sizes.size == 1) "" else "s"} · View only", style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f)) }
+                        doc?.let { Text("${it.sizes.size} page${if (it.sizes.size == 1) "" else "s"} · ${if (editing) if (version >= 0 && it.dirty) "Not saved" else "Editing" else "View only"}", style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f)) }
                     }
+                    val d0 = doc
+                    if (editing && d0 != null) {
+                        key(version) {
+                            Tool(R.drawable.ic_undo, "Undo", islandContentColor(), enabled = d0.canUndo) { change { d0.undo() } }
+                            Tool(R.drawable.ic_redo, "Redo", islandContentColor(), enabled = d0.canRedo) { change { d0.redo() } }
+                            Tool(R.drawable.ic_save, "Save", islandContentColor(), enabled = d0.dirty) { save() }
+                        }
+                        Tool(R.drawable.ic_check, "Done", islandContentColor()) { if (d0.dirty) leaving = true else editing = false }
+                    } else {
+                    if (d0?.editable == true) RibbonButton("Edit", islandContentColor(), R.drawable.ic_edit) { editing = true; WriterLog.i("PDF: edit") }
                     if (Pdf.hasText && doc != null) IconButton(onClick = { finding = !finding; if (!finding) matches = null }) {
                         Icon(painterResource(R.drawable.ic_search), contentDescription = "Find", tint = if (finding) PDF_RED else islandContentColor()) }
                     FavouriteHeart(file, islandContentColor()) // a tablet or bigger: the Office home's Favourites (the user, 18 Oct)
@@ -312,8 +463,11 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_open_with), contentDescription = null) })
                                 fav?.let { h -> DropdownMenuItem({ Text(if (h.on) "Remove from favourites" else "Add to favourites") }, { more = false; h.toggle() },
                                     leadingIcon = { Icon(painterResource(if (h.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = null) }) }
+                                if (versions(context, f).isNotEmpty()) DropdownMenuItem({ Text("Versions") }, { more = false; showVersions = true },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) })
                             }
                         }
+                    }
                     }
                 }
                 if (finding) {
@@ -337,7 +491,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                 failed != null -> Text(failed!!, color = Color.White, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 d == null -> Text("Opening…", color = Color.LightGray, modifier = Modifier.align(Alignment.Center))
                 d.sizes.isEmpty() -> Text("This PDF has no pages.", color = Color.White, modifier = Modifier.align(Alignment.Center))
-                else -> Row(Modifier.fillMaxSize()) {
+                else -> key(version) { Row(Modifier.fillMaxSize()) {
                     val density = LocalDensity.current
                     // a tablet: the pages small at the side, the one shown marked, tapped to go to it; a phone: the same, narrower, when asked for
                     if (wide || pages) {
@@ -399,7 +553,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                             }
                         }
                     }
-                }
+                } }
             }
             // on a phone the label is also the button for the list of pages
             if (d != null && d.sizes.isNotEmpty()) Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = if (pages) PDF_RED else Color.White, shape = CircleShape,
@@ -408,6 +562,36 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                     if (!wide) Icon(painterResource(R.drawable.ic_view_grid), contentDescription = if (pages) "Hide the pages" else "Show the pages", modifier = Modifier.padding(end = 8.dp).size(18.dp))
                     Text("Page ${(at + 1).coerceAtMost(d.sizes.size)} of ${d.sizes.size}", style = MaterialTheme.typography.labelLarge)
                 }
+            }
+        }
+        // the ribbon while editing, at the bottom as Slides' (a tablet: the floating island; a phone: across the bottom)
+        val d = doc
+        if (editing && d != null) {
+            val w = Color.White
+            Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
+                OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) { Column {
+                    OfficeTabRow(listOf("Pages"), "Pages", w, PDF_RED, {})
+                    RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                        val page = at
+                        RibbonButton("Organize", w, R.drawable.ic_view_grid) { organize = true }
+                        RibbonDivider(w)
+                        RibbonButton("Rotate left", w, R.drawable.ic_rotate_left) { change { d.rotate(listOf(page), -90) } }
+                        RibbonButton("Rotate right", w, R.drawable.ic_rotate_right) { change { d.rotate(listOf(page), 90) } }
+                        RibbonButton("Delete page", w, R.drawable.ic_delete, enabled = d.sizes.size > 1) { change { d.delete(listOf(page)) } }
+                        RibbonDivider(w)
+                        RibbonButton("Blank page", w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
+                        RibbonButton("Insert PDF", w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
+                        RibbonButton("Extract page", w, R.drawable.ic_copy) {
+                            val f = file ?: return@RibbonButton
+                            scope.launch {
+                                val to = generateSequence(1) { it }.let { _ -> var n = 0; var t: File; do { n++; t = File(f.parentFile, "${f.nameWithoutExtension} (page ${page + 1}${if (n > 1) " $n" else ""}).pdf") } while (t.exists()); t }
+                                withContext(Dispatchers.IO) { runCatching { d.extract(listOf(page), to) } }
+                                    .onSuccess { Toast.makeText(context, "Saved as ${to.name}", Toast.LENGTH_LONG).show() }
+                                    .onFailure { WriterLog.e("PDF: extract", it); Toast.makeText(context, it.message ?: "Could not extract the page.", Toast.LENGTH_LONG).show() }
+                            }
+                        }
+                    }
+                } }
             }
         }
     }

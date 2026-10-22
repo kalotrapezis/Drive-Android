@@ -304,14 +304,14 @@ internal class MenuChoice(val label: String, val checked: Boolean = false, val e
 }
 
 /** File › Versions in Tables and Slides: the file as it was before each save (the last 3, [keepPrevious]); [open] one. */
-@Composable internal fun VersionsDialog(file: java.io.File, goBack: String, dismiss: () -> Unit, open: (java.io.File) -> Unit) {
+@Composable internal fun VersionsDialog(file: java.io.File, goBack: String, dismiss: () -> Unit, about: String? = null, open: (java.io.File) -> Unit) {
     val context = LocalContext.current
     val list = remember { versions(context, file) }
     val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
     AlertDialog(onDismissRequest = dismiss, title = { Text("Versions") },
         text = {
             Column {
-                Text(if (list.isEmpty()) "None yet. Each save keeps the file as it was before it, the last 3." else "The file as it was before a save. Opening one puts it in the editor; Save keeps it, $goBack.",
+                Text(if (list.isEmpty()) "None yet. Each save keeps the file as it was before it, the last 3." else about ?: "The file as it was before a save. Opening one puts it in the editor; Save keeps it, $goBack.",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
                 list.forEach { v ->
                     Row(Modifier.fillMaxWidth().clickable { open(v) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {

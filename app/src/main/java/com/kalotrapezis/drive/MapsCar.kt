@@ -140,13 +140,16 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             if (!compact) t.setNavigationInfo(RoutingInfo.Builder().setCurrentStep(CarStep.Builder(step.text)
                 .setManeuver(Maneuver.Builder(maneuver(step.sign)).setIcon(turnIcon(step.sign)).build())
                 .apply { if (step.street.isNotEmpty()) setRoad(step.street) }.build(), distance(p.toNext)).build())
-            val seconds = n.route.millis / 1000 * (p.left / n.route.metres.coerceAtLeast(1.0))
-            t.setDestinationTravelEstimate(TravelEstimate.Builder(distance(p.left),
+            val seconds = secondsLeft(n, p)
+            // the small card: Tetra's own bottom card instead of Android Auto's small bar (the user: "the bellow pill … bigger")
+            if (!compact) t.setDestinationTravelEstimate(TravelEstimate.Builder(distance(p.left),
                 DateTimeWithZone.create(System.currentTimeMillis() + (seconds * 1000).toLong(), TimeZone.getDefault()))
                 .setRemainingTimeSeconds(seconds.toLong()).build())
         }
         return t.build()
     }
+
+    private fun secondsLeft(n: Nav, p: Progress) = n.route.millis / 1000 * (p.left / n.route.metres.coerceAtLeast(1.0))
 
     private fun action(title: String, click: () -> Unit) = Action.Builder().setTitle(title).setOnClickListener(click).build()
     private fun icon(res: Int, click: () -> Unit) =
@@ -188,7 +191,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             onSurfaceDestroyed(c) // a new size comes as a new surface: the old display goes first
             val d = carContext.getSystemService(DisplayManager::class.java)
                 .createVirtualDisplay("Tetra Maps", c.width, c.height, c.dpi, surface, DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY)
-            display = d; size = c.width to c.height; surfaceW = c.width
+            display = d; size = c.width to c.height; surfaceW = c.width; surfaceH = c.height
             WriterLog.i("Maps car: surface ${c.width}×${c.height} at ${c.dpi} dpi")
             presentation = Presentation(carContext, d.display).apply {
                 MapLibre.getInstance(context)
@@ -198,6 +201,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 frame.addView(v)
                 u = c.height / 100f
                 frame.addView(turnPanel(context))
+                frame.addView(etaCard(context))
                 frame.addView(favesGrid(context))
                 frame.addView(speedSign(context), android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START))
                 setContentView(frame)
@@ -225,7 +229,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 val edge = (1.5f * u).toInt()
                 // the big side: at the screen's edge, past the cards; the small card: inside it (the surface reaches under the other app)
                 val left = if (compact) r.left + edge else edge; val right = if (compact || driverRight) w - r.right + edge else 0
-                (layoutParams as android.widget.FrameLayout.LayoutParams).setMargins(if (driverRight) 0 else left, r.top, if (driverRight) right else 0, h - r.bottom + if (compact) edge else 0); requestLayout()
+                (layoutParams as android.widget.FrameLayout.LayoutParams).setMargins(if (driverRight) 0 else left, r.top, if (driverRight) right else 0, h - r.bottom + if (compact) edge + (textPx * 1.4f + 2 * r.width() / 25).toInt() + edge else 0); requestLayout()
             } }
             map?.locationComponent?.takeIf { it.isLocationComponentActivated }
                 ?.paddingWhileTracking(doubleArrayOf(r.left.toDouble(), r.top + (if (compact) r.width() * 0.45 else 0.0), (w - r.right).toDouble(), (h - r.bottom).toDouble()))
@@ -314,6 +318,14 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     /** The card as wide as the part [r] shown, its arrow and words as big as that width allows. */
+    private var eta: android.widget.TextView? = null
+
+    private fun etaCard(c: android.content.Context) = android.widget.TextView(c).also { eta = it }.apply {
+        gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); typeface = android.graphics.Typeface.DEFAULT_BOLD
+        background = android.graphics.drawable.GradientDrawable().apply { setColor(0xF0303134.toInt()); cornerRadius = 3 * u }
+        visibility = android.view.View.GONE
+    }
+
     private fun sizePanel(r: Rect, w: Int) {
         val px = android.util.TypedValue.COMPLEX_UNIT_PX
         val width = r.width(); val pad = width / 25
@@ -331,6 +343,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         panelText?.setTextSize(px, textPx)
         panelHint?.setTextSize(px, smallPx)
+        // the bottom card: the card's width, a little less tall than the turn card
+        eta?.apply {
+            setTextSize(px, textPx); setPadding(pad, pad, pad, pad)
+            layoutParams = android.widget.FrameLayout.LayoutParams(width - 2 * pad, -2, android.view.Gravity.BOTTOM or android.view.Gravity.START)
+                .apply { setMargins(r.left + pad, 0, 0, surfaceH - r.bottom + pad) }
+        }
     }
 
     // —— no directions running: the places as cards over the map. The small card: the phone Home's 8, 2 by 4 (the user, 22
@@ -345,6 +363,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private var gridKey = ""
     private var shown: Rect? = null
     private var surfaceW = 0
+    private var surfaceH = 0
 
     private fun favesGrid(c: android.content.Context) = android.widget.LinearLayout(c).also { faves = it }.apply {
         orientation = android.widget.LinearLayout.VERTICAL
@@ -405,7 +424,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         gridKey = if (grid) key else ""
         faves?.visibility = if (grid) android.view.View.VISIBLE else android.view.View.GONE
         panel?.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
+        eta?.visibility = panel?.visibility ?: android.view.View.GONE
         if (!on) return
+        val left = secondsLeft(n!!, p!!).toLong()
+        val time = java.time.LocalTime.now().plusSeconds(left).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+        eta?.text = "${if (left >= 3600) "${left / 3600} h ${left % 3600 / 60} min" else "${(left + 59) / 60} min"} · $time · ${metresText(p.left)}"
         val step = n!!.route.steps[p!!.next]
         panelArrow?.apply { setImageResource(if (step.sign == 4) R.drawable.ic_place else R.drawable.ic_navigation); rotation = if (step.sign == 4) 0f else turnDegrees(step.sign) }
         panelDistance?.text = metresText(p.toNext)

@@ -336,3 +336,19 @@ class MapsCheckTest {
         assertEquals(listOf("b2"), MapsCheck.load(root).map { it.id })
     }
 }
+
+/** Trips (A → B → C) as files in Tetra/Maps/Trips. */
+class MapsTripTest {
+    @Test fun trips() {
+        val root = Files.createTempDirectory("trips").toFile()
+        val t = Trip("t1", "Σχολεία", listOf(Place("", "Πύργος", 37.36, 22.58), Place("", "Πύλη", 37.32, 22.53), Place("", "", 37.30, 22.60)))
+        MapsFiles.saveTrip(root, t)
+        File(root, "Trips/bad.json").writeText("{\"stops\":[]}")
+        val back = MapsFiles.trips(root)
+        assertEquals(1, back.size)
+        assertEquals(listOf("Πύργος", "Πύλη", "Stop C"), back[0].stops.map { it.name })
+        assertEquals(22.53, back[0].stops[1].lng, 1e-9)
+        MapsFiles.deleteTrip(root, back[0])
+        assertTrue(MapsFiles.trips(root).isEmpty())
+    }
+}

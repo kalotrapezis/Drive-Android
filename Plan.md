@@ -1846,6 +1846,16 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       card (beside Spotify): with directions the next turn only, big (arrow, distance, street) and the limit; without, the
       Home's 8 places 2 by 4 (Android Auto opens Tetra on a tap there, so they show and do not start a route). The graph is
       opened as the car connects (the first route took 25 s).
+      Phone and car one trip (CarLink, 22 Oct): with the car connected a place picked on the phone starts on the car's
+      screen and the phone shows those directions with Stop. In directions the arrival card holds End, Routes (up to 3, with
+      tolls), Stop (a place on the way, then on), and Parking — only when the destination has ΑμεΑ spots within Settings ›
+      Maps' distance (500 m–2 km), said ~1.5 km before. Tolls: "€ n" in the arrival card, said at the start and ~1 km
+      before each, € dots on the route.
+- [x] Trips (22 Oct; the user: "a plan mode for the phone … how many stops … point to the 1st stop, the second … saved as
+      a trip … start automaticaly for the next A B C D"): Directions › Plan a trip asks how many (2–10), then each stop in
+      turn (map tap, Search or Saved → "➕ Stop B"), lettered on the map; Save / Save and go. Files in Tetra/Maps/Trips. A
+      stop reached: the next leg starts when the car moves on (15 km/h or 150 m), kept 12 h in MapsPrefs.pendingTrip so it
+      survives the engine off; with the car connected the trip runs on its screen (Trips among the car's cards too).
       For the drive (23 Oct): the speed column, € Tolls, wrong way and No GPS while moving; the voice over the car's speakers
       and the important-only mode; how the user's car shows the small card (an ✕ there if it fits); updateTrip for the
       cluster/HUD; the map dark at night (carContext.isDarkMode) — the user prefers the light map, ask; lanes.

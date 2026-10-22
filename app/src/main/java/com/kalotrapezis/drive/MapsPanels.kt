@@ -184,12 +184,29 @@ internal enum class MapsTab(val label: String, val icon: Int) {
 
 /** Directions: how to go, then where — a search, or one of Home's places and the car. */
 @Composable internal fun NavigatePanel(mode: String, setMode: (String) -> Unit, rolling: Boolean, query: String, setQuery: (String) -> Unit, results: List<Poi>,
-    quick: List<Place>, distance: (Poi) -> Double?, goPoi: (Poi) -> Unit, goPlace: (Place) -> Unit) = MapsPanel {
+    quick: List<Place>, distance: (Poi) -> Double?, goPoi: (Poi) -> Unit, goPlace: (Place) -> Unit,
+    trips: List<Trip> = emptyList(), plan: () -> Unit = {}, startTrip: (Trip) -> Unit = {}, deleteTrip: (Trip) -> Unit = {}) = MapsPanel {
     Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Place.MODES.forEach { m -> FilterChip(mode == m, { setMode(m) }, label = { Text(modeLabelOf(m, rolling)) }, colors = chipColors(),
             leadingIcon = { Icon(painterResource(modeIcon(m, rolling)), contentDescription = null, modifier = Modifier.size(16.dp)) }) }
     }
     MapsSearchField(query, "Where to?", setQuery)
+    // trips: several stops, one after the other (Plan a trip asks how many, then each in turn)
+    if (query.isBlank()) {
+        OutlinedButton(onClick = plan, modifier = Modifier.padding(horizontal = 12.dp)) { Text("🧭 Plan a trip", color = Color.White) }
+        trips.forEach { t ->
+            Row(Modifier.fillMaxWidth().clickable { startTrip(t) }.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("🧭", style = MaterialTheme.typography.titleMedium)
+                Column(Modifier.weight(1f)) {
+                    Text(t.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(t.stops.withIndex().joinToString(" → ") { (i, p) -> "${Trip.letter(i)} ${p.name}" }, style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.White.copy(alpha = 0.7f))
+                }
+                IconButton(onClick = { deleteTrip(t) }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete the trip") }
+            }
+        }
+    }
     if (query.isNotBlank()) LazyColumn { items(results) { p -> PoiRow(p, distance(p)) { goPoi(p) } } }
     else if (quick.isEmpty()) Text("Tap the map or a place on it for directions there, or search above.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
     else LazyColumn {
@@ -286,6 +303,32 @@ internal fun modeLabelOf(mode: String, rolling: Boolean) = when (mode) { "foot" 
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { save(l.copy(id = l.id.ifEmpty { MapsFiles.newId() }, name = name.trim(), emoji = emoji.trim())) }) { Text("Save") } },
         dismissButton = { Row {
             delete?.let { TextButton(onClick = it) { Text("Delete list") } }
+            TextButton(onClick = dismiss) { Text("Cancel") }
+        } })
+}
+
+/** Plan a trip: how many stops (the user, 22 Oct: "questions like how many stops you will do 5"). */
+@Composable internal fun TripCountDialog(dismiss: () -> Unit, pick: (Int) -> Unit) = AlertDialog(onDismissRequest = dismiss,
+    title = { Text("Plan a trip") },
+    text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("How many stops? Then you point to each, A, B, C… on the map, in Search or in Saved.")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            (2..10).forEach { n -> OutlinedButton(onClick = { pick(n) }) { Text("$n") } }
+        }
+    } },
+    confirmButton = {}, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+
+/** The trip's stops all pointed to: its name, then Save, or Save and go. */
+@Composable internal fun TripNameDialog(stops: List<Place>, dismiss: () -> Unit, save: (String, Boolean) -> Unit) {
+    var name by remember { mutableStateOf(stops.joinToString(" → ") { it.name.substringBefore(",") }.take(60)) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Save the trip") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            stops.forEachIndexed { i, p -> Text("${Trip.letter(i)}  ${p.name}", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        } },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { save(name.trim(), true) }) { Text("Save and go") } },
+        dismissButton = { Row {
+            TextButton(enabled = name.isNotBlank(), onClick = { save(name.trim(), false) }) { Text("Save") }
             TextButton(onClick = dismiss) { Text("Cancel") }
         } })
 }

@@ -64,6 +64,30 @@ internal data class Place(
     }
 }
 
+/**
+ * A trip: stops gone to in order, A, B, C… (the user, 22 Oct: "a plan mode for the phone … how many stops you will do 5,
+ * point to the 1st stop, the second stop … can be saved as a trip. When we continue from a stop … start automaticaly for
+ * the next"). A file in Tetra/Maps/Trips, so it syncs and desktop Tetra can read it.
+ */
+internal data class Trip(val id: String, val name: String, val stops: List<Place>) {
+    fun json(): String = JSONObject().put("id", id).put("name", name).put("stops", org.json.JSONArray(stops.map {
+        JSONObject().put("name", it.name).put("lat", it.lat).put("lng", it.lng)
+    })).toString(1) + "\n"
+
+    companion object {
+        fun letter(i: Int) = ('A' + i % 26).toString()
+        fun parse(text: String, file: File? = null): Trip? = runCatching {
+            val o = JSONObject(text)
+            val a = o.getJSONArray("stops")
+            val stops = (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { s ->
+                val lat = s.getDouble("lat"); val lng = s.getDouble("lng")
+                if (lat !in -90.0..90.0 || lng !in -180.0..180.0) null else Place("", s.optString("name").ifEmpty { "Stop ${letter(i)}" }, lat, lng)
+            } }
+            if (stops.isEmpty()) null else Trip(o.optString("id").ifEmpty { file?.nameWithoutExtension ?: return null }, o.optString("name").ifEmpty { "Trip" }, stops)
+        }.getOrNull()
+    }
+}
+
 internal object MapsFiles {
     const val FOLDER = "Maps"
     const val MAP = "greece.pmtiles"
@@ -73,6 +97,7 @@ internal object MapsFiles {
     const val SLOTS = 12
     const val PHONE_SLOTS = 8 // half-size tiles on a phone (the user, 21 Oct: "half the size, so we can have 8")
     const val LISTS = "Lists"
+    const val TRIPS = "Trips"
     /** Where the car is: one place with this id ("My car"), saved over by the next parking. */
     const val PARKING = "parking"
 
@@ -129,6 +154,21 @@ internal object MapsFiles {
         check(part.renameTo(to)) { "Could not save the list." }
         return l.copy(file = to)
     }
+
+    fun trips(root: File): List<Trip> = File(root, TRIPS).listFiles().orEmpty()
+        .filter { it.isFile && !it.name.startsWith(".") && it.name.endsWith(".json", true) }
+        .mapNotNull { f -> runCatching { Trip.parse(f.readText(), f) }.getOrNull() }
+        .sortedBy { it.name.lowercase() }
+
+    fun saveTrip(root: File, t: Trip) {
+        val dir = File(root, TRIPS).apply { mkdirs() }
+        val to = File(dir, "${t.id}.json")
+        val part = File(dir, ".${to.name}.part")
+        part.writeText(t.json())
+        check(part.renameTo(to)) { "Could not save the trip." }
+    }
+
+    fun deleteTrip(root: File, t: Trip) { File(File(root, TRIPS), "${t.id}.json").delete() }
 
     /** The list goes; its places stay (they keep its id, which no longer names a list and is passed over). */
     fun deleteList(root: File, l: PlaceList) { File(File(root, LISTS), "${l.id}.json").delete() }

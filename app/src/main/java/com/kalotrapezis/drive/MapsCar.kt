@@ -96,6 +96,7 @@ internal object CarLink {
     val nav = kotlinx.coroutines.flow.MutableStateFlow<Nav?>(null)
     var go: ((Place) -> Unit)? = null
     var stop: (() -> Unit)? = null
+    var goTrip: ((List<Place>) -> Unit)? = null
 }
 
 /** The map, the next turn over it while directions run, and Places / Nearby / Stop. */
@@ -448,6 +449,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         val recent = MapsPrefs.recent(carContext).filter { r -> all.none { metresBetween(it.lat, it.lng, r.lat, r.lng) < 50 } }
         return mine + Card("Favourites", R.drawable.ic_star, "${all.size - home.size} more") { screenManager.push(FavouritesScreen()) } +
             Card("Nearby", R.drawable.ic_search, "Fuel, pharmacy…") { screenManager.push(KindsScreen()) } +
+            (MapsFiles.trips(root).takeIf { it.isNotEmpty() }?.let { ts -> listOf(Card("Trips", R.drawable.ic_call_split, "${ts.size} saved") { screenManager.push(TripsScreen()) }) } ?: emptyList()) +
             Card("ΑμεΑ parking", R.drawable.ic_accessible, "Near me") { screenManager.push(FoundScreen(MapsSearch.PILLS.first { it.key == "disabled_parking" })) } +
             recent.map { p -> Card(p.name, R.drawable.ic_history, away(p.lat, p.lng)) { pick(p) } }
     }
@@ -642,6 +644,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     override fun onCreate(owner: LifecycleOwner) {
         CarLink.go = { p -> WriterLog.i("Maps car: from the phone, ${p.name}"); pick(p) }
         CarLink.stop = { stop() }
+        CarLink.goTrip = { stops -> startTrip(stops) }
+        // a trip stopped at one of its stops (the engine off there): the next leg starts when the car moves on
+        MapsPrefs.pendingTrip(carContext)?.let { (tr, i) ->
+            trip = tr; tripLetter = i; queue = tr.stops.drop(i + 1); waitNext = tr.stops[i]; stoppedAt = null
+            WriterLog.i("Maps car: the trip goes on at ${Trip.letter(i)}")
+        }
         CarLink.connected.value = true
         // the graph opened now, so the first route does not wait for it (it took 25 s on 22 Oct)
         lifecycleScope.launch(Dispatchers.IO) { if (File(graphDir, "properties").isFile) runCatching { MapsRouting.open(graphDir) } }
@@ -667,7 +675,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     /** The car disconnected: it is parked where the last fix was (Settings › Maps › Save where I park). */
     override fun onDestroy(owner: LifecycleOwner) {
-        CarLink.connected.value = false; CarLink.nav.value = null; CarLink.go = null; CarLink.stop = null
+        CarLink.connected.value = false; CarLink.nav.value = null; CarLink.go = null; CarLink.stop = null; CarLink.goTrip = null
         carContext.getSystemService(LocationManager::class.java)?.removeUpdates(listener)
         if (nav != null) navigation.navigationEnded()
         here?.takeIf { MapsPrefs.autoPark(carContext) && System.currentTimeMillis() - it.time < 5 * 60_000 }?.let { park(it, "Android Auto disconnected") }
@@ -689,6 +697,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             lifecycleScope.launch { limit = withContext(Dispatchers.IO) { runCatching { MapsRouting.limitAt(graphDir, loc.latitude, loc.longitude) }.getOrNull() }; showSpeed() }
         }
         showSpeed()
+        waitNext?.let { next ->
+            if ((loc.hasSpeed() && loc.speed > 4f) || stoppedAt?.let { metresBetween(it.latitude, it.longitude, loc.latitude, loc.longitude) > 150 } == true) {
+                waitNext = null; MapsPrefs.setPendingTrip(carContext, null); go(next)
+            }
+        }
         val n = nav ?: return
         val (p, i) = progress(n.route, n.cum, loc.latitude, loc.longitude, n.index)
         if (p.off > 50.0) {
@@ -702,8 +715,16 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         if (p.left < 50.0 || metresBetween(loc.latitude, loc.longitude, n.target.lat, n.target.lng) < 60.0) {
             if ("n${n.route.steps.lastIndex}" !in n.said) say(n.route.steps.lastOrNull()?.text ?: "", important = true)
-            // a stop on the way reached: on to the trip's end
-            after?.let { next -> after = null; CarToast.makeText(carContext, "On to ${next.name}", CarToast.LENGTH_LONG).show(); go(next); return }
+            // a stop reached with more to go (a trip's, or one added on the way): the next leg starts when the car moves on
+            if (queue.isNotEmpty()) {
+                val next = queue.first(); queue = queue.drop(1)
+                val letter = tripLetter?.let { Trip.letter(it + 1) }.orEmpty(); tripLetter = tripLetter?.plus(1)
+                stop(keepTrip = true)
+                waitNext = next; stoppedAt = loc
+                trip?.let { tr -> MapsPrefs.setPendingTrip(carContext, tr, tr.stops.size - 1 - queue.size) }
+                say(t("Επόμενη στάση $letter: ${next.name}, μόλις ξεκινήσετε", "Next stop $letter: ${next.name}, when you drive on"), important = true)
+                CarToast.makeText(carContext, "Next: ${next.name}", CarToast.LENGTH_LONG).show(); return
+            }
             stop()
             if (MapsPrefs.autoPark(carContext)) park(loc, "a car trip ended")
             CarToast.makeText(carContext, "Arrived: ${n.target.name}", CarToast.LENGTH_LONG).show(); return
@@ -743,14 +764,27 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     // —— directions ——
 
     /** By car to [target], the fastest way, from the last fix. */
-    /** Where to go on after a stop on the way (fuel, ΑμεΑ parking…): the trip's own end. */
-    private var after: Place? = null
+    /** The stops still to go after the one being driven to (a trip's, or the trip's end after a stop on the way). */
+    private var queue: List<Place> = emptyList()
+    private var tripLetter: Int? = null // a trip's: the stop being driven to, A = 0
+    private var trip: Trip? = null
+    private var waitNext: Place? = null // a stop reached: the next leg, started when the car moves on
+    private var stoppedAt: Location? = null
 
     /** A stop on the way: there first, then on to where the trip was going. */
     private fun pickStop(p: Place) {
-        after = nav?.target ?: after
-        WriterLog.i("Maps car: a stop on the way, then ${after?.name}")
+        nav?.target?.let { queue = listOf(it) + queue }
+        WriterLog.i("Maps car: a stop on the way, then ${queue.firstOrNull()?.name}")
         screenManager.popToRoot(); go(p)
+    }
+
+    /** A trip, A → B → C…: to A now, each next one once the car moves on from the last. */
+    private fun startTrip(stops: List<Place>, from: Int = 0) {
+        if (from !in stops.indices) return
+        WriterLog.i("Maps car: a trip of ${stops.size} stops, from ${Trip.letter(from)}")
+        stop(); trip = Trip("run", "Trip", stops); queue = stops.drop(from + 1); tripLetter = from
+        MapsPrefs.setPendingTrip(carContext, null)
+        screenManager.popToRoot(); go(stops[from])
     }
 
     /** By car to [target]: [chosen] when one of the other routes was picked, else the fastest from the last fix. */
@@ -793,8 +827,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
     }
 
-    fun stop() {
-        after = null
+    fun stop(keepTrip: Boolean = false) {
+        if (!keepTrip) { queue = emptyList(); tripLetter = null; waitNext = null; trip = null; MapsPrefs.setPendingTrip(carContext, null) }
         if (nav == null) return
         nav = null; tolls = emptyList(); tollsAhead = 0; showPlaces = true; parkingAsked = null; showParking(0)
         (map?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(emptyList()))
@@ -965,6 +999,18 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     // —— Nearby: what a driver looks for, then the nearest of it ——
+
+    /** The saved trips (planned on the phone): one picked starts at its A. */
+    private inner class TripsScreen : Screen(carContext) {
+        override fun onGetTemplate(): Template {
+            val items = ItemList.Builder().setNoItemsMessage("No trips yet: plan one in Tetra Maps on the phone")
+            MapsFiles.trips(root).take(limit()).forEach { tr ->
+                items.addItem(Row.Builder().setTitle(tr.name).addText(tr.stops.withIndex().joinToString(" → ") { (i, p) -> "${Trip.letter(i)} ${p.name}" })
+                    .setOnClickListener { startTrip(tr.stops) }.build())
+            }
+            return ListTemplate.Builder().setTitle("Trips").setHeaderAction(Action.BACK).setSingleList(items.build()).build()
+        }
+    }
 
     /** The ways to [target] from here, fastest first, with their roads and tolls: one picked goes instead. */
     private inner class RoutesScreen(private val target: Place) : Screen(carContext) {

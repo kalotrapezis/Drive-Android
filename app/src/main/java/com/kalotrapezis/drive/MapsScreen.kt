@@ -226,6 +226,21 @@ internal object MapsPrefs {
         val all = listOf(p) + recent(c).filter { metresBetween(it.lat, it.lng, p.lat, p.lng) > 50 }
         prefs(c).edit().putString("recent", all.take(20).joinToString("\n") { "${it.name.replace(Regex("[\t\n]"), " ")}\t${it.lat}\t${it.lng}" }).apply()
     }
+    /**
+     * A trip stopped between two stops: the trip and the next stop's index, kept for 12 hours, so the next leg still starts
+     * after the engine (and Android Auto) was off at a stop, or the map was closed.
+     */
+    fun pendingTrip(c: Context): Pair<Trip, Int>? {
+        val p = prefs(c)
+        if (System.currentTimeMillis() - p.getLong("trip_at", 0) > 12 * 3600_000L) return null
+        val t = Trip.parse(p.getString("trip", null) ?: return null) ?: return null
+        return (t to p.getInt("trip_next", 0)).takeIf { it.second in t.stops.indices }
+    }
+    fun setPendingTrip(c: Context, t: Trip?, next: Int = 0) = prefs(c).edit().apply {
+        if (t == null) remove("trip").remove("trip_next").remove("trip_at")
+        else putString("trip", t.json()).putInt("trip_next", next).putLong("trip_at", System.currentTimeMillis())
+    }.apply()
+
     /** How far from the destination ΑμεΑ parking is looked for, in metres (the user, 22 Oct: "2km 1.5km 1 and 500m"). */
     fun parkingRadius(c: Context) = prefs(c).getInt("parking_radius", 500)
     fun setParkingRadius(c: Context, m: Int) = prefs(c).edit().putInt("parking_radius", m).apply()
@@ -275,6 +290,19 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     var navMode by remember { mutableStateOf("car") }
     var shownList by remember { mutableStateOf<String?>(null) }
     var lists by remember { mutableStateOf(MapsFiles.lists(root)) }
+    // trips (Trip): planning one — how many stops, the ones pointed to so far — and one running, the next stop waiting
+    var trips by remember { mutableStateOf(MapsFiles.trips(root)) }
+    var askCount by remember { mutableStateOf(false) }
+    var planCount by remember { mutableStateOf(0) }
+    var plan by remember { mutableStateOf<List<Place>?>(null) }
+    var naming by remember { mutableStateOf(false) }
+    var tripRun by remember { mutableStateOf<Pair<Trip, Int>?>(null) } // the trip and the stop being driven to
+    var nextStop by remember { mutableStateOf<Place?>(null) } // a stop reached: the next leg starts when the car moves on
+    var stoppedAt by remember { mutableStateOf<Location?>(null) }
+    LaunchedEffect(Unit) {
+        // a trip left between stops (the map closed, or done in the car): its next leg waits here
+        if (go == null && !CarLink.connected.value) MapsPrefs.pendingTrip(context)?.let { (t, i) -> tripRun = t to i; nextStop = t.stops[i] }
+    }
     var listEditing by remember { mutableStateOf<PlaceList?>(null) }
     var detail by remember { mutableStateOf<Poi?>(null) } // what the search list knows of the place shown
     var all by remember { mutableStateOf<List<Poi>>(emptyList()) }
@@ -411,6 +439,17 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         }
     }
 
+    /** A saved trip from its first stop: on the car's screen when the car is connected. */
+    fun startTrip(t: Trip) {
+        WriterLog.i("Maps: trip ${t.name}, ${t.stops.size} stops")
+        tab = null; nextStop = null
+        if (CarLink.connected.value && CarLink.goTrip != null) {
+            CarLink.goTrip?.invoke(t.stops); Toast.makeText(context, "On the car's screen: ${t.name}", Toast.LENGTH_SHORT).show(); return
+        }
+        tripRun = t to 0
+        startNav(t.stops[0], "car")
+    }
+
     /** Each fix: where on the route, what to say, and a new route when off it for three fixes in a row. */
     fun onFix(loc: Location) {
         if (loc.provider != "tetra-reckoning") { lastReal = loc; lastRealAt = android.os.SystemClock.elapsedRealtimeNanos(); reckoning = false }
@@ -425,6 +464,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         if (System.currentTimeMillis() - limitAsked > 2000 && File(graphDir, "properties").isFile) {
             limitAsked = System.currentTimeMillis()
             scope.launch { limit = withContext(Dispatchers.IO) { runCatching { MapsRouting.limitAt(graphDir, loc.latitude, loc.longitude) }.getOrNull() } }
+        }
+        // a trip's next leg: once moving (15 km/h) or 150 m from the stop
+        nextStop?.let { ns ->
+            if ((loc.hasSpeed() && loc.speed > 4f) || stoppedAt?.let { metresBetween(it.latitude, it.longitude, loc.latitude, loc.longitude) > 150 } == true) {
+                nextStop = null; MapsPrefs.setPendingTrip(context, null); startNav(ns, "car", loc)
+            }
         }
         val n = nav ?: return
         val (p, i) = progress(n.route, n.cum, loc.latitude, loc.longitude, n.index)
@@ -443,6 +488,14 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             WriterLog.i("Maps: arrived, ${p.left.toInt()} m left on the route")
             if ("n${n.route.steps.lastIndex}" !in said) say(n.route.steps.lastOrNull()?.text ?: "")
             stopNav()
+            // a trip's stop: the next one starts when the car moves on (the user: "When we comtinue from a stop … start automaticaly")
+            tripRun?.let { (t, i) ->
+                if (i < t.stops.lastIndex) {
+                    tripRun = t to i + 1; nextStop = t.stops[i + 1]; stoppedAt = loc; MapsPrefs.setPendingTrip(context, t, i + 1)
+                    say(if (lang == "en") "Stop ${Trip.letter(i)}. Next, ${Trip.letter(i + 1)}: ${t.stops[i + 1].name}, when you drive on"
+                        else "Στάση ${Trip.letter(i)}. Επόμενη, ${Trip.letter(i + 1)}: ${t.stops[i + 1].name}, μόλις ξεκινήσετε")
+                } else tripRun = null
+            }
             if (car && MapsPrefs.autoPark(context)) park(loc, "a car trip ended")
             Toast.makeText(context, "Arrived: ${n.target.name}", Toast.LENGTH_LONG).show(); return
         }
@@ -560,6 +613,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(2f)))
                 style.addLayer(SymbolLayer("tolls-sign", "tolls").withProperties(PropertyFactory.textField("€"), PropertyFactory.textFont(arrayOf("Noto Sans Medium")),
                     PropertyFactory.textSize(12f), PropertyFactory.textColor("#3E2723"), PropertyFactory.textAllowOverlap(true)))
+                // a trip's stops, lettered (being planned, or being driven)
+                style.addSource(GeoJsonSource("trip"))
+                style.addLayer(CircleLayer("trip-dot", "trip").withProperties(PropertyFactory.circleRadius(13f), PropertyFactory.circleColor("#E65100"),
+                    PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(2f)))
+                style.addLayer(SymbolLayer("trip-letter", "trip").withProperties(PropertyFactory.textField("{letter}"), PropertyFactory.textFont(arrayOf("Noto Sans Medium")),
+                    PropertyFactory.textSize(14f), PropertyFactory.textColor("#FFFFFF"), PropertyFactory.textAllowOverlap(true)))
                 style.addSource(GeoJsonSource("places"))
                 style.addLayer(SymbolLayer("places-dot", "places").withProperties(PropertyFactory.iconImage(Expression.get("icon")),
                     PropertyFactory.iconAllowOverlap(true)))
@@ -637,6 +696,12 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         (mapRef?.style?.getSource("added") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(added
             .filter { a -> places.none { metresBetween(it.lat, it.lng, a.lat, a.lng) < 30 } }
             .map { a -> Feature.fromGeometry(Point.fromLngLat(a.lng, a.lat)).apply { addStringProperty("name", a.title); addStringProperty("icon", markerOf(a.kind)) } }))
+    }
+    LaunchedEffect(mapRef, plan, tripRun) {
+        val stops = plan ?: tripRun?.first?.stops.orEmpty()
+        (mapRef?.style?.getSource("trip") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(stops.mapIndexed { i, p ->
+            Feature.fromGeometry(Point.fromLngLat(p.lng, p.lat)).apply { addStringProperty("letter", Trip.letter(i)) }
+        }))
     }
     LaunchedEffect(mapRef, places) {
         (mapRef?.style?.getSource("places") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(places.map { p ->
@@ -804,6 +869,30 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding().padding(12.dp).widthIn(max = 560.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             finding?.let { Pill(it) }
+            plan?.takeIf { it.size < planCount }?.let { pl ->
+                Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                        Text("🧭 Stop ${Trip.letter(pl.size)} of $planCount: tap it on the map, or find it in Search or Saved", style = MaterialTheme.typography.bodyMedium)
+                        if (pl.isNotEmpty()) Text(pl.withIndex().joinToString(" → ") { (i, p) -> "${Trip.letter(i)} ${p.name}" }, style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Row {
+                            if (pl.isNotEmpty()) TextButton(onClick = { plan = pl.dropLast(1) }) { Text("Undo", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
+                            if (pl.size >= 2) TextButton(onClick = { planCount = pl.size; naming = true }) { Text("Done", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
+                            TextButton(onClick = { plan = null }) { Text("Cancel", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
+                        }
+                    }
+                }
+            }
+            nextStop?.takeIf { nav == null }?.let { ns ->
+                Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                    Row(Modifier.padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("🧭 Next: ${tripRun?.let { Trip.letter(it.second) }.orEmpty()} ${ns.name}", style = MaterialTheme.typography.bodyMedium, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        TextButton(onClick = { nextStop = null; MapsPrefs.setPendingTrip(context, null); startNav(ns, "car") }) { Text("Go", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
+                        IconButton(onClick = { nextStop = null; tripRun = null; MapsPrefs.setPendingTrip(context, null) }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "End the trip", modifier = Modifier.size(18.dp)) }
+                    }
+                }
+            }
             askAmea?.let { (loc, at) ->
                 LaunchedEffect(at) { delay(20_000); if (askAmea?.second == at) askAmea = null }
                 val known = added.any { it.kind == "disabled_parking" && metresBetween(it.lat, it.lng, loc.latitude, loc.longitude) < 8 }
@@ -858,7 +947,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                         Icon(painterResource(if (muted) R.drawable.ic_volume_off else R.drawable.ic_volume_up), contentDescription = if (muted) "Voice on" else "Voice off")
                     }
                     Button(colors = panelButton(), onClick = {
-                        stopNav()
+                        stopNav(); tripRun = null; nextStop = null
                         if (n.mode == "car" && MapsPrefs.autoPark(context)) here?.let { park(it, "a car trip stopped") }
                     }) { Text("Stop") }
                     }
@@ -890,6 +979,13 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     { begin(pv.target, pv.mode, pv.routes[pv.chosen], here ?: pv.from) })
             } else if (s != null) {
                 val saved = s.id.isNotEmpty() && places.any { it.id == s.id }
+                plan?.let { pl ->
+                    Button(onClick = {
+                        val next = pl + s.copy(id = "", name = s.name.takeIf { it != "Dropped pin" } ?: address?.substringBefore(",") ?: "Stop ${Trip.letter(pl.size)}")
+                        plan = next; selected = null; detail = null
+                        if (next.size >= planCount) naming = true
+                    }, modifier = Modifier.fillMaxWidth(), colors = panelButton()) { Text("➕ Stop ${Trip.letter(pl.size)}: ${s.name}", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                }
                 PlaceCard(s, detail, address, saved, away(s.lat, s.lng), rolling, lists, go = { m -> startNav(s, m, choose = true) },
                     save = { editing = s.copy(name = if (s.name == "Dropped pin") "" else s.name) },
                     edit = { editing = s }, delete = { deleting = s }, close = { selected = null; detail = null },
@@ -950,7 +1046,9 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                     }
                     MapsTab.Navigate -> NavigatePanel(navMode, { navMode = it }, rolling, navQuery, { navQuery = it }, navResults,
                         MapsFiles.slots(places).filterNotNull() + places.filter { it.id == MapsFiles.PARKING }, { away(it.lat, it.lng) },
-                        { p -> tab = null; navQuery = ""; startNav(p.place(), navMode) }, { p -> tab = null; startNav(p, navMode) })
+                        { p -> tab = null; navQuery = ""; startNav(p.place(), navMode) }, { p -> tab = null; startNav(p, navMode) },
+                        trips, plan = { askCount = true }, startTrip = ::startTrip,
+                        deleteTrip = { t -> scope.launch { withContext(Dispatchers.IO) { MapsFiles.deleteTrip(root, t) }; trips = withContext(Dispatchers.IO) { MapsFiles.trips(root) } } })
                     null -> Unit
                 }
                 MapsIsland(tab) { t -> tab = if (tab == t) null else t }
@@ -977,6 +1075,18 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
             selected = r.getOrNull()
         }
     } }
+    if (askCount) TripCountDialog({ askCount = false }) { n -> askCount = false; planCount = n; plan = emptyList(); tab = null; selected = null }
+    if (naming) plan?.let { pl ->
+        TripNameDialog(pl, { naming = false }) { name, go ->
+            naming = false; plan = null
+            val t = Trip(MapsFiles.newId(), name, pl)
+            scope.launch {
+                withContext(Dispatchers.IO) { runCatching { MapsFiles.saveTrip(root, t) } }
+                trips = withContext(Dispatchers.IO) { MapsFiles.trips(root) }
+                if (go) startTrip(t)
+            }
+        }
+    }
     deleting?.let { p -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Delete ${p.name}?") },
         text = { Text(if (p.slot > 0) "It also leaves Home's Maps card." else "The place is removed on every device.") },
         confirmButton = { TextButton(onClick = {

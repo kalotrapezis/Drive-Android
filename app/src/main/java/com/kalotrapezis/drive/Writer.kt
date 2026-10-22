@@ -1068,6 +1068,26 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     BackHandler { back() }
     var choosingTemplate by remember { mutableStateOf(false) }
     // each card's Open: Android's picker for that kind only (asked 17 Oct); what is chosen opens in its own app
+    val photosScope = rememberCoroutineScope()
+    val photosContext = LocalContext.current
+    val photosToPdf = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        photosScope.launch {
+            val made = withContext(Dispatchers.IO) { runCatching {
+                val root = TetraFolder.root(android.os.Environment.getExternalStorageDirectory())
+                val name = "Photos " + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH.mm"))
+                ScanFiles.savePdf(root, name, uris.size, into = "Documents") { i ->
+                    // turned as the camera held it (ImageDecoder reads the photo's orientation), no wider than 2000 px
+                    android.graphics.ImageDecoder.decodeBitmap(android.graphics.ImageDecoder.createSource(photosContext.contentResolver, uris[i])) { dec, info, _ ->
+                        val k = minOf(1f, 2000f / maxOf(info.size.width, info.size.height)); dec.setTargetSize((info.size.width * k).toInt().coerceAtLeast(1), (info.size.height * k).toInt().coerceAtLeast(1))
+                        dec.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                    }
+                }.let { File(root, it) }
+            } }
+            made.onSuccess { f -> WriterLog.i("PDF: made from ${uris.size} photos"); openPdf(Uri.fromFile(f).toString()) }
+                .onFailure { WriterLog.e("PDF: from photos", it); android.widget.Toast.makeText(photosContext, it.message ?: "Could not make the PDF.", android.widget.Toast.LENGTH_LONG).show() }
+        }
+    }
     val pick = rememberOfficePicker { f -> Uri.fromFile(f).toString().let { if (Pdf.isPdf(f.name)) openPdf(it) else if (Slides.isSlides(f.name)) openSlides(it) else if (Sheets.isSheet(f.name)) openSheet(it) else open(it) } }
     /** A new presentation in Documents, opened editing: the app's empty deck (a title slide), or one of [template]. */
     fun newPresentation(template: File?) {
@@ -1168,7 +1188,8 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                     { m -> NewDocCard("Slides", "New presentation", POWERPOINT_ORANGE, m, {
                         if (SlidesTemplates.files().isNotEmpty()) choosingTemplate = true else newPresentation(null)
                     }) { pick(OfficePick.Slides) } },
-                    { m -> NewDocCard("PDF", "Open a PDF", PDF_RED, m, null) { pick(OfficePick.Pdf) } },
+                    // a new PDF: photos chosen, a page each (the scanner's way of writing one), into Documents, opened
+                    { m -> NewDocCard("PDF", "New from photos", PDF_RED, m, { photosToPdf.launch(arrayOf("image/*")) }) { pick(OfficePick.Pdf) } },
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     cards.chunked(if (narrow) 2 else 4).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { it(Modifier.weight(1f)) } } }
@@ -1208,7 +1229,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 Column {
                     Text(app, style = if (wide) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall, maxLines = 1)
                     Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                    if (wide) Text(when (app) { "Words" -> "Word and LibreOffice documents"; "Tables" -> "Excel and LibreOffice spreadsheets"; "PDF" -> "View, share and print"; else -> "PowerPoint and LibreOffice presentations" },
+                    if (wide) Text(when (app) { "Words" -> "Word and LibreOffice documents"; "Tables" -> "Excel and LibreOffice spreadsheets"; "PDF" -> "View, edit, fill and sign"; else -> "PowerPoint and LibreOffice presentations" },
                         style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.LocalContentColor.current.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }

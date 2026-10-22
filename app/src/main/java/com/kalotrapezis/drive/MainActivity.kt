@@ -828,7 +828,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Writer -> WriterScreen(back = { officeVersion++; screen = writerBack }, open = writerOpen)
                 Screen.Sheet -> sheetOpen?.let { androidx.compose.runtime.key(it) { SheetScreen(back = { screen = writerBack }, open = it) } }
                 Screen.Slides -> slidesOpen?.let { androidx.compose.runtime.key(it) { SlidesScreen(back = { screen = writerBack }, open = it) } }
-                Screen.Pdf -> pdfOpen?.let { androidx.compose.runtime.key(it) { PdfScreen(back = { screen = writerBack }, open = it) } }
+                Screen.Pdf -> pdfOpen?.let { androidx.compose.runtime.key(it) { PdfScreen(back = { screen = writerBack }, open = it, openWords = { w -> writerOpen = w; screen = Screen.Writer }) } }
                 Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 }, startKind = calendarNew)

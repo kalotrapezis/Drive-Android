@@ -326,6 +326,50 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     /** Page [i] has words of its own (not a scan, or read already). */
     fun hasText(i: Int): Boolean = synchronized(this) { page(i) { p -> p.toStructuredText().let { t -> t.asText().isNotBlank().also { t.destroy() } } } }
 
+    /**
+     * The file's words as Words paragraphs: each block of text one paragraph (its lines joined, a word broken by a hyphen at a
+     * line's end made whole), a page's end a page break; a block in bigger letters than most of the text a heading (1.6×
+     * level 1, 1.3× level 2, 1.15× level 3, when short), bold where its lines are bold.
+     */
+    fun toWords(): List<DocPara> = synchronized(this) {
+        class Line(val text: String, val size: Float, val bold: Boolean, val italic: Boolean)
+        val pages = sizes.indices.map { i -> page(i) { p ->
+            val t = p.toStructuredText()
+            try {
+                val json = org.json.JSONObject(t.asJSON())
+                val blocks = json.optJSONArray("blocks") ?: org.json.JSONArray()
+                (0 until blocks.length()).mapNotNull { b -> blocks.getJSONObject(b).takeIf { it.optString("type") == "text" }?.optJSONArray("lines")?.let { ls ->
+                    (0 until ls.length()).map { k -> val l = ls.getJSONObject(k); val font = l.optJSONObject("font")
+                        Line(l.optString("text"), font?.optDouble("size", 11.0)?.toFloat() ?: 11f, font?.optString("weight") == "bold", font?.optString("style") == "italic") }
+                } }
+            } finally { t.destroy() }
+        } }
+        // a header or footer (the same words, page numbers aside, on most pages) left out: in Words it is the page's own
+        fun bare(t: String) = t.replace(Regex("\\d+"), "#").trim()
+        val repeated = if (pages.size < 3) emptySet() else pages.flatMap { b -> b.map { ls -> bare(ls.joinToString(" ") { it.text }) }.distinct() }
+            .groupingBy { it }.eachCount().filter { (t, n) -> t.isNotBlank() && n * 2 > pages.size }.keys
+        val pagesKept = pages.map { b -> b.filter { ls -> bare(ls.joinToString(" ") { it.text }) !in repeated } }
+        // the body's size: the one most letters have
+        val body = pagesKept.flatten().flatten().groupBy { Math.round(it.size * 2) / 2f }.maxByOrNull { (_, ls) -> ls.sumOf { it.text.length } }?.key ?: 11f
+        val out = ArrayList<DocPara>()
+        pagesKept.forEachIndexed { pi, blocks ->
+            var first = pi > 0 && out.isNotEmpty() // the page's first paragraph starts a page, as in the PDF
+            for (lines in blocks) {
+                val text = StringBuilder()
+                for (l in lines) { val w = l.text.trim(); if (w.isEmpty()) continue
+                    if (text.isNotEmpty()) { if (text.endsWith("-") && w.first().isLowerCase()) text.setLength(text.length - 1) else text.append(' ') }
+                    text.append(w) }
+                if (text.isBlank()) continue
+                val size = lines.maxOf { it.size }; val bold = lines.count { it.bold } * 2 > lines.size; val italic = lines.count { it.italic } * 2 > lines.size
+                val heading = if (text.length > 160) 0 else when { size >= body * 1.6f -> 1; size >= body * 1.3f -> 2; size >= body * 1.15f -> 3; else -> 0 }
+                out += DocPara(listOf(DocRun(text.toString(), bold = bold && heading == 0, italic = italic)), heading = heading,
+                    keep = if (first) OfficeFormats.withPageBreak(null, OfficeKind.Docx, true) else null)
+                first = false
+            }
+        }
+        out
+    }
+
     /** Page [i] drawn for reading: about 300 dpi, its long edge at most 3300 px (a phone's memory). */
     fun scanOf(i: Int): Pair<Bitmap, Float> = synchronized(this) { page(i) { p ->
         val s = sizes[i]; val k = minOf(300f / 72f, 3300f / maxOf(s.width, s.height))
@@ -661,7 +705,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
  * Android reads a PDF's words; Share, Print, Open in another app. View only.
  */
 @Composable
-internal fun PdfScreen(back: () -> Unit, open: String) {
+internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val file = remember(open) { Uri.parse(open).path?.let(::File) }
@@ -739,6 +783,36 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             WriterLog.i("PDF: page ${page + 1}'s text copied (${text.length} letters)")
             if (text.isBlank()) Toast.makeText(context, "Page ${page + 1} has no text: a scan is a picture.", Toast.LENGTH_LONG).show()
             else context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Page ${page + 1}", text))
+        }
+    }
+    /**
+     * The PDF's words as a Words document beside it, opened there (the user, 22 Oct: "export in to image is stupid … make it in
+     * to words"): its paragraphs, headings told by their size, bold kept; a scan's after Recognize text.
+     */
+    fun exportWords() {
+        val d = doc ?: return; val f = file ?: return
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching {
+                val paras = d.toWords()
+                if (paras.none { it.text.isNotBlank() }) error("No text: a scan needs Edit › Pages › Recognize text first")
+                val to = run { var n = 0; var t: File; do { n++; t = File(f.parentFile, "${f.nameWithoutExtension}${if (n > 1) " $n" else ""}.docx") } while (t.exists()); t }
+                to.writeBytes(OfficeFormats.write(OfficeDoc(paras), OfficeKind.Docx)); to
+            } }
+            r.onSuccess { to -> WriterLog.i("PDF: to Words, ${to.length() / 1024} KB"); Toast.makeText(context, "Saved as ${to.name}", Toast.LENGTH_SHORT).show(); openWords(Uri.fromFile(to).toString()) }
+                .onFailure { WriterLog.e("PDF: to Words", it); Toast.makeText(context, it.message ?: "Could not make the document.", Toast.LENGTH_LONG).show() }
+        }
+    }
+    /** All the file's words (a scan's after Recognize text) in a .txt beside it. */
+    fun exportText() {
+        val d = doc ?: return; val f = file ?: return
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching {
+                val text = d.sizes.indices.joinToString("\n\n") { i -> kotlinx.coroutines.runBlocking { d.text(i) }.trim() }
+                val to = generateSequence(1) { it }.let { _ -> var n = 0; var t: File; do { n++; t = File(f.parentFile, "${f.nameWithoutExtension}${if (n > 1) " $n" else ""}.txt") } while (t.exists()); t }
+                to.writeText(text); to to text.isBlank()
+            } }
+            r.onSuccess { (to, empty) -> Toast.makeText(context, if (empty) "No text: a scan needs Edit › Pages › Recognize text first" else "Saved as ${to.name}", Toast.LENGTH_LONG).show() }
+                .onFailure { WriterLog.e("PDF: export text", it); Toast.makeText(context, it.message ?: "Could not export.", Toast.LENGTH_LONG).show() }
         }
     }
     fun print() {
@@ -1068,6 +1142,10 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                                 if (doc != null) {
                                     DropdownMenuItem({ Text("Comments") }, { more = false; pane = "Comments" }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_comment), contentDescription = null) })
                                     DropdownMenuItem({ Text("Bookmarks") }, { more = false; pane = "Bookmarks" }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_bookmark), contentDescription = null) })
+                                }
+                                if (doc != null) {
+                                    DropdownMenuItem({ Text("Edit in Words") }, { more = false; exportWords() }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_edit_note), contentDescription = null) })
+                                    DropdownMenuItem({ Text("Export text") }, { more = false; exportText() }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_text_fields), contentDescription = null) })
                                 }
                                 if (versions(context, f).isNotEmpty()) DropdownMenuItem({ Text("Versions") }, { more = false; showVersions = true },
                                     colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) })

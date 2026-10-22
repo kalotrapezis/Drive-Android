@@ -134,18 +134,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             else -> finding
         }
         if (message != null) t.setNavigationInfo(MessageInfo.Builder(message).build())
-        else if (n != null && p != null) {
-            val step = n.route.steps[p.next]
-            // the turn in Android Auto's card on the big side; in the small card Tetra's own card says it (one card, not two)
-            if (!compact) t.setNavigationInfo(RoutingInfo.Builder().setCurrentStep(CarStep.Builder(step.text)
-                .setManeuver(Maneuver.Builder(maneuver(step.sign)).setIcon(turnIcon(step.sign)).build())
-                .apply { if (step.street.isNotEmpty()) setRoad(step.street) }.build(), distance(p.toNext)).build())
-            val seconds = secondsLeft(n, p)
-            // the small card: Tetra's own bottom card instead of Android Auto's small bar (the user: "the bellow pill … bigger")
-            if (!compact) t.setDestinationTravelEstimate(TravelEstimate.Builder(distance(p.left),
-                DateTimeWithZone.create(System.currentTimeMillis() + (seconds * 1000).toLong(), TimeZone.getDefault()))
-                .setRemainingTimeSeconds(seconds.toLong()).build())
-        }
+        // while directions run the turn and arrival cards are Tetra's own on both sides, one style and size with the rest
+        // (the user, 22 Oct: "the other side?"); Android Auto's smaller ones are left out
         return t.build()
     }
 
@@ -228,11 +218,13 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             sign?.parent?.let { col -> (col as android.view.View).apply {
                 val edge = (1.5f * u).toInt()
                 // the big side: at the screen's edge, past the cards; the small card: inside it (the surface reaches under the other app)
-                val left = if (compact) r.left + edge else edge; val right = if (compact || driverRight) w - r.right + edge else 0
+                // lined up with the cards (Android Auto's own no longer push the visible part in)
+                val left = r.left + r.width() / 25; val right = w - r.right + r.width() / 25
                 (layoutParams as android.widget.FrameLayout.LayoutParams).setMargins(if (driverRight) 0 else left, r.top, if (driverRight) right else 0, h - r.bottom + if (compact) edge + (textPx * 1.4f + 2 * r.width() / 25).toInt() + edge else 0); requestLayout()
             } }
             map?.locationComponent?.takeIf { it.isLocationComponentActivated }
-                ?.paddingWhileTracking(doubleArrayOf(r.left.toDouble(), r.top + (if (compact) r.width() * 0.45 else 0.0), (w - r.right).toDouble(), (h - r.bottom).toDouble()))
+                ?.paddingWhileTracking(doubleArrayOf(r.left + (if (!compact && nav != null && !driverRight) cardWidth(r).toDouble() else 0.0), r.top + (if (compact) r.width() * 0.45 else 0.0),
+                    (w - r.right) + (if (!compact && nav != null && driverRight) cardWidth(r).toDouble() else 0.0), (h - r.bottom).toDouble()))
         }
 
         // a tap: on a card, that place; on the map with no directions, a pin there (Go, or ✕)
@@ -326,12 +318,17 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         visibility = android.view.View.GONE
     }
 
+    /** The cards' width: the small card's, or on the big side a column at the driver's side. */
+    private fun cardWidth(r: Rect) = if (compact) r.width() - 2 * (r.width() / 25) else maxOf((r.width() * 0.36f).toInt(), (40 * u).toInt()).coerceAtMost(r.width() - 2 * (r.width() / 25))
+    private fun cardLeft(r: Rect, w: Int) = if (compact || !driverRight) r.left + r.width() / 25 else r.right - r.width() / 25 - cardWidth(r)
+
     private fun sizePanel(r: Rect, w: Int) {
         val px = android.util.TypedValue.COMPLEX_UNIT_PX
-        val width = r.width(); val pad = width / 25
+        val pad = (if (compact) r.width() else cardWidth(r)) / 25
+        val cw = cardWidth(r); val cl = cardLeft(r, w)
         panel?.apply {
-            layoutParams = android.widget.FrameLayout.LayoutParams(width - 2 * pad, -2, android.view.Gravity.TOP or android.view.Gravity.START)
-                .apply { setMargins(r.left + pad, r.top + pad, 0, 0) }
+            layoutParams = android.widget.FrameLayout.LayoutParams(cw, -2, android.view.Gravity.TOP or android.view.Gravity.START)
+                .apply { setMargins(cl, r.top + r.width() / 25, 0, 0) }
             setPadding(pad, pad, pad, pad)
         }
         panelArrow?.layoutParams = android.widget.LinearLayout.LayoutParams(iconPx.toInt(), iconPx.toInt()).apply { rightMargin = pad }
@@ -346,8 +343,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         // the bottom card: the card's width, a little less tall than the turn card
         eta?.apply {
             setTextSize(px, textPx); setPadding(pad, pad, pad, pad)
-            layoutParams = android.widget.FrameLayout.LayoutParams(width - 2 * pad, -2, android.view.Gravity.BOTTOM or android.view.Gravity.START)
-                .apply { setMargins(r.left + pad, 0, 0, surfaceH - r.bottom + pad) }
+            layoutParams = android.widget.FrameLayout.LayoutParams(cw, -2, android.view.Gravity.BOTTOM or android.view.Gravity.START)
+                .apply { setMargins(cl, 0, 0, surfaceH - r.bottom + r.width() / 25) }
         }
     }
 
@@ -417,7 +414,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     private fun showPanel() {
         val n = nav; val p = n?.p
-        val on = compact && n != null && p != null
+        val on = n != null && p != null
         val grid = n == null && pin == null && finding == null && (compact || showPlaces)
         val key = "$compact $shown $grid"
         if (grid && key != gridKey) fillFaves()

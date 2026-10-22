@@ -1826,10 +1826,13 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       Files, Notes, Calendar (and its event editor), Timer, Text editor, Settings, Sync, Office's start page, Maps. The
       floating dark-glass islands stay dark in both. Not yet: Office's editors (Words, Tables, Slides, PDF) keep their dark
       frame and ribbon in light — their own colours, a pass of their own; Photos with photos in it; the phone size.
-- [ ] Android Auto (the user, 21 Oct: "Can it work with Android auto?"): Tetra's directions on the car screen with the
-      Android for Cars App Library (NavigationTemplate: the next turn, the route drawn on a surface). Android Auto shows
-      only Play-installed navigation apps unless Developer settings › Unknown sources is on in Android Auto, so this works
-      for the user's own sideloaded Tetra that way. After the phone's turn-by-turn is tried on the road.
+- [~] Android Auto (the user, 21 Oct: "Can it work with Android auto?"; 22 Oct: "its not on the list of the available
+      Apps can we add it?"): MapsCar.kt, built 22 Oct — androidx.car.app 1.4 navigation app: the map on the car's surface
+      (a MapView in a Presentation on a VirtualDisplay), Places (Home's first, then nearest), Nearby (ΑμεΑ parking, fuel,
+      EV, parking, pharmacies, EOPYY, supermarkets, toilets, hospitals), car directions with the phone's guidance and voice
+      (ducking the music), parking saved when Android Auto disconnects. Android Auto lists a sideloaded navigation app only
+      with its Developer settings › Unknown sources on. Not yet seen on a head unit (DHU via the phone: Start head unit
+      server, adb forward tcp:5277). Not in the car: search by typing, alternative routes, the tunnel's dead reckoning.
 - [x] (maps-link session, 21 Oct) Emblems in tabs (the user, 21 Oct: "Add more emblims for pharmases, hospitals,
       relatives travel locations, nature like waterfalls rivers beaches and have them in tabs with categories"): General,
       People, Health, Travel, Nature (26 emblems) in the place dialog, and the saved-places list in the same tabs; the

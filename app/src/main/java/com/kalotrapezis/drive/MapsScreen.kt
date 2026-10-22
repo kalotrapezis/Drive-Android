@@ -196,7 +196,7 @@ private fun modeLabel(mode: String, rolling: Boolean = false) = when (mode) { "f
 private data class Preview(val target: Place, val mode: String, val routes: List<Route>, val chosen: Int, val from: Location)
 
 /** A navigation running: the route, where on it the last fix was, and what has been said. */
-private data class Nav(
+internal data class Nav(
     val target: Place, val mode: String, val route: Route, val cum: DoubleArray, val since: Long,
     val index: Int = 0, val p: Progress? = null, val offFixes: Int = 0, val said: Set<String> = emptySet(),
 )
@@ -509,8 +509,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
     }
     LaunchedEffect(mapView) {
         if (!mapFile.isFile) return@LaunchedEffect
-        val json = context.assets.open("maps/${MapsPrefs.mapTheme(context)}.json").bufferedReader().use { it.readText() }
-            .replace("pmtiles://MAP_FILE", "pmtiles://file://${mapFile.absolutePath}")
+        val json = mapStyle(context, mapFile)
         mapView.getMapAsync { map ->
             map.setLatLngBoundsForCameraTarget(GREECE)
             map.setMinZoomPreference(5.0); map.setMaxZoomPreference(19.0)
@@ -521,12 +520,8 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
                 style.addSource(GeoJsonSource("alts"))
                 style.addLayer(LineLayer("alts-line", "alts").withProperties(PropertyFactory.lineColor("#9E9E9E"), PropertyFactory.lineWidth(6f),
                     PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND), PropertyFactory.lineOpacity(0.8f)))
-                style.addSource(GeoJsonSource("route"))
                 style.addSource(GeoJsonSource("tolls"))
-                style.addLayer(LineLayer("route-casing", "route").withProperties(PropertyFactory.lineColor("#1A237E"), PropertyFactory.lineWidth(9f),
-                    PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
-                style.addLayer(LineLayer("route-line", "route").withProperties(PropertyFactory.lineColor("#7986CB"), PropertyFactory.lineWidth(6f),
-                    PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
+                addRouteLayer(style)
                 // places put into the map's own data by hand (added-places.tsv): a small dot and the name, as the map's own
                 val dark = MapsPrefs.mapTheme(context) == "dark"
                 addMarkers(context, style)
@@ -608,9 +603,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         val map = mapRef ?: return@LaunchedEffect
         val style = map.style ?: return@LaunchedEffect
         if (!granted || map.locationComponent.isLocationComponentActivated) return@LaunchedEffect
-        // a small arrow, so the road under it shows (the user, 21 Oct: "The arrow seams too big for the road")
-        map.locationComponent.activateLocationComponent(LocationComponentActivationOptions.builder(context, style).useDefaultLocationEngine(false)
-            .locationComponentOptions(org.maplibre.android.location.LocationComponentOptions.builder(context).maxZoomIconScale(0.6f).minZoomIconScale(0.45f).build()).build())
+        activateArrow(context, map, style)
         map.locationComponent.isLocationComponentEnabled = true
         map.locationComponent.renderMode = RenderMode.COMPASS
         here?.let { map.locationComponent.forceLocationUpdate(it) }
@@ -646,8 +639,7 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         (mapRef?.style?.getSource("alts") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(
             preview?.let { p -> p.routes.filterIndexed { i, _ -> i != p.chosen }.map(::line) }.orEmpty()))
         val r = nav?.route ?: preview?.let { it.routes[it.chosen] }
-        src.setGeoJson(if (r == null) FeatureCollection.fromFeatures(emptyList()) else
-            FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(r.lats.indices.map { Point.fromLngLat(r.lngs[it], r.lats[it]) }))))
+        src.setGeoJson(routeFeatures(r))
     }
     /*
      * A tunnel (the user, 21 Oct: "What if I loose GPS sygnal on a tannel"; "μπορεί για 5 λεπτά να μην έχω GPS … μπορεί να
@@ -968,6 +960,32 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
 }
 
 /** The road the map draws under [pt] (screen pixels): its name and code (A2, EO1…), from the map's own roads. */
+/** The map's style (Settings › Maps' light or dark) reading [mapFile]; the phone's map and the car's alike. */
+internal fun mapStyle(context: Context, mapFile: File): String =
+    context.assets.open("maps/${MapsPrefs.mapTheme(context)}.json").bufferedReader().use { it.readText() }
+        .replace("pmtiles://MAP_FILE", "pmtiles://file://${mapFile.absolutePath}")
+
+/** The route being driven, a line with a dark edge, from the source "route". */
+internal fun addRouteLayer(style: Style) {
+    style.addSource(GeoJsonSource("route"))
+    style.addLayer(LineLayer("route-casing", "route").withProperties(PropertyFactory.lineColor("#1A237E"), PropertyFactory.lineWidth(9f),
+        PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
+    style.addLayer(LineLayer("route-line", "route").withProperties(PropertyFactory.lineColor("#7986CB"), PropertyFactory.lineWidth(6f),
+        PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
+}
+
+/** The route's line as the "route" source's data. */
+internal fun routeFeatures(r: Route?): FeatureCollection = if (r == null) FeatureCollection.fromFeatures(emptyList()) else
+    FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(r.lats.indices.map { Point.fromLngLat(r.lngs[it], r.lats[it]) })))
+
+/** Where I am: a small arrow, so the road under it shows (the user, 21 Oct: "The arrow seams too big for the road"); fixes are ours. */
+internal fun activateArrow(context: Context, map: MapLibreMap, style: Style) =
+    map.locationComponent.activateLocationComponent(LocationComponentActivationOptions.builder(context, style).useDefaultLocationEngine(false)
+        .locationComponentOptions(org.maplibre.android.location.LocationComponentOptions.builder(context).maxZoomIconScale(0.6f).minZoomIconScale(0.45f).build()).build())
+
+/** The next turn's arrow, turned from straight ahead by a GraphHopper sign. */
+internal fun turnDegrees(sign: Int) = when (sign) { 1 -> 45f; 2 -> 90f; 3 -> 135f; 7 -> 20f; -1 -> -45f; -2 -> -90f; -3 -> -135f; -7 -> -20f; 8, -8, -98 -> 180f; else -> 0f }
+
 internal fun roadAtPoint(map: MapLibreMap, pt: android.graphics.PointF): Pair<String, String>? {
     val ids = map.style?.layers.orEmpty().map { it.id }.filter { it.startsWith("roads_") && listOf("casing", "labels", "shields", "oneway", "rail", "runway", "taxiway", "pier").none { x -> x in it } }
     if (ids.isEmpty()) return null
@@ -1028,9 +1046,8 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
     val step = n.route.steps.getOrNull(n.p?.next ?: 0) ?: return
     Surface(color = MAPS_COLOR, contentColor = androidx.compose.ui.graphics.Color.White, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.widthIn(max = 560.dp)) {
         Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            val turn = when (step.sign) { 1 -> 45f; 2 -> 90f; 3 -> 135f; 7 -> 20f; -1 -> -45f; -2 -> -90f; -3 -> -135f; -7 -> -20f; 8, -8, -98 -> 180f; else -> 0f }
             Icon(painterResource(if (step.sign == 4) R.drawable.ic_place else R.drawable.ic_navigation), contentDescription = null,
-                modifier = Modifier.size(40.dp).rotate(if (step.sign == 4) 0f else turn))
+                modifier = Modifier.size(40.dp).rotate(if (step.sign == 4) 0f else turnDegrees(step.sign)))
             Column(Modifier.weight(1f)) {
                 Text(n.p?.let { metresText(it.toNext) } ?: "", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(step.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)

@@ -5432,7 +5432,7 @@ private fun PhotoViewer(
                 photoText = "" ; ocrScope.launch {
                     photoText = withContext(Dispatchers.Default) { runCatching {
                         val bmp = android.graphics.ImageDecoder.decodeBitmap(android.graphics.ImageDecoder.createSource(context.contentResolver, uri)) { dec, info, _ ->
-                            val k = minOf(1f, 2400f / maxOf(info.size.width, info.size.height)); dec.setTargetSize((info.size.width * k).toInt().coerceAtLeast(1), (info.size.height * k).toInt().coerceAtLeast(1))
+                            val k = minOf(3f, 2400f / maxOf(info.size.width, info.size.height)); dec.setTargetSize((info.size.width * k).toInt().coerceAtLeast(1), (info.size.height * k).toInt().coerceAtLeast(1)) // small pictures enlarged: Tesseract misses letters under ~20 px
                             dec.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE }
                         Ocr.text(context, bmp).trim()
                     }.onFailure { WriterLog.e("Photos: text", it) }.getOrDefault("") }.ifEmpty { NO_TEXT }

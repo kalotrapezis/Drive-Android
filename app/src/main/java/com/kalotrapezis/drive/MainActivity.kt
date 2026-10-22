@@ -1960,6 +1960,10 @@ private fun SettingsTab(
                     }
                     Switch(checked = autoPark, onCheckedChange = { autoPark = it; MapsPrefs.setAutoPark(mapsContext, it) })
                 }
+                var radius by remember { mutableStateOf(MapsPrefs.parkingRadius(mapsContext)) }
+                Text("ΑμεΑ parking near the destination", style = MaterialTheme.typography.titleSmall)
+                Text("How far from where you are going the car's Parking button looks for ΑμεΑ spots.", style = MaterialTheme.typography.bodySmall)
+                Choices(MapsPrefs.RADII, radius) { radius = it; MapsPrefs.setParkingRadius(mapsContext, it) }
                 var openAtCar by remember { mutableStateOf(MapsPrefs.openAtCar(mapsContext)) }
                 Row(Modifier.fillMaxWidth().clickable { openAtCar = !openAtCar; MapsPrefs.setOpenAtCar(mapsContext, openAtCar) }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

@@ -276,6 +276,24 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private var limitAsked = 0L
     private var tolls: List<Double> = emptyList() // the route's toll stations, metres along it
     private var tollsAhead = 0
+    private var parkingAsked: Place? = null
+    private var parkingSpots = 0
+
+    /** The Parking button only when the destination has known ΑμεΑ spots (the user, 22 Oct: "show the button only if there are spot available"). */
+    private fun showParking(count: Int) {
+        parkingSpots = count
+        parkingButton?.apply {
+            visibility = if (count > 0) android.view.View.VISIBLE else android.view.View.GONE
+            (getChildAt(1) as? android.widget.TextView)?.text = "Parking $count"
+        }
+    }
+
+    /** The ΑμεΑ spots near [p] (Settings › Maps: 500 m to 2 km; the municipalities', OSM's, the user's own), nearest first. */
+    private fun parkingNear(p: Place): List<Poi> = runCatching {
+        val mine = MapsFiles.places(root).filter { it.icon == "accessible" }.map { Poi("disabled_parking", it.lat, it.lng, it.name, more = "Saved") }
+        (MapsSearch.load(root).filter { it.kind == "disabled_parking" } + mine)
+            .map { it to metresBetween(p.lat, p.lng, it.lat, it.lng) }.filter { it.second < MapsPrefs.parkingRadius(carContext) }.sortedBy { it.second }.map { it.first }
+    }.getOrDefault(emptyList())
     private var lastAlong = 0.0; private var backFixes = 0; private var wrongSaidAt = 0L
     private var fixAt = android.os.SystemClock.elapsedRealtime()
     private var signalLost = false
@@ -332,19 +350,26 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private var eta: android.widget.TextView? = null
     private var etaButtons: android.widget.LinearLayout? = null
     private var etaTaps: List<Pair<android.view.View, () -> Unit>> = emptyList()
+    private var parkingButton: android.widget.LinearLayout? = null
 
     private fun etaCard(c: android.content.Context): android.view.View {
         eta = android.widget.TextView(c).apply { gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); typeface = android.graphics.Typeface.DEFAULT_BOLD }
-        fun button(icon: Int, color: Int, tap: () -> Unit) = android.widget.ImageView(c).apply {
-            setImageResource(icon); setColorFilter(Color.WHITE); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+        // labelled buttons, two by two, filling the space under the card (the user, 22 Oct: "at the bottom you can still make
+        // it bigger its just ded space … favoriets, nearby and parking")
+        fun button(icon: Int, label: String, color: Int, tap: () -> Unit) = android.widget.LinearLayout(c).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER
             background = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = 100 * u }
+            addView(android.widget.ImageView(c).apply { setImageResource(icon); setColorFilter(Color.WHITE) })
+            addView(android.widget.TextView(c).apply { text = label; setTextColor(Color.WHITE); typeface = android.graphics.Typeface.DEFAULT_BOLD; maxLines = 1 })
         }.also { etaTaps = etaTaps + (it to tap) }
         etaTaps = emptyList()
+        fun row(vararg b: android.view.View) = android.widget.LinearLayout(c).apply { orientation = android.widget.LinearLayout.HORIZONTAL; b.forEach(::addView) }
+        parkingButton = button(R.drawable.ic_accessible, "Parking", 0xFF1565C0.toInt()) { nav?.let { screenManager.push(ParkingScreen(it.target)) } }
         etaButtons = android.widget.LinearLayout(c).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER
-            addView(button(R.drawable.ic_close, 0xFFC62828.toInt()) { stop() })
-            addView(button(R.drawable.ic_call_split, 0xFF5F6368.toInt()) { nav?.let { screenManager.push(RoutesScreen(it.target)) } })
-            addView(button(R.drawable.ic_add_location, 0xFF5F6368.toInt()) { screenManager.push(KindsScreen(stop = true)) })
+            orientation = android.widget.LinearLayout.VERTICAL
+            addView(row(button(R.drawable.ic_close, "End", 0xFFC62828.toInt()) { stop() },
+                button(R.drawable.ic_call_split, "Routes", 0xFF5F6368.toInt()) { nav?.let { screenManager.push(RoutesScreen(it.target)) } }))
+            addView(row(button(R.drawable.ic_add_location, "Stop", 0xFF5F6368.toInt()) { screenManager.push(KindsScreen(stop = true)) }, parkingButton!!.apply { visibility = if (parkingSpots > 0) android.view.View.VISIBLE else android.view.View.GONE }))
         }
         return android.widget.LinearLayout(c).also { etaBox = it }.apply {
             orientation = android.widget.LinearLayout.VERTICAL
@@ -355,7 +380,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     /** The cards' width: the small card's, or on the big side a column at the driver's side. */
-    private fun cardWidth(r: Rect) = if (compact) r.width() - 2 * (r.width() / 25) else maxOf((r.width() * 0.36f).toInt(), (40 * u).toInt()).coerceAtMost(r.width() - 2 * (r.width() / 25))
+    private fun cardWidth(r: Rect) = if (compact) r.width() - 2 * (r.width() / 25) else maxOf((r.width() * 0.4f).toInt(), (44 * u).toInt()).coerceAtMost(r.width() - 2 * (r.width() / 25))
     private fun cardLeft(r: Rect, w: Int) = if (compact || !driverRight) r.left + r.width() / 25 else r.right - r.width() / 25 - cardWidth(r)
 
     private fun sizePanel(r: Rect, w: Int) {
@@ -384,12 +409,14 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 .apply { setMargins(cl, 0, 0, surfaceH - r.bottom + r.width() / 25) }
         }
         // the buttons big enough for a finger at a glance, only where the car passes taps on (the big side)
-        val b = (iconPx * 0.8f).toInt()
-        etaButtons?.apply {
-            visibility = if (compact) android.view.View.GONE else android.view.View.VISIBLE
-            for (i in 0 until childCount) getChildAt(i).layoutParams = android.widget.LinearLayout.LayoutParams(0, b, 1f).apply { setMargins(pad, pad, pad, 0) }
+        val b = (iconPx * 0.75f).toInt()
+        etaButtons?.visibility = if (compact) android.view.View.GONE else android.view.View.VISIBLE
+        etaTaps.forEach { (v, _) ->
+            v.layoutParams = android.widget.LinearLayout.LayoutParams(0, b, 1f).apply { setMargins(pad / 2, pad, pad / 2, 0) }
+            val g = v as android.widget.LinearLayout
+            g.getChildAt(0).layoutParams = android.widget.LinearLayout.LayoutParams((b * 0.55f).toInt(), (b * 0.55f).toInt()).apply { rightMargin = pad / 2 }
+            (g.getChildAt(1) as android.widget.TextView).setTextSize(px, smallPx)
         }
-        etaTaps.forEach { (v, _) -> (v as android.widget.ImageView).setPadding(b / 5, b / 5, b / 5, b / 5) }
     }
 
     // —— no directions running: the places as cards over the map. The small card: the phone Home's 8, 2 by 4 (the user, 22
@@ -419,7 +446,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         if (compact) return mine
         val recent = MapsPrefs.recent(carContext).filter { r -> all.none { metresBetween(it.lat, it.lng, r.lat, r.lng) < 50 } }
         return mine + Card("Favourites", R.drawable.ic_star, "${all.size - home.size} more") { screenManager.push(FavouritesScreen()) } +
-            Card("Nearby", R.drawable.ic_search, "Fuel, ΑμεΑ…") { screenManager.push(KindsScreen()) } +
+            Card("Nearby", R.drawable.ic_search, "Fuel, pharmacy…") { screenManager.push(KindsScreen()) } +
+            Card("ΑμεΑ parking", R.drawable.ic_accessible, "Near me") { screenManager.push(FoundScreen(MapsSearch.PILLS.first { it.key == "disabled_parking" })) } +
             recent.map { p -> Card(p.name, R.drawable.ic_history, away(p.lat, p.lng)) { pick(p) } }
     }
 
@@ -677,6 +705,13 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             say(t("Λάθος κατεύθυνση. Κάντε αναστροφή όταν είναι ασφαλές", "Wrong direction. Turn around when it is safe"), important = true)
         }
         tollsAhead = tolls.count { it > p.along }
+        // near the end: the ΑμεΑ spots by the destination said once, when there are any
+        if (p.left < 1500 && parkingAsked != n.target) {
+            parkingAsked = n.target
+            if (parkingSpots > 0 && n.target.icon != "accessible")
+                say(t("Υπάρχουν $parkingSpots θέσεις ΑμεΑ κοντά στον προορισμό. Πατήστε Parking για να πάτε σε μία.",
+                    "There are $parkingSpots disabled parking spots near your destination. Press Parking to go to one."), important = true)
+        }
         var said = n.said
         val step = n.route.steps[p.next]
         when (dueWarning(p.next, p.toNext, if (loc.hasSpeed()) loc.speed.toDouble() else 0.0, true, said)) {
@@ -718,6 +753,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 lastAlong = 0.0; backFixes = 0
                 tolls = runCatching { tollsOn(route, cumulative(route), MapsSearch.load(root)).map { it.second } }.getOrDefault(emptyList())
                 if (rerouted) say(t("Νέα διαδρομή", "New route"), important = true)
+                else { showParking(0); launch { val c = withContext(Dispatchers.IO) { parkingNear(target).size }; if (nav?.target == target) showParking(c) } }
                 if (!rerouted) {
                     navigation.navigationStarted()
                     route.steps.firstOrNull()?.let { say(it.text) }
@@ -736,7 +772,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     fun stop() {
         after = null
         if (nav == null) return
-        nav = null; tolls = emptyList(); tollsAhead = 0; showPlaces = true
+        nav = null; tolls = emptyList(); tollsAhead = 0; showPlaces = true; parkingAsked = null; showParking(0)
         CarLink.nav.value = null
         navigation.navigationEnded()
         drawRoute(); follow(); showSpeed(); invalidate()
@@ -861,7 +897,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             val items = ItemList.Builder().setSelectedIndex(modes.indexOfFirst { it.first == MapsPrefs.voice(carContext) }.coerceAtLeast(0))
                 .setOnSelectedListener { i -> MapsPrefs.setVoice(carContext, modes[i].first); if (modes[i].first == "off") tts?.stop(); invalidate() }
             modes.forEach { (_, label) -> items.addItem(Row.Builder().setTitle(label).build()) }
-            return ListTemplate.Builder().setTitle("Voice").setHeaderAction(Action.BACK).setSingleList(items.build()).build()
+            val radii = ItemList.Builder().setSelectedIndex(MapsPrefs.RADII.indexOfFirst { it.first == MapsPrefs.parkingRadius(carContext) }.coerceAtLeast(0))
+                .setOnSelectedListener { i -> MapsPrefs.setParkingRadius(carContext, MapsPrefs.RADII[i].first); nav?.target?.let { tg -> lifecycleScope.launch { showParking(withContext(Dispatchers.IO) { parkingNear(tg).size }) } }; invalidate() }
+            MapsPrefs.RADII.forEach { (_, label) -> radii.addItem(Row.Builder().setTitle(label).build()) }
+            return ListTemplate.Builder().setTitle("Settings").setHeaderAction(Action.BACK)
+                .addSectionedList(androidx.car.app.model.SectionedItemList.create(items.build(), "Voice"))
+                .addSectionedList(androidx.car.app.model.SectionedItemList.create(radii.build(), "ΑμεΑ parking near the destination")).build()
         }
     }
 
@@ -926,6 +967,24 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 val tolls = tollCounts.getOrElse(i) { 0 }.let { if (it == 0) "no tolls" else if (it == 1) "1 toll" else "$it tolls" }
                 items.addItem(Row.Builder().setTitle("$time · ${metresText(r.metres)}").addText("$roads · $tolls")
                     .setOnClickListener { screenManager.popToRoot(); go(target, r) }.build())
+            }
+            return t.setSingleList(items.build()).build()
+        }
+    }
+
+    /** ΑμεΑ parking near [target], nearest to it first: one picked becomes where the drive ends. */
+    private inner class ParkingScreen(private val target: Place) : Screen(carContext) {
+        private var spots: List<Poi>? = null
+        init { lifecycleScope.launch { spots = withContext(Dispatchers.IO) { parkingNear(target) }; invalidate() } }
+
+        override fun onGetTemplate(): Template {
+            val t = ListTemplate.Builder().setTitle("♿ Parking near ${target.name}").setHeaderAction(Action.BACK)
+            val s = spots ?: return t.setLoading(true).build()
+            val items = ItemList.Builder().setNoItemsMessage("No ΑμεΑ spot known within ${MapsPrefs.RADII.first { it.first == MapsPrefs.parkingRadius(carContext) }.second}")
+            s.take(limit()).forEach { poi ->
+                val d = metresText(metresBetween(target.lat, target.lng, poi.lat, poi.lng))
+                items.addItem(Row.Builder().setTitle(poi.more.ifEmpty { poi.title }).addText("$d from ${target.name}")
+                    .setOnClickListener { screenManager.popToRoot(); go(Place("", "♿ ${poi.more.ifEmpty { "Parking" }}", poi.lat, poi.lng, "accessible")) }.build())
             }
             return t.setSingleList(items.build()).build()
         }

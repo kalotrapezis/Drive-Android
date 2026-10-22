@@ -835,11 +835,8 @@ private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(co
         } }
         if (n != null && narrow) {
             // a narrow screen: one pill, the road above and the next turn below (the user, 21 Oct)
-            Column(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                RoadPill()
-                NavBanner(n, Modifier.fillMaxWidth())
-            }
+            // one card: the road I am on at its top (the user, 22 Oct: the pill and the card "seam from a diferent planet")
+            NavBanner(n, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(), roadName, roadCode)
         } else {
             Row(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (n == null) Island(R.drawable.ic_chevron_left, "Back", back)
@@ -1179,16 +1176,28 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
 }
 
 /** The next turn: its arrow, how far, and GraphHopper's words for it. */
-@Composable private fun NavBanner(n: Nav, modifier: Modifier) {
+/**
+ * The next turn, in the car's card style (MapsCar's turn card): the arrow and the distance big, the street, the instruction
+ * smaller; [road] and [code], the road I am on, as a small line at its top.
+ */
+@Composable private fun NavBanner(n: Nav, modifier: Modifier, road: String? = null, code: String? = null) {
     val step = n.route.steps.getOrNull(n.p?.next ?: 0) ?: return
-    Surface(color = MAPS_COLOR, contentColor = androidx.compose.ui.graphics.Color.White, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.widthIn(max = 560.dp)) {
-        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(painterResource(if (step.sign == 4) R.drawable.ic_place else R.drawable.ic_navigation), contentDescription = null,
-                modifier = Modifier.size(40.dp).rotate(if (step.sign == 4) 0f else turnDegrees(step.sign)))
-            Column(Modifier.weight(1f)) {
-                Text(n.p?.let { metresText(it.toNext) } ?: "", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(step.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    val white = androidx.compose.ui.graphics.Color.White
+    Surface(color = androidx.compose.ui.graphics.Color(0xF0303134), contentColor = white, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.widthIn(max = 560.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (road != null || code != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                code?.let { RoadCode(it) }
+                road?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = white.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(painterResource(if (step.sign == 4) R.drawable.ic_place else R.drawable.ic_navigation), contentDescription = null,
+                    modifier = Modifier.size(44.dp).rotate(if (step.sign == 4) 0f else turnDegrees(step.sign)))
+                Text(n.p?.let { metresText(it.toNext) } ?: "", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            }
+            val instruction = step.text.substringBefore(" στην ").substringBefore(" onto ").substringBefore(" στο ")
+            if (step.street.isNotEmpty()) Text(step.street, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(if (step.street.isEmpty()) step.text else instruction, style = MaterialTheme.typography.bodyMedium, color = white.copy(alpha = 0.75f),
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }

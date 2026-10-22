@@ -104,7 +104,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             actions.addAction(action("Places") { screenManager.push(PlacesScreen()) })
             actions.addAction(action("Nearby") { screenManager.push(KindsScreen()) })
         } else actions.addAction(action("Stop") { stop() })
-        val t = NavigationTemplate.Builder().setActionStrip(actions.build())
+        // on the map: drag it (pan), zoom in and out, and back to me once moved (the user, 22 Oct: "it does not zoom?")
+        val mapActions = ActionStrip.Builder().addAction(Action.PAN)
+            .addAction(icon(R.drawable.ic_add) { zoom(1.0) }).addAction(icon(R.drawable.ic_remove) { zoom(-1.0) })
+        if (!tracking) mapActions.addAction(icon(R.drawable.ic_my_location) { follow(); invalidate() })
+        val t = NavigationTemplate.Builder().setActionStrip(actions.build()).setMapActionStrip(mapActions.build())
+            .setPanModeListener { }
         val message = when {
             !granted() -> "Open Tetra Maps on the phone once to allow location"
             !MapsFiles.map(root).isFile -> "No map yet: greece.pmtiles comes from the computer into Tetra/Maps"
@@ -126,6 +131,26 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     private fun action(title: String, click: () -> Unit) = Action.Builder().setTitle(title).setOnClickListener(click).build()
+    private fun icon(res: Int, click: () -> Unit) =
+        Action.Builder().setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, res)).build()).setOnClickListener(click).build()
+
+    /** The camera following me; false once the map was moved by hand, until "my location". */
+    private var tracking = true
+
+    /** By hand: the camera stops following me. */
+    private fun loose() {
+        if (!tracking) return
+        tracking = false
+        map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.cameraMode = CameraMode.NONE
+        invalidate()
+    }
+
+    private fun zoom(by: Double) {
+        val m = map ?: return
+        val lc = m.locationComponent.takeIf { it.isLocationComponentActivated }
+        if (tracking && lc != null) lc.zoomWhileTracking(m.cameraPosition.zoom + by)
+        else m.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.zoomBy(by))
+    }
 
     // —— the map, drawn on the car's surface: a MapLibre MapView on a virtual display of that surface ——
 
@@ -145,7 +170,10 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 MapLibre.getInstance(context)
                 val v = MapView(context).also { view = it }
                 v.onCreate(null)
-                setContentView(v)
+                val frame = android.widget.FrameLayout(context)
+                frame.addView(v)
+                frame.addView(speedSign(context), android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.BOTTOM or android.view.Gravity.START))
+                setContentView(frame)
                 show()
                 v.onStart(); v.onResume()
                 v.getMapAsync { m -> m.setStyle(Style.Builder().fromJson(mapStyle(carContext, MapsFiles.map(root)))) { style -> ready(m, style) } }
@@ -155,22 +183,75 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         override fun onVisibleAreaChanged(r: Rect) {
             // the arrow in the middle of what the cards leave free
             val (w, h) = size
+            val dp = carContext.resources.displayMetrics.density
+            sign?.parent?.let { col -> (col as android.view.View).apply {
+                (layoutParams as android.widget.FrameLayout.LayoutParams).setMargins(r.left + (12 * dp).toInt(), 0, 0, h - r.bottom + (12 * dp).toInt()); requestLayout()
+            } }
             map?.locationComponent?.takeIf { it.isLocationComponentActivated }
                 ?.paddingWhileTracking(doubleArrayOf(r.left.toDouble(), r.top.toDouble(), (w - r.right).toDouble(), (h - r.bottom).toDouble()))
         }
 
+        // a finger on the car's screen (Android Auto 2+): drag, pinch
+        override fun onScroll(dx: Float, dy: Float) { loose(); map?.scrollBy(-dx, -dy, 0) }
+        override fun onScale(x: Float, y: Float, factor: Float) {
+            val m = map ?: return
+            if (x < 0 || y < 0) { zoom(if (factor > 1) 1.0 else -1.0); return } // a double tap or the rotary knob: one step
+            loose(); m.moveCamera(org.maplibre.android.camera.CameraUpdateFactory.zoomBy(Math.log(factor.toDouble()) / Math.log(2.0), android.graphics.Point(x.toInt(), y.toInt())))
+        }
+
         override fun onSurfaceDestroyed(c: SurfaceContainer) {
-            map = null
+            map = null; sign = null; speedText = null
             view?.run { onPause(); onStop(); onDestroy() }; view = null
             presentation?.dismiss(); presentation = null
             display?.release(); display = null
         }
     }
 
+    // —— the speed limit as its sign, red when I am over it by more than 3 km/h, my speed under it (as on the phone) ——
+
+    private var sign: android.widget.TextView? = null
+    private var speedText: android.widget.TextView? = null
+    private var limit: Int? = null
+    private var limitAsked = 0L
+
+    private fun speedSign(c: android.content.Context): android.view.View {
+        val dp = c.resources.displayMetrics.density
+        sign = android.widget.TextView(c).apply {
+            gravity = android.view.Gravity.CENTER; textSize = 22f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            layoutParams = android.widget.LinearLayout.LayoutParams((58 * dp).toInt(), (58 * dp).toInt())
+        }
+        speedText = android.widget.TextView(c).apply {
+            textSize = 13f; setTextColor(Color.WHITE); setPadding((8 * dp).toInt(), (2 * dp).toInt(), (8 * dp).toInt(), (2 * dp).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(0xCC202124.toInt()); cornerRadius = 50 * dp }
+        }
+        showSpeed()
+        return android.widget.LinearLayout(c).apply {
+            orientation = android.widget.LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL
+            addView(sign); addView(speedText, android.widget.LinearLayout.LayoutParams(-2, -2).apply { topMargin = (4 * dp).toInt() })
+        }
+    }
+
+    private fun showSpeed() {
+        val l = limit; val kmh = here?.takeIf { it.hasSpeed() }?.let { Math.round(it.speed * 3.6f) }
+        val over = l != null && (kmh ?: 0) > l + 3
+        val dp = carContext.resources.displayMetrics.density
+        sign?.apply {
+            visibility = if (l == null) android.view.View.GONE else android.view.View.VISIBLE
+            text = l?.toString().orEmpty(); setTextColor(if (over) Color.WHITE else Color.BLACK)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(if (over) 0xFFD32F2F.toInt() else Color.WHITE); setStroke((5 * dp).toInt(), 0xFFD32F2F.toInt())
+            }
+        }
+        speedText?.apply { visibility = if (kmh == null) android.view.View.GONE else android.view.View.VISIBLE; text = "$kmh km/h" }
+    }
+
     private fun ready(m: MapLibreMap, style: Style) {
         m.uiSettings.isCompassEnabled = false; m.uiSettings.isLogoEnabled = false; m.uiSettings.isAttributionEnabled = false
         addRouteLayer(style)
         map = m
+        m.cameraPosition = org.maplibre.android.camera.CameraPosition.Builder()
+            .target(here?.let { org.maplibre.android.geometry.LatLng(it.latitude, it.longitude) } ?: org.maplibre.android.geometry.LatLng(38.4, 23.8))
+            .zoom(if (here != null) 15.0 else 5.6).build()
         if (granted()) {
             activateArrow(carContext, m, style)
             m.locationComponent.isLocationComponentEnabled = true
@@ -184,8 +265,14 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private fun follow() {
         val lc = map?.locationComponent?.takeIf { it.isLocationComponentActivated } ?: return
         lc.renderMode = RenderMode.GPS
-        lc.cameraMode = CameraMode.TRACKING_GPS
-        lc.zoomWhileTracking(if (nav != null) 16.5 else 15.0); lc.tiltWhileTracking(if (nav != null) 45.0 else 0.0)
+        tracking = true
+        // zoom and tilt once the tracking has taken hold (asked during its transition, they are dropped)
+        lc.setCameraMode(CameraMode.TRACKING_GPS, object : org.maplibre.android.location.OnLocationCameraTransitionListener {
+            override fun onLocationCameraTransitionFinished(cameraMode: Int) {
+                lc.zoomWhileTracking(if (nav != null) 16.5 else 15.0); lc.tiltWhileTracking(if (nav != null) 45.0 else 0.0)
+            }
+            override fun onLocationCameraTransitionCanceled(cameraMode: Int) = Unit
+        })
     }
 
     private fun drawRoute() { (map?.style?.getSource("route") as? GeoJsonSource)?.setGeoJson(routeFeatures(nav?.route)) }
@@ -226,6 +313,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private fun onFix(loc: Location) {
         here = loc
         map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.forceLocationUpdate(loc)
+        // the limit at most every two seconds, off the main thread (the graph is opened the first time)
+        if (System.currentTimeMillis() - limitAsked > 2000 && File(graphDir, "properties").isFile) {
+            limitAsked = System.currentTimeMillis()
+            lifecycleScope.launch { limit = withContext(Dispatchers.IO) { runCatching { MapsRouting.limitAt(graphDir, loc.latitude, loc.longitude) }.getOrNull() }; showSpeed() }
+        }
+        showSpeed()
         val n = nav ?: return
         val (p, i) = progress(n.route, n.cum, loc.latitude, loc.longitude, n.index)
         if (p.off > 50.0) {

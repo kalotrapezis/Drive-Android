@@ -1831,8 +1831,10 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       (a MapView in a Presentation on a VirtualDisplay), Places (Home's first, then nearest), Nearby (ΑμεΑ parking, fuel,
       EV, parking, pharmacies, EOPYY, supermarkets, toilets, hospitals), car directions with the phone's guidance and voice
       (ducking the music), parking saved when Android Auto disconnects. Android Auto lists a sideloaded navigation app only
-      with its Developer settings › Unknown sources on. Not yet seen on a head unit (DHU via the phone: Start head unit
-      server, adb forward tcp:5277). Not in the car: search by typing, alternative routes, the tunnel's dead reckoning.
+      with its Developer settings › Unknown sources on. Seen 22 Oct on the desktop head unit through the user's phone
+      (Start head unit server, adb forward tcp:5277; DHU needs libc++1 and an open stdin), full screen and beside Spotify:
+      zoom (+/−, pinch), pan and back to me; the speed-limit sign drawn on the map (the user: "where is the speed limit?").
+      Not in the car: search by typing, alternative routes, the tunnel's dead reckoning. Still to try in the real car.
 - [x] (maps-link session, 21 Oct) Emblems in tabs (the user, 21 Oct: "Add more emblims for pharmases, hospitals,
       relatives travel locations, nature like waterfalls rivers beaches and have them in tabs with categories"): General,
       People, Health, Travel, Nature (26 emblems) in the place dialog, and the saved-places list in the same tabs; the

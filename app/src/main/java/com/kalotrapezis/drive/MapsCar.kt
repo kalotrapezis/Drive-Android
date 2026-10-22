@@ -276,6 +276,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private var limitAsked = 0L
     private var tolls: List<Double> = emptyList() // the route's toll stations, metres along it
     private var tollsAhead = 0
+    private var tollSaid: Set<Int> = emptySet()
     private var parkingAsked: Place? = null
     private var parkingSpots = 0
 
@@ -497,7 +498,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         if (!on) return
         val left = secondsLeft(n!!, p!!).toLong()
         val time = java.time.LocalTime.now().plusSeconds(left).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
-        eta?.text = "${if (left >= 3600) "${left / 3600} h ${left % 3600 / 60} min" else "${(left + 59) / 60} min"} · $time · ${metresText(p.left)}"
+        eta?.text = "${if (left >= 3600) "${left / 3600} h ${left % 3600 / 60} min" else "${(left + 59) / 60} min"} · $time · ${metresText(p.left)}" +
+            if (tollsAhead > 0) " · € $tollsAhead" else ""
         val step = n!!.route.steps[p!!.next]
         panelArrow?.apply { setImageResource(if (step.sign == 4) R.drawable.ic_place else R.drawable.ic_navigation); rotation = if (step.sign == 4) 0f else turnDegrees(step.sign) }
         panelDistance?.text = metresText(p.toNext)
@@ -572,7 +574,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             }
         }
         // the toll symbol lit while the route has tolls ahead, with how many
-        tollView?.apply { visibility = if (nav != null && tollsAhead > 0 && !small) android.view.View.VISIBLE else android.view.View.GONE; text = "€ Tolls $tollsAhead" }
+        tollView?.visibility = android.view.View.GONE // the tolls are in the arrival card (the user: "I dont see it fiting on top of the KM/H")
         (sign?.parent as? android.view.View)?.let { col ->
             val lp = col.layoutParams as? android.widget.FrameLayout.LayoutParams ?: return@let
             val side = if (driverRight) android.view.Gravity.END else android.view.Gravity.START
@@ -586,6 +588,15 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private fun ready(m: MapLibreMap, style: Style) {
         m.uiSettings.isCompassEnabled = false; m.uiSettings.isLogoEnabled = false; m.uiSettings.isAttributionEnabled = false
         addRouteLayer(style)
+        // the route's tolls, as on the phone: a yellow dot with €
+        style.addSource(GeoJsonSource("tolls"))
+        style.addLayer(org.maplibre.android.style.layers.CircleLayer("tolls-dot", "tolls").withProperties(
+            org.maplibre.android.style.layers.PropertyFactory.circleRadius(12f), org.maplibre.android.style.layers.PropertyFactory.circleColor("#F9A825"),
+            org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor("#FFFFFF"), org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth(2f)))
+        style.addLayer(org.maplibre.android.style.layers.SymbolLayer("tolls-sign", "tolls").withProperties(
+            org.maplibre.android.style.layers.PropertyFactory.textField("€"), org.maplibre.android.style.layers.PropertyFactory.textFont(arrayOf("Noto Sans Medium")),
+            org.maplibre.android.style.layers.PropertyFactory.textSize(15f), org.maplibre.android.style.layers.PropertyFactory.textColor("#3E2723"),
+            org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap(true)))
         style.addSource(GeoJsonSource("pin"))
         style.addLayer(org.maplibre.android.style.layers.CircleLayer("pin", "pin").withProperties(
             org.maplibre.android.style.layers.PropertyFactory.circleRadius(12f), org.maplibre.android.style.layers.PropertyFactory.circleColor("#D32F2F"),
@@ -705,6 +716,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             say(t("Λάθος κατεύθυνση. Κάντε αναστροφή όταν είναι ασφαλές", "Wrong direction. Turn around when it is safe"), important = true)
         }
         tollsAhead = tolls.count { it > p.along }
+        // about a kilometre before each toll (a minute ahead at motorway speed)
+        tolls.withIndex().firstOrNull { (i, at) -> at - p.along in 0.0..1100.0 && i !in tollSaid }?.let { (i, at) ->
+            tollSaid = tollSaid + i
+            if (at - p.along > 300) say(t("Σε ${if (at - p.along > 750) "1 χιλιόμετρο" else "500 μέτρα"}, διόδια", "In ${if (at - p.along > 750) "1 kilometre" else "500 metres"}, a toll"))
+        }
         // near the end: the ΑμεΑ spots by the destination said once, when there are any
         if (p.left < 1500 && parkingAsked != n.target) {
             parkingAsked = n.target
@@ -751,7 +767,15 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 WriterLog.i("Maps car: route, ${route.metres.toInt()} m, ${route.steps.size} steps")
                 nav = Nav(target, "car", route, cumulative(route), System.currentTimeMillis())
                 lastAlong = 0.0; backFixes = 0
-                tolls = runCatching { tollsOn(route, cumulative(route), MapsSearch.load(root)).map { it.second } }.getOrDefault(emptyList())
+                val onRoute = runCatching { tollsOn(route, cumulative(route), MapsSearch.load(root)) }.getOrDefault(emptyList())
+                tolls = onRoute.map { it.second }; tollsAhead = tolls.size; tollSaid = emptySet()
+                (map?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(
+                    onRoute.map { (t, _) -> org.maplibre.geojson.Feature.fromGeometry(org.maplibre.geojson.Point.fromLngLat(t.lng, t.lat)) }))
+                if (!rerouted && tolls.isNotEmpty()) launch {
+                    kotlinx.coroutines.delay(4000) // after the first direction
+                    say(t(if (tolls.size == 1) "Η διαδρομή έχει ένα διόδιο" else "Η διαδρομή έχει ${tolls.size} διόδια",
+                        if (tolls.size == 1) "The route has one toll" else "The route has ${tolls.size} tolls"))
+                }
                 if (rerouted) say(t("Νέα διαδρομή", "New route"), important = true)
                 else { showParking(0); launch { val c = withContext(Dispatchers.IO) { parkingNear(target).size }; if (nav?.target == target) showParking(c) } }
                 if (!rerouted) {
@@ -773,6 +797,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         after = null
         if (nav == null) return
         nav = null; tolls = emptyList(); tollsAhead = 0; showPlaces = true; parkingAsked = null; showParking(0)
+        (map?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(emptyList()))
         CarLink.nav.value = null
         navigation.navigationEnded()
         drawRoute(); follow(); showSpeed(); invalidate()

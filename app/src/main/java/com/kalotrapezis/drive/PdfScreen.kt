@@ -99,8 +99,8 @@ internal object Pdf {
     const val MAX_ZOOM = 5f
     fun isPdf(name: String) = name.endsWith(".pdf", ignoreCase = true)
 
-    /** Android's own page text and search (Android 15 on); older devices show no Find or Copy. */
-    val hasText get() = Build.VERSION.SDK_INT >= 35
+    /** Page text and search: MuPDF reads them on every Android (Android's own renderer only from 15). */
+    const val hasText = true
 
     /**
      * A pinch: the zoom times [by] about [at] (from the middle of the view) and moved by [pan], kept to 1–5× and to the
@@ -125,18 +125,26 @@ internal object Pdf {
 /** A word found: its page and its boxes there (in the page's points). */
 internal class PdfMatch(val page: Int, val boxes: List<RectF>)
 
+/** A PDF that needs its password: [tried] when one was given and it was wrong. */
+internal class PdfPasswordException(val tried: Boolean) : Exception("password")
+
 /**
- * One open PDF: Android's PdfRenderer (it has one page open at a time, so every use takes the lock, off the main
- * thread), its pages' sizes, and a small cache of drawn pages so scrolling back is instant.
+ * One open PDF, read by MuPDF (Plan.md § PDF: it draws a file's comments — highlights, notes, ink, stamps — which Android's
+ * PdfRenderer leaves out, and it edits): every use takes the lock, off the main thread; its pages' sizes; a small cache
+ * of drawn pages so scrolling back is instant.
  */
-internal class PdfDoc(file: File) {
-    private val fd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-    private val renderer = try { PdfRenderer(fd) } catch (e: Throwable) { fd.close(); throw e }
+internal class PdfDoc(file: File, password: String? = null) {
+    private val doc: com.artifex.mupdf.fitz.Document = com.artifex.mupdf.fitz.Document.openDocument(file.path).also { d ->
+        if (d.needsPassword() && (password == null || !d.authenticatePassword(password))) { d.destroy(); throw PdfPasswordException(password != null) }
+    }
     private var closed = false
     private var logged = false
 
     /** Each page's size in points (1/72 in), read once: the list lays out every page before any is drawn. */
-    val sizes: List<Size> = synchronized(this) { (0 until renderer.pageCount).map { i -> renderer.openPage(i).use { Size(it.width.coerceAtLeast(1).toFloat(), it.height.coerceAtLeast(1).toFloat()) } } }
+    val sizes: List<Size> = synchronized(this) { (0 until doc.countPages()).map { i -> page(i) { p ->
+        val b = p.bounds; Size((b.x1 - b.x0).coerceAtLeast(1f), (b.y1 - b.y0).coerceAtLeast(1f)) } } }
+
+    private inline fun <T> page(i: Int, use: (com.artifex.mupdf.fitz.Page) -> T): T { val p = doc.loadPage(i); try { return use(p) } finally { p.destroy() } }
 
     // an eighth of the app's memory, at most 96 MB: a few screens of pages
     private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceAtMost(96L shl 20).toInt()) {
@@ -145,16 +153,14 @@ internal class PdfDoc(file: File) {
 
     fun cached(i: Int, w: Int): Bitmap? = cache.get("$i/$w")
 
-    /** Page [i] drawn [w] px wide; null when closed, scrolled away before its turn, or it could not be drawn (left white). */
+    /** Page [i] drawn [w] px wide, its comments and form fields too; null when closed, scrolled away before its turn, or it could not be drawn (left white). */
     suspend fun page(i: Int, w: Int): Bitmap? = cached(i, w) ?: withContext(Dispatchers.IO) {
         synchronized(this@PdfDoc) {
             ensureActive() // a page flung past while it waited is not drawn
             if (closed) return@synchronized null
             cached(i, w) ?: runCatching {
                 val start = System.nanoTime()
-                val s = sizes[i]
-                val b = Bitmap.createBitmap(w, (w * s.height / s.width).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.WHITE) }
-                renderer.openPage(i).use { it.render(b, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) }
+                val b = page(i) { p -> com.artifex.mupdf.fitz.android.AndroidDrawDevice.drawPageFitWidth(p, w) }
                 val ms = (System.nanoTime() - start) / 1_000_000
                 // the first page's time, then only slow ones (the log is not a list of every page scrolled by)
                 if (!logged || ms >= 150) { logged = true; WriterLog.i("PDF: page ${i + 1} at $w px: $ms ms") }
@@ -164,22 +170,25 @@ internal class PdfDoc(file: File) {
     }
 
     /** Page [i]'s words, as the file has them (none on a scan). */
-    @androidx.annotation.RequiresApi(35)
     suspend fun text(i: Int): String = withContext(Dispatchers.IO) {
-        synchronized(this@PdfDoc) { if (closed) "" else renderer.openPage(i).use { p -> p.textContents.joinToString("\n") { it.text } } }
+        synchronized(this@PdfDoc) { if (closed) "" else page(i) { p -> p.toStructuredText().let { t -> t.asText().also { t.destroy() } } } }
     }
 
     /** Every place [query] is, page by page (the lock let go between pages, so the shown pages still draw). */
-    @androidx.annotation.RequiresApi(35)
     suspend fun find(query: String): List<PdfMatch> = withContext(Dispatchers.IO) {
         sizes.indices.flatMap { i ->
             ensureActive()
-            synchronized(this@PdfDoc) { if (closed) emptyList() else renderer.openPage(i).use { p -> p.searchText(query).map { PdfMatch(i, it.bounds) } } }
+            synchronized(this@PdfDoc) {
+                if (closed) emptyList() else page(i) { p ->
+                    val o = p.bounds
+                    p.search(query).orEmpty().map { hit -> PdfMatch(i, hit.map { q -> q.toRect().let { r -> RectF(r.x0 - o.x0, r.y0 - o.y0, r.x1 - o.x0, r.y1 - o.y0) } }) }
+                }
+            }
         }
     }
 
     /** Closed on a thread of its own: a page being drawn finishes first. */
-    fun close() { thread { synchronized(this) { if (!closed) { closed = true; renderer.close(); fd.close() } } } }
+    fun close() { thread { synchronized(this) { if (!closed) { closed = true; doc.destroy() } } } }
 }
 
 /**
@@ -195,17 +204,33 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     RememberOpened(file) // the Office home's Recents
     var doc by remember { mutableStateOf<PdfDoc?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(open) {
+    var password by remember { mutableStateOf<String?>(null) } // given in the password dialog
+    var askPassword by remember { mutableStateOf<Boolean?>(null) } // the dialog: true when the last one was wrong
+    LaunchedEffect(open, password) {
         WriterLog.init(context)
         val f = file ?: run { failed = "This file cannot be opened."; return@LaunchedEffect }
         WriterLog.i("PDF: open ${f.length() / 1024} KB")
-        withContext(Dispatchers.IO) { runCatching { WriterLog.timed("PDF: read") { PdfDoc(f) } } }
-            .onSuccess { doc = it; WriterLog.i("PDF: ${it.sizes.size} pages") }
+        withContext(Dispatchers.IO) { runCatching { WriterLog.timed("PDF: read") { PdfDoc(f, password) } } }
+            .onSuccess { doc = it; askPassword = null; WriterLog.i("PDF: ${it.sizes.size} pages") }
             .onFailure {
+                if (it is PdfPasswordException) { askPassword = it.tried; return@onFailure }
                 WriterLog.e("PDF: could not open", it)
-                failed = if (it is SecurityException) "This PDF is protected by a password, which Tetra cannot open yet. Open in another app can."
-                    else "This PDF could not be read. The file may be damaged, or not a PDF."
+                failed = "This PDF could not be read. The file may be damaged, or not a PDF."
             }
+    }
+    askPassword?.let { wrong ->
+        var typed by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { askPassword = null; back() },
+            title = { Text("This PDF has a password") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (wrong) Text("That password is not this file's.", color = MaterialTheme.colorScheme.error)
+                androidx.compose.material3.OutlinedTextField(typed, { typed = it }, label = { Text("Password") }, singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { askPassword = null; password = typed }))
+            } },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { askPassword = null; password = typed }) { Text("Open") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { askPassword = null; back() }) { Text("Cancel") } })
     }
     DisposableEffect(doc) { val d = doc; onDispose { d?.close() } } // this one: reading doc when it goes would close the next one
     BackHandler { back() }

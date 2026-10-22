@@ -135,7 +135,7 @@ internal enum class PdfTool(val label: String, val icon: Int) {
     Note("Note", R.drawable.ic_comment), Rectangle("Rectangle", R.drawable.ic_crop_square), Oval("Oval", R.drawable.ic_circle), Arrow("Arrow", R.drawable.ic_arrow_forward),
     Pen("Pen", R.drawable.ic_ink_pen), Marker("Highlighter", R.drawable.ic_ink_highlighter), Erase("Delete comment", R.drawable.ic_delete),
     Text("Text", R.drawable.ic_text_fields), Tick("Tick", R.drawable.ic_check), Cross("Cross", R.drawable.ic_close), Dot("Dot", R.drawable.ic_circle),
-    Date("Date", R.drawable.ic_calendar_today), Sign("Sign", R.drawable.ic_draw),
+    Date("Date", R.drawable.ic_calendar_today), Sign("Sign", R.drawable.ic_draw), Redact("Mark area", R.drawable.ic_crop_square),
 }
 
 /** A word found: its page and its boxes there (in the page's points). */
@@ -169,7 +169,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     val editable get() = pdf != null
     val canUndo get() = synchronized(this) { (pdf?.undoRedoPosition() ?: 0) > 0 }
     val canRedo get() = synchronized(this) { pdf?.let { it.undoRedoPosition() < it.undoRedoSteps() } == true }
-    val dirty get() = synchronized(this) { pdf?.hasUnsavedChanges() == true }
+    val dirty get() = synchronized(this) { pdf?.hasUnsavedChanges() == true || rewrite != null }
 
     /** One change, one undo step named [what]; the pages drawn again. */
     fun edit(what: String, change: (com.artifex.mupdf.fitz.PDFDocument) -> Unit) = synchronized(this) {
@@ -295,6 +295,69 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         }; true
     }
 
+    // —— Insert: on every page ——
+
+    /** A picture on page [i], [box] in page points (from its top left); [opacity] 1 solid. */
+    private fun stamp(p: com.artifex.mupdf.fitz.PDFPage, x0: Float, y0: Float, png: ByteArray, box: android.graphics.RectF, opacity: Float) =
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STAMP).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(box.left + x0, box.top + y0, box.right + x0, box.bottom + y0))
+            setAppearance(com.artifex.mupdf.fitz.Image(png)); if (opacity < 1f) setOpacity(opacity); update()
+        }
+
+    /** A picture (Insert › Image) in the middle of page [i], half its width. */
+    fun image(i: Int, png: ByteArray, aspect: Float) = annotate(i, "Image") { p, x0, y0 ->
+        val s = sizes[i]; val w = s.width / 2; val h = w * aspect
+        stamp(p, x0, y0, png, android.graphics.RectF((s.width - w) / 2, (s.height - h) / 2, (s.width + w) / 2, (s.height + h) / 2), 1f); true
+    }
+
+    /** A watermark ([png], drawn turned) across the middle of every page, faint. */
+    fun watermark(png: ByteArray, aspect: Float) = edit("Watermark") { _ ->
+        sizes.indices.forEach { i -> page(i) { p -> val o = p.bounds; val s = sizes[i]; val w = s.width * 0.8f; val h = w * aspect
+            stamp(p as com.artifex.mupdf.fitz.PDFPage, o.x0, o.y0, png, android.graphics.RectF((s.width - w) / 2, (s.height - h) / 2, (s.width + w) / 2, (s.height + h) / 2), 0.25f); p.update() } }
+    }
+
+    /** Words at the top and/or the bottom of every page ([footer] "{n}" and "{N}" for the page number and count), [size] points. */
+    fun headerFooter(header: String, footer: String, size: Float) = edit("Header and footer") { _ ->
+        sizes.indices.forEach { i -> page(i) { p -> val o = p.bounds; val s = sizes[i]; val pp = p as com.artifex.mupdf.fitz.PDFPage
+            fun put(words: String, top: Float) {
+                if (words.isBlank()) return
+                val t = words.replace("{n}", "${i + 1}").replace("{N}", "${sizes.size}").replace('—', '-').replace('–', '-')
+                val w = t.length * size * 0.6f + size
+                pp.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT).apply {
+                    setRect(com.artifex.mupdf.fitz.Rect(o.x0 + (s.width - w) / 2, o.y0 + top, o.x0 + (s.width + w) / 2, o.y0 + top + size * 1.6f))
+                    setDefaultAppearance("Helv", size, floatArrayOf(0.25f, 0.25f, 0.25f)); setContents(t); setBorderWidth(0f); update()
+                }
+            }
+            put(header, 18f); put(footer, s.height - 18f - size * 1.6f); pp.update() } }
+    }
+
+    // —— Protect ——
+
+    /** Changes that an appended save would leave readable in the file (redaction) or that change how it is read (a password). */
+    private var rewrite: String? = null
+
+    /** An area marked to be blacked out (Protect › Redact), from [a] to [b]: nothing is removed until [applyRedactions]. */
+    fun markRedaction(i: Int, a: Offset, b: Offset) = annotate(i, "Mark for redaction") { p, x0, y0 ->
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_REDACT).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(minOf(a.x, b.x) + x0, minOf(a.y, b.y) + y0, maxOf(a.x, b.x) + x0, maxOf(a.y, b.y) + y0)); update()
+        }; true
+    }
+
+    /** Every marked area's text, pictures and drawings taken out of the file, black boxes in their place; how many pages had some. */
+    fun applyRedactions(): Int {
+        var n = 0
+        edit("Redact") { _ -> sizes.indices.forEach { i -> page(i) { p -> if ((p as com.artifex.mupdf.fitz.PDFPage).applyRedactions(true, com.artifex.mupdf.fitz.PDFPage.REDACT_IMAGE_PIXELS)) n++ } } }
+        if (n > 0) rewrite = rewrite ?: "garbage=compact,compress"
+        return n
+    }
+    val hasRedactionMarks get() = synchronized(this) { sizes.indices.any { i -> page(i) { p -> (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty().any { it.type == com.artifex.mupdf.fitz.PDFAnnotation.TYPE_REDACT } } } }
+
+    /** The next save asks for [password] to open the file (AES-256), or with null opens without one. */
+    fun protect(password: String?) {
+        rewrite = if (password == null) "garbage=compact,compress,decrypt" else "garbage=compact,compress,encrypt=aes-256,user-password=${password.replace(",", "")},owner-password=${password.replace(",", "")}"
+    }
+    val rewriting get() = rewrite != null
+
     // —— forms (their own fields: fill in, tick, choose) ——
 
     /** The file has form fields to fill in. */
@@ -347,8 +410,11 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         val p = pdf ?: error("This file cannot be edited.")
         if (!base.isFile) file.copyTo(base, overwrite = true)
         val temp = File(to.parentFile, ".${to.name}.saving")
-        if (p.canBeSavedIncrementally()) { base.copyTo(temp, overwrite = true); p.save(temp.path, "incremental") }
-        else p.save(temp.path, "")
+        // redacted or (un)locked: written whole, the old objects dropped (an appended save would keep what was taken out)
+        val whole = rewrite
+        if (whole != null) { p.save(temp.path, whole); rewrite = null; base.delete() }
+        else if (p.canBeSavedIncrementally()) { base.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
+        else p.save(temp.path, "compress")
         check(temp.renameTo(to)) { "Could not save the PDF." }
         WriterLog.i("PDF: saved (${to.length() / 1024} KB)")
     }
@@ -506,6 +572,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     var fillSize by remember { mutableStateOf(11f) }
     val signatureFile = remember { File(context.filesDir, "pdf-signature.png") }
     var signing by remember { mutableStateOf(false) } // drawing the signature
+    var asking by remember { mutableStateOf<String?>(null) } // Insert's and Protect's windows: "header", "watermark", "password"
     var version by remember { mutableStateOf(0) } // after each change: the pages drawn again
     var organize by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
@@ -538,6 +605,22 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                 .onFailure { WriterLog.e("PDF: insert", it); Toast.makeText(context, it.message ?: "Could not put that PDF in.", Toast.LENGTH_LONG).show() }
         }
     }
+    val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        val d = doc ?: return@rememberLauncherForActivityResult
+        if (uri == null) return@rememberLauncherForActivityResult
+        val page = at
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching {
+                // a photo made a JPEG no wider than 1600 px (a camera's 12 MP would make the PDF huge)
+                val raw = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size) ?: error("That is not a picture.")
+                val k = minOf(1f, 1600f / bmp.width); val small = android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * k).toInt().coerceAtLeast(1), (bmp.height * k).toInt().coerceAtLeast(1), true)
+                val png = java.io.ByteArrayOutputStream().also { small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }.toByteArray()
+                d.image(page, png, small.height.toFloat() / small.width)
+            } }
+            r.onSuccess { version++ }.onFailure { WriterLog.e("PDF: image", it); Toast.makeText(context, it.message ?: "Could not put the picture in.", Toast.LENGTH_LONG).show() }
+        }
+    }
     BackHandler(enabled = editing || organize) { if (organize) organize = false else if (tool != null) tool = null else if (doc?.dirty == true) leaving = true else editing = false }
     /** What a finger did on page [i] with the tool on: [pts] its path in page points (a tap: one point). */
     fun onPage(i: Int, pts: List<Offset>) {
@@ -563,6 +646,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                     Toast.makeText(context, "No words there: a scan is a picture. Draw on it with Draw's pen.", Toast.LENGTH_SHORT).show()
             }
             PdfTool.Note -> writing = i to a
+            PdfTool.Redact -> if ((b - a).getDistance() > 4f) change { d.markRedaction(i, a, b) }
             PdfTool.Rectangle, PdfTool.Oval, PdfTool.Arrow -> if ((b - a).getDistance() > 4f) change {
                 d.shape(i, when (t) { PdfTool.Oval -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_CIRCLE; PdfTool.Arrow -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_LINE
                     else -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_SQUARE }, a, b, if (markColour == 0xFFEB3B) 0xE53935 else markColour, 2f)
@@ -644,6 +728,43 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             },
             confirmButton = { androidx.compose.material3.TextButton(onClick = { filling = null; doc?.let { d -> change { d.fill(i, at0, value) } } }) { Text("OK") } },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { filling = null }) { Text("Cancel") } })
+    }
+    when (asking) {
+        "header" -> {
+            var head by remember { mutableStateOf("") }; var foot by remember { mutableStateOf("") }
+            androidx.compose.material3.AlertDialog(onDismissRequest = { asking = null }, title = { Text("Header & footer") },
+                text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.OutlinedTextField(head, { head = it }, Modifier.fillMaxWidth(), label = { Text("Header") }, singleLine = true)
+                    androidx.compose.material3.OutlinedTextField(foot, { foot = it }, Modifier.fillMaxWidth(), label = { Text("Footer") }, singleLine = true)
+                    Text("On every page. {n} is the page's number, {N} how many there are.", style = MaterialTheme.typography.bodySmall)
+                } },
+                confirmButton = { androidx.compose.material3.TextButton(enabled = head.isNotBlank() || foot.isNotBlank(), onClick = { asking = null
+                    doc?.let { d -> change { d.headerFooter(head.trim(), foot.trim(), 10f) } } }) { Text("Put in") } },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } })
+        }
+        "watermark" -> {
+            var words by remember { mutableStateOf("ΠΡΟΣΧΕΔΙΟ") }
+            androidx.compose.material3.AlertDialog(onDismissRequest = { asking = null }, title = { Text("Watermark") },
+                text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), label = { Text("Words across every page") }, singleLine = true) },
+                confirmButton = { androidx.compose.material3.TextButton(enabled = words.isNotBlank(), onClick = { asking = null
+                    val (png, aspect) = watermarkPng(words.trim())
+                    doc?.let { d -> change { d.watermark(png, aspect) } } }) { Text("Put in") } },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } })
+        }
+        "password" -> {
+            var pw by remember { mutableStateOf("") }; var again by remember { mutableStateOf("") }
+            androidx.compose.material3.AlertDialog(onDismissRequest = { asking = null }, title = { Text("Password") },
+                text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Asked for to open the file, in every app (AES-256). Tetra cannot find it again if it is forgotten.", style = MaterialTheme.typography.bodySmall)
+                    androidx.compose.material3.OutlinedTextField(pw, { pw = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                    androidx.compose.material3.OutlinedTextField(again, { again = it }, Modifier.fillMaxWidth(), label = { Text("Again") }, singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), isError = again.isNotEmpty() && again != pw)
+                } },
+                confirmButton = { androidx.compose.material3.TextButton(enabled = pw.length >= 4 && pw == again, onClick = { asking = null
+                    doc?.protect(pw); version++; Toast.makeText(context, "Save puts the password on the file", Toast.LENGTH_LONG).show() }) { Text("OK") } },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } })
+        }
     }
     reading?.let { words ->
         androidx.compose.material3.AlertDialog(onDismissRequest = { reading = null }, title = { Text("Note") }, text = { Text(words) },
@@ -803,7 +924,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             val w = Color.White
             Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
                 OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) { Column {
-                    OfficeTabRow(listOf("Pages", "Review", "Draw", "Fill & Sign"), tab, w, PDF_RED, { tab = it; tool = null })
+                    OfficeTabRow(listOf("Pages", "Review", "Draw", "Fill & Sign", "Insert", "Protect"), tab, w, PDF_RED, { tab = it; tool = null })
                     @Composable fun ToolButton(t: PdfTool) = RibbonButton(t.label, w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
                     key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                         if (tab == "Review") {
@@ -814,6 +935,25 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                                 c?.let { markColour = (it.toArgb() and 0xFFFFFF) } }
                             RibbonDivider(w)
                             ToolButton(PdfTool.Erase)
+                            return@RibbonLine
+                        }
+                        if (tab == "Insert") {
+                            RibbonButton("Picture", w, R.drawable.ic_gallery) { pickImage.launch(arrayOf("image/*")) }
+                            RibbonButton("Page numbers", w, R.drawable.ic_format_list_numbered) { change { d.headerFooter("", "{n} / {N}", 10f) } }
+                            RibbonButton("Header & footer", w, R.drawable.ic_text_fields) { asking = "header" }
+                            RibbonButton("Watermark", w, R.drawable.ic_branding_watermark) { asking = "watermark" }
+                            return@RibbonLine
+                        }
+                        if (tab == "Protect") {
+                            RibbonButton("Password", w, R.drawable.ic_lock) { asking = "password" }
+                            if (password != null) RibbonButton("Remove password", w, R.drawable.ic_lock_open) { d.protect(null); version++
+                                Toast.makeText(context, "The next Save leaves the file without its password", Toast.LENGTH_LONG).show() }
+                            RibbonDivider(w)
+                            ToolButton(PdfTool.Redact)
+                            RibbonButton("Redact marked", w, R.drawable.ic_check) {
+                                var n = 0; change { n = d.applyRedactions() }
+                                Toast.makeText(context, if (n == 0) "Mark areas first (Mark area, then drag over them)" else "Taken out of $n page${if (n == 1) "" else "s"}: Save writes the file anew without them", Toast.LENGTH_LONG).show()
+                            }
                             return@RibbonLine
                         }
                         if (tab == "Fill & Sign") {
@@ -903,9 +1043,21 @@ private fun androidx.compose.foundation.layout.BoxScope.PdfDrawLayer(page: Size,
                 c.copy(alpha = if (tool == PdfTool.Marker) 0.4f else 1f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (tool == PdfTool.Marker) 24f else 5f,
                     cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
             PdfTool.Rectangle -> drawRect(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
+            PdfTool.Redact -> drawRect(Color.Black.copy(alpha = 0.5f), Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)))
             PdfTool.Oval -> drawOval(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
             PdfTool.Arrow -> drawLine(c, a, b, 4f)
             else -> drawLine(c.copy(alpha = 0.5f), a, b, 18f) // the words a highlight will cover, roughly
         }
     }
+}
+
+/** A watermark's words drawn turned 35° up, grey, as a PNG (Android draws Greek with the phone's own fonts), and its height / width. */
+internal fun watermarkPng(words: String): Pair<ByteArray, Float> {
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 160f; color = 0xFF808080.toInt(); typeface = android.graphics.Typeface.DEFAULT_BOLD }
+    val tw = paint.measureText(words); val th = paint.fontMetrics.let { it.descent - it.ascent }
+    val angle = Math.toRadians(35.0)
+    val w = (tw * Math.cos(angle) + th * Math.sin(angle)).toInt() + 20; val h = (tw * Math.sin(angle) + th * Math.cos(angle)).toInt() + 20
+    val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+    android.graphics.Canvas(bmp).apply { rotate(-35f, w / 2f, h / 2f); drawText(words, (w - tw) / 2f, h / 2f - (paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f, paint) }
+    return java.io.ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray() to h.toFloat() / w
 }

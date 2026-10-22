@@ -180,6 +180,11 @@ How to write here:
       can just throw in to files no reson to rebuild what is there" (they open in the PC's own programs). Maps does come to the
       desktop, because it syncs the same way the Timer does. Desktop Timer's copy-cleaner (d7fec05) is not in the installed
       0.6.0-beta.1 (built 19 Oct): a new .deb is needed; the PC's Timer folder still holds 25 old copies.
+- [x] (22 Oct night, the user: "bring the destop up to speed with the android versions. No office or Text Edittor just the maps
+      and the changes in the galery") Desktop 0.6.0-beta.3 (Drive 141d40e, aac3c9b, 36c1dd1): Photos' Text in the photo (a panel
+      beside Details, select part to copy), Hide eyes and Hide text (the editor's Hide mode, bar or stars) — the phone's
+      tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
+      a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user
@@ -1717,7 +1722,16 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       school register (its terms forbid reuse without permission; OSM's schools only, thin in places: 9 in Xanthi); Google
       Maps' data is not copied.
 - [ ] 4. Routing (car, foot, bike), turn by turn, voice, the next turn in HyperIsland; reroute offline.
-- [ ] Later: the desktop app builds and refreshes the files monthly by itself; Maps on desktop Tetra; a `tetra-maps` skill.
+- [x] (22 Oct night) **Maps on desktop Tetra** (Drive desktop 0.6.0-beta.3, maps.js / router.js / src/Maps.tsx): the same files in
+      Files/Maps, read and written as the phone writes them — the offline map (greece.pmtiles served as tiles through media://maps,
+      the phone's light style, fonts and sprites), Search with the phone's pills (accent-blind, Greeklish, a kind in a named
+      town, what is in view on Enter), a place's card (address, hours, phone, website, wheelchair, Nearby, Google Maps), saved
+      places with the phone's emblems, Home slots 1–12 and lists, trips planned on the computer (A, B, C…) for the phone to drive,
+      and directions by road on the computer: GraphHopper 10.2's server (Java 17 + ~/Tetra-maps/bin/graphhopper-web-10.2.jar)
+      on the phone's graph, memory-mapped read-only through a folder of links in the app's data, so no lock file reaches the
+      synced greece-gh. Each leg's km and time (car × 1.2, as the phone), Car / Walk / Bike. Maps hidden in Files' lists.
+- [ ] Later: the desktop app builds and refreshes the files monthly by itself; a `tetra-maps` skill; desktop directions
+      without the computer's Java (a bundled runtime, ~50 MB) if another computer is to route.
 - [ ] Desktop Maps asks the phone where it is (the user, 21 Oct: "when I click the corent location or a rute is calculated it
       will ask the phone while showing Waiting phone for location … from the internet it will be off by half a county"):
       the computer sends a location request over the paired connection, the phone answers with one GPS fix (asking for the

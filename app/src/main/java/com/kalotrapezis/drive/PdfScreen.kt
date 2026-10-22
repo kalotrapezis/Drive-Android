@@ -126,6 +126,12 @@ internal object Pdf {
     }
 }
 
+/** A comment on a page, as the Comments pane lists it: its kind, words, place (page points) and [index] among the page's. */
+internal class PdfComment(val page: Int, val index: Int, val kind: String, val words: String, val at: Offset)
+
+/** A bookmark (the file's contents): its title, page, depth. */
+internal class PdfMark(val title: String, val page: Int, val depth: Int)
+
 /** A form's field tapped: what it is ("text", "check", "radio", "choice", other), its name, value and choices. */
 internal class PdfField(val kind: String, val name: String, val value: String, val options: List<String>, val multiline: Boolean, val readOnly: Boolean)
 
@@ -294,6 +300,82 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             setAppearance(com.artifex.mupdf.fitz.Image(png)); update()
         }; true
     }
+
+    // —— the Comments pane and Bookmarks ——
+
+    private val kinds = mapOf(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_HIGHLIGHT to "Highlight", com.artifex.mupdf.fitz.PDFAnnotation.TYPE_UNDERLINE to "Underline",
+        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STRIKE_OUT to "Strikethrough", com.artifex.mupdf.fitz.PDFAnnotation.TYPE_SQUIGGLY to "Squiggly",
+        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_TEXT to "Note", com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT to "Text",
+        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_INK to "Drawing", com.artifex.mupdf.fitz.PDFAnnotation.TYPE_SQUARE to "Rectangle",
+        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_CIRCLE to "Oval", com.artifex.mupdf.fitz.PDFAnnotation.TYPE_LINE to "Line",
+        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STAMP to "Stamp", com.artifex.mupdf.fitz.PDFAnnotation.TYPE_REDACT to "To redact",
+        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_POLYGON to "Polygon", com.artifex.mupdf.fitz.PDFAnnotation.TYPE_CARET to "Caret")
+
+    /** Every comment, page by page (not form fields, links or popups); a highlight's words are the ones it covers. */
+    fun comments(): List<PdfComment> = synchronized(this) {
+        sizes.indices.flatMap { i -> page(i) { p ->
+            val o = p.bounds
+            (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty().withIndex().mapNotNull { (k, a) ->
+                val kind = kinds[a.type] ?: return@mapNotNull null
+                var words = a.contents.orEmpty()
+                if (words.isBlank() && a.type in listOf(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_HIGHLIGHT, com.artifex.mupdf.fitz.PDFAnnotation.TYPE_UNDERLINE,
+                        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STRIKE_OUT)) runCatching {
+                    val r = a.bounds; val t = p.toStructuredText()
+                    words = t.copy(com.artifex.mupdf.fitz.Point(r.x0, (r.y0 + r.y1) / 2), com.artifex.mupdf.fitz.Point(r.x1, (r.y0 + r.y1) / 2)).orEmpty().trim(); t.destroy()
+                }
+                val r = a.bounds
+                PdfComment(i, k, kind, words.replace('\n', ' '), Offset((r.x0 + r.x1) / 2 - o.x0, (r.y0 + r.y1) / 2 - o.y0))
+            }
+        } }
+    }
+
+    /** The comment [c] deleted (the Comments pane's bin). */
+    fun deleteComment(c: PdfComment) = annotate(c.page, "Delete comment") { p, _, _ ->
+        p.annotations.orEmpty().getOrNull(c.index)?.let { p.deleteAnnotation(it); true } ?: false
+    }
+
+    /** The file's bookmarks, nested ones a step in. */
+    fun bookmarks(): List<PdfMark> = synchronized(this) {
+        val out = ArrayList<PdfMark>()
+        fun walk(items: Array<com.artifex.mupdf.fitz.Outline>?, depth: Int) {
+            items.orEmpty().forEach { o ->
+                val pg = runCatching { doc.pageNumberFromLocation(doc.resolveLink(o)) }.getOrDefault(-1)
+                out += PdfMark(o.title.orEmpty(), pg, depth); walk(o.down, depth + 1)
+            }
+        }
+        runCatching { walk(doc.loadOutline(), 0) }
+        out
+    }
+
+    /** A bookmark called [title] to page [i], after the last one at the top level. */
+    fun addBookmark(title: String, i: Int) = edit("Bookmark") { _ ->
+        val it0 = doc.outlineIterator()
+        try {
+            while (it0.next() == com.artifex.mupdf.fitz.OutlineIterator.ITERATOR_AT_ITEM) Unit
+            it0.insert(title, doc.formatLinkURI(com.artifex.mupdf.fitz.LinkDestination.Fit(0, i)), false)
+        } finally { it0.destroy() }
+    }
+
+    /** The [n]th bookmark (in [bookmarks]' order) deleted, with any under it. */
+    fun deleteBookmark(n: Int) = edit("Delete bookmark") { _ ->
+        val it0 = doc.outlineIterator()
+        try {
+            var k = 0
+            fun visit(): Boolean {
+                do {
+                    if (it0.item() == null) return false
+                    if (k == n) { it0.delete(); return true }
+                    k++
+                    if (it0.down() == com.artifex.mupdf.fitz.OutlineIterator.ITERATOR_AT_ITEM) { if (visit()) return true; it0.up() }
+                } while (it0.next() == com.artifex.mupdf.fitz.OutlineIterator.ITERATOR_AT_ITEM)
+                return false
+            }
+            visit()
+        } finally { it0.destroy() }
+    }
+
+    /** Reduce size: the next save rewrites the file whole — what nothing uses dropped, copies of the same thing made one, streams and fonts compressed. */
+    fun shrink() { rewrite = rewrite ?: "garbage=deduplicate,compress,compress-fonts,compress-images" }
 
     // —— Insert: on every page ——
 
@@ -572,7 +654,8 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     var fillSize by remember { mutableStateOf(11f) }
     val signatureFile = remember { File(context.filesDir, "pdf-signature.png") }
     var signing by remember { mutableStateOf(false) } // drawing the signature
-    var asking by remember { mutableStateOf<String?>(null) } // Insert's and Protect's windows: "header", "watermark", "password"
+    var asking by remember { mutableStateOf<String?>(null) } // Insert's and Protect's windows: "header", "watermark", "password", "bookmark"
+    var pane by remember { mutableStateOf<String?>(null) } // "Comments" or "Bookmarks", beside the pages (a phone: over their lower half)
     var version by remember { mutableStateOf(0) } // after each change: the pages drawn again
     var organize by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
@@ -587,7 +670,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { keepPrevious(context, f); d.save(b) } }
             r.onFailure { WriterLog.e("PDF: save", it); Toast.makeText(context, "Could not save: ${it.message}", Toast.LENGTH_LONG).show() }
-                .onSuccess { version++; Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show(); then() }
+                .onSuccess { version++; Toast.makeText(context, "Saved (${f.length() / 1024} KB)", Toast.LENGTH_SHORT).show(); then() }
         }
     }
     // Pages › Insert PDF (Combine): another PDF's pages after the one shown
@@ -742,6 +825,14 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                     doc?.let { d -> change { d.headerFooter(head.trim(), foot.trim(), 10f) } } }) { Text("Put in") } },
                 dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } })
         }
+        "bookmark" -> {
+            var title by remember { mutableStateOf("Page ${at + 1}") }
+            androidx.compose.material3.AlertDialog(onDismissRequest = { asking = null }, title = { Text("Bookmark page ${at + 1}") },
+                text = { androidx.compose.material3.OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Title") }, singleLine = true) },
+                confirmButton = { androidx.compose.material3.TextButton(enabled = title.isNotBlank(), onClick = { asking = null; val pg = at
+                    doc?.let { d -> editing = true; change { d.addBookmark(title.trim(), pg) } } }) { Text("Add") } },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text("Cancel") } })
+        }
         "watermark" -> {
             var words by remember { mutableStateOf("ΠΡΟΣΧΕΔΙΟ") }
             androidx.compose.material3.AlertDialog(onDismissRequest = { asking = null }, title = { Text("Watermark") },
@@ -815,6 +906,10 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_open_with), contentDescription = null) })
                                 fav?.let { h -> DropdownMenuItem({ Text(if (h.on) "Remove from favourites" else "Add to favourites") }, { more = false; h.toggle() },
                                     leadingIcon = { Icon(painterResource(if (h.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = null) }) }
+                                if (doc != null) {
+                                    DropdownMenuItem({ Text("Comments") }, { more = false; pane = "Comments" }, leadingIcon = { Icon(painterResource(R.drawable.ic_comment), contentDescription = null) })
+                                    DropdownMenuItem({ Text("Bookmarks") }, { more = false; pane = "Bookmarks" }, leadingIcon = { Icon(painterResource(R.drawable.ic_bookmark), contentDescription = null) })
+                                }
                                 if (versions(context, f).isNotEmpty()) DropdownMenuItem({ Text("Versions") }, { more = false; showVersions = true },
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) })
                             }
@@ -846,7 +941,8 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                 else -> key(version) { Row(Modifier.fillMaxSize()) {
                     val density = LocalDensity.current
                     // a tablet: the pages small at the side, the one shown marked, tapped to go to it; a phone: the same, narrower, when asked for
-                    if (wide || pages) {
+                    if (pane != null && wide) PdfPane(d, pane!!, editing, version, Modifier.width(300.dp).fillMaxHeight(), { goTo(it) }, { pane = null }, { asking = "bookmark" }) { act -> change(act) }
+                    else if (wide || pages) {
                         val side = if (wide) 150.dp else 110.dp
                         val thumbs = rememberLazyListState()
                         LaunchedEffect(at) { if (thumbs.layoutInfo.visibleItemsInfo.none { it.index == at && it.offset >= 0 }) thumbs.animateScrollToItem((at - 1).coerceAtLeast(0)) }
@@ -917,6 +1013,9 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                     Text("Page ${(at + 1).coerceAtMost(d.sizes.size)} of ${d.sizes.size}", style = MaterialTheme.typography.labelLarge)
                 }
             }
+            // a phone: the pane over the lower half of the pages
+            if (d != null && pane != null && !wide) PdfPane(d, pane!!, editing, version, Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.55f),
+                { goTo(it) }, { pane = null }, { asking = "bookmark" }) { act -> change(act) }
         }
         // the ribbon while editing, at the bottom as Slides' (a tablet: the floating island; a phone: across the bottom)
         val d = doc
@@ -965,6 +1064,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                             listOf(9f to "Small", 11f to "Normal", 14f to "Large").forEach { (pt, label) -> RibbonButton(label, w, on = fillSize == pt) { fillSize = pt } }
                             RibbonDivider(w)
                             ToolButton(PdfTool.Erase)
+                            RibbonButton("Comments", w, R.drawable.ic_view_list, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
                             return@RibbonLine
                         }
                         if (tab == "Draw") {
@@ -986,6 +1086,11 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                         RibbonDivider(w)
                         RibbonButton("Blank page", w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
                         RibbonButton("Insert PDF", w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
+                        RibbonButton("Bookmarks", w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
+                        RibbonButton("Reduce size", w, R.drawable.ic_compress) {
+                            d.shrink(); version++
+                            Toast.makeText(context, "Save writes the file anew, smaller (now ${(file?.length() ?: 0) / 1024} KB)", Toast.LENGTH_LONG).show()
+                        }
                         RibbonButton("Extract page", w, R.drawable.ic_copy) {
                             val f = file ?: return@RibbonButton
                             scope.launch {
@@ -1060,4 +1165,55 @@ internal fun watermarkPng(words: String): Pair<ByteArray, Float> {
     val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
     android.graphics.Canvas(bmp).apply { rotate(-35f, w / 2f, h / 2f); drawText(words, (w - tw) / 2f, h / 2f - (paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f, paint) }
     return java.io.ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray() to h.toFloat() / w
+}
+
+/**
+ * The Comments or Bookmarks pane: every comment with its words and page, or the file's bookmarks; a row tapped goes to its
+ * page. While editing a comment can be deleted, a bookmark deleted or one added for the page shown. [version] reads them again.
+ */
+@Composable
+private fun PdfPane(d: PdfDoc, which: String, editing: Boolean, version: Int, modifier: Modifier, go: (Int) -> Unit, close: () -> Unit, addMark: () -> Unit,
+    change: (() -> Unit) -> Unit) {
+    var comments by remember { mutableStateOf<List<PdfComment>?>(null) }
+    var marks by remember { mutableStateOf<List<PdfMark>?>(null) }
+    LaunchedEffect(which, version) {
+        withContext(Dispatchers.IO) { if (which == "Comments") comments = runCatching { d.comments() }.getOrDefault(emptyList()) else marks = runCatching { d.bookmarks() }.getOrDefault(emptyList()) }
+    }
+    Surface(color = Color(0xFF1F1F1F), contentColor = Color.White, modifier = modifier) {
+        Column {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(which, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (which == "Bookmarks") androidx.compose.material3.TextButton(onClick = addMark) { Text("Add for this page", color = PDF_RED) }
+                IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close") }
+            }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+                if (which == "Comments") {
+                    val l = comments
+                    if (l == null) item { Text("Reading…", Modifier.padding(16.dp), color = Color.LightGray) }
+                    else if (l.isEmpty()) item { Text("No comments in this file.", Modifier.padding(16.dp), color = Color.LightGray) }
+                    else items(l.size) { k -> val c = l[k]
+                        Row(Modifier.fillMaxWidth().clickable { go(c.page) }.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${c.kind} · page ${c.page + 1}", style = MaterialTheme.typography.labelMedium, color = PDF_RED)
+                                if (c.words.isNotBlank()) Text(c.words, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            }
+                            if (editing) IconButton(onClick = { change { d.deleteComment(c) } }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete") }
+                        }
+                    }
+                } else {
+                    val l = marks
+                    if (l == null) item { Text("Reading…", Modifier.padding(16.dp), color = Color.LightGray) }
+                    else if (l.isEmpty()) item { Text("No bookmarks in this file.", Modifier.padding(16.dp), color = Color.LightGray) }
+                    else items(l.size) { k -> val m = l[k]
+                        Row(Modifier.fillMaxWidth().clickable(enabled = m.page >= 0) { go(m.page) }.padding(start = 16.dp + 16.dp * m.depth, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(m.title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            if (m.page >= 0) Text("${m.page + 1}", style = MaterialTheme.typography.labelMedium, color = Color.LightGray, modifier = Modifier.padding(horizontal = 8.dp))
+                            if (editing) IconButton(onClick = { change { d.deleteBookmark(k) } }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete") }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,6 +74,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -122,6 +124,13 @@ internal object Pdf {
         val cap = if (aspect >= 1f) 4096f else 4096f * aspect
         return minOf(w, cap).toInt().coerceAtLeast(1)
     }
+}
+
+/** The editor's tools that work on the page itself (Review and Draw); a finger draws while one is on. */
+internal enum class PdfTool(val label: String, val icon: Int) {
+    Highlight("Highlight", R.drawable.ic_highlighter), Underline("Underline", R.drawable.ic_format_underlined), Strike("Strikethrough", R.drawable.ic_format_strikethrough),
+    Note("Note", R.drawable.ic_comment), Rectangle("Rectangle", R.drawable.ic_crop_square), Oval("Oval", R.drawable.ic_circle), Arrow("Arrow", R.drawable.ic_arrow_forward),
+    Pen("Pen", R.drawable.ic_ink_pen), Marker("Highlighter", R.drawable.ic_ink_highlighter), Erase("Delete comment", R.drawable.ic_delete),
 }
 
 /** A word found: its page and its boxes there (in the page's points). */
@@ -198,6 +207,66 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         val out = com.artifex.mupdf.fitz.PDFDocument()
         try { pages.forEachIndexed { k, i -> out.graftPage(k, p, i) }; out.save(to.path, "garbage,compress") } finally { out.destroy() }
     }
+
+    // —— comments (Plan.md § PDF, Phase 1): points are page points from the page's top left, as [sizes] and [find] ——
+
+    private fun rgb(c: Int) = floatArrayOf((c shr 16 and 0xFF) / 255f, (c shr 8 and 0xFF) / 255f, (c and 0xFF) / 255f)
+    private fun annotate(i: Int, what: String, make: (com.artifex.mupdf.fitz.PDFPage, Float, Float) -> Boolean): Boolean {
+        var made = false
+        edit(what) { _ -> page(i) { p -> val o = p.bounds; made = make(p as com.artifex.mupdf.fitz.PDFPage, o.x0, o.y0); p.update() } }
+        return made
+    }
+
+    /** Highlight, underline or strike out ([type]) the words from [a] to [b], as a finger went over them: false when none. */
+    fun markText(i: Int, a: Offset, b: Offset, type: Int, color: Int) = annotate(i, when (type) {
+        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_UNDERLINE -> "Underline"; com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STRIKE_OUT -> "Strikethrough"; else -> "Highlight" }) { p, x0, y0 ->
+        val t = p.toStructuredText()
+        try {
+            val quads = t.highlight(com.artifex.mupdf.fitz.Point(a.x + x0, a.y + y0), com.artifex.mupdf.fitz.Point(b.x + x0, b.y + y0)).orEmpty()
+            if (quads.isEmpty()) false else { p.createAnnotation(type).apply { setQuadPoints(quads); setColor(rgb(color)); update() }; true }
+        } finally { t.destroy() }
+    }
+
+    /** A pen's strokes, [width] points wide. */
+    fun ink(i: Int, strokes: List<List<Offset>>, color: Int, width: Float) = annotate(i, "Draw") { p, x0, y0 ->
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_INK).apply {
+            setInkList(strokes.map { st -> st.map { com.artifex.mupdf.fitz.Point(it.x + x0, it.y + y0) }.toTypedArray() }.toTypedArray())
+            setColor(rgb(color)); setBorderWidth(width); update()
+        }; true
+    }
+
+    /** A note's icon at [at], [text] in it. */
+    fun note(i: Int, at: Offset, text: String, color: Int) = annotate(i, "Note") { p, x0, y0 ->
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_TEXT).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(at.x + x0, at.y + y0, at.x + x0 + 20, at.y + y0 + 20)); setContents(text); setColor(rgb(color)); update()
+        }; true
+    }
+
+    /** A rectangle, an oval ([type] square or circle) or an arrow from [a] to [b]. */
+    fun shape(i: Int, type: Int, a: Offset, b: Offset, color: Int, width: Float) = annotate(i, when (type) {
+        com.artifex.mupdf.fitz.PDFAnnotation.TYPE_CIRCLE -> "Oval"; com.artifex.mupdf.fitz.PDFAnnotation.TYPE_LINE -> "Arrow"; else -> "Rectangle" }) { p, x0, y0 ->
+        p.createAnnotation(type).apply {
+            if (type == com.artifex.mupdf.fitz.PDFAnnotation.TYPE_LINE) {
+                setLine(com.artifex.mupdf.fitz.Point(a.x + x0, a.y + y0), com.artifex.mupdf.fitz.Point(b.x + x0, b.y + y0))
+                setLineEndingStyles(com.artifex.mupdf.fitz.PDFAnnotation.LINE_ENDING_NONE, com.artifex.mupdf.fitz.PDFAnnotation.LINE_ENDING_OPEN_ARROW)
+            } else setRect(com.artifex.mupdf.fitz.Rect(minOf(a.x, b.x) + x0, minOf(a.y, b.y) + y0, maxOf(a.x, b.x) + x0, maxOf(a.y, b.y) + y0))
+            setColor(rgb(color)); setBorderWidth(width); update()
+        }; true
+    }
+
+    /** The comment under [at] (the topmost, a few points round it), deleted: false when there is none. */
+    fun deleteAt(i: Int, at: Offset) = annotate(i, "Delete comment") { p, x0, y0 ->
+        val x = at.x + x0; val y = at.y + y0; val slop = 6f
+        p.annotations.orEmpty().lastOrNull { a -> a.bounds.let { r -> x >= r.x0 - slop && x <= r.x1 + slop && y >= r.y0 - slop && y <= r.y1 + slop } }
+            ?.let { p.deleteAnnotation(it); true } ?: false
+    }
+
+    /** The note under [at]: its words, to read (a note's icon only says one is there). */
+    fun noteAt(i: Int, at: Offset): String? = synchronized(this) { page(i) { p ->
+        val o = p.bounds; val x = at.x + o.x0; val y = at.y + o.y0
+        (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty().lastOrNull { a -> a.type == com.artifex.mupdf.fitz.PDFAnnotation.TYPE_TEXT &&
+            a.bounds.let { r -> x >= r.x0 - 6 && x <= r.x1 + 6 && y >= r.y0 - 6 && y <= r.y1 + 6 } }?.contents
+    } }
 
     /**
      * Saved over [file] (or into [to]): the changes appended to the bytes as they were opened (an incremental save, so all
@@ -355,6 +424,13 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
 
     // —— editing (Plan.md § PDF): opened view only, Edit as Words' ——
     var editing by remember { mutableStateOf(false) }
+    var tab by remember { mutableStateOf("Pages") }
+    var tool by remember { mutableStateOf<PdfTool?>(null) }
+    var markColour by remember { mutableStateOf(0xFFEB3B) } // Review's colour (highlight, shapes, notes)
+    var penColour by remember { mutableStateOf(0xE53935) } // Draw's
+    var penWidth by remember { mutableStateOf(2f) }
+    var writing by remember { mutableStateOf<Pair<Int, Offset>?>(null) } // a note being written: its page and place
+    var reading by remember { mutableStateOf<String?>(null) } // a note tapped: its words
     var version by remember { mutableStateOf(0) } // after each change: the pages drawn again
     var organize by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
@@ -387,7 +463,30 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                 .onFailure { WriterLog.e("PDF: insert", it); Toast.makeText(context, it.message ?: "Could not put that PDF in.", Toast.LENGTH_LONG).show() }
         }
     }
-    BackHandler(enabled = editing || organize) { if (organize) organize = false else if (doc?.dirty == true) leaving = true else editing = false }
+    BackHandler(enabled = editing || organize) { if (organize) organize = false else if (tool != null) tool = null else if (doc?.dirty == true) leaving = true else editing = false }
+    /** What a finger did on page [i] with the tool on: [pts] its path in page points (a tap: one point). */
+    fun onPage(i: Int, pts: List<Offset>) {
+        val d = doc ?: return; val t = tool ?: run {
+            // no tool: a note tapped shows its words
+            if (pts.size == 1) d.noteAt(i, pts[0])?.let { reading = it.ifBlank { "(an empty note)" } }; return }
+        val a = pts.first(); val b = pts.last()
+        when (t) {
+            PdfTool.Highlight, PdfTool.Underline, PdfTool.Strike -> change {
+                val type = when (t) { PdfTool.Underline -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_UNDERLINE; PdfTool.Strike -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STRIKE_OUT
+                    else -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_HIGHLIGHT }
+                if (!d.markText(i, a, b, type, if (t == PdfTool.Highlight) markColour else if (markColour == 0xFFEB3B) 0xE53935 else markColour))
+                    Toast.makeText(context, "No words there: a scan is a picture. Draw on it with Draw's pen.", Toast.LENGTH_SHORT).show()
+            }
+            PdfTool.Note -> writing = i to a
+            PdfTool.Rectangle, PdfTool.Oval, PdfTool.Arrow -> if ((b - a).getDistance() > 4f) change {
+                d.shape(i, when (t) { PdfTool.Oval -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_CIRCLE; PdfTool.Arrow -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_LINE
+                    else -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_SQUARE }, a, b, if (markColour == 0xFFEB3B) 0xE53935 else markColour, 2f)
+            }
+            PdfTool.Pen -> if (pts.size > 1) change { d.ink(i, listOf(pts), penColour, penWidth) }
+            PdfTool.Marker -> if (pts.size > 1) change { d.ink(i, listOf(pts), 0xFFEB3B, 12f) }
+            PdfTool.Erase -> change { if (!d.deleteAt(i, a)) Toast.makeText(context, "No comment there", Toast.LENGTH_SHORT).show() }
+        }
+    }
 
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     var pages by remember { mutableStateOf(false) } // a phone's list of pages, brought out from the page label (asked 17 Oct)
@@ -417,6 +516,17 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                 }) { Text("Don't save") }
                 androidx.compose.material3.TextButton(onClick = { leaving = false }) { Text("Cancel") }
             } })
+    }
+    writing?.let { (i, at0) ->
+        var words by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { writing = null }, title = { Text("Note") },
+            text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 3, placeholder = { Text("What the note says") }) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { writing = null; doc?.let { d -> change { d.note(i, at0, words.trim(), markColour) } } }) { Text("Add") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { writing = null }) { Text("Cancel") } })
+    }
+    reading?.let { words ->
+        androidx.compose.material3.AlertDialog(onDismissRequest = { reading = null }, title = { Text("Note") }, text = { Text(words) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { reading = null }) { Text("Close") } })
     }
     if (showVersions) file?.let { f -> VersionsDialog(f, "", { showVersions = false }, about = "The file as it was before a save. Tapping one puts it back at once; the file as it is now goes into this list.") { v ->
         showVersions = false
@@ -514,7 +624,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                             awaitFirstDown(requireUnconsumed = false)
                             do {
                                 val ev = awaitPointerEvent(PointerEventPass.Initial)
-                                if (ev.changes.count { it.pressed } >= 2 || zoom > 1f) {
+                                if (ev.changes.count { it.pressed } >= 2 || (zoom > 1f && tool == null)) {
                                     val by = ev.calculateZoom(); val moved = ev.calculatePan()
                                     val c = ev.calculateCentroid(useCurrent = true).takeIf { it.isSpecified } ?: Offset(view.width / 2, view.height / 2)
                                     val (z, o) = Pdf.zoomed(zoom, pan, by, c - Offset(view.width / 2, view.height / 2), moved, view)
@@ -540,7 +650,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                         }
                         val roomW = maxWidth - 24.dp; val roomH = maxHeight - 24.dp
                         LazyColumn(Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, state = list,
-                            userScrollEnabled = zoom == 1f, flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(oneAtATime),
+                            userScrollEnabled = zoom == 1f && tool == null, flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(oneAtATime),
                             contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             items(d.sizes.size) { i ->
                                 // the whole page in view: as wide as there is room, no taller than the screen
@@ -549,7 +659,9 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                                 val px = with(density) { w.roundToPx() }
                                 val marks = matches?.filter { it.page == i }.orEmpty()
                                 PdfPage(d, i, if (i == at) Pdf.renderWidth(px, settled, s.width / s.height) else px,
-                                    Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).width(w), marks, matches?.getOrNull(match)?.takeIf { it.page == i })
+                                    Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).width(w), marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
+                                    if (editing) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
+                                }
                             }
                         }
                     }
@@ -570,8 +682,29 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             val w = Color.White
             Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
                 OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) { Column {
-                    OfficeTabRow(listOf("Pages"), "Pages", w, PDF_RED, {})
-                    RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                    OfficeTabRow(listOf("Pages", "Review", "Draw"), tab, w, PDF_RED, { tab = it; tool = null })
+                    @Composable fun ToolButton(t: PdfTool) = RibbonButton(t.label, w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
+                    key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                        if (tab == "Review") {
+                            ToolButton(PdfTool.Highlight); ToolButton(PdfTool.Underline); ToolButton(PdfTool.Strike)
+                            RibbonDivider(w)
+                            ToolButton(PdfTool.Note); ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
+                            Swatches(w, R.drawable.ic_palette, "Colour", listOf(0xFFEB3B, 0x92D050, 0x00B0F0, 0xE53935, 0x7030A0, 0x000000).map { Color(0xFF000000.toInt() or it) }) { c ->
+                                c?.let { markColour = (it.toArgb() and 0xFFFFFF) } }
+                            RibbonDivider(w)
+                            ToolButton(PdfTool.Erase)
+                            return@RibbonLine
+                        }
+                        if (tab == "Draw") {
+                            ToolButton(PdfTool.Pen); ToolButton(PdfTool.Marker)
+                            Swatches(w, R.drawable.ic_palette, "Pen colour", listOf(0x000000, 0xE53935, 0x0070C0, 0x00B050, 0x7030A0, 0xFFC000).map { Color(0xFF000000.toInt() or it) }) { c ->
+                                c?.let { penColour = (it.toArgb() and 0xFFFFFF) } }
+                            RibbonDivider(w)
+                            listOf(1f to "Thin", 2f to "Medium", 4f to "Thick").forEach { (pt, label) -> RibbonButton(label, w, on = penWidth == pt) { penWidth = pt } }
+                            RibbonDivider(w)
+                            ToolButton(PdfTool.Erase)
+                            return@RibbonLine
+                        }
                         val page = at
                         RibbonButton("Organize", w, R.drawable.ic_view_grid) { organize = true }
                         RibbonDivider(w)
@@ -590,7 +723,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                                     .onFailure { WriterLog.e("PDF: extract", it); Toast.makeText(context, it.message ?: "Could not extract the page.", Toast.LENGTH_LONG).show() }
                             }
                         }
-                    }
+                    } }
                 } }
             }
         }
@@ -599,7 +732,8 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
 
 /** Page [i], drawn [widthPx] wide off the main thread (the sharper one in when it is ready); words found marked on it, the current one stronger. */
 @Composable
-private fun PdfPage(doc: PdfDoc, i: Int, widthPx: Int, modifier: Modifier, marks: List<PdfMatch> = emptyList(), current: PdfMatch? = null) {
+private fun PdfPage(doc: PdfDoc, i: Int, widthPx: Int, modifier: Modifier, marks: List<PdfMatch> = emptyList(), current: PdfMatch? = null,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {}) {
     val s = doc.sizes[i]
     var bitmap by remember(i) { mutableStateOf(doc.cached(i, widthPx)) }
     LaunchedEffect(i, widthPx) { doc.page(i, widthPx)?.let { bitmap = it } }
@@ -608,6 +742,38 @@ private fun PdfPage(doc: PdfDoc, i: Int, widthPx: Int, modifier: Modifier, marks
         if (marks.isNotEmpty()) Canvas(Modifier.fillMaxSize()) {
             val k = size.width / s.width
             for (m in marks) for (r in m.boxes) drawRect(if (m === current) Color(0x88FF8A00) else Color(0x66FFEB3B), Offset(r.left * k, r.top * k), Size(r.width() * k, r.height() * k))
+        }
+        content()
+    }
+}
+
+/**
+ * The editor's layer over a page: a finger's path while a tool is on, drawn as it goes (the pen's line, a shape's outline,
+ * the stretch a highlight will cover), then handed over in the page's points; with no tool, a tap (to read a note).
+ */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.PdfDrawLayer(page: Size, tool: PdfTool?, colour: Int, done: (List<Offset>) -> Unit) {
+    var path by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    val c = Color(0xFF000000.toInt() or colour)
+    Canvas(Modifier.matchParentSize().pointerInput(tool) {
+        val k = size.width / page.width
+        if (tool == null || tool == PdfTool.Note || tool == PdfTool.Erase) detectTapGestures { p -> done(listOf(p / k)) }
+        else detectDragGestures(
+            onDragStart = { p -> path = listOf(p) },
+            onDrag = { ch, _ -> ch.consume(); path = path + ch.position },
+            onDragEnd = { val pts = path.map { it / k }; path = emptyList(); done(pts) },
+            onDragCancel = { path = emptyList() })
+    }) {
+        if (path.size < 2) return@Canvas
+        val a = path.first(); val b = path.last()
+        when (tool) {
+            PdfTool.Pen, PdfTool.Marker -> drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(a.x, a.y); path.drop(1).forEach { lineTo(it.x, it.y) } },
+                c.copy(alpha = if (tool == PdfTool.Marker) 0.4f else 1f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (tool == PdfTool.Marker) 24f else 5f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            PdfTool.Rectangle -> drawRect(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
+            PdfTool.Oval -> drawOval(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
+            PdfTool.Arrow -> drawLine(c, a, b, 4f)
+            else -> drawLine(c.copy(alpha = 0.5f), a, b, 18f) // the words a highlight will cover, roughly
         }
     }
 }

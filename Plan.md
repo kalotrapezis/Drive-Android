@@ -176,6 +176,10 @@ How to write here:
       when the Timer opens (phone) and when desktop Tetra starts. Sync never deletes, so the copies stop coming back only
       once every device has the new version (phone, tablet, PC .deb). Dry run on a copy of the PC's folder: 23 removed,
       the five timers unchanged. Tests: TimerTest, desktop test/timer.test.js.
+- (the user, 22 Oct) **Desktop Tetra's scope**: no PDF editor, no Office, no Text editor on the desktop — "Office things that I
+      can just throw in to files no reson to rebuild what is there" (they open in the PC's own programs). Maps does come to the
+      desktop, because it syncs the same way the Timer does. Desktop Timer's copy-cleaner (d7fec05) is not in the installed
+      0.6.0-beta.1 (built 19 Oct): a new .deb is needed; the PC's Timer folder still holds 25 old copies.
 - Other sessions: add your line here when you start.
 
 ## Waiting on the user

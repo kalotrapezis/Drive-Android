@@ -10,6 +10,7 @@ A shape (an area) is put at its middle. Datasets only as a shapefile or a page a
 Usage: maps-amea.py greece-amea.tsv
 """
 import json
+import os
 import sys
 import time
 import urllib.parse
@@ -60,6 +61,20 @@ def middle(geometry):
     if not pts:
         return None
     return sum(p[1] for p in pts) / len(pts), sum(p[0] for p in pts) / len(pts)
+
+
+PLATE_KEYS = ("arkykl", "ar_kykl", "arithmos_kykloforias", "pinakida", "plate", "αρ. κυκλ", "αριθμός κυκλοφορίας")
+
+
+def is_personal(props):
+    """A spot given to one person or car: a kind that says so (ΑΤΟΜΙΚΗ, ΑΠΟΚΛΕΙΣΤΙΚΗ, ΠΑΡΑΧΩΡΗΣΗ), or a plate filled in."""
+    for k, v in props.items():
+        t = str(v or "").upper()
+        if any(w in t for w in ("ΑΤΟΜΙΚ", "ΑΠΟΚΛΕΙΣΤ", "ΠΑΡΑΧΩΡ", "PERSONAL", "PRIVATE")):
+            return True
+        if str(k).lower() in PLATE_KEYS and str(v or "").strip() not in ("", "None", "-"):
+            return True
+    return False
 
 
 def clean(s):
@@ -167,23 +182,45 @@ if __name__ == "__main__":
             skipped.append(f"{city}: {ds['title']} ({e})")
             continue
         n = 0
+        personal = 0
         for f in features:
+            # never a spot given to one person (Thessaloniki's layer, 22 Oct: 483 "ΑΤΟΜΙΚΕΣ ΘΕΣΕΙΣ ΑΜΕΑ" with the car's plate,
+            # beside 62 general ones): the user, "never make personal or exclusive ΑμεΑ spots public"
+            props = f.get("properties") or {}
+            if is_personal(props):
+                personal += 1
+                continue
             at = middle(f.get("geometry"))
             if not at or not (34 < at[0] < 42 and 19 < at[1] < 30):  # not in Greece: a projection not asked for
                 continue
             rows.append(f"disabled_parking\t{at[0]:.6f}\t{at[1]:.6f}\tΑμεΑ parking\t\t{where(f.get('properties') or {}, city)}\t\t\t\t\t{city} (data.gov.gr)\n")
             n += 1
-        print(f"{city}: {n}")
+        print(f"{city}: {n}" + (f" ({personal} personal left out)" if personal else ""))
     for lat, lng, where_, city in files():
         if 34 < lat < 42 and 19 < lng < 30:
             rows.append(f"disabled_parking\t{lat:.6f}\t{lng:.6f}\tΑμεΑ parking\t\t{where_}\t\t\t\t\t{city} (data.gov.gr)\n")
+    # cities read from their own GIS by hand (tools/amea-municipal.tsv: Καβάλα, Πάτρα, Thessaloniki's general layer, Αθήνα):
+    # places as the city counts them in the address line
+    extra = os.path.join(os.path.dirname(os.path.abspath(__file__)), "amea-municipal.tsv")
+    if os.path.isfile(extra):
+        for line in open(extra, encoding="utf-8"):
+            if line.startswith("#") or not line.strip():
+                continue
+            city, addr, places, lat, lng, source = line.rstrip("\n").split("\t")
+            where_ = f"{addr}, {city}" if not addr.isdigit() else f"{city} (σημείο {addr})"
+            if int(places) > 1:
+                where_ += f" · {places} θέσεις"
+            rows.append(f"disabled_parking\t{float(lat):.6f}\t{float(lng):.6f}\tΑμεΑ parking\t\t{where_}\t\t\t\t\t{city} ({source})\n")
+        print(f"tools/amea-municipal.tsv: {sum(1 for l in open(extra, encoding='utf-8') if l.strip() and not l.startswith('#'))}")
     # one spot once: some cities publish the same spots in two datasets
-    kept = []
+    kept, cells = [], {}  # every spot against all kept ones near it (a grid of ~50 m cells)
     for r in rows:
         la, lo = map(float, r.split("\t")[1:3])
-        if not any(abs(la - a) < 0.00005 and abs(lo - b) < 0.00006 for a, b, _ in kept[-400:]):
-            kept.append((la, lo, r))
-    rows = [r for _, _, r in kept]
+        cx, cy = int(la * 2000), int(lo * 2000)
+        near = [p for dx in (-1, 0, 1) for dy in (-1, 0, 1) for p in cells.get((cx + dx, cy + dy), [])]
+        if not any(abs(la - a) < 0.00005 and abs(lo - b) < 0.00006 for a, b in near):
+            kept.append(r); cells.setdefault((cx, cy), []).append((la, lo))
+    rows = kept
     with open(sys.argv[1] + ".part", "w", encoding="utf-8") as out:
         out.writelines(rows)
     import os

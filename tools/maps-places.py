@@ -30,8 +30,10 @@ KINDS = {
     "hospital": lambda t: t.get("amenity") in ("hospital", "clinic"),
     "fuel": lambda t: t.get("amenity") == "fuel",
     "charging": lambda t: t.get("amenity") == "charging_station",
-    "disabled_parking": lambda t: t.get("parking_space") == "disabled"
-        or (t.get("amenity") == "parking" and t.get("capacity:disabled", "no") not in ("no", "0", "")),
+    # public ones only: not one kept for a person, a house or customers (the user: never personal or exclusive spots)
+    "disabled_parking": lambda t: t.get("access", "yes") not in ("private", "customers", "permit", "no", "residents", "designated_private")
+        and (t.get("parking_space") == "disabled"
+        or (t.get("amenity") == "parking" and t.get("capacity:disabled", "no") not in ("no", "0", ""))),
     "parking": lambda t: t.get("amenity") == "parking",
     "atm": lambda t: t.get("amenity") == "atm" or (t.get("amenity") == "bank" and t.get("atm") == "yes"),
     "hotel": lambda t: t.get("tourism") in ("hotel", "guest_house", "hostel"),

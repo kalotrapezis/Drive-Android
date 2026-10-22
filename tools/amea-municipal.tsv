@@ -1,0 +1,165 @@
+# Municipal ΑμεΑ spots (general, public only) gathered 22 Oct 2026 from each city's official GIS (the user's research, ChatGPT,
+# accessible-parking-greece-phase1.pdf; coordinates as the city publishes them). city, address, places, lat, lng, source
+Αθήνα	ΡΗΓΓΙΛΗΣ 2	2	37.974894	23.742861	opendata.cityofathens.gr GIS
+Αθήνα	ΠΛ. ΣΚΟΥΖΕ 1	2	37.972317	23.742602	opendata.cityofathens.gr GIS
+Αθήνα	ΜΟΥΡΟΥΖΗ 1	2	37.975032	23.740719	opendata.cityofathens.gr GIS
+Αθήνα	ΑΓΙΩΝ ΑΣΩΜΑΤΩΝ 2	3	37.978029	23.720984	opendata.cityofathens.gr GIS
+Αθήνα	ΕΡΜΟΥ 133	3	37.977274	23.721637	opendata.cityofathens.gr GIS
+Αθήνα	ΙΠΠΟΚΡΑΤΟΥΣ 2	1	37.982049	23.734205	opendata.cityofathens.gr GIS
+Αθήνα	ΟΜΗΡΟΥ 24	1	37.979368	23.735698	opendata.cityofathens.gr GIS
+Αθήνα	ΕΜΜΑΝΟΥΗΛ ΜΠΕΝΑΚΗ 9	1	37.983545	23.730953	opendata.cityofathens.gr GIS
+Αθήνα	ΕΜΜΑΝΟΥΗΛ ΜΠΕΝΑΚΗ 14	1	37.983370	23.730802	opendata.cityofathens.gr GIS
+Αθήνα	ΠΙΝΔΑΡΟΥ 1	1	37.979346	23.741170	opendata.cityofathens.gr GIS
+Αθήνα	ΠΕΣΜΑΤΖΟΓΛΟΥ 3	1	37.980713	23.730396	opendata.cityofathens.gr GIS
+Αθήνα	ΣΟΦΟΚΛΕΟΥΣ 23	1	37.981082	23.726995	opendata.cityofathens.gr GIS
+Αθήνα	ΣΩΚΡΑΤΟΥΣ 51	1	37.983138	23.726468	opendata.cityofathens.gr GIS
+Αθήνα	ΣΩΚΡΑΤΟΥΣ 9	1	37.980740	23.725868	opendata.cityofathens.gr GIS
+Αθήνα	ΕΥΡΙΠΙΔΟΥ 46	1	37.980063	23.726048	opendata.cityofathens.gr GIS
+Αθήνα	ΕΡΜΟΥ 86	1	37.976849	23.725406	opendata.cityofathens.gr GIS
+Αθήνα	ΞΕΝΟΦΩΝΤΟΣ 15	1	37.974286	23.733213	opendata.cityofathens.gr GIS
+Αθήνα	ΒΟΥΛΗΣ 42	1	37.974000	23.732078	opendata.cityofathens.gr GIS
+Αθήνα	ΝΙΚΗΣ 52	1	37.972655	23.733074	opendata.cityofathens.gr GIS
+Αθήνα	ΦΛΕΣΣΑ 9	1	37.973303	23.729332	opendata.cityofathens.gr GIS
+Αθήνα	ΧΡΗΣΤΟΥ ΛΑΔΑ 6	1	37.978560	23.732547	opendata.cityofathens.gr GIS
+Αθήνα	ΠΑΠΑΡΡΗΓΟΠΟΥΛΟΥ ΙΩΑΝΝΟΥ 3	1	37.979145	23.731914	opendata.cityofathens.gr GIS
+Θεσσαλονίκη	26ης Οκτωβρίου (Δικαστικό Μέγαρο)	1	40.639779	22.932457	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Φράγκων (ΙΚΑ)	1	40.638851	22.933406	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Ολυμπίου Διαμαντή 1	1	40.638150	22.934505	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Ολυμπίου Διαμαντή 16	1	40.637617	22.935342	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Λέοντος Σοφού 1	1	40.637143	22.936662	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Λέοντος Σοφού 5	1	40.637552	22.937116	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Λέοντος Σοφού 6	1	40.637018	22.936782	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Λέοντος Σοφού 12	1	40.637318	22.937097	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Συγγρού 14 (γωνία με Εγνατία)	1	40.638060	22.940443	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Φιλίππου με Μακ. Αμύνης	1	40.637793	22.944669	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Φιλίππου (έμπροσθεν Ρωμαϊκής Αγοράς)	1	40.637368	22.945480	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Βασ. Ηρακλείου 28	1	40.634406	22.941790	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Κομνηνών 4	1	40.633097	22.939493	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Δημοσθένους 2	2	40.632568	22.939832	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Καρόλου Ντηλ 11	1	40.632218	22.942830	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Μητρ. Γενναδίου 10	1	40.635413	22.945558	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Αγ. Σοφίας 9-11	3	40.631607	22.944022	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Βογατσικού (μπροστά από τη Μητρόπολη)	1	40.630476	22.944489	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Βογατσικού 6	1	40.630113	22.944234	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Προξένου Κορομηλά 2	1	40.631794	22.941796	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Αγ. Δημητρίου 101	1	40.637603	22.949580	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Π.Μελά με Ζεύξιδος	1	40.631699	22.947189	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Εξαδάκτυλου 8	1	40.633722	22.949711	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Π.Π. Γερμανού με Εγνατία	1	40.632316	22.950656	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Π.Π. Γερμανού 37	1	40.631999	22.949526	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Δημ. Γούναρη (πλ. Ροτόντας)	1	40.632860	22.952031	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Εγνατία – Ι.Ν. Παναγίας Δεξιάς	1	40.631779	22.952273	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Γ. Λαμπράκη 2 (Παν. Μακεδονίας)	5	40.625538	22.959251	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	ΚΤΙΡΙΟ ΔΗΜΑΡΧΕΙΟΥ	1	40.623936	22.953447	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Χρήστου Πίψου 7-9	1	40.643411	22.923896	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Γιαννιτσών 31 (ΚΕΚ Τεχνόπολις)	1	40.644103	22.926546	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Βασιλείου Τσορλίνη 26	1	40.644881	22.924003	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Γεωρ. Τσόντου 27 (ΚΕΚ Διαβαλκανικό)	1	40.645938	22.916629	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Αλεξανδρουπόλεως 10 (ΚΕΚ Master)	2	40.645739	22.917508	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Νικηφορου Ουρανού 15	1	40.644251	22.912588	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Παπάφη 2	1	40.622570	22.959758	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Παπάφη 31	1	40.620069	22.962161	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Ιωαννίνων με Λαχανά	1	40.621474	22.959042	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Κλεάνθους 72	1	40.614372	22.970844	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Γρ. Λαμπρακη 100 (ΙΚΑ)	1	40.616594	22.971413	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Σπανού Αλεξ. (12ο ΓΕΛ)	1	40.611755	22.987646	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Βελισσάριου 5	1	40.620481	22.955842	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Αρχαιλογικού Μουσείου 29	1	40.615769	22.956837	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Αλ. Φλέμινγκ 8	1	40.611393	22.955073	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Π. Συνδίκα 8	1	40.604020	22.952576	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Π. Συνδίκα 3	1	40.603780	22.951965	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Κριεζώτου 8	1	40.602132	22.953078	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Καρακάση 1	2	40.599020	22.958575	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Σιγάλα Μαρίνου 9	3	40.595042	22.960965	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Καθ. Ρωσσίδη 11	1	40.592009	22.951393	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Αγ. Βασιλείου με Γυμνασ. Μικρού	1	40.604194	22.970964	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Μπότσαρη με Μ. Αλεξάνδρου	1	40.607090	22.951405	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Νικόγλου με Μ. Αλεξάνδρου	1	40.610078	22.952091	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Αλεξ. Μιχαηλίδη 39	1	40.614576	22.953392	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Γήπεδα Τέννις (Νέα Παραλία)	2	40.616081	22.952518	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Μακεδονία Παλλάς 1	2	40.619037	22.952590	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Μακεδονία Παλλάς 2	4	40.617661	22.952800	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Χαρ. Τρικούπη 34-36	1	40.623759	22.971858	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Στον προσωρινά διαμορφωμένο δημοτικό χώρο	10	40.595038	22.949872	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Στον προσωρινά διαμορφωμένο δημοτικό χώρο	2	40.597546	22.951568	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Στον προσωρινά διαμορφωμένο δημοτικό χώρο	3	40.601372	22.960148	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Στον προσωρινά διαμορφωμένο δημοτικό χώρο	3	40.598527	22.950136	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Στον προσωρινά διαμορφωμένο δημοτικό χώρο	1	40.601638	22.950018	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Νικ.Μαντζάρου 6	2	40.644245	22.922510	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Φλέμιγκ 16	1	40.611525	22.956147	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Γιάννη Χαλκίδη 19	1	40.604219	22.964889	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Μακεδονίας 163	2	40.598041	22.964053	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Πέτρου Συνδίκα	1	40.603993	22.950728	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Πέτρου Συνδίκα 5	1	40.604115	22.952252	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Μαρίας Κάλλας έμπροσθεν του Ποσειδωνίου	2	40.597312	22.950539	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Παυσιλίπου 9	2	40.612790	22.981164	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Γρ.Λαμπράκη 186 (για το «πάρκο για όλους»)	1	40.613231	22.980959	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Παυσιλίπου 7 (1ο Ε.Ε.Ε.Ε.Κ)	1	40.612163	22.980552	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Κοσμοπούλου (Γ’ Σώμα Στρατού) - Δημαρχείο	1	40.623018	22.954510	Thessaloniki municipal GIS, general spaces
+Θεσσαλονίκη	Αλάνα Αλεξάνδρειο Μέλαθρο Θεσσαλονίκης -	3	40.627533	22.958381	Thessaloniki municipal GIS, general spaces
+Πάτρα	Ζαΐμη (ΕΛΤΑ)	1	38.249891	21.738627	Patras Smart City
+Πάτρα	Ζαΐμη 23-29	1	38.250159	21.738279	Patras Smart City
+Πάτρα	Μαιζώνος 51-55	1	38.249380	21.738588	Patras Smart City
+Πάτρα	Μαιζώνος 39	1	38.249924	21.739270	Patras Smart City
+Πάτρα	Μαιζώνος (Αρσάκειο)	1	38.250646	21.740216	Patras Smart City
+Πάτρα	Κανακάρη 46-52	1	38.248529	21.739944	Patras Smart City
+Πάτρα	Ρήγα Φεραίου 21	1	38.251124	21.739416	Patras Smart City
+Πάτρα	Ρήγα Φεραίου 52	1	38.249227	21.736983	Patras Smart City
+Πάτρα	Κορίνθου (Αρσάκειο)	1	38.250090	21.740622	Patras Smart City
+Πάτρα	0138	1	38.249085	21.734543	Patras Smart City
+Πάτρα	0297	1	38.245444	21.734415	Patras Smart City
+Πάτρα	0307	1	38.246107	21.733506	Patras Smart City
+Πάτρα	0342	1	38.247706	21.738506	Patras Smart City
+Πάτρα	0356	1	38.248904	21.736944	Patras Smart City
+Πάτρα	0453	1	38.245474	21.730676	Patras Smart City
+Πάτρα	0466	1	38.246595	21.732087	Patras Smart City
+Πάτρα	0488	1	38.247967	21.733816	Patras Smart City
+Πάτρα	0502	1	38.249505	21.735753	Patras Smart City
+Πάτρα	0509	1	38.250497	21.737003	Patras Smart City
+Πάτρα	0510	1	38.250529	21.737042	Patras Smart City
+Πάτρα	0545	1	38.245030	21.732700	Patras Smart City
+Πάτρα	0553	1	38.244940	21.732700	Patras Smart City
+Πάτρα	0645	1	38.244880	21.733541	Patras Smart City
+Πάτρα	0656	1	38.244920	21.733590	Patras Smart City
+Πάτρα	0860	1	38.249757	21.735897	Patras Smart City
+Καβάλα	Τενέδου 110	2	40.921319	24.383458	Kavala municipal GIS
+Καβάλα	Θάλασσας Μαρμαρά 2	1	40.923067	24.385972	Kavala municipal GIS
+Καβάλα	Χανίων 29	1	40.931010	24.381087	Kavala municipal GIS
+Καβάλα	Κωνσταντίνου Τσολάκη 42	1	40.940190	24.403601	Kavala municipal GIS
+Καβάλα	Φιλοπτώχου Αδελφότητος 1	1	40.936826	24.403475	Kavala municipal GIS
+Καβάλα	Ελευθερίου Βενιζέλου 11	1	40.936199	24.411823	Kavala municipal GIS
+Καβάλα	Ελευθερίου Βενιζέλου 15	2	40.936380	24.411559	Kavala municipal GIS
+Καβάλα	Ελευθερίου Βενιζέλου 16	1	40.936193	24.412194	Kavala municipal GIS
+Καβάλα	Ελευθερίου Βενιζέλου 24	1	40.936979	24.409980	Kavala municipal GIS
+Καβάλα	Ελευθερίου Βενιζέλου 27	1	40.936835	24.410377	Kavala municipal GIS
+Καβάλα	Ελευθερίου Βενιζέλου, Δημοτικός Κήπος	1	40.937069	24.408228	Kavala municipal GIS
+Καβάλα	Ελευθερίου Βενιζέλου 30	1	40.936955	24.406812	Kavala municipal GIS
+Καβάλα	Ελευθερίου Βενιζέλου 31	1	40.936870	24.406802	Kavala municipal GIS
+Καβάλα	Ομονοίας 53	1	40.937065	24.413288	Kavala municipal GIS
+Καβάλα	Ομονοίας 69	1	40.937609	24.412263	Kavala municipal GIS
+Καβάλα	Ομονοίας 72	2	40.938420	24.411051	Kavala municipal GIS
+Καβάλα	Ομονοίας 101	1	40.938615	24.410290	Kavala municipal GIS
+Καβάλα	Ομονοίας 92	1	40.938822	24.409549	Kavala municipal GIS
+Καβάλα	Ομονοίας 119	1	40.939011	24.409093	Kavala municipal GIS
+Καβάλα	Ομονοίας 137	1	40.939796	24.407638	Kavala municipal GIS
+Καβάλα	Δαγκλή 4	1	40.935769	24.406369	Kavala municipal GIS
+Καβάλα	Δαγκλή	3	40.935655	24.406188	Kavala municipal GIS
+Καβάλα	Φιλικής Εταιρείας 5	2	40.935964	24.407550	Kavala municipal GIS
+Καβάλα	Μητροπολίτου Χρυσοστόμου 8	2	40.936293	24.408227	Kavala municipal GIS
+Καβάλα	Θεοδώρου Πουλίδου 9	1	40.935470	24.413653	Kavala municipal GIS
+Καβάλα	Θεοδώρου Πουλίδου 28	1	40.933700	24.413666	Kavala municipal GIS
+Καβάλα	Θεοδώρου Πουλίδου 66	1	40.931286	24.414076	Kavala municipal GIS
+Καβάλα	Θεοδώρου Πουλίδου 74	1	40.930823	24.413971	Kavala municipal GIS
+Καβάλα	Ίωνος Δραγούμη 1	1	40.937110	24.411854	Kavala municipal GIS
+Καβάλα	Ίωνος Δραγούμη 2	1	40.937735	24.412545	Kavala municipal GIS
+Καβάλα	Καράνου 17	1	40.937910	24.413249	Kavala municipal GIS
+Καβάλα	Αβέρωφ 2	1	40.936858	24.409216	Kavala municipal GIS
+Καβάλα	Κωνσταντίνου Παλαιολόγου 1	1	40.937983	24.407594	Kavala municipal GIS
+Καβάλα	Κωνσταντίνου Παλαιολόγου 7	2	40.938090	24.406530	Kavala municipal GIS
+Καβάλα	Δοϊράνης 16	1	40.936948	24.412857	Kavala municipal GIS
+Καβάλα	Εθνάρχου Μακαρίου 6	2	40.938570	24.408120	Kavala municipal GIS
+Καβάλα	Κουντουριώτου 11	1	40.936021	24.413627	Kavala municipal GIS
+Καβάλα	Αγίου Αθανασίου 7	1	40.940818	24.418808	Kavala municipal GIS
+Καβάλα	Ερυθρού Σταυρού 188	2	40.946355	24.437361	Kavala municipal GIS
+Καβάλα	Ερυθρού Σταυρού 190	1	40.946421	24.437738	Kavala municipal GIS
+Καβάλα	Δημοτικό Κολυμβητήριο	2	40.948040	24.435034	Kavala municipal GIS

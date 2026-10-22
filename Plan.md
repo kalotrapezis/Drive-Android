@@ -1692,6 +1692,39 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
 - [ ] 4. Routing (car, foot, bike), turn by turn, voice, the next turn in HyperIsland; reroute offline.
 - [ ] Later: the desktop app builds and refreshes the files monthly by itself; Maps on desktop Tetra; a `tetra-maps` skill.
 
+## PDF — from viewer to editor (planned 22 Oct; research by an agent, nothing built yet)
+
+The user, 22 Oct: "make our PDF viewer a PDF editor … parity with PDF Craft"; "I dont want to copy their code I want you to see
+the futures … as a roadmap"; "I have no intension to ever taking money from the things i make, software is born free and it
+sould stay that way". So: PdfCraft (github.com/storytold/pdfcraft, v0.11 alpha, Rust, desktop/web only, ~170 tools) is the
+feature checklist only — none of its code. The engine is **MuPDF** (AGPL-3.0, fine for a free app; Tetra's LICENSE says GPL-2.0
+with no version, so "GPL-3.0-or-later" should be stated — the user's call).
+
+Why an engine at all: today's viewer (PdfScreen.kt) uses Android's PdfRenderer, which does not draw annotations — a PDF with
+highlights, notes, ink, stamps and arrows showed only its text (emulator, 22 Oct). MuPDF draws them all, edits them, does pages,
+forms, true redaction, passwords, compression; minSdk 30 stays. Size: AAR 21.6 MB for 4 ABIs (~5.4 MB compressed per ABI);
+measured in Tetra's APK before Phase 1 is committed (today arm64 release 159 MB). Fallback if ever needed: PDFium + PdfBox-Android.
+
+Under Office's rules: opens view-only with Words' Edit; tabs File · Home · Review · Draw · Pages · Fill & Sign · Insert · Forms ·
+Protect · View (+ Image, Comment when chosen); everyday on the ribbon with icons, the rest behind ⋯; tablet/phone strips with
+✓/×, modals for many fields; Words' parts reused (Swatches, DesignGalleryStrip fonts, SizeStepper, Draw tab for ink and
+signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the original bytes; Greek text boxes embed a real font.
+
+- [ ] Phase 0 (1–2 days, no library): highlights/notes/text boxes/stamps shown on API 35+ (RenderParams flags), Find and copy
+      on Android 12–14 (PdfRendererPreV), password-protected files (LoadParams).
+- [ ] Phase 1 (2–3 weeks): MuPDF; every annotation drawn; Edit flow with an edit list (undo), incremental save, Versions; Pages
+      (rotate, delete, insert blank/from file, move, extract, combine, split); highlight/underline/strike, note, text box, ink,
+      rectangle/oval/line/arrow, standard stamps; fill existing forms; Fill & Sign (text, ✓ ✗, date, drawn signature).
+- [ ] Phase 2 (2 weeks): Comments pane (replies, status), the other shapes, own stamps, bookmarks, metadata, links, Insert (text,
+      image, header & footer, watermark, page numbers), Image tab (move/crop/replace), export images and text.
+- [ ] Phase 3 (2–3 weeks): password and permissions, true redaction (checked to remove the text), remove hidden information,
+      reduce size, OCR for Latin text (ML Kit, already in the APK), create forms and field properties.
+- [ ] Phase 4 (3+ weeks): cover-and-retype for existing text (in-place editing is hard everywhere; PdfCraft is ~30% there),
+      Export to Word through Words' writer, form-field detection, Greek OCR (Tesseract), digital signatures.
+- Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
+- Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
+  PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.
+
 ## The user's original wishlist (Sept 2026, unchanged)
 
 - The desktop and Android notes we made work like a charm

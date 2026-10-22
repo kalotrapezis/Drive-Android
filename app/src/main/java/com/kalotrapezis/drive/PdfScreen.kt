@@ -131,6 +131,8 @@ internal enum class PdfTool(val label: String, val icon: Int) {
     Highlight("Highlight", R.drawable.ic_highlighter), Underline("Underline", R.drawable.ic_format_underlined), Strike("Strikethrough", R.drawable.ic_format_strikethrough),
     Note("Note", R.drawable.ic_comment), Rectangle("Rectangle", R.drawable.ic_crop_square), Oval("Oval", R.drawable.ic_circle), Arrow("Arrow", R.drawable.ic_arrow_forward),
     Pen("Pen", R.drawable.ic_ink_pen), Marker("Highlighter", R.drawable.ic_ink_highlighter), Erase("Delete comment", R.drawable.ic_delete),
+    Text("Text", R.drawable.ic_text_fields), Tick("Tick", R.drawable.ic_check), Cross("Cross", R.drawable.ic_close), Dot("Dot", R.drawable.ic_circle),
+    Date("Date", R.drawable.ic_calendar_today), Sign("Sign", R.drawable.ic_draw),
 }
 
 /** A word found: its page and its boxes there (in the page's points). */
@@ -251,6 +253,42 @@ internal class PdfDoc(private val file: File, password: String? = null) {
                 setLineEndingStyles(com.artifex.mupdf.fitz.PDFAnnotation.LINE_ENDING_NONE, com.artifex.mupdf.fitz.PDFAnnotation.LINE_ENDING_OPEN_ARROW)
             } else setRect(com.artifex.mupdf.fitz.Rect(minOf(a.x, b.x) + x0, minOf(a.y, b.y) + y0, maxOf(a.x, b.x) + x0, maxOf(a.y, b.y) + y0))
             setColor(rgb(color)); setBorderWidth(width); update()
+        }; true
+    }
+
+    /**
+     * Words put on the page at [at] (Fill & Sign › Text, Date), [size] points, no box round them: a text box comment whose
+     * look MuPDF makes with its own fonts, Greek included (URW's base fonts carry Latin, Greek and Cyrillic).
+     */
+    fun text(i: Int, at: Offset, words: String, size: Float, color: Int) = annotate(i, "Text") { p, x0, y0 ->
+        val lines = words.lines()
+        val w = lines.maxOf { it.length } * size * 0.62f + size; val h = lines.size * size * 1.25f + size * 0.4f
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(at.x + x0, at.y + y0, at.x + x0 + w, at.y + y0 + h))
+            // the Greek set MuPDF writes text boxes in has no long dashes or curly quotes: their plain ones
+            setDefaultAppearance("Helv", size, rgb(color)); setContents(words.replace('—', '-').replace('–', '-').replace('“', '"').replace('”', '"'))
+            setBorderWidth(0f); update()
+        }; true
+    }
+
+    /** A tick, a cross or a dot ([mark] ✓ ✗ •) at [at], [size] points: drawn strokes (no font needed), as Fill & Sign's. */
+    fun mark(i: Int, at: Offset, mark: Char, size: Float, color: Int) = annotate(i, "Fill: $mark") { p, x0, y0 ->
+        val x = at.x + x0 - size / 2; val y = at.y + y0 - size / 2
+        fun pt(fx: Float, fy: Float) = com.artifex.mupdf.fitz.Point(x + fx * size, y + fy * size)
+        if (mark == '•') p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_CIRCLE).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(x + size * 0.3f, y + size * 0.3f, x + size * 0.7f, y + size * 0.7f)); setColor(rgb(color)); setInteriorColor(rgb(color)); update()
+        } else p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_INK).apply {
+            setInkList(if (mark == '✓') arrayOf(arrayOf(pt(0.1f, 0.55f), pt(0.4f, 0.85f), pt(0.9f, 0.15f)))
+                else arrayOf(arrayOf(pt(0.15f, 0.15f), pt(0.85f, 0.85f)), arrayOf(pt(0.85f, 0.15f), pt(0.15f, 0.85f))))
+            setColor(rgb(color)); setBorderWidth(size / 9); update()
+        }; true
+    }
+
+    /** A picture (the signature, drawn once and kept) at [at], [width] points wide: a stamp whose look is the picture. */
+    fun picture(i: Int, at: Offset, png: ByteArray, width: Float, aspect: Float) = annotate(i, "Signature") { p, x0, y0 ->
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STAMP).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(at.x + x0, at.y + y0, at.x + x0 + width, at.y + y0 + width * aspect))
+            setAppearance(com.artifex.mupdf.fitz.Image(png)); update()
         }; true
     }
 
@@ -431,6 +469,10 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
     var penWidth by remember { mutableStateOf(2f) }
     var writing by remember { mutableStateOf<Pair<Int, Offset>?>(null) } // a note being written: its page and place
     var reading by remember { mutableStateOf<String?>(null) } // a note tapped: its words
+    var typing by remember { mutableStateOf<Pair<Int, Offset>?>(null) } // Fill & Sign › Text: where the words go
+    var fillSize by remember { mutableStateOf(11f) }
+    val signatureFile = remember { File(context.filesDir, "pdf-signature.png") }
+    var signing by remember { mutableStateOf(false) } // drawing the signature
     var version by remember { mutableStateOf(0) } // after each change: the pages drawn again
     var organize by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
@@ -485,6 +527,16 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             PdfTool.Pen -> if (pts.size > 1) change { d.ink(i, listOf(pts), penColour, penWidth) }
             PdfTool.Marker -> if (pts.size > 1) change { d.ink(i, listOf(pts), 0xFFEB3B, 12f) }
             PdfTool.Erase -> change { if (!d.deleteAt(i, a)) Toast.makeText(context, "No comment there", Toast.LENGTH_SHORT).show() }
+            PdfTool.Text -> typing = i to a
+            PdfTool.Tick -> change { d.mark(i, a, '✓', fillSize * 1.3f, 0x000000) }
+            PdfTool.Cross -> change { d.mark(i, a, '✗', fillSize * 1.3f, 0x000000) }
+            PdfTool.Dot -> change { d.mark(i, a, '•', fillSize * 1.3f, 0x000000) }
+            PdfTool.Date -> change { d.text(i, a - Offset(0f, fillSize * 0.6f), java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")), fillSize, 0x000000) }
+            PdfTool.Sign -> if (!signatureFile.isFile) signing = true else change {
+                val b = signatureFile.readBytes(); val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, o)
+                val w = 140f; d.picture(i, a - Offset(w / 2, w * o.outHeight / o.outWidth.coerceAtLeast(1) / 2), b, w, o.outHeight.toFloat() / o.outWidth.coerceAtLeast(1))
+            }
         }
     }
 
@@ -523,6 +575,19 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 3, placeholder = { Text("What the note says") }) },
             confirmButton = { androidx.compose.material3.TextButton(onClick = { writing = null; doc?.let { d -> change { d.note(i, at0, words.trim(), markColour) } } }) { Text("Add") } },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { writing = null }) { Text("Cancel") } })
+    }
+    typing?.let { (i, at0) ->
+        var words by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { typing = null }, title = { Text("Text") },
+            text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), placeholder = { Text("What goes there") }) },
+            confirmButton = { androidx.compose.material3.TextButton(enabled = words.isNotBlank(), onClick = { typing = null
+                doc?.let { d -> change { d.text(i, at0 - Offset(0f, fillSize * 0.6f), words.trim(), fillSize, 0x000000) } } }) { Text("Put in") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { typing = null }) { Text("Cancel") } })
+    }
+    // the signature: drawn once in Words' drawing box, kept in the app (never in a file), put where Sign is tapped
+    if (signing) DrawDialog(200f, { signing = false }, boxAspect = 0.4f) { png, _, _, _, _ ->
+        signing = false
+        runCatching { signatureFile.writeBytes(png) }.onSuccess { tool = PdfTool.Sign; Toast.makeText(context, "Signature kept: tap where it goes", Toast.LENGTH_LONG).show() }
     }
     reading?.let { words ->
         androidx.compose.material3.AlertDialog(onDismissRequest = { reading = null }, title = { Text("Note") }, text = { Text(words) },
@@ -682,7 +747,7 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
             val w = Color.White
             Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
                 OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) { Column {
-                    OfficeTabRow(listOf("Pages", "Review", "Draw"), tab, w, PDF_RED, { tab = it; tool = null })
+                    OfficeTabRow(listOf("Pages", "Review", "Draw", "Fill & Sign"), tab, w, PDF_RED, { tab = it; tool = null })
                     @Composable fun ToolButton(t: PdfTool) = RibbonButton(t.label, w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
                     key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                         if (tab == "Review") {
@@ -691,6 +756,17 @@ internal fun PdfScreen(back: () -> Unit, open: String) {
                             ToolButton(PdfTool.Note); ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
                             Swatches(w, R.drawable.ic_palette, "Colour", listOf(0xFFEB3B, 0x92D050, 0x00B0F0, 0xE53935, 0x7030A0, 0x000000).map { Color(0xFF000000.toInt() or it) }) { c ->
                                 c?.let { markColour = (it.toArgb() and 0xFFFFFF) } }
+                            RibbonDivider(w)
+                            ToolButton(PdfTool.Erase)
+                            return@RibbonLine
+                        }
+                        if (tab == "Fill & Sign") {
+                            ToolButton(PdfTool.Text); ToolButton(PdfTool.Tick); ToolButton(PdfTool.Cross); ToolButton(PdfTool.Dot); ToolButton(PdfTool.Date)
+                            RibbonDivider(w)
+                            ToolButton(PdfTool.Sign)
+                            RibbonButton(if (signatureFile.isFile) "New signature" else "Draw signature", w, R.drawable.ic_edit) { signing = true }
+                            RibbonDivider(w)
+                            listOf(9f to "Small", 11f to "Normal", 14f to "Large").forEach { (pt, label) -> RibbonButton(label, w, on = fillSize == pt) { fillSize = pt } }
                             RibbonDivider(w)
                             ToolButton(PdfTool.Erase)
                             return@RibbonLine
@@ -757,7 +833,7 @@ private fun androidx.compose.foundation.layout.BoxScope.PdfDrawLayer(page: Size,
     val c = Color(0xFF000000.toInt() or colour)
     Canvas(Modifier.matchParentSize().pointerInput(tool) {
         val k = size.width / page.width
-        if (tool == null || tool == PdfTool.Note || tool == PdfTool.Erase) detectTapGestures { p -> done(listOf(p / k)) }
+        if (tool == null || tool == PdfTool.Note || tool == PdfTool.Erase || tool in PdfTool.Text..PdfTool.Sign) detectTapGestures { p -> done(listOf(p / k)) }
         else detectDragGestures(
             onDragStart = { p -> path = listOf(p) },
             onDrag = { ch, _ -> ch.consume(); path = path + ch.position },

@@ -1866,7 +1866,7 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       accessible (wheelchair) mark in General and beside Parking (the user: "a disability mark to have for my parking spots
       and accessible places").
 
-## PDF — from viewer to editor (planned 22 Oct; research by an agent, nothing built yet)
+## PDF — from viewer to editor (planned and built 22 Oct; what is left at the end of this section)
 
 The user, 22 Oct: "make our PDF viewer a PDF editor … parity with PDF Craft"; "I dont want to copy their code I want you to see
 the futures … as a roadmap"; "I have no intension to ever taking money from the things i make, software is born free and it
@@ -1895,15 +1895,14 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       Not yet: text boxes with a box/colour, own stamps, the comments pane, bookmarks, Insert, Protect, phone layout check.
 - [~] Phase 0 (1–2 days, no library): superseded by MuPDF — highlights/notes/text boxes/stamps shown on API 35+ (RenderParams flags), Find and copy
       on Android 12–14 (PdfRendererPreV), password-protected files (LoadParams).
-- [ ] Phase 1 (2–3 weeks): MuPDF; every annotation drawn; Edit flow with an edit list (undo), incremental save, Versions; Pages
-      (rotate, delete, insert blank/from file, move, extract, combine, split); highlight/underline/strike, note, text box, ink,
-      rectangle/oval/line/arrow, standard stamps; fill existing forms; Fill & Sign (text, ✓ ✗, date, drawn signature).
-- [ ] Phase 2 (2 weeks): Comments pane (replies, status), the other shapes, own stamps, bookmarks, metadata, links, Insert (text,
-      image, header & footer, watermark, page numbers), Image tab (move/crop/replace), export images and text.
-- [ ] Phase 3 (2–3 weeks): password and permissions, true redaction (checked to remove the text), remove hidden information,
-      reduce size, OCR for Latin text (ML Kit, already in the APK), create forms and field properties.
-- [ ] Phase 4 (3+ weeks): cover-and-retype for existing text (in-place editing is hard everywhere; PdfCraft is ~30% there),
-      Export to Word through Words' writer, form-field detection, Greek OCR (Tesseract), digital signatures.
+- [x] Phases 1–3 and most of 4 built 22 Oct (emulator-checked; see git log): every annotation drawn and edited; Pages; Review
+      with the Comments pane (replies) and Bookmarks; Draw; Fill & Sign (forms filled and made: text field, check box); Insert
+      (text box, picture, own and standard stamps, header & footer, watermark); Protect (password, find & redact, select &
+      redact — the text removed from the file, checked with pymupdf); Reduce size; OCR (Tesseract, Greek + English, an invisible
+      text layer); Export text; Edit in Words (colours, lists, pictures, tables found after the fact, contents → Words' TOC).
+- [ ] Left: cover-and-retype for a PDF's own text; digital (certificate) signatures (~6 MB of crypto); remove hidden
+      information; document properties; a placed signature moved afterwards; Edit in Words sometimes misses a table's header
+      row; the phone layout checked; all of it on the real pair (phone 208c8192, tablet 971f6b37).
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

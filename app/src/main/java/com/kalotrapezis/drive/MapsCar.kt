@@ -113,6 +113,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             actions.addAction(action("Places") { screenManager.push(StartScreen()) })
             actions.addAction(action("Search") { screenManager.push(SearchScreen()) })
         } else actions.addAction(action("Stop") { stop() })
+        actions.addAction(icon(R.drawable.ic_settings) { screenManager.push(SettingsScreen()) })
         // on the map: drag it (pan), zoom in and out, and back to me once moved (the user, 22 Oct: "it does not zoom?")
         val mapActions = ActionStrip.Builder().addAction(Action.PAN)
             .addAction(icon(R.drawable.ic_add) { zoom(1.0) }).addAction(icon(R.drawable.ic_remove) { zoom(-1.0) })
@@ -209,7 +210,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
 
         override fun onSurfaceDestroyed(c: SurfaceContainer) {
-            map = null; sign = null; speedText = null
+            map = null; sign = null; speedText = null; tollView = null; gpsView = null
             view?.run { onPause(); onStop(); onDestroy() }; view = null
             presentation?.dismiss(); presentation = null
             display?.release(); display = null
@@ -222,22 +223,41 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private var speedText: android.widget.TextView? = null
     private var limit: Int? = null
     private var limitAsked = 0L
+    private var tolls: List<Double> = emptyList() // the route's toll stations, metres along it
+    private var tollsAhead = 0
+    private var lastAlong = 0.0; private var backFixes = 0; private var wrongSaidAt = 0L
+    private var fixAt = android.os.SystemClock.elapsedRealtime()
+    private var signalLost = false
+    private var tollView: android.widget.TextView? = null
+    private var gpsView: android.widget.TextView? = null
 
+    /*
+     * A column on the map with no background (the user, 22 Oct: "an invisible vertical list corrent speed/ spped limit/
+     * tolls/ when a root has it the symbol turns on"): my speed, the limit's sign, the tolls left on the route, no GPS.
+     */
     private fun speedSign(c: android.content.Context): android.view.View {
         val dp = c.resources.displayMetrics.density
+        fun badge(color: Int) = android.widget.TextView(c).apply {
+            gravity = android.view.Gravity.CENTER; textSize = 18f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
+            setPadding((10 * dp).toInt(), (4 * dp).toInt(), (10 * dp).toInt(), (4 * dp).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = 50 * dp }
+        }
+        tollView = badge(0xFF1565C0.toInt())
+        gpsView = badge(0xFFD32F2F.toInt()).apply { text = "No GPS" }
         sign = android.widget.TextView(c).apply {
             gravity = android.view.Gravity.CENTER; textSize = 28f; typeface = android.graphics.Typeface.DEFAULT_BOLD
             layoutParams = android.widget.LinearLayout.LayoutParams((72 * dp).toInt(), (72 * dp).toInt())
         }
         speedText = android.widget.TextView(c).apply {
-            // big enough to read at a glance (the user, 22 Oct: "The km/h make it bigger it bearly shows")
-            textSize = 22f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (4 * dp).toInt())
-            background = android.graphics.drawable.GradientDrawable().apply { setColor(0xCC202124.toInt()); cornerRadius = 50 * dp }
+            // big enough to read at a glance (the user, 22 Oct: "The km/h make it bigger it bearly shows"); a white halo for the map under it
+            gravity = android.view.Gravity.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF202124.toInt())
+            setShadowLayer(6 * dp, 0f, 0f, Color.WHITE)
         }
         showSpeed()
         return android.widget.LinearLayout(c).apply {
             orientation = android.widget.LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL
-            addView(sign); addView(speedText, android.widget.LinearLayout.LayoutParams(-2, -2).apply { topMargin = (4 * dp).toInt() })
+            fun gap() = android.widget.LinearLayout.LayoutParams(-2, -2).apply { topMargin = (6 * dp).toInt() }
+            addView(speedText); addView(sign, gap().apply { width = (72 * dp).toInt(); height = (72 * dp).toInt() }); addView(tollView, gap()); addView(gpsView, gap())
         }
     }
 
@@ -252,7 +272,16 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(if (over) 0xFFD32F2F.toInt() else Color.WHITE); setStroke((5 * dp).toInt(), 0xFFD32F2F.toInt())
             }
         }
-        speedText?.apply { visibility = if (kmh == null) android.view.View.GONE else android.view.View.VISIBLE; text = "$kmh km/h" }
+        speedText?.apply {
+            visibility = if (kmh == null) android.view.View.GONE else android.view.View.VISIBLE
+            text = android.text.SpannableString("$kmh\nkm/h").apply {
+                setSpan(android.text.style.AbsoluteSizeSpan(40, true), 0, "$kmh".length, 0)
+                setSpan(android.text.style.AbsoluteSizeSpan(18, true), "$kmh".length, length, 0)
+            }
+        }
+        // the toll symbol lit while the route has tolls ahead, with how many
+        tollView?.apply { visibility = if (nav != null && tollsAhead > 0) android.view.View.VISIBLE else android.view.View.GONE; text = "€ Tolls $tollsAhead" }
+        gpsView?.visibility = if (signalLost) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     private fun ready(m: MapLibreMap, style: Style) {
@@ -298,6 +327,16 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     override fun onCreate(owner: LifecycleOwner) {
         if (!granted()) return
+        // no fix for 10 s: "No GPS" on the map, and said while directions run
+        lifecycleScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(2000)
+                if (!signalLost && android.os.SystemClock.elapsedRealtime() - fixAt > 10_000) {
+                    signalLost = true; showSpeed()
+                    if (nav != null) say(t("Χάθηκε το σήμα GPS", "GPS signal lost"), important = true)
+                }
+            }
+        }
         val lm = carContext.getSystemService(LocationManager::class.java) ?: return
         runCatching {
             listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { lm.isProviderEnabled(it) }.forEach { pr ->
@@ -321,7 +360,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     private fun onFix(loc: Location) {
-        here = loc
+        here = loc; fixAt = android.os.SystemClock.elapsedRealtime()
+        if (signalLost) { signalLost = false; showSpeed() }
         map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.forceLocationUpdate(loc)
         // the limit at most every two seconds, off the main thread (the graph is opened the first time)
         if (System.currentTimeMillis() - limitAsked > 2000 && File(graphDir, "properties").isFile) {
@@ -339,11 +379,19 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             return
         }
         if (p.left < 50.0 || metresBetween(loc.latitude, loc.longitude, n.target.lat, n.target.lng) < 60.0) {
-            if ("n${n.route.steps.lastIndex}" !in n.said) say(n.route.steps.lastOrNull()?.text ?: "")
+            if ("n${n.route.steps.lastIndex}" !in n.said) say(n.route.steps.lastOrNull()?.text ?: "", important = true)
             stop()
             if (MapsPrefs.autoPark(carContext)) park(loc, "a car trip ended")
             CarToast.makeText(carContext, "Arrived: ${n.target.name}", CarToast.LENGTH_LONG).show(); return
         }
+        // going back along the route for 3 fixes at speed: the wrong way, said once a minute at most
+        backFixes = if (p.along < lastAlong - 5 && loc.hasSpeed() && loc.speed > 3f) backFixes + 1 else 0
+        lastAlong = p.along
+        if (backFixes >= 3 && System.currentTimeMillis() - wrongSaidAt > 60_000) {
+            wrongSaidAt = System.currentTimeMillis()
+            say(t("Λάθος κατεύθυνση. Κάντε αναστροφή όταν είναι ασφαλές", "Wrong direction. Turn around when it is safe"), important = true)
+        }
+        tollsAhead = tolls.count { it > p.along }
         var said = n.said
         val step = n.route.steps[p.next]
         when (dueWarning(p.next, p.toNext, if (loc.hasSpeed()) loc.speed.toDouble() else 0.0, true, said)) {
@@ -363,12 +411,16 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         if (!File(graphDir, "properties").isFile) { CarToast.makeText(carContext, "No routing graph yet in Tetra/Maps", CarToast.LENGTH_LONG).show(); return }
         finding = "Finding the way…"; invalidate()
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang) } }
+            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang) }
+                .onSuccess { MapsSearch.load(root) } } // the tolls on it, below, from the search list (read once)
             finding = null
             r.onSuccess { route ->
                 val rerouted = nav?.target == target
                 WriterLog.i("Maps car: route, ${route.metres.toInt()} m, ${route.steps.size} steps")
                 nav = Nav(target, "car", route, cumulative(route), System.currentTimeMillis())
+                lastAlong = 0.0; backFixes = 0
+                tolls = runCatching { tollsOn(route, cumulative(route), MapsSearch.load(root)).map { it.second } }.getOrDefault(emptyList())
+                if (rerouted) say(t("Νέα διαδρομή", "New route"), important = true)
                 if (!rerouted) {
                     navigation.navigationStarted()
                     route.steps.firstOrNull()?.let { say(it.text) }
@@ -386,7 +438,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     fun stop() {
         if (nav == null) return
-        nav = null
+        nav = null; tolls = emptyList(); tollsAhead = 0
         navigation.navigationEnded()
         drawRoute(); follow(); invalidate()
     }
@@ -411,8 +463,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
     }
 
-    private fun say(text: String) {
-        if (text.isEmpty()) return
+    private fun t(el: String, en: String) = if (lang == "en") en else el
+
+    /** Spoken unless the voice is off, or set to the important ones only and this is not one. */
+    private fun say(text: String, important: Boolean = false) {
+        val voice = MapsPrefs.voice(carContext)
+        if (text.isEmpty() || voice == "off" || (voice == "important" && !important)) return
         WriterLog.i("Maps car: say \"$text\"")
         audio.requestAudioFocus(focus)
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "car")
@@ -458,21 +514,19 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     fun start(): Screen = StartScreen()
 
     // —— the start page (the user, 22 Oct: "Add the home saves as cards, serch, and show map, so I can imediatly click and
-    // go, after the saved locations show the most resent that are not in the faves"): Home's places, Nearby, the recent
-    // ones not saved, then the other saved places by distance; Search and Map above ——
+    // go, after the saved locations show the most resent that are not in the faves"; "only these in the homescreen 8
+    // locations then resent"; "a favoriets button that opens all the other"): the phone Home's 8 places, Favourites,
+    // Nearby, then the recent ones not saved; Search and Map above ——
 
     private inner class StartScreen : Screen(carContext) {
         override fun onGetTemplate(): Template {
             val all = MapsFiles.places(root)
-            val home = MapsFiles.slots(all).filterNotNull()
-            val h = here
-            fun dist(lat: Double, lng: Double) = if (h == null) 0.0 else metresBetween(h.latitude, h.longitude, lat, lng)
+            val home = MapsFiles.slots(all).take(MapsFiles.PHONE_SLOTS).filterNotNull()
             val recent = MapsPrefs.recent(carContext).filter { r -> all.none { metresBetween(it.lat, it.lng, r.lat, r.lng) < 50 } }
-            val rest = (all - home.toSet()).sortedBy { dist(it.lat, it.lng) }
             val cards = home.map { p -> card(p.short, placeIcon(p.icon), away(p.lat, p.lng)) { pick(p) } } +
+                card("Favourites", R.drawable.ic_star, "${all.size - home.size} more") { screenManager.push(FavouritesScreen()) } +
                 card("Nearby", R.drawable.ic_search, "Fuel, ΑμεΑ…") { screenManager.push(KindsScreen()) } +
-                recent.map { p -> card(p.name, R.drawable.ic_history, away(p.lat, p.lng)) { pick(p) } } +
-                rest.map { p -> card(p.short, placeIcon(p.icon), away(p.lat, p.lng)) { pick(p) } }
+                recent.map { p -> card(p.name, R.drawable.ic_history, away(p.lat, p.lng)) { pick(p) } }
             val items = ItemList.Builder()
             cards.take(carContext.getCarService(ConstraintManager::class.java).getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_GRID)).forEach(items::addItem)
             return GridTemplate.Builder().setTitle("Tetra Maps").setHeaderAction(Action.APP_ICON)
@@ -481,11 +535,38 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                     .addAction(action("Map") { screenManager.popToRoot() }).build())
                 .setSingleList(items.build()).build()
         }
+    }
 
-        private fun card(title: String, icon: Int, text: String, click: () -> Unit) = GridItem.Builder().setTitle(title.ifBlank { "Place" })
-            .apply { if (text.isNotEmpty()) setText(text) }
-            .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, icon)).setTint(CarColor.createCustom(0xFF5C6BC0.toInt(), 0xFF9FA8DA.toInt())).build())
-            .setOnClickListener(click).build()
+    private fun card(title: String, icon: Int, text: String, click: () -> Unit) = GridItem.Builder().setTitle(title.ifBlank { "Place" })
+        .apply { if (text.isNotEmpty()) setText(text) }
+        .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, icon)).setTint(CarColor.createCustom(0xFF5C6BC0.toInt(), 0xFF9FA8DA.toInt())).build())
+        .setOnClickListener(click).build()
+
+    /** All the saved places not on the start page, nearest first. */
+    private inner class FavouritesScreen : Screen(carContext) {
+        override fun onGetTemplate(): Template {
+            val all = MapsFiles.places(root)
+            val home = MapsFiles.slots(all).take(MapsFiles.PHONE_SLOTS).filterNotNull().toSet()
+            val h = here
+            val items = ItemList.Builder().setNoItemsMessage("No other saved places")
+            (all - home).sortedBy { if (h == null) 0.0 else metresBetween(h.latitude, h.longitude, it.lat, it.lng) }
+                .take(carContext.getCarService(ConstraintManager::class.java).getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_GRID))
+                .forEach { p -> items.addItem(card(p.short, placeIcon(p.icon), away(p.lat, p.lng)) { pick(p) }) }
+            return GridTemplate.Builder().setTitle("Favourites").setHeaderAction(Action.BACK).setSingleList(items.build()).build()
+        }
+    }
+
+    // —— ⚙ on the map: how much the voice says (the user, 22 Oct: "a gear for settings like to disable voice on nav or to
+    // keep only the iportant warnings like wrong direction and choage of root. No sygnal and so on") ——
+
+    private inner class SettingsScreen : Screen(carContext) {
+        override fun onGetTemplate(): Template {
+            val modes = listOf("all" to "Every direction", "important" to "Important only: wrong way, new route, no GPS, arrival", "off" to "Voice off")
+            val items = ItemList.Builder().setSelectedIndex(modes.indexOfFirst { it.first == MapsPrefs.voice(carContext) }.coerceAtLeast(0))
+                .setOnSelectedListener { i -> MapsPrefs.setVoice(carContext, modes[i].first); if (modes[i].first == "off") tts?.stop(); invalidate() }
+            modes.forEach { (_, label) -> items.addItem(Row.Builder().setTitle(label).build()) }
+            return ListTemplate.Builder().setTitle("Voice").setHeaderAction(Action.BACK).setSingleList(items.build()).build()
+        }
     }
 
     // —— Search: saved places and the offline list, nearest first, as you type (the car lets typing only when parked) ——

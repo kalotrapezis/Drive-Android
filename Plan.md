@@ -1834,7 +1834,11 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       with its Developer settings › Unknown sources on. Seen 22 Oct on the desktop head unit through the user's phone
       (Start head unit server, adb forward tcp:5277; DHU needs libc++1 and an open stdin), full screen and beside Spotify:
       zoom (+/−, pinch), pan and back to me; the speed-limit sign drawn on the map (the user: "where is the speed limit?").
-      Not in the car: search by typing, alternative routes, the tunnel's dead reckoning. Still to try in the real car.
+      Start page (22 Oct): the phone Home's 8 places as cards, Favourites (all the other saved ones), Nearby, then the recent
+      destinations not saved (MapsPrefs.recent, phone and car); Search (as you type, parked) and Map. On the map a column
+      with no background — speed, the limit's sign, "€ Tolls n" lit while the route has tolls ahead, "No GPS" after 10 s
+      without a fix — and ⚙ Voice: every direction / important only (wrong way, new route, no GPS, arrival) / off.
+      Not in the car: alternative routes, the tunnel's dead reckoning. Still to try in the real car.
 - [x] (maps-link session, 21 Oct) Emblems in tabs (the user, 21 Oct: "Add more emblims for pharmases, hospitals,
       relatives travel locations, nature like waterfalls rivers beaches and have them in tabs with categories"): General,
       People, Health, Travel, Nature (26 emblems) in the place dialog, and the saved-places list in the same tabs; the

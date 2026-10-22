@@ -225,6 +225,9 @@ internal object MapsPrefs {
         val all = listOf(p) + recent(c).filter { metresBetween(it.lat, it.lng, p.lat, p.lng) > 50 }
         prefs(c).edit().putString("recent", all.take(20).joinToString("\n") { "${it.name.replace(Regex("[\t\n]"), " ")}\t${it.lat}\t${it.lng}" }).apply()
     }
+    /** How much the car's voice says: "all", "important" (wrong way, new route, no GPS, arrival) or "off". */
+    fun voice(c: Context) = prefs(c).getString("voice", "all") ?: "all"
+    fun setVoice(c: Context, v: String) = prefs(c).edit().putString("voice", v).apply()
     fun lang(c: Context) = prefs(c).getString("lang", "el") ?: "el"
     fun setLang(c: Context, lang: String) = prefs(c).edit().putString("lang", lang).apply()
     fun ttsLocale(lang: String): Locale = Locale.forLanguageTag(if (lang == "en") "en-GB" else "el-GR")

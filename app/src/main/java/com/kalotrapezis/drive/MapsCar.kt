@@ -74,6 +74,9 @@ import androidx.car.app.navigation.model.Step as CarStep
  * Android Auto lists a navigation app not installed from Play only with its Developer settings › Unknown sources on.
  */
 class MapsCarService : CarAppService() {
+    // the log too when only the car screen runs (no activity has started it)
+    override fun onCreate() { super.onCreate(); WriterLog.init(applicationContext) }
+
     // the hosts Google signs (Android Auto, Android Automotive), the library's own list
     override fun createHostValidator() = HostValidator.Builder(applicationContext).addAllowedHosts(androidx.car.app.R.array.hosts_allowlist_sample).build()
     override fun onCreateSession() = object : Session() {
@@ -173,16 +176,20 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         override fun onSurfaceAvailable(c: SurfaceContainer) {
             val surface = c.surface ?: return
             if (!MapsFiles.map(root).isFile) return
+            onSurfaceDestroyed(c) // a new size comes as a new surface: the old display goes first
             val d = carContext.getSystemService(DisplayManager::class.java)
                 .createVirtualDisplay("Tetra Maps", c.width, c.height, c.dpi, surface, DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY)
-            display = d; size = c.width to c.height
+            display = d; size = c.width to c.height; surfaceW = c.width
             presentation = Presentation(carContext, d.display).apply {
                 MapLibre.getInstance(context)
                 val v = MapView(context).also { view = it }
                 v.onCreate(null)
                 val frame = android.widget.FrameLayout(context)
                 frame.addView(v)
-                frame.addView(speedSign(context), android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.BOTTOM or android.view.Gravity.START))
+                u = c.height / 100f
+                frame.addView(turnPanel(context))
+                frame.addView(favesGrid(context))
+                frame.addView(speedSign(context), android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START))
                 setContentView(frame)
                 show()
                 v.onStart(); v.onResume()
@@ -193,12 +200,25 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         override fun onVisibleAreaChanged(r: Rect) {
             // the arrow in the middle of what the cards leave free
             val (w, h) = size
-            val dp = carContext.resources.displayMetrics.density
+            // the small card is the part of the surface shown, narrower than tall (the surface itself keeps the screen's size)
+            compact = r.width() < r.height(); shown = Rect(r)
+            faves?.visibility = android.view.View.GONE // filled again for this size
+            sizePanel(r, w)
+            showSpeed()
+            // the column at the driver's side (the user, 22 Oct: "bring every sign close to the driver"): the left edge, in
+            // the middle of the height the cards leave
             sign?.parent?.let { col -> (col as android.view.View).apply {
-                (layoutParams as android.widget.FrameLayout.LayoutParams).setMargins(r.left + (12 * dp).toInt(), 0, 0, h - r.bottom + (12 * dp).toInt()); requestLayout()
+                (layoutParams as android.widget.FrameLayout.LayoutParams).setMargins((1.5f * u).toInt(), r.top, 0, h - r.bottom); requestLayout()
             } }
             map?.locationComponent?.takeIf { it.isLocationComponentActivated }
                 ?.paddingWhileTracking(doubleArrayOf(r.left.toDouble(), r.top.toDouble(), (w - r.right).toDouble(), (h - r.bottom).toDouble()))
+        }
+
+        // a tap: on a Home place in the small card, there
+        override fun onClick(x: Float, y: Float) {
+            if (!compact || nav != null) return
+            val hit = Rect()
+            faveCells.firstOrNull { (v, _) -> v.getGlobalVisibleRect(hit) && hit.contains(x.toInt(), y.toInt()) }?.let { pick(it.second) }
         }
 
         // a finger on the car's screen (Android Auto 2+): drag, pinch
@@ -210,7 +230,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
 
         override fun onSurfaceDestroyed(c: SurfaceContainer) {
-            map = null; sign = null; speedText = null; tollView = null; gpsView = null
+            map = null; sign = null; speedText = null; tollView = null; gpsView = null; panel = null; faves = null
             view?.run { onPause(); onStop(); onDestroy() }; view = null
             presentation?.dismiss(); presentation = null
             display?.release(); display = null
@@ -235,52 +255,152 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
      * A column on the map with no background (the user, 22 Oct: "an invisible vertical list corrent speed/ spped limit/
      * tolls/ when a root has it the symbol turns on"): my speed, the limit's sign, the tolls left on the route, no GPS.
      */
+    /*
+     * The small card (the map beside another app, narrower than tall) while directions run: the next turn only, big —
+     * arrow, distance, street — and the limit's sign, as Google Maps does there (the user, 22 Oct: "From the small screen
+     * you show only nav info"; "only nav info limit and an X" — the ✕ is Android Auto's own, beside the arrival time).
+     */
+    private var compact = false
+    private var panel: android.widget.LinearLayout? = null
+    private var panelArrow: android.widget.ImageView? = null
+    private var panelDistance: android.widget.TextView? = null
+    private var panelText: android.widget.TextView? = null
+
+    private fun turnPanel(c: android.content.Context): android.view.View {
+        panelArrow = android.widget.ImageView(c).apply { setColorFilter(Color.WHITE) }
+        panelDistance = android.widget.TextView(c).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) }
+        panelText = android.widget.TextView(c).apply {
+            setTextColor(0xFFE8EAED.toInt()); gravity = android.view.Gravity.CENTER; maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        return android.widget.LinearLayout(c).also { panel = it }.apply {
+            orientation = android.widget.LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL
+            setBackgroundColor(0xFF202124.toInt())
+            layoutParams = android.widget.FrameLayout.LayoutParams(-1, -1)
+            addView(panelArrow); addView(panelDistance); addView(panelText)
+            visibility = android.view.View.GONE
+        }
+    }
+
+    /** The turn's arrow and words as big as the card's width allows, in the part [r] shown of a surface [w] wide (all of it dark). */
+    private fun sizePanel(r: Rect, w: Int) {
+        val px = android.util.TypedValue.COMPLEX_UNIT_PX
+        val width = r.width()
+        panel?.setPadding(r.left + width / 12, r.top + (width * 0.1f).toInt(), w - r.right + width / 12, 0)
+        panelArrow?.layoutParams = android.widget.LinearLayout.LayoutParams((width * 0.42f).toInt(), (width * 0.42f).toInt())
+        panelDistance?.setTextSize(px, width * 0.17f)
+        panelText?.setTextSize(px, width * 0.075f)
+    }
+
+    // —— the small card with no directions running: the phone Home's 8 places, 2 by 4 (the user, 22 Oct: "when there is
+    // no nav active on the small show the home faves 2x4"); a tap on one goes there, where the car passes taps on ——
+
+    private var faves: android.widget.LinearLayout? = null
+    private var faveCells: List<Pair<android.view.View, Place>> = emptyList()
+    private var shown: Rect? = null
+    private var surfaceW = 0
+
+    private fun favesGrid(c: android.content.Context) = android.widget.LinearLayout(c).also { faves = it }.apply {
+        orientation = android.widget.LinearLayout.VERTICAL; setBackgroundColor(0xFF202124.toInt())
+        layoutParams = android.widget.FrameLayout.LayoutParams(-1, -1)
+        visibility = android.view.View.GONE
+    }
+
+    private fun fillFaves() {
+        val g = faves ?: return; val r = shown ?: return
+        val c = g.context
+        val home = MapsFiles.slots(MapsFiles.places(root)).take(MapsFiles.PHONE_SLOTS).filterNotNull()
+        g.removeAllViews()
+        g.setPadding(r.left, r.top, (surfaceW - r.right).coerceAtLeast(0), 0)
+        val cellH = r.height() / 4; val px = android.util.TypedValue.COMPLEX_UNIT_PX
+        val cells = mutableListOf<Pair<android.view.View, Place>>()
+        home.chunked(2).take(4).forEach { two ->
+            val row = android.widget.LinearLayout(c).apply { orientation = android.widget.LinearLayout.HORIZONTAL }
+            two.forEach { p ->
+                val cell = android.widget.LinearLayout(c).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER
+                    addView(android.widget.ImageView(c).apply { setImageResource(placeIcon(p.icon)); setColorFilter(0xFF9FA8DA.toInt()) },
+                        android.widget.LinearLayout.LayoutParams((cellH * 0.4f).toInt(), (cellH * 0.4f).toInt()))
+                    addView(android.widget.TextView(c).apply { text = p.short; gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); setTextSize(px, cellH * 0.16f); maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END; typeface = android.graphics.Typeface.DEFAULT_BOLD })
+                    addView(android.widget.TextView(c).apply { text = away(p.lat, p.lng); gravity = android.view.Gravity.CENTER; setTextColor(0xFFBDC1C6.toInt()); setTextSize(px, cellH * 0.12f) })
+                }
+                row.addView(cell, android.widget.LinearLayout.LayoutParams(0, cellH, 1f)); cells += cell to p
+            }
+            if (two.size == 1) row.addView(android.view.View(c), android.widget.LinearLayout.LayoutParams(0, cellH, 1f))
+            g.addView(row)
+        }
+        faveCells = cells
+    }
+
+    private fun showPanel() {
+        val n = nav; val p = n?.p
+        val on = compact && n != null && p != null
+        val wasFaves = faves?.visibility == android.view.View.VISIBLE
+        faves?.visibility = if (compact && n == null) android.view.View.VISIBLE else android.view.View.GONE
+        if (compact && n == null && !wasFaves) fillFaves()
+        panel?.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
+        if (!on) return
+        val step = n!!.route.steps[p!!.next]
+        panelArrow?.apply { setImageResource(if (step.sign == 4) R.drawable.ic_place else R.drawable.ic_navigation); rotation = if (step.sign == 4) 0f else turnDegrees(step.sign) }
+        panelDistance?.text = metresText(p.toNext)
+        panelText?.text = step.street.ifEmpty { step.text }
+    }
+
+    /** A hundredth of the car screen's height in pixels: the column's sizes, as big as the screen allows (the user: "take as much space as you have"). */
+    private var u = 5f
+
     private fun speedSign(c: android.content.Context): android.view.View {
-        val dp = c.resources.displayMetrics.density
+        val px = android.util.TypedValue.COMPLEX_UNIT_PX
         fun badge(color: Int) = android.widget.TextView(c).apply {
-            gravity = android.view.Gravity.CENTER; textSize = 18f; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
-            setPadding((10 * dp).toInt(), (4 * dp).toInt(), (10 * dp).toInt(), (4 * dp).toInt())
-            background = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = 50 * dp }
+            gravity = android.view.Gravity.CENTER; setTextSize(px, 4.5f * u); typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
+            setPadding((1.6f * u).toInt(), (0.6f * u).toInt(), (1.6f * u).toInt(), (0.6f * u).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = 10 * u }
         }
         tollView = badge(0xFF1565C0.toInt())
         gpsView = badge(0xFFD32F2F.toInt()).apply { text = "No GPS" }
         sign = android.widget.TextView(c).apply {
-            gravity = android.view.Gravity.CENTER; textSize = 28f; typeface = android.graphics.Typeface.DEFAULT_BOLD
-            layoutParams = android.widget.LinearLayout.LayoutParams((72 * dp).toInt(), (72 * dp).toInt())
+            gravity = android.view.Gravity.CENTER; setTextSize(px, 7f * u); typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
         speedText = android.widget.TextView(c).apply {
             // big enough to read at a glance (the user, 22 Oct: "The km/h make it bigger it bearly shows"); a white halo for the map under it
             gravity = android.view.Gravity.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(0xFF202124.toInt())
-            setShadowLayer(6 * dp, 0f, 0f, Color.WHITE)
+            setShadowLayer(1.2f * u, 0f, 0f, Color.WHITE)
         }
         showSpeed()
         return android.widget.LinearLayout(c).apply {
             orientation = android.widget.LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL
-            fun gap() = android.widget.LinearLayout.LayoutParams(-2, -2).apply { topMargin = (6 * dp).toInt() }
-            addView(speedText); addView(sign, gap().apply { width = (72 * dp).toInt(); height = (72 * dp).toInt() }); addView(tollView, gap()); addView(gpsView, gap())
+            fun gap() = android.widget.LinearLayout.LayoutParams(-2, -2).apply { topMargin = u.toInt() }
+            addView(speedText); addView(sign, gap().apply { width = (16 * u).toInt(); height = (16 * u).toInt() }); addView(tollView, gap()); addView(gpsView, gap())
         }
     }
 
     private fun showSpeed() {
         val l = limit; val kmh = here?.takeIf { it.hasSpeed() }?.let { Math.round(it.speed * 3.6f) }
         val over = l != null && (kmh ?: 0) > l + 3
-        val dp = carContext.resources.displayMetrics.density
         sign?.apply {
             visibility = if (l == null) android.view.View.GONE else android.view.View.VISIBLE
             text = l?.toString().orEmpty(); setTextColor(if (over) Color.WHITE else Color.BLACK)
             background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(if (over) 0xFFD32F2F.toInt() else Color.WHITE); setStroke((5 * dp).toInt(), 0xFFD32F2F.toInt())
+                shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(if (over) 0xFFD32F2F.toInt() else Color.WHITE); setStroke((1.3f * u).toInt(), 0xFFD32F2F.toInt())
             }
         }
+        val small = compact && nav != null
+        (sign?.parent as? android.view.View)?.visibility = if (compact && nav == null) android.view.View.GONE else android.view.View.VISIBLE
         speedText?.apply {
-            visibility = if (kmh == null) android.view.View.GONE else android.view.View.VISIBLE
+            visibility = if (kmh == null || small) android.view.View.GONE else android.view.View.VISIBLE
             text = android.text.SpannableString("$kmh\nkm/h").apply {
-                setSpan(android.text.style.AbsoluteSizeSpan(40, true), 0, "$kmh".length, 0)
-                setSpan(android.text.style.AbsoluteSizeSpan(18, true), "$kmh".length, length, 0)
+                setSpan(android.text.style.AbsoluteSizeSpan((11 * u).toInt()), 0, "$kmh".length, 0)
+                setSpan(android.text.style.AbsoluteSizeSpan((4 * u).toInt()), "$kmh".length, length, 0)
             }
         }
         // the toll symbol lit while the route has tolls ahead, with how many
-        tollView?.apply { visibility = if (nav != null && tollsAhead > 0) android.view.View.VISIBLE else android.view.View.GONE; text = "€ Tolls $tollsAhead" }
+        tollView?.apply { visibility = if (nav != null && tollsAhead > 0 && !small) android.view.View.VISIBLE else android.view.View.GONE; text = "€ Tolls $tollsAhead" }
+        (sign?.parent as? android.view.View)?.let { col ->
+            val lp = col.layoutParams as? android.widget.FrameLayout.LayoutParams ?: return@let
+            val g = if (small) android.view.Gravity.BOTTOM or android.view.Gravity.START else android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+            if (lp.gravity != g) { lp.gravity = g; col.layoutParams = lp }
+        }
+        showPanel()
         gpsView?.visibility = if (signalLost) android.view.View.VISIBLE else android.view.View.GONE
     }
 
@@ -326,6 +446,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     override fun onCreate(owner: LifecycleOwner) {
+        // the graph opened now, so the first route does not wait for it (it took 25 s on 22 Oct)
+        lifecycleScope.launch(Dispatchers.IO) { if (File(graphDir, "properties").isFile) runCatching { MapsRouting.open(graphDir) } }
         if (!granted()) return
         // no fix for 10 s: "No GPS" on the map, and said while directions run
         lifecycleScope.launch {
@@ -372,7 +494,9 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         val n = nav ?: return
         val (p, i) = progress(n.route, n.cum, loc.latitude, loc.longitude, n.index)
         if (p.off > 50.0) {
-            nav = n.copy(offFixes = n.offFixes + 1)
+            // the card still shows the way on (the start of a route is often off it: a house back from the road)
+            nav = n.copy(offFixes = n.offFixes + 1, p = n.p ?: p)
+            invalidate()
             if (n.offFixes + 1 >= 3 && System.currentTimeMillis() - n.since > 10_000 && finding == null) {
                 WriterLog.i("Maps car: off the route by ${p.off.toInt()} m, a new one"); go(n.target)
             }
@@ -440,7 +564,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         if (nav == null) return
         nav = null; tolls = emptyList(); tollsAhead = 0
         navigation.navigationEnded()
-        drawRoute(); follow(); invalidate()
+        drawRoute(); follow(); showSpeed(); invalidate()
     }
 
     // —— the voice: over the music, which is lowered meanwhile ——
@@ -539,7 +663,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     private fun card(title: String, icon: Int, text: String, click: () -> Unit) = GridItem.Builder().setTitle(title.ifBlank { "Place" })
         .apply { if (text.isNotEmpty()) setText(text) }
-        .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, icon)).setTint(CarColor.createCustom(0xFF5C6BC0.toInt(), 0xFF9FA8DA.toInt())).build())
+        .setImage(CarIcon.Builder(IconCompat.createWithResource(carContext, icon)).setTint(CarColor.createCustom(0xFF5C6BC0.toInt(), 0xFF9FA8DA.toInt())).build(), GridItem.IMAGE_TYPE_LARGE) // big targets while driving
         .setOnClickListener(click).build()
 
     /** All the saved places not on the start page, nearest first. */

@@ -1838,7 +1838,14 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       destinations not saved (MapsPrefs.recent, phone and car); Search (as you type, parked) and Map. On the map a column
       with no background — speed, the limit's sign, "€ Tolls n" lit while the route has tolls ahead, "No GPS" after 10 s
       without a fix — and ⚙ Voice: every direction / important only (wrong way, new route, no GPS, arrival) / off.
-      Not in the car: alternative routes, the tunnel's dead reckoning. Still to try in the real car.
+      Sizes follow the car screen (the column a hundredth of its height per unit, at the driver's side, left). The small
+      card (beside Spotify): with directions the next turn only, big (arrow, distance, street) and the limit; without, the
+      Home's 8 places 2 by 4 (Android Auto opens Tetra on a tap there, so they show and do not start a route). The graph is
+      opened as the car connects (the first route took 25 s).
+      For the drive (23 Oct): the speed column, € Tolls, wrong way and No GPS while moving; the voice over the car's speakers
+      and the important-only mode; how the user's car shows the small card (an ✕ there if it fits); updateTrip for the
+      cluster/HUD; the map dark at night (carContext.isDarkMode) — the user prefers the light map, ask; lanes.
+      Not in the car: alternative routes, the tunnel's dead reckoning.
 - [x] (maps-link session, 21 Oct) Emblems in tabs (the user, 21 Oct: "Add more emblims for pharmases, hospitals,
       relatives travel locations, nature like waterfalls rivers beaches and have them in tabs with categories"): General,
       People, Health, Travel, Nature (26 emblems) in the place dialog, and the saved-places list in the same tabs; the

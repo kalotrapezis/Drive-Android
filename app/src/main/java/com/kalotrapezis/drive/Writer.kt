@@ -1915,6 +1915,34 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         }
     }
     val pickPicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked -> picked?.let(::insertPicture) }
+    // Insert › Signature (the user, 22 Oct: "does Word has sign by hand or image? … make that as well"): one signature, the PDF
+    // editor's too, kept in the app (never in a file but where it is put), drawn once or taken from a picture of it
+    val signatureFile = remember { File(context.filesDir, "pdf-signature.png") }
+    var drawingSignature by remember { mutableStateOf(false) }
+    fun insertSignature() {
+        val bytes = runCatching { signatureFile.readBytes() }.getOrNull() ?: run { drawingSignature = true; return }
+        val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+        val img = DocImage("n" + java.util.UUID.randomUUID(), null, 150f, 150f * o.outHeight / o.outWidth.coerceAtLeast(1), null, bytes, "png")
+        pictures[img.key] = img
+        val at = placePicture(img)
+        state.selection = androidx.compose.ui.text.TextRange(at + 1)
+        WriterLog.i("signature put in")
+    }
+    val pickSignature = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
+        picked ?: return@rememberLauncherForActivityResult
+        runCatching {
+            // a photo of a signature on paper: its white made see-through, so it sits on the page as ink
+            val bmp = android.graphics.ImageDecoder.decodeBitmap(android.graphics.ImageDecoder.createSource(context.contentResolver, picked)) { dec, info, _ ->
+                val k = minOf(1f, 900f / maxOf(info.size.width, info.size.height)); dec.setTargetSize((info.size.width * k).toInt().coerceAtLeast(1), (info.size.height * k).toInt().coerceAtLeast(1))
+                dec.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE }.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+            val px = IntArray(bmp.width * bmp.height).also { bmp.getPixels(it, 0, bmp.width, 0, 0, bmp.width, bmp.height) }
+            for (i in px.indices) { val c = px[i]; val l = ((c shr 16 and 0xFF) * 299 + (c shr 8 and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
+                px[i] = if (l > 170) 0 else (c and 0xFFFFFF) or (((255 - l) * 255 / 255).coerceIn(80, 255) shl 24) }
+            bmp.setPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+            signatureFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        }.onSuccess { insertSignature() }.onFailure { message = "Could not use that picture." }
+    }
     // Insert › Video (asked 17 Oct, Slides' pieces): [film] a web address (Word's Online Video) or a film from the phone; its picture at the cursor
     fun insertVideo(film: String, poster: android.graphics.Bitmap) {
         val bytes = java.io.ByteArrayOutputStream().also { poster.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
@@ -4050,6 +4078,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     }
                 }, {
                     RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                    RibbonMenu("Signature", w, R.drawable.ic_draw, enabled = loaded, preset = false, choices = listOf(
+                        MenuChoice(if (signatureFile.isFile) "Put my signature" else "Draw my signature", icon = R.drawable.ic_draw) { insertSignature() },
+                        MenuChoice("Draw a new one", icon = R.drawable.ic_edit, opens = true) { drawingSignature = true },
+                        MenuChoice("From a picture of it", icon = R.drawable.ic_gallery, opens = true) { pickSignature.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }))
                     RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
                     // Word's Online Video, or a film from the phone kept in the file (LibreOffice's media frame; in a .docx beside its picture)
                     VideoButton(w, enabled = loaded, phone = { pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }, online = ::insertOnlineVideo)
@@ -4709,6 +4741,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             changePicture(key, PictureXml.placed(img, x, y, kind))
             position(key) // the page again, the text around it where it now is
         }
+    }
+    if (drawingSignature) DrawDialog(200f, { drawingSignature = false }, boxAspect = 0.4f) { png, _, _, _, _ ->
+        drawingSignature = false
+        runCatching { signatureFile.writeBytes(png) }.onSuccess { insertSignature() }
     }
     drawing?.let { d ->
         DrawDialog(d.boxPt, { drawing = null }, d.pages, d.start, d.boxAspect, d.strokes) { bytes, wPt, hPt, place, k ->

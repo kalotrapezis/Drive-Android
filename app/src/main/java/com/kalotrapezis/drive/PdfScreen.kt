@@ -136,7 +136,7 @@ internal val REDACT_PATTERNS = listOf(
     "IBAN" to Regex("""\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,4})?\b"""),
 )
 
-internal class PdfComment(val page: Int, val index: Int, val kind: String, val words: String, val at: Offset)
+internal class PdfComment(val page: Int, val index: Int, val kind: String, val words: String, val at: Offset, val replyTo: Int? = null, val author: String = "")
 
 /** A bookmark (the file's contents): its title, page, depth. */
 internal class PdfMark(val title: String, val page: Int, val depth: Int)
@@ -152,9 +152,11 @@ internal enum class PdfTool(val label: String, val icon: Int) {
     Text("Text", R.drawable.ic_text_fields), Tick("Tick", R.drawable.ic_check), Cross("Cross", R.drawable.ic_close), Dot("Dot", R.drawable.ic_circle),
     Date("Date", R.drawable.ic_calendar_today), Sign("Sign", R.drawable.ic_draw), Redact("Mark area", R.drawable.ic_crop_square),
     TextBox("Text box", R.drawable.ic_text_fields), Stamp("Stamp", R.drawable.ic_branding_watermark), RedactText("Select text", R.drawable.ic_format_strikethrough),
+    TextField("Text field", R.drawable.ic_crop_square), CheckBox("Check box", R.drawable.ic_check_box_outline_blank),
 }
 
 /** PDF's standard stamps, as every reader names and draws them. */
+internal const val PICTURE_STAMP = "Picture"
 internal val STAMPS = listOf("Approved", "Draft", "Final", "Confidential", "Experimental", "Expired", "NotApproved", "ForComment", "AsIs", "Sold",
     "Departmental", "NotForPublicRelease", "TopSecret", "ForPublicRelease")
 
@@ -458,8 +460,11 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     fun comments(): List<PdfComment> = synchronized(this) {
         sizes.indices.flatMap { i -> page(i) { p ->
             val o = p.bounds
-            (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty().withIndex().mapNotNull { (k, a) ->
+            val all = (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty()
+            val byNumber = all.withIndex().associate { (k, a) -> runCatching { a.`object`.asIndirect() }.getOrDefault(-1) to k }
+            all.withIndex().mapNotNull { (k, a) ->
                 val kind = kinds[a.type] ?: return@mapNotNull null
+                val parent = runCatching { a.`object`.get("IRT").takeIf { !it.isNull }?.asIndirect()?.let { byNumber[it] } }.getOrNull()
                 var words = a.contents.orEmpty()
                 if (words.isBlank() && a.type in listOf(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_HIGHLIGHT, com.artifex.mupdf.fitz.PDFAnnotation.TYPE_UNDERLINE,
                         com.artifex.mupdf.fitz.PDFAnnotation.TYPE_STRIKE_OUT)) runCatching {
@@ -467,9 +472,45 @@ internal class PdfDoc(private val file: File, password: String? = null) {
                     words = t.copy(com.artifex.mupdf.fitz.Point(r.x0, (r.y0 + r.y1) / 2), com.artifex.mupdf.fitz.Point(r.x1, (r.y0 + r.y1) / 2)).orEmpty().trim(); t.destroy()
                 }
                 val r = a.bounds
-                PdfComment(i, k, kind, words.replace('\n', ' '), Offset((r.x0 + r.x1) / 2 - o.x0, (r.y0 + r.y1) / 2 - o.y0))
+                PdfComment(i, k, if (parent != null) "Reply" else kind, words.replace('\n', ' '), Offset((r.x0 + r.x1) / 2 - o.x0, (r.y0 + r.y1) / 2 - o.y0),
+                    parent, runCatching { a.author.orEmpty() }.getOrDefault(""))
             }
         } }
+    }
+
+    /** A reply to [c]: a note in the same place that answers it (PDF's In Reply To), as other readers thread them. */
+    fun reply(c: PdfComment, words: String) = annotate(c.page, "Reply") { p, x0, y0 ->
+        val parent = p.annotations.orEmpty().getOrNull(c.index) ?: return@annotate false
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_TEXT).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(c.at.x + x0, c.at.y + y0, c.at.x + x0 + 20, c.at.y + y0 + 20)); setContents(words)
+            `object`.put("IRT", parent.`object`); `object`.put("RT", pdf!!.newName("R")); update()
+        }; true
+    }
+
+    // —— Forms: fields made (a text field, a check box), as other apps fill them ——
+
+    private var fieldCount = 0
+    /**
+     * A [checkbox] or a text field from [a] to [b] on page [i], named Field n: MuPDF's own widget (so the page and the form's
+     * list refer to one object; built by hand, MuPDF 1.28's Java copied it into each), its field properties set on it.
+     */
+    fun addField(i: Int, a: Offset, b: Offset, checkbox: Boolean) = annotate(i, if (checkbox) "Check box" else "Text field") { p, x0, y0 ->
+        val w = p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_WIDGET)
+        w.setRect(com.artifex.mupdf.fitz.Rect(minOf(a.x, b.x) + x0, minOf(a.y, b.y) + y0, maxOf(a.x, b.x) + x0, maxOf(a.y, b.y) + y0))
+        val o = w.`object`
+        val taken = runCatching { pdf!!.trailer.get("Root").get("AcroForm").get("Fields").let { f -> (0 until f.size()).map { f.get(it).get("T").asString() } } }.getOrDefault(emptyList()).toSet()
+        val name = generateSequence(fieldCount + 1) { it + 1 }.map { "Field $it" }.first { it !in taken }; fieldCount++
+        o.put("T", name); o.put("F", 4)
+        if (checkbox) { o.put("FT", pdf!!.newName("Btn")); o.put("V", pdf.newName("Off")); o.put("AS", pdf.newName("Off")); o.put("DA", "/ZaDb 0 Tf 0 g") }
+        else { o.put("FT", pdf!!.newName("Tx")); o.put("DA", "/Helv 11 Tf 0 g") }
+        // in the form's list (a form made if the file had none)
+        val root = pdf.trailer.get("Root")
+        if (root.get("AcroForm").isNull) root.put("AcroForm", pdf.newDictionary())
+        val acro = root.get("AcroForm")
+        if (acro.get("Fields").isNull) acro.put("Fields", pdf.newArray())
+        if (acro.get("DA").isNull) acro.put("DA", "/Helv 11 Tf 0 g")
+        acro.get("Fields").push(o)
+        w.update(); true
     }
 
     /** The comment [c] deleted (the Comments pane's bin). */
@@ -846,6 +887,16 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var asking by remember { mutableStateOf<String?>(null) } // Insert's and Protect's windows: "header", "watermark", "password", "bookmark"
     var boxing by remember { mutableStateOf<Triple<Int, Offset, Offset>?>(null) } // a text box drawn: its words asked for
     var stampName by remember { mutableStateOf("Approved") }
+    var stampPicture by remember { mutableStateOf<Pair<ByteArray, Float>?>(null) } // your own stamp: a picture and its height / width
+    val pickStamp = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            val bmp = android.graphics.ImageDecoder.decodeBitmap(android.graphics.ImageDecoder.createSource(context.contentResolver, uri)) { dec, info, _ ->
+                val k = minOf(1f, 800f / maxOf(info.size.width, info.size.height)); dec.setTargetSize((info.size.width * k).toInt().coerceAtLeast(1), (info.size.height * k).toInt().coerceAtLeast(1)) }
+            java.io.ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray() to bmp.height.toFloat() / bmp.width
+        }.onSuccess { stampPicture = it; stampName = PICTURE_STAMP; tool = PdfTool.Stamp; Toast.makeText(context, "Tap where the stamp goes", Toast.LENGTH_SHORT).show() }
+            .onFailure { Toast.makeText(context, "That is not a picture.", Toast.LENGTH_SHORT).show() }
+    }
     var reading2 by remember { mutableStateOf<Pair<Int, Int>?>(null) } // Recognize text running: the page, of how many
     var ocrJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var pane by remember { mutableStateOf<String?>(null) } // "Comments" or "Bookmarks", beside the pages (a phone: over their lower half)
@@ -929,7 +980,12 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             PdfTool.Note -> writing = i to a
             PdfTool.Redact -> if ((b - a).getDistance() > 4f) change { d.markRedaction(i, a, b) }
             PdfTool.TextBox -> if ((b - a).getDistance() > 10f) boxing = Triple(i, a, b)
-            PdfTool.Stamp -> change { d.stampAt(i, a, stampName) }
+            PdfTool.TextField -> if ((b - a).getDistance() > 10f) change { d.addField(i, a, b, checkbox = false) }
+            PdfTool.CheckBox -> change { d.addField(i, a - Offset(7f, 7f), a + Offset(7f, 7f), checkbox = true) }
+            PdfTool.Stamp -> change {
+                val pic = stampPicture
+                if (stampName == PICTURE_STAMP && pic != null) d.picture(i, a - Offset(70f, 70f * pic.second / 2), pic.first, 140f, pic.second) else d.stampAt(i, a, stampName)
+            }
             PdfTool.Rectangle, PdfTool.Oval, PdfTool.Arrow -> if ((b - a).getDistance() > 4f) change {
                 d.shape(i, when (t) { PdfTool.Oval -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_CIRCLE; PdfTool.Arrow -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_LINE
                     else -> com.artifex.mupdf.fitz.PDFAnnotation.TYPE_SQUARE }, a, b, if (markColour == 0xFFEB3B) 0xE53935 else markColour, 2f)
@@ -1187,7 +1243,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 else -> key(version) { Row(Modifier.fillMaxSize()) {
                     val density = LocalDensity.current
                     // a tablet: the pages small at the side, the one shown marked, tapped to go to it; a phone: the same, narrower, when asked for
-                    if (pane != null && wide) PdfPane(d, pane!!, editing, version, Modifier.width(300.dp).fillMaxHeight(), { goTo(it) }, { pane = null }, { asking = "bookmark" }) { act -> change(act) }
+                    if (pane != null && wide) PdfPane(d, pane!!, editing, version, Modifier.width(300.dp).fillMaxHeight(), { goTo(it) }, { pane = null }, { asking = "bookmark" }, { editing = true }) { act -> change(act) }
                     else if (wide || pages) {
                         val side = if (wide) 150.dp else 110.dp
                         val thumbs = rememberLazyListState()
@@ -1261,7 +1317,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             }
             // a phone: the pane over the lower half of the pages
             if (d != null && pane != null && !wide) PdfPane(d, pane!!, editing, version, Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.55f),
-                { goTo(it) }, { pane = null }, { asking = "bookmark" }) { act -> change(act) }
+                { goTo(it) }, { pane = null }, { asking = "bookmark" }, { editing = true }) { act -> change(act) }
         }
         // the ribbon while editing, at the bottom as Slides' (a tablet: the floating island; a phone: across the bottom)
         val d = doc
@@ -1279,6 +1335,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             // Stamp: the kind chosen in a strip (✓/×, as Office's options), then a tap on the page puts it there
                             val stampStrip = officeStrip("Stamp", ok = { st -> (st.picked as? String)?.let { stampName = it; tool = PdfTool.Stamp } }) { st ->
                                 STAMPS.forEach { n -> RibbonButton(n.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, on = st.picked == n) { st.picked = n } }
+                                val strips = LocalOfficeStrips.current
+                                RibbonButton("Picture…", w, R.drawable.ic_gallery) { strips?.open = null; pickStamp.launch(arrayOf("image/*")) }
                             }
                             RibbonButton(if (tool == PdfTool.Stamp) stampName.replace(Regex("(?<=[a-z])(?=[A-Z])"), " ") else "Stamp", w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) {
                                 if (stampStrip != null) stampStrip() else tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp
@@ -1287,6 +1345,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 c?.let { markColour = (it.toArgb() and 0xFFFFFF) } }
                             RibbonDivider(w)
                             ToolButton(PdfTool.Erase)
+                            RibbonButton("Comments", w, R.drawable.ic_view_list, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
                             return@RibbonLine
                         }
                         if (tab == "Insert") {
@@ -1313,13 +1372,14 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         if (tab == "Fill & Sign") {
                             ToolButton(PdfTool.Text); ToolButton(PdfTool.Tick); ToolButton(PdfTool.Cross); ToolButton(PdfTool.Dot); ToolButton(PdfTool.Date)
                             RibbonDivider(w)
+                            ToolButton(PdfTool.TextField); ToolButton(PdfTool.CheckBox)
+                            RibbonDivider(w)
                             ToolButton(PdfTool.Sign)
                             RibbonButton(if (signatureFile.isFile) "New signature" else "Draw signature", w, R.drawable.ic_edit) { signing = true }
                             RibbonDivider(w)
                             listOf(9f to "Small", 11f to "Normal", 14f to "Large").forEach { (pt, label) -> RibbonButton(label, w, on = fillSize == pt) { fillSize = pt } }
                             RibbonDivider(w)
                             ToolButton(PdfTool.Erase)
-                            RibbonButton("Comments", w, R.drawable.ic_view_list, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
                             return@RibbonLine
                         }
                         if (tab == "Draw") {
@@ -1406,7 +1466,7 @@ private fun androidx.compose.foundation.layout.BoxScope.PdfDrawLayer(page: Size,
     val c = Color(0xFF000000.toInt() or colour)
     Canvas(Modifier.matchParentSize().pointerInput(tool) {
         val k = size.width / page.width
-        if (tool == null || tool == PdfTool.Note || tool == PdfTool.Erase || tool == PdfTool.Stamp || tool in PdfTool.Text..PdfTool.Sign) detectTapGestures { p -> done(listOf(p / k)) }
+        if (tool == null || tool == PdfTool.Note || tool == PdfTool.Erase || tool == PdfTool.Stamp || tool == PdfTool.CheckBox || tool in PdfTool.Text..PdfTool.Sign) detectTapGestures { p -> done(listOf(p / k)) }
         else detectDragGestures(
             onDragStart = { p -> path = listOf(p) },
             onDrag = { ch, _ -> ch.consume(); path = path + ch.position },
@@ -1419,7 +1479,7 @@ private fun androidx.compose.foundation.layout.BoxScope.PdfDrawLayer(page: Size,
             PdfTool.Pen, PdfTool.Marker -> drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(a.x, a.y); path.drop(1).forEach { lineTo(it.x, it.y) } },
                 c.copy(alpha = if (tool == PdfTool.Marker) 0.4f else 1f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (tool == PdfTool.Marker) 24f else 5f,
                     cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
-            PdfTool.Rectangle, PdfTool.TextBox -> drawRect(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
+            PdfTool.Rectangle, PdfTool.TextBox, PdfTool.TextField -> drawRect(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
             PdfTool.Redact -> drawRect(Color.Black.copy(alpha = 0.5f), Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)))
             PdfTool.Oval -> drawOval(c, Offset(minOf(a.x, b.x), minOf(a.y, b.y)), Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
             PdfTool.Arrow -> drawLine(c, a, b, 4f)
@@ -1445,7 +1505,18 @@ internal fun watermarkPng(words: String): Pair<ByteArray, Float> {
  */
 @Composable
 private fun PdfPane(d: PdfDoc, which: String, editing: Boolean, version: Int, modifier: Modifier, go: (Int) -> Unit, close: () -> Unit, addMark: () -> Unit,
-    change: (() -> Unit) -> Unit) {
+    edit: () -> Unit = {}, change: (() -> Unit) -> Unit) {
+    var replying by remember { mutableStateOf<PdfComment?>(null) }
+    replying?.let { c ->
+        var words by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { replying = null }, title = { Text("Reply") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (c.words.isNotBlank()) Text("“${c.words.take(140)}”", style = MaterialTheme.typography.bodySmall)
+                androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 2)
+            } },
+            confirmButton = { androidx.compose.material3.TextButton(enabled = words.isNotBlank(), onClick = { replying = null; edit(); change { d.reply(c, words.trim()) } }) { Text("Reply") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { replying = null }) { Text("Cancel") } })
+    }
     var comments by remember { mutableStateOf<List<PdfComment>?>(null) }
     var marks by remember { mutableStateOf<List<PdfMark>?>(null) }
     LaunchedEffect(which, version) {
@@ -1463,13 +1534,18 @@ private fun PdfPane(d: PdfDoc, which: String, editing: Boolean, version: Int, mo
                     val l = comments
                     if (l == null) item { Text("Reading…", Modifier.padding(16.dp), color = Color.LightGray) }
                     else if (l.isEmpty()) item { Text("No comments in this file.", Modifier.padding(16.dp), color = Color.LightGray) }
-                    else items(l.size) { k -> val c = l[k]
-                        Row(Modifier.fillMaxWidth().clickable { go(c.page) }.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("${c.kind} · page ${c.page + 1}", style = MaterialTheme.typography.labelMedium, color = PDF_RED)
-                                if (c.words.isNotBlank()) Text(c.words, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    else {
+                        // each comment with its replies under it, a step in
+                        val ordered = l.filter { it.replyTo == null }.flatMap { c -> listOf(c) + l.filter { r -> r.page == c.page && r.replyTo == c.index } }
+                        items(ordered.size) { k -> val c = ordered[k]; val reply = c.replyTo != null
+                            Row(Modifier.fillMaxWidth().clickable { go(c.page) }.padding(start = if (reply) 36.dp else 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(listOfNotNull(c.kind, c.author.ifBlank { null }, "page ${c.page + 1}").joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = PDF_RED)
+                                    if (c.words.isNotBlank()) Text(c.words, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                }
+                                if (!reply) IconButton(onClick = { replying = c }) { Icon(painterResource(R.drawable.ic_comment), contentDescription = "Reply") }
+                                if (editing) IconButton(onClick = { change { d.deleteComment(c) } }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete") }
                             }
-                            if (editing) IconButton(onClick = { change { d.deleteComment(c) } }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete") }
                         }
                     }
                 } else {

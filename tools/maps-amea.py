@@ -77,6 +77,24 @@ def is_personal(props):
     return False
 
 
+# A whole dataset that says its spots are public ones (the user, 22 Oct: "keep the general ones, if its not clear remove all
+# of them"): Athens' placements by council decision, Heraklion's "public" spots. Any other dataset counts only where each
+# spot says it is general (Thessaloniki's eidos_thesis).
+GENERAL_DATASETS = ("χωροθέτηση", "δημόσιες θέσεις")
+
+
+def clearly_general(title, props):
+    """True only for a spot clearly public: marked general (ΓΕΝΙΚΗ), or in a dataset that is all public spots; never one
+    personal (ΑΤΟΜΙΚΗ, ΠΑΡΑΧΩΡΗΣΗ, a plate, an applicant's name) or abolished (ΚΑΤΑΡΓΗΣΗ)."""
+    keys = {str(k).lower() for k, v in props.items() if str(v or "").strip() not in ("", "None", "-")}
+    if is_personal(props) or keys & {"aitountas", "aitountes", "onomateponymo", "ar_kykl_oximatos"}:
+        return False
+    text = " ".join(str(v or "").upper() for v in props.values())
+    if "ΚΑΤΑΡΓ" in text:
+        return False
+    return "ΓΕΝΙΚ" in text or any(w in title.lower() for w in GENERAL_DATASETS)
+
+
 def clean(s):
     return str(s or "").replace("\t", " ").replace("\n", " ").strip()
 
@@ -187,7 +205,7 @@ if __name__ == "__main__":
             # never a spot given to one person (Thessaloniki's layer, 22 Oct: 483 "ΑΤΟΜΙΚΕΣ ΘΕΣΕΙΣ ΑΜΕΑ" with the car's plate,
             # beside 62 general ones): the user, "never make personal or exclusive ΑμεΑ spots public"
             props = f.get("properties") or {}
-            if is_personal(props):
+            if not clearly_general(ds["title"], props):
                 personal += 1
                 continue
             at = middle(f.get("geometry"))
@@ -195,7 +213,7 @@ if __name__ == "__main__":
                 continue
             rows.append(f"disabled_parking\t{at[0]:.6f}\t{at[1]:.6f}\tΑμεΑ parking\t\t{where(f.get('properties') or {}, city)}\t\t\t\t\t{city} (data.gov.gr)\n")
             n += 1
-        print(f"{city}: {n}" + (f" ({personal} personal left out)" if personal else ""))
+        print(f"{city}: {n}" + (f" ({personal} personal, abolished or unclear left out)" if personal else ""))
     for lat, lng, where_, city in files():
         if 34 < lat < 42 and 19 < lng < 30:
             rows.append(f"disabled_parking\t{lat:.6f}\t{lng:.6f}\tΑμεΑ parking\t\t{where_}\t\t\t\t\t{city} (data.gov.gr)\n")

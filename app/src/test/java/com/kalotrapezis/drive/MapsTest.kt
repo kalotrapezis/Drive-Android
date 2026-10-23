@@ -414,3 +414,34 @@ class MapsBendTest {
         assertEquals(null, dueBend(bends, bends[0].along - 20, 10.0, emptySet()))
     }
 }
+
+class MapsJunctionTest {
+    /** On the computer's graph: a turn's crossing from the graph — the way in behind, the way on another road. */
+    @Test fun crossings() {
+        val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
+        assumeTrue(File(dir, "properties").isFile)
+        val drives = listOf("Δράμα" to doubleArrayOf(41.1440, 24.1300, 41.1570, 24.1600), "Ομόνοια" to doubleArrayOf(37.9890, 23.7200, 37.9800, 23.7330),
+            "Χαλκίδα" to doubleArrayOf(38.4700, 23.5900, 38.4500, 23.6200),
+            // where the user took the street next to theirs among 5–6 (23 Oct): across the village each way
+            "5 Δρόμοι" to doubleArrayOf(41.1554, 24.1517, 41.1529, 24.1550), // Δράμα's roundabout of five roads (the user's picture, 23 Oct)
+            "Νικήσιανη" to doubleArrayOf(40.9430, 24.1350, 40.9540, 24.1500), "Νικήσιανη " to doubleArrayOf(40.9540, 24.1350, 40.9430, 24.1500))
+        var busy = 0; var rings = 0; var all = 0
+        for ((name, d) in drives) {
+            val r = MapsRouting.route(dir, d[0], d[1], d[2], d[3], "car")
+            for (s in r.steps) {
+                val j = s.junction ?: continue
+                all++; if (j.busy) busy++; if (j.roundabout) rings++
+                println("$name: ${s.text} — ${j.arms.map { it.toInt() }}, taken ${j.arms[j.taken].toInt()}${if (j.roundabout) " (roundabout)" else ""}")
+                assertTrue("the way in is behind", Math.abs(Math.abs(j.arms[j.way]) - 180) < 40)
+                assertTrue("the way on is not back", j.taken != j.way)
+                // the way on on the side the directions say (GraphHopper's sign: + right, − left) — at a crossing of several
+                // nodes the picture shows the way through it all, which can differ from its first turn
+                if (j.arms.size >= 5) continue
+                if (!j.roundabout && s.sign in 1..3) assertTrue("${s.text}: right", j.arms[j.taken] > 0)
+                if (!j.roundabout && s.sign in -3..-1) assertTrue("${s.text}: left", j.arms[j.taken] < 0)
+            }
+        }
+        println("$all crossings, $busy busy, $rings roundabouts")
+        assertTrue(all >= 5 && busy >= 1)
+    }
+}

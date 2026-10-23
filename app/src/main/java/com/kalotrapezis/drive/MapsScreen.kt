@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -341,6 +342,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     var live by remember { mutableStateOf(false) } // a fix came while the map is open (not Android's stored last one)
     var granted by remember { mutableStateOf(hasLocation(context)) }
     var nav by remember { mutableStateOf<Nav?>(null) }
+    var closeUp by remember { mutableStateOf(false) } // by car, the camera close over a busy crossing (closeView)
     val carNav by CarLink.nav.collectAsState() // directions running on the car's screen, shown here too
     var preview by remember { mutableStateOf<Preview?>(null) }
     var navSheet by remember { mutableStateOf(false) } // the handle's sheet over the directions bar: tolls and the turns ahead
@@ -387,6 +389,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
 
     fun stopNav() {
         nav = null
+        closeUp = false
         mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }?.apply { cameraMode = CameraMode.NONE; renderMode = RenderMode.COMPASS }
     }
 
@@ -396,7 +399,8 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         lc.renderMode = RenderMode.GPS
         lc.setCameraMode(CameraMode.TRACKING_GPS, object : org.maplibre.android.location.OnLocationCameraTransitionListener {
             override fun onLocationCameraTransitionFinished(cameraMode: Int) {
-                lc.zoomWhileTracking(if (mode == "car") 16.5 else 17.5); lc.tiltWhileTracking(if (mode == "car") 45.0 else 0.0)
+                val (z, t) = if (mode == "car") carView(closeUp) else 17.5 to 0.0
+                lc.zoomWhileTracking(z); lc.tiltWhileTracking(t)
             }
             override fun onLocationCameraTransitionCanceled(cameraMode: Int) = Unit
         })
@@ -508,6 +512,14 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         }
         val step = n.route.steps[p.next]
         val speed = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+        // by car, near a busy crossing the map comes close and flat; past it, back
+        val close = car && closeView(step.junction, p.toNext, speed)
+        if (close != closeUp) {
+            closeUp = close
+            mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated && it.cameraMode == CameraMode.TRACKING_GPS }?.let { lc ->
+                val (z, t) = carView(close); lc.zoomWhileTracking(z, 1500); lc.tiltWhileTracking(t, 1500)
+            }
+        }
         val due = dueWarning(p.next, p.toNext, speed, car, said)
         when (due) {
             "n" -> { say(nearWords(lang, p.toNext, car, step.text)); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
@@ -1210,6 +1222,12 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
             if (step.street.isNotEmpty()) Text(step.street, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(if (step.street.isEmpty()) step.text else instruction, style = MaterialTheme.typography.bodyMedium, color = white.copy(alpha = 0.75f),
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // a busy crossing near: its picture, the way on in blue (the user, 23 Oct)
+            val j = step.junction?.takeIf { showJunction(it, n.p?.toNext ?: Double.MAX_VALUE) }
+            if (j != null) {
+                val picture = remember(j) { junctionPicture(j, 480).asImageBitmap() }
+                androidx.compose.foundation.Image(picture, contentDescription = null, modifier = Modifier.padding(top = 4.dp).size(160.dp).align(Alignment.CenterHorizontally))
+            }
         }
     }
 }

@@ -162,6 +162,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     /** The camera following me; false once the map was moved by hand, until "my location". */
     private var tracking = true
+    private var closeUp = false // the camera close over a busy crossing (closeView)
 
     /** By hand: the camera stops following me. */
     private fun loose() {
@@ -322,6 +323,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     // its box and the street — and the map with the route under it; Android Auto's own bar below (✕, time, distance).
     private var panelRef: android.widget.TextView? = null
     private var panelHint: android.widget.TextView? = null // the instruction itself, smaller ("Στρίψτε κλειστά αριστερά")
+    private var panelJunction: android.widget.ImageView? = null // a busy crossing's picture, near it
+    private var junctionShown: Pair<Junction, Int>? = null
 
     private fun turnPanel(c: android.content.Context): android.view.View {
         panelArrow = android.widget.ImageView(c).apply { setColorFilter(Color.WHITE) }
@@ -329,6 +332,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         panelRef = android.widget.TextView(c).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) }
         panelText = android.widget.TextView(c).apply { setTextColor(0xFFE8EAED.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
         panelHint = android.widget.TextView(c).apply { setTextColor(0xFFBDC1C6.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
+        panelJunction = android.widget.ImageView(c).apply { visibility = android.view.View.GONE }; junctionShown = null
         val top = android.widget.LinearLayout(c).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
             addView(panelArrow); addView(panelDistance)
@@ -341,7 +345,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             orientation = android.widget.LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply { setColor(0xF0303134.toInt()); cornerRadius = 3 * u }
             layoutParams = android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.TOP or android.view.Gravity.START)
-            addView(top); addView(road); addView(panelHint)
+            addView(top); addView(road); addView(panelHint); addView(panelJunction)
             visibility = android.view.View.GONE
         }
     }
@@ -404,6 +408,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         panelText?.setTextSize(px, textPx)
         panelHint?.setTextSize(px, smallPx)
+        panelJunction?.layoutParams = android.widget.LinearLayout.LayoutParams(cw - 2 * pad, cw - 2 * pad).apply { topMargin = pad }
         // the bottom card: the card's width, a little less tall than the turn card
         eta?.setTextSize(px, textPx)
         etaBox?.apply {
@@ -510,6 +515,13 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         panelText?.apply { text = step.street; visibility = if (step.street.isEmpty() && step.ref.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE }
         // the instruction without the street, which is above it
         panelHint?.text = step.text.substringBefore(" στην ").substringBefore(" onto ").substringBefore(" στο ")
+        // a busy crossing near: its picture under the words (not in the small card, no room there)
+        val j = step.junction?.takeIf { !compact && showJunction(it, p.toNext) }
+        panelJunction?.apply {
+            val px = layoutParams?.width ?: 0
+            if (j != null && px > 0 && junctionShown != j to px) { setImageBitmap(junctionPicture(j, px)); junctionShown = j to px }
+            visibility = if (j != null && px > 0) android.view.View.VISIBLE else android.view.View.GONE
+        }
     }
 
     /** The driver sits on the right where traffic keeps left (Cyprus, the UK, Malta, Ireland…): the country of the phone's network. */
@@ -625,7 +637,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         // zoom and tilt once the tracking has taken hold (asked during its transition, they are dropped)
         lc.setCameraMode(CameraMode.TRACKING_GPS, object : org.maplibre.android.location.OnLocationCameraTransitionListener {
             override fun onLocationCameraTransitionFinished(cameraMode: Int) {
-                lc.zoomWhileTracking(if (nav != null) 16.5 else 15.0); lc.tiltWhileTracking(if (nav != null) 45.0 else 0.0)
+                val (z, t) = if (nav != null) carView(closeUp) else 15.0 to 0.0
+                lc.zoomWhileTracking(z); lc.tiltWhileTracking(t)
             }
             override fun onLocationCameraTransitionCanceled(cameraMode: Int) = Unit
         })
@@ -757,6 +770,14 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         var said = n.said
         val step = n.route.steps[p.next]
         val speed = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+        // near a busy crossing the map comes close and flat; past it, back
+        val close = closeView(step.junction, p.toNext, speed)
+        if (close != closeUp) {
+            closeUp = close
+            map?.locationComponent?.takeIf { tracking && it.isLocationComponentActivated }?.let { lc ->
+                val (z, t) = carView(close); lc.zoomWhileTracking(z, 1500); lc.tiltWhileTracking(t, 1500)
+            }
+        }
         val due = dueWarning(p.next, p.toNext, speed, true, said)
         when (due) {
             "n" -> { say(nearWords(lang, p.toNext, true, step.text)); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
@@ -845,7 +866,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     fun stop(keepTrip: Boolean = false) {
         if (!keepTrip) { queue = emptyList(); tripLetter = null; waitNext = null; trip = null; MapsPrefs.setPendingTrip(carContext, null) }
         if (nav == null) return
-        nav = null; tolls = emptyList(); tollsAhead = 0; showPlaces = true; parkingAsked = null; showParking(0)
+        nav = null; closeUp = false; tolls = emptyList(); tollsAhead = 0; showPlaces = true; parkingAsked = null; showParking(0)
         (map?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(emptyList()))
         CarLink.nav.value = null
         hostNav { navigationEnded() }

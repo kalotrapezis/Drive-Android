@@ -240,6 +240,69 @@ internal fun dueWarning(step: Int, toNext: Double, speed: Double, car: Boolean, 
     }
 }
 
+/** The direction from one point to another in degrees clockwise from north. */
+internal fun bearing(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+    val la1 = Math.toRadians(lat1); val la2 = Math.toRadians(lat2); val dl = Math.toRadians(lng2 - lng1)
+    return Math.toDegrees(Math.atan2(Math.sin(dl) * Math.cos(la2), Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dl)))
+}
+
+/**
+ * A turn's crossing as the car arrives: its roads' directions in degrees clockwise from straight ahead, sorted (the way in
+ * is near ±180), [taken] the one to go on; a [roundabout]'s roads seen from its middle.
+ */
+internal data class Junction(val arms: List<Double>, val taken: Int, val roundabout: Boolean = false) {
+    /**
+     * Worth a picture in the turn card, where the arrow alone can mislead (the user, 23 Oct: Δράμα's five streets): a
+     * roundabout, five roads or more, or another road leaving within 45° of the one to take. A plain cross is not.
+     */
+    val busy get() = roundabout || arms.size >= 5 ||
+        arms.indices.any { it != taken && it != way && Math.abs(((arms[it] - arms[taken]) % 360 + 540) % 360 - 180) < 45 }
+    /** The way in: the road nearest straight behind. */
+    val way get() = arms.indices.minBy { Math.abs(Math.abs(arms[it]) - 180) }
+}
+
+/**
+ * Whether the map comes close and looks straight down now, to see which street is which: a busy crossing about 12 s or
+ * 250 m ahead (the user, 23 Oct: at Νικήσιανη's 5–6 streets, counting them, they took the one next to it).
+ */
+internal fun closeView(j: Junction?, toNext: Double, speed: Double) = j != null && j.busy && toNext < maxOf(250.0, speed * 12)
+
+/** Directions' camera by car: zoom and tilt, close and flat at a busy crossing ([closeView]). */
+internal fun carView(close: Boolean) = if (close) 18.0 to 0.0 else 16.5 to 45.0
+
+/** Whether the turn card shows [j]'s picture now, [toNext] metres before it. */
+internal fun showJunction(j: Junction?, toNext: Double) = j != null && j.busy && toNext < 400
+
+/**
+ * [j] drawn [px] square for the turn card (the user, 23 Oct: "a card … with arrows or a circle, blue where I must go"): its
+ * roads grey from the middle out, the way in from the bottom and the way on blue with an arrow; a roundabout a grey ring,
+ * gone round anticlockwise in blue. shortcut: anticlockwise as in Greece, where traffic keeps left the ring runs the other way.
+ */
+internal fun junctionPicture(j: Junction, px: Int): android.graphics.Bitmap {
+    val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+    val c = android.graphics.Canvas(b)
+    val mid = px / 2f; val far = px * 0.44f; val ringR = if (j.roundabout) px * 0.17f else 0f
+    fun paint(color: Int, w: Float) = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = color; strokeWidth = w; style = android.graphics.Paint.Style.STROKE; strokeCap = android.graphics.Paint.Cap.ROUND
+    }
+    val grey = paint(0xFF9AA0A6.toInt(), px * 0.08f); val blue = paint(0xFF4C8DF6.toInt(), px * 0.08f)
+    fun at(deg: Double, r: Float) = Math.toRadians(deg).let { (mid + Math.sin(it) * r).toFloat() to (mid - Math.cos(it) * r).toFloat() }
+    fun arm(deg: Double, p: android.graphics.Paint) { val (x1, y1) = at(deg, ringR); val (x2, y2) = at(deg, far); c.drawLine(x1, y1, x2, y2, p) }
+    j.arms.forEach { arm(it, grey) }
+    if (j.roundabout) c.drawCircle(mid, mid, ringR, grey)
+    val inDeg = j.arms[j.way]; val outDeg = j.arms[j.taken]
+    arm(inDeg, blue); arm(outDeg, blue)
+    if (j.roundabout) { // from the way in round to the way out, anticlockwise (canvas angles: 0 at three o'clock, clockwise)
+        val sweep = -(((inDeg - outDeg) % 360 + 360) % 360).toFloat().let { if (it == 0f) 360f else it }
+        c.drawArc(mid - ringR, mid - ringR, mid + ringR, mid + ringR, (inDeg - 90).toFloat(), sweep, false, blue)
+    }
+    // the arrowhead at the way out's end
+    val (tx, ty) = at(outDeg, far + px * 0.03f); val (lx, ly) = at(outDeg - 16, far - px * 0.1f); val (rx, ry) = at(outDeg + 16, far - px * 0.1f)
+    c.drawPath(android.graphics.Path().apply { moveTo(tx, ty); lineTo(lx, ly); lineTo(rx, ry); close() },
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = blue.color; style = android.graphics.Paint.Style.FILL })
+    return b
+}
+
 /** A sharp bend on a route where no turn is said: [along] metres from its start, to the [right] or left. */
 internal data class Bend(val along: Double, val right: Boolean)
 
@@ -251,10 +314,7 @@ internal data class Bend(val along: Double, val right: Boolean)
 internal fun bendsOn(r: Route, cum: DoubleArray): List<Bend> {
     val n = r.lats.size
     if (n < 3) return emptyList()
-    fun bearing(a: Int, b: Int): Double {
-        val la1 = Math.toRadians(r.lats[a]); val la2 = Math.toRadians(r.lats[b]); val dl = Math.toRadians(r.lngs[b] - r.lngs[a])
-        return Math.toDegrees(Math.atan2(Math.sin(dl) * Math.cos(la2), Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dl)))
-    }
+    fun bearing(a: Int, b: Int) = bearing(r.lats[a], r.lngs[a], r.lats[b], r.lngs[b])
     val turns = r.steps.filter { it.sign != 0 && it.at in 0 until n }.map { cum[it.at] }
     val found = ArrayList<Pair<Double, Double>>() // along, the turn there (+ right)
     var a = 0; var b = 0

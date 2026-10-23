@@ -470,12 +470,13 @@ internal enum class NewKind(val label: String, val icon: Int) {
  * A birthday: a name and a date, the year if known. Saved in the Birthdays calendar as an all-day event every year; a
  * known year is the first DTSTART and X-TETRA-BIRTH-YEAR, so the age can show.
  */
-@Composable internal fun BirthdayDialog(dismiss: () -> Unit, save: (name: String, date: LocalDate, yearKnown: Boolean) -> Unit) {
+@Composable internal fun BirthdayDialog(dismiss: () -> Unit, save: (name: String, date: LocalDate, yearKnown: Boolean, asContact: Boolean) -> Unit) {
     var name by remember { mutableStateOf("") }
     var date by remember { mutableStateOf(LocalDate.now()) }
     var yearKnown by remember { mutableStateOf(false) }
+    var asContact by remember { mutableStateOf(true) }
     AlertDialog(onDismissRequest = dismiss, title = { Text("Birthday") }, confirmButton = {
-        TextButton(enabled = name.isNotBlank(), onClick = { save(name.trim(), date, yearKnown) }) { Text("Save") }
+        TextButton(enabled = name.isNotBlank(), onClick = { save(name.trim(), date, yearKnown, asContact) }) { Text("Save") }
     }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Whose birthday") }, singleLine = true)
@@ -483,7 +484,10 @@ internal enum class NewKind(val label: String, val icon: Int) {
             Row(Modifier.clickable { yearKnown = !yearKnown }, verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(yearKnown, { yearKnown = it }); Text("I know the year (to show the age)")
             }
-            Text("All day, every year, in the Birthdays calendar; reminded on the day at 9:00.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.clickable { asContact = !asContact }, verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(asContact, { asContact = it }); Text("Save as a contact too")
+            }
+            Text("All day, every year, in the calendar Contacts' birthdays go into (Γενέθλια); reminded at 9:00.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     })
 }

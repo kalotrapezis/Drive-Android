@@ -844,7 +844,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Pdf -> pdfOpen?.let { androidx.compose.runtime.key(it) { PdfScreen(back = { screen = writerBack }, open = it, openWords = { w -> writerOpen = w; screen = Screen.Writer }) } }
                 Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
-                }, startKind = calendarNew)
+                }, startKind = calendarNew, openContact = { uid -> contactsOpen = uid; screen = Screen.Contacts })
                 Screen.Maps -> MapsScreen(MapsFiles.root(driveRoot()), mapsGo, back = { mapsGo = null; screen = Screen.Home })
                 Screen.Contacts -> ContactsScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))

@@ -239,7 +239,7 @@ private fun onColor(c: Color) = if (c.luminance() > 0.55f) Color.Black else Colo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, startKind: NewKind? = null) {
+internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, startKind: NewKind? = null, openContact: (String) -> Unit = {}) {
     val context = LocalContext.current
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val zone = remember { ZoneId.systemDefault() }
@@ -528,7 +528,9 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 val m = o.file.master
                 // a day of a repeat edits with the repeat shown; the editor's date is that day's
                 val draft = if (m != null && o.event.recurrenceId == null) m.copy(start = o.start, end = o.end) else o.event.copy(rrule = m?.rrule)
-                editing = Editing(o, draft, o.calendar)
+                // a contact's birthday or date is changed on the contact (one place to change it)
+                val contact = ContactsBirthdays.contactOf(o.file)
+                if (contact != null) openContact(contact) else editing = Editing(o, draft, o.calendar)
             },
             delete = { shown = null; if (repeating) asking = Asking(true) { sc -> deleteEvent(o, sc) } else deleteEvent(o, null) },
             keep = { shown = null; write("Kept this version; the other went to the Trash") { CalendarFiles.copies(o.calendar, o.file).forEach { CalendarFiles.trash(root, it) } } })
@@ -553,10 +555,18 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             }
         }
     }
-    if (birthday) BirthdayDialog({ birthday = false }) { name, date, yearKnown ->
+    if (birthday) BirthdayDialog({ birthday = false }) { name, date, yearKnown, asContact ->
         birthday = false
         write("$name's birthday saved") {
-            val cal = CalendarFiles.calendars(root).firstOrNull { it.name.equals("Birthdays", true) } ?: CalendarFiles.newCalendar(root, "Birthdays", 0xFF8E24AA.toInt())
+            // a contact too (23 Oct): Contacts writes its event, into the same calendar, and keeps it in step
+            if (asContact) {
+                val c = ContactsFiles.save(contactsRoot(), null, ContactInfo(formatted = name, given = name.substringBefore(' '), family = name.substringAfter(' ', ""),
+                    birthday = VDate(date.year.takeIf { yearKnown }, date.monthValue, date.dayOfMonth)))
+                ContactsBirthdays.sync(root, c.info, ContactsPrefs.birthdays(context), emptyList())
+                return@write
+            }
+            // Contacts' setting (Γενέθλια), not a second birthdays calendar
+            val cal = ContactsBirthdays.calendar(root, ContactsPrefs.birthdays(context))
             val start = (if (yearKnown) date else date.withYear(today.year)).atStartOfDay(zone)
             val uid = CalendarFiles.newUid()
             val f = CalendarFiles.save(CalendarFiles.newFile(cal.dir, "$name birthday", uid),
@@ -1066,6 +1076,7 @@ private fun linked(text: String, color: Color) = androidx.compose.ui.text.buildA
                 o.file.comps.flatMap { c -> c.comps("VEVENT") }.firstOrNull { it.prop("RECURRENCE-ID") == null }?.prop("X-TETRA-BIRTH-YEAR")?.value?.trim()?.toIntOrNull()
                     ?.let { y -> if (o.start.year > y) Text("Turns ${o.start.year - y}", style = MaterialTheme.typography.bodyMedium) }
                 Text(o.calendar.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (ContactsBirthdays.contactOf(o.file) != null) TextButton(onClick = edit) { Text("From Contacts: change it on the contact") }
                 e.alarms.forEach { Text("🔔 " + alarmText(it, e.allDay, o.start), style = MaterialTheme.typography.bodyMedium) }
                 if (e.notes.isNotEmpty()) Text(linked(e.notes, MaterialTheme.colorScheme.primary), style = MaterialTheme.typography.bodyMedium)
                 if (o.file.versions > 1) {

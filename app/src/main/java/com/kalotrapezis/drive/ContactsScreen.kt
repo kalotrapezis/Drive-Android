@@ -92,6 +92,24 @@ internal object ContactsPrefs {
     private fun p(c: Context) = c.getSharedPreferences("contacts", Context.MODE_PRIVATE)
     fun byLast(c: Context) = p(c).getBoolean("byLast", false)
     fun setByLast(c: Context, on: Boolean) = p(c).edit().putBoolean("byLast", on).apply()
+    /** Settings › Contacts › Birthdays go into: a calendar's folder; none chosen: Γενέθλια or Birthdays (ContactsBirthdays.calendar). */
+    fun birthdays(c: Context) = p(c).getString("birthdays", null)
+    fun setBirthdays(c: Context, dir: String) = p(c).edit().putString("birthdays", dir).apply()
+    /** Events of the birthdays calendar the person said are no one here ("Not this person" in the review). */
+    fun dismissed(c: Context): Set<String> = p(c).getStringSet("notLinked", emptySet())!!
+    fun dismiss(c: Context, uids: Collection<String>) = p(c).edit().putStringSet("notLinked", dismissed(c) + uids).apply()
+}
+
+/**
+ * Every contact's dates made to match its events — except those an unanswered link suggestion names (an event already in
+ * the calendar may be theirs: linking it, not a second event). Answers the suggestions left.
+ */
+internal fun syncBirthdays(context: Context, contacts: List<ContactInfo>): List<ContactsBirthdays.Link> {
+    val calRoot = calendarRoot()
+    val links = ContactsBirthdays.suggestions(calRoot, contacts, ContactsPrefs.birthdays(context), ContactsPrefs.dismissed(context))
+    val waiting = links.map { it.contact.uid }.toSet()
+    if (ContactsBirthdays.syncAll(calRoot, contacts.filter { it.uid !in waiting }, ContactsPrefs.birthdays(context)) > 0) CalendarAlarms.planSoon(context)
+    return links
 }
 
 private enum class ContactsTab(val label: String, val icon: Int) { All("All", R.drawable.ic_person), Favourites("Favourites", R.drawable.ic_star), Labels("Labels", R.drawable.ic_label) }
@@ -117,6 +135,9 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var byLast by remember { mutableStateOf(ContactsPrefs.byLast(context)) }
     var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
+    var links by remember { mutableStateOf<List<ContactsBirthdays.Link>>(emptyList()) } // events in the birthdays calendar that seem to be these people
+    var reviewing by remember { mutableStateOf(false) }
+    var choosingCalendar by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Pair<Contact?, ContactInfo>?>(null) } // the contact (null: a new one) and where its editor starts
     LaunchedEffect(message) { if (message != null) { delay(3500); message = null } }
     val root = remember { contactsRoot() }
@@ -150,11 +171,22 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     }
     /** [c] (null: a new contact) saved as [i]; the page opens on it. */
     fun save(c: Contact?, i: ContactInfo, said: String = "Saved") = scope.launch {
-        val r = withContext(Dispatchers.IO) { runCatching { ContactsFiles.save(root, c, i) } }
+        val r = withContext(Dispatchers.IO) { runCatching { ContactsFiles.save(root, c, i).also { saved ->
+            // its birthday and dates into the calendar (the contact is the truth)
+            runCatching { val calRoot = calendarRoot(); if (ContactsBirthdays.sync(calRoot, saved.info, ContactsPrefs.birthdays(context), ContactsBirthdays.linked(calRoot)[saved.info.uid].orEmpty()) > 0) CalendarAlarms.planSoon(context) }
+                .onFailure { WriterLog.e("Contacts: dates into the calendar", it) }
+        } } }
         r.onSuccess { openUid = it.info.uid; message = said }.onFailure { message = "Not saved: ${it.message}"; WriterLog.e("Contacts: save", it) }
         version++
     }
     fun imported(r: ContactsFiles.Imported) = "Imported: ${r.added} new" + if (r.same > 0) ", ${r.same} already here" else ""
+    /** After an import or a link: the dates into the calendar, and the events there that may be these people offered for linking. */
+    suspend fun birthdays(show: Boolean) {
+        val l = withContext(Dispatchers.IO) { runCatching { syncBirthdays(context, ContactsFiles.all(root).map { it.info }) }.onFailure { WriterLog.e("Contacts: birthdays", it) }.getOrDefault(emptyList()) }
+        links = l
+        if (show && l.isNotEmpty()) reviewing = true
+    }
+    LaunchedEffect(Unit) { birthdays(false) }
     // Import: the phone's own contacts (the Google account's among them), or a file — vCard, Google's CSV, Takeout's zip
     fun importPhone() = scope.launch {
         busy = "Reading the phone's contacts…"
@@ -163,6 +195,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         message = r.fold(::imported) { "Could not read them: ${it.message}" }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: phone import", it) }
         version++
+        birthdays(true)
     }
     val askContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) importPhone() else message = "Tetra needs to read the phone's contacts to bring them in." }
     fun fromPhone() {
@@ -180,6 +213,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         message = r.fold(::imported) { "Could not read it: ${it.message ?: it.javaClass.simpleName}" }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: file import", it) }
         version++
+        birthdays(true)
     }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importFile) }
 
@@ -284,7 +318,11 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         Box(m) {
             val ed = editing
             if (ed != null) ContactEditor(ed.second, ed.first == null, all.flatMap { it.info.labels }.distinctBy { it.lowercase() }, cancel = { editing = null },
-                delete = ed.first?.let { c -> { editing = null; openUid = null; act { ContactsFiles.trash(root, c); "${c.info.name} moved to the Trash" } } },
+                delete = ed.first?.let { c -> { editing = null; openUid = null; act {
+                    ContactsFiles.trash(root, c)
+                    calendarRoot().let { cr -> ContactsBirthdays.sync(cr, c.info, null, ContactsBirthdays.linked(cr)[c.info.uid].orEmpty(), gone = true) }
+                    "${c.info.name} moved to the Trash"
+                } } },
                 photo = { i, _ -> ContactAvatar(i, 96.dp) }) { i -> editing = null; save(ed.first, i, if (ed.first == null) "Contact created" else "Saved") }
             else if (open != null) ContactPage(open, all, wide, close = { openUid = null }, edit = { editing = open to open.info },
                 star = { save(open, open.info.favourite(!open.info.favourite), if (open.info.favourite) "Not a favourite" else "Added to favourites") }, keep = { act { ContactsFiles.copies(root, open).forEach { f -> DriveRules.moveToTrash(root.parentFile!!, f.relativeTo(root.parentFile!!).path) }; "Kept this version; the other went to the Trash" } },
@@ -335,6 +373,46 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     byLast = !byLast; ContactsPrefs.setByLast(context, byLast)
                 }
                 DrawerButton(R.drawable.ic_delete, "Trash", false, Modifier.weight(1f)) { drawer = false; trashOpen = true }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val calName = remember(drawer) { runCatching { CalendarFiles.calendars(calendarRoot()).let { cals -> cals.firstOrNull { it.dir.name == ContactsPrefs.birthdays(context) } ?: ContactsBirthdays.existing(cals) }?.name }.getOrNull() ?: ContactsBirthdays.NAME }
+                DrawerButton(R.drawable.ic_cake, "Birthdays: $calName", false, Modifier.weight(1f)) { drawer = false; choosingCalendar = true }
+                if (links.isNotEmpty()) DrawerButton(R.drawable.ic_link, "Link birthdays (${links.size})", false, Modifier.weight(1f)) { drawer = false; reviewing = true }
+            }
+            Text("Each birthday and date is an event in that calendar, reminded at 9:00 on the day and the day before; change it here and the event follows.",
+                style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+        }
+    }
+    if (reviewing) LinkReview(links, { reviewing = false }) { chosen ->
+        reviewing = false
+        scope.launch {
+            busy = "Linking…"
+            val n = withContext(Dispatchers.IO) { runCatching {
+                chosen.forEach { ContactsBirthdays.link(calendarRoot(), root, it) }
+                ContactsPrefs.dismiss(context, (links - chosen.toSet()).map { it.event.uid })
+                chosen.size
+            }.onFailure { WriterLog.e("Contacts: link", it) }.getOrDefault(0) }
+            busy = null
+            version++
+            birthdays(false)
+            message = "$n linked; the other birthdays are in the calendar"
+        }
+    }
+    if (choosingCalendar) {
+        val cals = remember { runCatching { CalendarFiles.calendars(calendarRoot()) }.getOrDefault(emptyList()) }
+        ModalBottomSheet(onDismissRequest = { choosingCalendar = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
+            Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Birthdays go into", style = MaterialTheme.typography.titleMedium)
+                val now = cals.firstOrNull { it.dir.name == ContactsPrefs.birthdays(context) } ?: ContactsBirthdays.existing(cals)
+                cals.forEach { c ->
+                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { ContactsPrefs.setBirthdays(context, c.dir.name); choosingCalendar = false; message = "New birthdays go into ${c.name}" }
+                        .padding(horizontal = 8.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(14.dp).clip(CircleShape).background(Color(c.color)))
+                        Text(c.name, Modifier.weight(1f))
+                        if (c == now) Icon(painterResource(R.drawable.ic_check), contentDescription = "Chosen")
+                    }
+                }
+                if (cals.isEmpty()) Text("No calendars yet: ${ContactsBirthdays.NAME} is made with the first birthday.", color = islandContentColor().copy(alpha = 0.7f))
             }
         }
     }
@@ -473,6 +551,40 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                     Text(c.info.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     TextButton(onClick = { restore(c) }) { Text("Restore") }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The events already in the birthdays calendar that seem to be these people (Γενέθλια's from Google Calendar): each pair
+ * ticked; Link adds the contact to the event (no second event), an unticked one stays as it is and is not asked again.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun LinkReview(links: List<ContactsBirthdays.Link>, later: () -> Unit, go: (List<ContactsBirthdays.Link>) -> Unit) {
+    var picked by remember(links) { mutableStateOf(links.toSet()) }
+    ModalBottomSheet(onDismissRequest = later, containerColor = SheetColor, contentColor = islandContentColor()) {
+        Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Birthdays already in the calendar", style = MaterialTheme.typography.titleMedium)
+            Text("These events seem to be these people. Linked, the event stays and follows the contact; nothing is doubled.",
+                style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                links.forEach { l ->
+                    Row(Modifier.fillMaxWidth().clickable { picked = if (l in picked) picked - l else picked + l }.padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        androidx.compose.material3.Checkbox(l in picked, { picked = if (l in picked) picked - l else picked + l })
+                        ContactAvatar(l.contact, 36.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text(l.contact.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${l.title} · ${l.event.master?.start?.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))}" + if (l.sameDate) " · same day" else "",
+                                style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f), maxLines = 2)
+                        }
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = later) { Text("Later") }
+                TextButton(onClick = { go(picked.toList()) }) { Text(if (picked.isEmpty()) "None of them" else "Link ${picked.size}") }
             }
         }
     }

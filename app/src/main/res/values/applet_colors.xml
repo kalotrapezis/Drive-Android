@@ -10,4 +10,5 @@
     <color name="applet_text_editor">#822AD1</color>
     <color name="applet_calendar">#F41879</color>
     <color name="applet_maps">#25C4FE</color>
+    <color name="applet_timer">#04D5CC</color>
 </resources>

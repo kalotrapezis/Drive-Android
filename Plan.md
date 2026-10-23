@@ -239,6 +239,11 @@ How to write here:
       #25C4FE (Category.Maps, applet_maps; maps_colors.xml, maps_art.xml, maps_launcher_fg.xml gone); the slots' tint light
       blue too. Inside Maps the indigo accents (buttons, markers, the car's tint; desktop Maps.tsx MAPS_COLOR) stay indigo (the user, 23 Oct);
       the desktop has no Maps applet icon or colour. Checked on the emulator, light and dark; not on the tablet (not connected).
+- [x] (maps-icon session, 23 Oct, same branch) Timer's icon: the user's own (their ~/Tetra/Files/Timer.png of 18 Oct, copied to
+      Assets/Icons/Applets/Timer.png; the file in Tetra/Files left where it is until the user says) made the same way into
+      timer_art.png and applet_timer_fg.png; the launcher background its own edge turquoise #04D5CC (applet_colors.xml;
+      timer_colors.xml, timer_art.xml, timer_launcher_fg.xml gone). Home's Timer teal (#00796B) kept: the same family as the
+      icon. The desktop has no Timer applet icon. Checked on the emulator, light and dark.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- The Timer's App icon background: Home's Timer teal (TIMER_COLOR); kept out of applet_colors.xml, which tools/applet-icons.py rewrites. -->
-<resources>
-    <color name="applet_timer">#26A69A</color>
-</resources>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Settings › App icons: Home's timer on its own colour (by hand: the Timer's art is a vector). -->
+<!-- Settings › App icons: Home's art for this part on its own colour (tools/applet-icons.py). -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/applet_timer" />
-    <foreground android:drawable="@drawable/timer_launcher_fg" />
+    <foreground android:drawable="@drawable/applet_timer_fg" />
 </adaptive-icon>

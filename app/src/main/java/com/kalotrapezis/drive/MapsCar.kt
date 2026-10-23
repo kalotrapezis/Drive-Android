@@ -677,7 +677,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     override fun onDestroy(owner: LifecycleOwner) {
         CarLink.connected.value = false; CarLink.nav.value = null; CarLink.go = null; CarLink.stop = null; CarLink.goTrip = null
         carContext.getSystemService(LocationManager::class.java)?.removeUpdates(listener)
-        if (nav != null) navigation.navigationEnded()
+        if (nav != null) hostNav { navigationEnded() }
         here?.takeIf { MapsPrefs.autoPark(carContext) && System.currentTimeMillis() - it.time < 5 * 60_000 }?.let { park(it, "Android Auto disconnected") }
         tts?.shutdown()
     }
@@ -813,7 +813,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 if (rerouted) say(t("Νέα διαδρομή", "New route"), important = true)
                 else { showParking(0); launch { val c = withContext(Dispatchers.IO) { parkingNear(target).size }; if (nav?.target == target) showParking(c) } }
                 if (!rerouted) {
-                    navigation.navigationStarted()
+                    hostNav { navigationStarted() }
                     route.steps.firstOrNull()?.let { say(it.text) }
                     // a car trip: the car is no longer where it was parked
                     if (target.id != MapsFiles.PARKING) MapsFiles.places(root).firstOrNull { it.id == MapsFiles.PARKING }?.let { MapsFiles.delete(root, it) }
@@ -827,13 +827,17 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
     }
 
+    /** Telling the car a route started or ended: a car's Android Auto can refuse it ("not a navigation app", the
+     *  user's car 23 Oct, Tetra being from Unknown sources) — the route is driven all the same, the car just isn't told. */
+    private fun hostNav(call: NavigationManager.() -> Unit) = runCatching { navigation.call() }.onFailure { WriterLog.e("Maps car: the car refused", it) }
+
     fun stop(keepTrip: Boolean = false) {
         if (!keepTrip) { queue = emptyList(); tripLetter = null; waitNext = null; trip = null; MapsPrefs.setPendingTrip(carContext, null) }
         if (nav == null) return
         nav = null; tolls = emptyList(); tollsAhead = 0; showPlaces = true; parkingAsked = null; showParking(0)
         (map?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(emptyList()))
         CarLink.nav.value = null
-        navigation.navigationEnded()
+        hostNav { navigationEnded() }
         drawRoute(); follow(); showSpeed(); invalidate()
     }
 

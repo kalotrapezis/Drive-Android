@@ -127,7 +127,7 @@ internal object ScopedSync {
     private const val CALENDAR_WAITING = 4140
     const val CALENDAR_LOOK = 4141
     private const val TIMER_WAITING = 4142
-    private const val CONTACTS_WAITING = 4143
+    private const val CONTACTS_WAITING = 4145 // 4143 is Send to computer's outbox job (SendToComputer.WAITING)
     private val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pending = java.util.concurrent.ConcurrentHashMap<String, Job>() // a timer's push never cancels an event's
 

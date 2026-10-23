@@ -186,13 +186,18 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
-- [~] (send-to-computer session, 23 Oct; branch claude/keen-grothendieck-9e0fad, Drive branch send-to-computer in
+- [x] (send-to-computer session, 23 Oct; branch claude/keen-grothendieck-9e0fad, Drive branch send-to-computer in
       Drive-worktrees/send-to-computer) (the user, 23 Oct: "with Bluetooth, could Files be in the sharing menu so you send
       files to the PC at once?") **Send to computer** in Android's share menu, over sync's Wi-Fi link (not Bluetooth), into
       the PC's ~/Tetra/Files/From phone (the user's choice); offline → a private outbox, sent when the computer is seen
       (JobScheduler retry, any sync, its "sync now"). The other way too (the user: "Yes, both ways"): desktop Files'
       Send to phone and the tray's "Send files to phone…", into the phone's Tetra/From computer. Both folders are in Files,
       so sync then carries them to the other side as well (accepted with the choice).
+      Built and tried on the real pair (Drive SYNC_PLAN 6ao): photo + PDF on the PC in ~1.2 s, SHA-256 equal; with the PC's
+      Tetra stopped the PDF waited and landed when it came back; two files to the phone in 0.7 s; each side's notification
+      opens Files at the folder. The user's own try found a crash (a long Greek PDF name past 255 bytes) — fixed and re-run.
+      **Not merged; the installed desktop (0.6.0-beta.4) has no /send** — a new .deb after the merge. Not done: sharing
+      text or a link (no file) says "Nothing to send".
 - [x] (f5c3277, 23 Oct) Android Auto in the user's car: stuck on "Finding the way…" — the car refused navigationStarted and
       the HostException crashed Tetra; now logged and the route driven anyway. Android Auto lists a sideloaded Car App
       Library app in a real car only after a desktop head unit run (Unknown sources doesn't cover it, Google's docs); every

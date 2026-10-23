@@ -186,7 +186,7 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
-- [x] (contacts-build session, 23 Oct; branch claude/contacts-583397, not merged) **Contacts** on Android, § Contacts steps 1–8
+- [x] (contacts-build session, 23 Oct; merged into main in both repos at the user's word, with the thumbnails work committed first; desktop 0.6.0-beta.6 .deb built from Drive main, not installed) **Contacts** on Android, § Contacts steps 1–8
       (step 9 later). Then the sync and the desktop (the user, 23 Oct: "now do the desktop and the sync"): main merged
       into the branch; scope `contacts` (SYNC_PLAN 6ap) — on the real pair a PC-made contact reached the phone in 7 s with
       its birthday's event, a star on the phone the PC in 4 s, a delete on the PC the phone's Trash in 6 s; desktop Contacts

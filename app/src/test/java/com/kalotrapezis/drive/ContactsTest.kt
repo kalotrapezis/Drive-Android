@@ -176,4 +176,14 @@ class ContactsTest {
         assertEquals("14 Mar · turns 42", dateText(VDate(1985, 3, 14), true, java.time.LocalDate.of(2026, 10, 23)))
         assertEquals("23 Oct · 41 today", dateText(VDate(1985, 10, 23), true, java.time.LocalDate.of(2026, 10, 23)))
     }
+
+    @Test fun photosPeopleMatchContactsByName() {
+        val people = listOf("Ελένη Δοκιμαστή", "Άννα", "Γιώργος Α", "Γιώργος Β")
+        val contacts = listOf(ContactInfo(formatted = "Ελένη Δοκιμαστή"), ContactInfo(formatted = "Αννα Κωνσταντίνου"), ContactInfo(formatted = "Γιώργος Τρίτος"),
+            ContactInfo(formatted = "Has Photo", photo = "AAEC"))
+        // the same name; the same first name when only one person and one contact have it; two Γιώργος: no one
+        assertEquals(listOf("Ελένη Δοκιμαστή" to "Ελένη Δοκιμαστή", "Αννα Κωνσταντίνου" to "Άννα"),
+            ContactsFaces.matches(contacts, people) { it }.map { it.first.name to it.second })
+        assertEquals(2, ContactsFaces.score("Μαρία Π.", "μαρια π."))
+    }
 }

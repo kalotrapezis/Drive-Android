@@ -137,6 +137,8 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var busy by remember { mutableStateOf<String?>(null) }
     var links by remember { mutableStateOf<List<ContactsBirthdays.Link>>(emptyList()) } // events in the birthdays calendar that seem to be these people
     var reviewing by remember { mutableStateOf(false) }
+    var faceMatches by remember { mutableStateOf<List<Pair<ContactInfo, PhotoPerson>>>(emptyList()) } // contacts with no photo Photos knows by name
+    var facesOpen by remember { mutableStateOf(false) }
     var choosingCalendar by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Pair<Contact?, ContactInfo>?>(null) } // the contact (null: a new one) and where its editor starts
     LaunchedEffect(message) { if (message != null) { delay(3500); message = null } }
@@ -180,11 +182,16 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         version++
     }
     fun imported(r: ContactsFiles.Imported) = "Imported: ${r.added} new" + if (r.same > 0) ", ${r.same} already here" else ""
+    /** Contacts with no photo whose faces Photos knows: offered after an import (and in the drawer). */
+    suspend fun faces(show: Boolean) {
+        faceMatches = withContext(Dispatchers.IO) { runCatching { ContactsFaces.matches(ContactsFiles.all(root).map { it.info }, ContactsFaces.people(context)) { it.name } }.getOrDefault(emptyList()) }
+        if (show && faceMatches.isNotEmpty()) facesOpen = true
+    }
     /** After an import or a link: the dates into the calendar, and the events there that may be these people offered for linking. */
     suspend fun birthdays(show: Boolean) {
         val l = withContext(Dispatchers.IO) { runCatching { syncBirthdays(context, ContactsFiles.all(root).map { it.info }) }.onFailure { WriterLog.e("Contacts: birthdays", it) }.getOrDefault(emptyList()) }
         links = l
-        if (show && l.isNotEmpty()) reviewing = true
+        if (show && l.isNotEmpty()) reviewing = true else faces(show)
     }
     LaunchedEffect(Unit) { birthdays(false) }
     // Import: the phone's own contacts (the Google account's among them), or a file — vCard, Google's CSV, Takeout's zip
@@ -323,7 +330,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     calendarRoot().let { cr -> ContactsBirthdays.sync(cr, c.info, null, ContactsBirthdays.linked(cr)[c.info.uid].orEmpty(), gone = true) }
                     "${c.info.name} moved to the Trash"
                 } } },
-                photo = { i, _ -> ContactAvatar(i, 96.dp) }) { i -> editing = null; save(ed.first, i, if (ed.first == null) "Contact created" else "Saved") }
+                photo = { i, set -> ContactPhotoEdit(i, set) }) { i -> editing = null; save(ed.first, i, if (ed.first == null) "Contact created" else "Saved") }
             else if (open != null) ContactPage(open, all, wide, close = { openUid = null }, edit = { editing = open to open.info },
                 star = { save(open, open.info.favourite(!open.info.favourite), if (open.info.favourite) "Not a favourite" else "Added to favourites") }, keep = { act { ContactsFiles.copies(root, open).forEach { f -> DriveRules.moveToTrash(root.parentFile!!, f.relativeTo(root.parentFile!!).path) }; "Kept this version; the other went to the Trash" } },
                 openUid = { openUid = it })
@@ -377,6 +384,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 val calName = remember(drawer) { runCatching { CalendarFiles.calendars(calendarRoot()).let { cals -> cals.firstOrNull { it.dir.name == ContactsPrefs.birthdays(context) } ?: ContactsBirthdays.existing(cals) }?.name }.getOrNull() ?: ContactsBirthdays.NAME }
                 DrawerButton(R.drawable.ic_cake, "Birthdays: $calName", false, Modifier.weight(1f)) { drawer = false; choosingCalendar = true }
+                if (faceMatches.isNotEmpty()) DrawerButton(R.drawable.ic_person, "Faces from Photos (${faceMatches.size})", false, Modifier.weight(1f)) { drawer = false; facesOpen = true }
                 if (links.isNotEmpty()) DrawerButton(R.drawable.ic_link, "Link birthdays (${links.size})", false, Modifier.weight(1f)) { drawer = false; reviewing = true }
             }
             Text("Each birthday and date is an event in that calendar, reminded at 9:00 on the day and the day before; change it here and the event follows.",
@@ -395,6 +403,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             busy = null
             version++
             birthdays(false)
+            faces(true)
             message = "$n linked; the other birthdays are in the calendar"
         }
     }
@@ -414,6 +423,21 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 }
                 if (cals.isEmpty()) Text("No calendars yet: ${ContactsBirthdays.NAME} is made with the first birthday.", color = islandContentColor().copy(alpha = 0.7f))
             }
+        }
+    }
+    if (facesOpen) FacesForMany(faceMatches, { facesOpen = false }) { chosen ->
+        facesOpen = false
+        scope.launch {
+            busy = "Making photos…"
+            val n = withContext(Dispatchers.IO) { chosen.count { (c, p) -> runCatching {
+                val photo = p.cover?.let { ContactsFaces.square(context, it, p.box) } ?: return@runCatching false
+                val now = ContactsFiles.all(root).firstOrNull { it.info.uid == c.uid } ?: return@runCatching false
+                ContactsFiles.save(root, now, now.info.copy(photo = photo, photoUrl = null, person = p.uuid)); true
+            }.getOrDefault(false) } }
+            busy = null
+            message = "$n photos from Photos"
+            version++
+            faces(false)
         }
     }
     if (trashOpen) ContactsTrash(root, version, { trashOpen = false }) { c -> act { ContactsFiles.restore(root, c); "${c.info.name} restored" } }
@@ -588,4 +612,33 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
             }
         }
     }
+}
+
+/**
+ * The editor's photo: From Photos (the faces Photos found), Choose a picture (any, its middle square), Remove (back to
+ * the initial). The photo goes into the file, 512 px.
+ */
+@Composable private fun ContactPhotoEdit(i: ContactInfo, set: ((ContactInfo) -> ContactInfo) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var fromPhotos by remember { mutableStateOf(false) }
+    var working by remember { mutableStateOf(false) }
+    fun use(uri: Uri, box: android.graphics.Rect?, person: String?) = scope.launch {
+        working = true
+        val b = withContext(Dispatchers.IO) { ContactsFaces.square(context, uri, box) }
+        working = false
+        if (b != null) set { it.copy(photo = b, photoUrl = null, person = person) }
+        else android.widget.Toast.makeText(context, "That picture could not be read", android.widget.Toast.LENGTH_SHORT).show()
+    }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { use(it, null, null) } }
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        ContactAvatar(i, 96.dp)
+        if (working) Text("Making the photo…", style = MaterialTheme.typography.bodySmall)
+        Row {
+            TextButton(onClick = { fromPhotos = true }) { Text("From Photos", color = CONTACTS_COLOR) }
+            TextButton(onClick = { pick.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Choose a picture", color = CONTACTS_COLOR) }
+            if (i.photo != null || i.photoUrl != null) TextButton(onClick = { set { it.copy(photo = null, photoUrl = null, person = null) } }) { Text("Remove", color = CONTACTS_COLOR) }
+        }
+    }
+    if (fromPhotos) PhotosFacePicker(i.name, { fromPhotos = false }) { p, uri, box -> fromPhotos = false; use(uri, box, p.uuid) }
 }

@@ -65,7 +65,7 @@ internal fun dateToText(d: VDate) = if (d.year != null) "%d/%d/%d".format(d.day,
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<String>, cancel: () -> Unit, delete: (() -> Unit)?, photo: @Composable (ContactInfo, (ContactInfo) -> Unit) -> Unit, save: (ContactInfo) -> Unit) {
+internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<String>, cancel: () -> Unit, delete: (() -> Unit)?, photo: @Composable (ContactInfo, ((ContactInfo) -> ContactInfo) -> Unit) -> Unit, save: (ContactInfo) -> Unit) {
     var i by remember { mutableStateOf(start) }
     var more by remember { mutableStateOf(listOf(start.prefix, start.middle, start.suffix, start.nickname).any { it.isNotBlank() }) }
     var birthday by remember { mutableStateOf(start.birthday?.let(::dateToText) ?: "") }
@@ -90,7 +90,7 @@ internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<S
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding().padding(top = 72.dp, bottom = 32.dp, start = 16.dp, end = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { photo(i) { i = it } }
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { photo(i) { change -> i = change(i) } }
                     Group("Name") {
                         if (more) Text1("Prefix", i.prefix) { i = i.copy(prefix = it) }
                         Text1("First name", i.given) { i = i.copy(given = it) }
@@ -178,10 +178,11 @@ internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<S
                     IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
                 }
                 Spacer(Modifier.weight(1f))
-                Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (isNew) "Save new" else "Save", Modifier.padding(start = 16.dp))
-                        IconButton(onClick = ::done) { Icon(painterResource(R.drawable.ic_check), contentDescription = "Save") }
+                // the whole pill is the button (its word as well as its ✓)
+                Surface(onClick = ::done, color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                    Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (isNew) "Save new" else "Save")
+                        Icon(painterResource(R.drawable.ic_check), contentDescription = null)
                     }
                 }
             }

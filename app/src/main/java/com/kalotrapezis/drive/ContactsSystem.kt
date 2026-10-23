@@ -50,9 +50,10 @@ internal object ContactsSystem {
      * A photo as a contact's: square, [size] px, a JPEG in base64. [box] (in the picture's pixels) is the part to keep — a
      * face from Photos, made larger by [room] so the head and some round it fit; without one, the middle square.
      */
-    fun square(bytes: ByteArray, box: RectF? = null, room: Float = 1.8f, size: Int = 512, turn: Int = 0): String? {
-        var bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-        if (turn != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(turn.toFloat()) }, true)
+    fun square(bytes: ByteArray, box: RectF? = null, room: Float = 1.8f, size: Int = 512): String? =
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { square(it, box, room, size) }
+
+    fun square(bmp: Bitmap, box: RectF? = null, room: Float = 1.8f, size: Int = 512): String {
         val w = bmp.width; val h = bmp.height
         val side: Int; val cx: Float; val cy: Float
         if (box != null) {

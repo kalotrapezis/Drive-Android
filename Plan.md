@@ -1732,11 +1732,19 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       synced greece-gh. Each leg's km and time (car × 1.2, as the phone), Car / Walk / Bike. Maps hidden in Files' lists.
 - [ ] Later: the desktop app builds and refreshes the files monthly by itself; a `tetra-maps` skill; desktop directions
       without the computer's Java (a bundled runtime, ~50 MB) if another computer is to route.
-- [~] (phone-location session, 23 Oct) Desktop Maps asks the phone where it is (the user, 21 Oct: "when I click the corent location or a rute is calculated it
+- [x] (Drive 4e2ae56 + the Android commit beside this line; phone-location session, 23 Oct) Desktop Maps asks the phone where it is (the user, 21 Oct: "when I click the corent location or a rute is calculated it
       will ask the phone while showing Waiting phone for location … from the internet it will be off by half a county"):
       the computer sends a location request over the paired connection, the phone answers with one GPS fix (asking for the
       location permission if it has none); the desktop shows "Waiting for the phone's location…" meanwhile, and says so
       when the phone is not reachable. Built with desktop Maps.
+      Built (SYNC_PLAN 6am): desktop Maps' where-I-am button (over the zoom buttons) and "Start from where I am" in a trip
+      ask the paired phone (`POST /location`, phones before a tablet); the phone (PhoneLocation.kt) answers one fix — GPS,
+      the network's only when GPS found nothing — asking for the permission on its screen if needed; in the background it
+      posts "The computer asks where this phone is", and one tap sends it. The fix: a blue dot and a card, "Start a trip
+      here (A)". Tried on the emulator against the desktop's own code (permission asked, fix in 8 s; background + tap,
+      8.7 s); the desktop seen hidden with a stand-in phone. Not yet between the user's real phone and the installed
+      /opt/Tetra (needs both new builds). Android freezes a backgrounded Tetra within about a minute: then only opening
+      it on the phone helps, and the computer says so.
 - [x] (maps-link session, 21 Oct) Nearby (the user: "πατάω αναζήτηση πατάω πύργο και βγάζει την καρτέλα … βάλε και ένα κουμπί
       Nearby και βγάλε σημεία ενιδαφέροντος"): a place's card › Nearby opens Search around it ("Near Πύργος"), nearest first,
       distances from it, the pills narrowing it. Search's panel now rides above the keyboard, and says it is loading.

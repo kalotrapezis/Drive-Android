@@ -202,6 +202,13 @@ internal class SyncServer(private val context: Context, private val store: SyncS
             SyncService.syncInBackground(context, gap = 60_000)
             return reply(output, 200, JSONObject().put("ok", true))
         }
+        // "Where are you?" from desktop Maps: one fix, taken now (PhoneLocation). Only a paired device may ask.
+        if (method == "POST" && path == "/location") {
+            val known = bearer != null && store.peers().any { it.theirToken == bearer }
+            if (!known) return reply(output, 401, JSONObject().put("error", "Not paired."))
+            val (status, body) = PhoneLocation.answer(context)
+            return reply(output, status, body)
+        }
         if (method != "POST" || path != "/pair" || length !in 1..8192) return reply(output, 404, JSONObject().put("error", "Unknown request."))
         val body = ByteArray(length).also { var read = 0; while (read < length) { val n = stream.read(it, read, length - read); if (n < 0) break; read += n } }
         reply(output, 200, pair(runCatching { JSONObject(String(body, Charsets.UTF_8)) }.getOrDefault(JSONObject())))

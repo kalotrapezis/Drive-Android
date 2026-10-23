@@ -264,7 +264,7 @@ internal object MapsPrefs {
     fun sample(lang: String) = if (lang == "en") "In 300 metres, turn right onto Panepistimiou" else "Σε 300 μέτρα, στρίψτε δεξιά στην Πανεπιστημίου"
 }
 
-private fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 /**

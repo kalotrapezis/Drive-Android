@@ -378,6 +378,12 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         runCatching { SyncServer.acquire(context.applicationContext, SyncStore(context.applicationContext)) }
         onDispose { runCatching { SyncServer.release() } }
     }
+    // the computer asks where the phone is (desktop Maps) and Tetra may not use the location yet: Android's question, here
+    val askLocation = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        PhoneLocation.askPermission = { askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }
+        onDispose { PhoneLocation.askPermission = null }
+    }
     LaunchedEffect(screen) { if (screen == Screen.Settings) pairedDevice = syncStore.pairing() }
     var homePhotoBackdrop by remember { mutableStateOf(preferences.getBoolean(HOME_PHOTO_BACKDROP, true)) }
     var photosPane by remember { mutableStateOf(PhotosPane.Timeline) }

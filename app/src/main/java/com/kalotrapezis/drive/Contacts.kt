@@ -91,7 +91,7 @@ data class ContactInfo(
     fun composed() = listOf(prefix, given, middle, family, suffix).filter { it.isNotBlank() }.joinToString(" ")
     val favourite get() = categories.any { it.equals(STARRED, true) }
     /** The labels a person made (Google's own "myContacts" and the star are not labels). */
-    val labels get() = categories.filterNot { it.equals(STARRED, true) || it.equals(MY_CONTACTS, true) || it.isBlank() }
+    val labels get() = categories.filterNot { it.equals(STARRED, true) || it.equals(MY_CONTACTS, true) || it.equals(STARRED_GROUP, true) || it.isBlank() }
     fun favourite(on: Boolean) = copy(categories = if (on) (categories.filterNot { it.equals(STARRED, true) } + STARRED) else categories.filterNot { it.equals(STARRED, true) })
     /** The second line of the page: "Teacher · 3rd Primary". */
     val job get() = listOf(title, listOf(org, department).filter { it.isNotBlank() }.joinToString(", ")).filter { it.isNotBlank() }.joinToString(" · ")
@@ -99,6 +99,8 @@ data class ContactInfo(
     companion object {
         const val STARRED = "starred"
         const val MY_CONTACTS = "myContacts"
+        /** Android's own group for the star, which the phone's import brought in as a label (23 Oct): not a label. */
+        const val STARRED_GROUP = "Starred in Android"
     }
 }
 

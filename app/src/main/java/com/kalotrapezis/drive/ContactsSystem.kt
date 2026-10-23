@@ -21,7 +21,7 @@ internal object ContactsSystem {
         val groups = HashMap<Long, String>()
         cr.query(ContactsContract.Groups.CONTENT_URI, arrayOf(ContactsContract.Groups._ID, ContactsContract.Groups.TITLE, ContactsContract.Groups.SYSTEM_ID), null, null, null)?.use { c ->
             // Android's own groups ("My Contacts", "Starred in Android", "Family" made by the system) are not labels a person made
-            while (c.moveToNext()) if (c.isNull(2)) c.getString(1)?.takeIf { it.isNotBlank() }?.let { groups[c.getLong(0)] = it }
+            while (c.moveToNext()) if (c.isNull(2)) c.getString(1)?.takeIf { it.isNotBlank() && !it.equals(ContactInfo.STARRED_GROUP, true) }?.let { groups[c.getLong(0)] = it }
         }
         val labels = HashMap<Long, MutableList<String>>()
         cr.query(ContactsContract.Data.CONTENT_URI, arrayOf(ContactsContract.Data.CONTACT_ID, ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID),

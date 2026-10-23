@@ -155,7 +155,7 @@ internal object Outbox {
 internal object FromComputer {
     const val FOLDER = "From computer"
     const val SCREEN = "from-computer" // the notification's tap: Files at FOLDER (MainActivity)
-    private const val CHANNEL = "from_computer"
+    private const val CHANNEL = "files_from_computer" // high: on HyperOS a default one went unseen, folded under "Listening" (23 Oct)
     private const val NOTE = 4144
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private val names = mutableListOf<String>()
@@ -210,13 +210,15 @@ internal object FromComputer {
 
     private fun notify(context: Context, files: List<String>, from: String) {
         val nm = context.getSystemService(NotificationManager::class.java)?.takeIf { it.areNotificationsEnabled() } ?: return
+        nm.deleteNotificationChannel("from_computer") // the first build's, default importance
         if (nm.getNotificationChannel(CHANNEL) == null)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Files from the computer", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "Files the computer sends with Send to phone" })
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Files from the computer", NotificationManager.IMPORTANCE_HIGH).apply { description = "Files the computer sends with Send to phone" })
         val open = PendingIntent.getActivity(context, NOTE, Intent(context, MainActivity::class.java).putExtra(Applet.EXTRA, SCREEN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         nm.notify(NOTE, NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_computer)
             .setContentTitle("${if (files.size == 1) "1 file" else "${files.size} files"} from $from")
             .setContentText("In Files › $FOLDER: ${files.distinct().joinToString(", ")}")
+            .setPriority(NotificationCompat.PRIORITY_HIGH).setGroup(CHANNEL)
             .setContentIntent(open).setAutoCancel(true).build())
     }
 }

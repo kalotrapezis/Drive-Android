@@ -232,6 +232,19 @@ How to write here:
       home — it has not synced since 22 Oct (hotspot). Notes: maps-slots-23oct.md. On the phone (36a602e, 22:01):
       home is one file, slot 7, its two other copies in its Trash — as the PC (newest fe7a06.json, slot 7). **Not on the
       tablet** (not connected); the desktop's fix comes with 0.6.0-beta.5 (Drive aa87cc4), not installed at 22:05.
+- [x] (file-thumbnails session, 23 Oct; committed on main by the contacts-build session at the user's word) **Thumbnails in Files**, phone/tablet and desktop (the user: "thumbnails in Files in the
+      desktop and phone … the blue lines for Words files, the green table for the Tables files, the play button thing for
+      Slides"): pictures and videos their own; Words/Tables/Slides/PDF their first page with Office's glyph in the centre; cached
+      outside Tetra's folder. Files touched: Android FileThumbs.kt (new) + MainActivity's DriveRowItem/DriveGridItem; Drive
+      desktop thumbs.js (new), main.js's media:// handler, files.js's item (thumb), src/Files.tsx, src/Icon.tsx, styles.css.
+      Built: phone draws a document's first page with its own Words (OfficePages), Tables (SheetPainter) and Slides
+      (Slides.draw), pictures/videos by ThumbnailUtils, PDF by PdfRenderer; cache in the app's cacheDir/file-thumbs. Desktop:
+      sharp, ffmpeg, pdftoppm, and LibreOffice headless (one at a time, ~0.8 s a document) into DATA_DIR/file-thumbs. Both
+      name a thumbnail by path|size|mtime (a changed file gets a new one), mark undrawable ones .none, keep the newest 4000.
+      Glyphs: the Office home's ic_file_text / ic_table / ic_play in Word blue, Excel green, PowerPoint orange.
+      Checked: FileThumbsTest 3/3; desktop npm test 125/0 (thumbs.test.js 4); desktop seen in list and grid (hidden QA
+      copy, scripts/shot.js, scratch folder). **Not seen on a device**: the emulator was in the contacts session's use and
+      the tablet/phone wait for the user's OK.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

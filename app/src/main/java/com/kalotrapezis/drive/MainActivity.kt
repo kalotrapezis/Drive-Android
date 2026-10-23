@@ -2812,7 +2812,8 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
     ),
 ) {
     Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        DriveItemIcon(item, folderColor, selected, 32.dp)
+        if (item.isDirectory || selected) DriveItemIcon(item, folderColor, selected, 32.dp)
+        else FileThumb(item.file, 14.dp, Modifier.size(36.dp).clip(MaterialTheme.shapes.small), crop = true) { DriveItemIcon(item, folderColor, false, 32.dp) }
         Column(Modifier.weight(1f)) {
             Text(item.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
             Text(driveItemTypeLabel(item) + if (tags.isEmpty()) "" else " · ${tags.joinToString(" ") { "#$it" }}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2834,10 +2835,15 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
         onClick = { if (selecting) toggle() else if (item.isDirectory) openFolder(item.relativePath) else openFile(item.relativePath) },
     ),
 ) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-            DriveItemIcon(item, folderColor, selected, 64.dp)
-            IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            // a file's own picture fills the tile above its name (a document its first page, Office's glyph on it)
+            val thumb = !item.isDirectory && !selected && FileThumbs.kind(item.file.name) != null
+            if (!thumb) DriveItemIcon(item, folderColor, selected, 64.dp)
+            else FileThumb(item.file, 28.dp, Modifier.matchParentSize().clip(MaterialTheme.shapes.medium), crop = true) { DriveItemIcon(item, folderColor, false, 64.dp) }
+            Surface(color = if (thumb) islandColor().copy(alpha = 0.7f) else Color.Transparent, contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.align(Alignment.TopEnd)) {
+                IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
+            }
         }
         Column {
             Text(item.file.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)

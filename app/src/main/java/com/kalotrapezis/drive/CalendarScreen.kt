@@ -563,6 +563,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 val c = ContactsFiles.save(contactsRoot(), null, ContactInfo(formatted = name, given = name.substringBefore(' '), family = name.substringAfter(' ', ""),
                     birthday = VDate(date.year.takeIf { yearKnown }, date.monthValue, date.dayOfMonth)))
                 ContactsBirthdays.sync(root, c.info, ContactsPrefs.birthdays(context), emptyList())
+                ScopedSync.soon(context, "contacts", 0, orWhole = true)
                 return@write
             }
             // Contacts' setting (Γενέθλια), not a second birthdays calendar

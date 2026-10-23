@@ -88,7 +88,7 @@ object DriveRules {
     /**
      * The Calendar's, the Timer's, Maps' and Contacts' folders: synced as files (a dot name would not sync), but kept out of Files'
      * lists, search and Move (the user, 18 Oct: "can we hide the folders of the calendar and the timer"). The computer hides the
-     * same (Contacts' not yet: the desktop waits for Contacts' sync step).
+     * same.
      */
     private val APP_FOLDERS = listOf(CalendarFiles.FOLDER, TimerFiles.FOLDER, MapsFiles.FOLDER, ContactsFiles.FOLDER)
     fun isAppFolder(relativePath: String) = APP_FOLDERS.any { relativePath == it || relativePath.startsWith("$it/") }
@@ -614,7 +614,8 @@ data class DriveFileEntry(val relativePath: String, val sizeBytes: Long, val mod
  * computer reads the same names (desktop files.js SCOPES); a new one (the Timer) is a line in each.
  */
 internal object DriveScope {
-    private val scopes = mapOf("calendar" to (listOf("Calendar") to listOf(".ics")), "timer" to (listOf(TimerFiles.FOLDER) to emptyList<String>()))
+    private val scopes = mapOf("calendar" to (listOf("Calendar") to listOf(".ics")), "timer" to (listOf(TimerFiles.FOLDER) to emptyList<String>()),
+        "contacts" to (listOf(ContactsFiles.FOLDER) to listOf(".vcf")))
     fun contains(scope: String, relative: String): Boolean {
         val (dirs, trashExts) = scopes[scope] ?: return false
         return dirs.any { relative.startsWith("$it/") } || (relative.startsWith("Trash/") && trashExts.any { relative.lowercase().endsWith(it) })

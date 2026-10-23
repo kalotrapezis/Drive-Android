@@ -227,4 +227,12 @@ class ContactsTest {
         val text = ContactsMerge.export(ContactsFiles.all(dir))
         assertEquals(3, VCard.cards(text).size)
     }
+
+    @Test fun contactsPartOfSync() {
+        assertTrue(DriveScope.contains("contacts", "Contacts/maria-3f9a2c.vcf"))
+        assertTrue(DriveScope.contains("contacts", "Trash/maria-3f9a2c.vcf")) // a deleted contact follows into the Trash
+        assertFalse(DriveScope.contains("contacts", "Trash/event.ics"))
+        assertFalse(DriveScope.contains("contacts", "Documents/maria.vcf"))
+        assertFalse(DriveScope.contains("calendar", "Contacts/maria-3f9a2c.vcf"))
+    }
 }

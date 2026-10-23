@@ -171,12 +171,14 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     // on a wide screen a contact is always open beside the list
     LaunchedEffect(wide, all) { if (wide && open == null) openUid = all.firstOrNull()?.info?.uid }
 
+    /** A change made here goes to the other devices at once (Contacts' part, SYNC_PLAN 6ap), its birthdays' events with it. */
+    fun pushed() { ScopedSync.soon(context, "contacts", 0, orWhole = true); ScopedSync.soon(context, "calendar", 0, orWhole = true) }
     /** Runs [work] on the IO thread, says what it answers, and reads the folder again. */
     fun act(work: () -> String) = scope.launch {
         val r = withContext(Dispatchers.IO) { runCatching(work) }
         message = r.getOrElse { "Not done: ${it.message ?: it.javaClass.simpleName}" }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: a change failed", it) }
-        version++
+        version++; pushed()
     }
     /** [c] (null: a new contact) saved as [i]; the page opens on it. */
     fun save(c: Contact?, i: ContactInfo, said: String = "Saved") = scope.launch {
@@ -186,7 +188,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 .onFailure { WriterLog.e("Contacts: dates into the calendar", it) }
         } } }
         r.onSuccess { openUid = it.info.uid; message = said }.onFailure { message = "Not saved: ${it.message}"; WriterLog.e("Contacts: save", it) }
-        version++
+        version++; pushed()
     }
     fun imported(r: ContactsFiles.Imported) = "Imported: ${r.added} new" + if (r.same > 0) ", ${r.same} already here" else ""
     /** Contacts with no photo whose faces Photos knows: offered after an import (and in the drawer). */
@@ -208,7 +210,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         busy = null
         message = r.fold(::imported) { "Could not read them: ${it.message}" }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: phone import", it) }
-        version++
+        version++; pushed()
         birthdays(true)
     }
     val askContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) importPhone() else message = "Tetra needs to read the phone's contacts to bring them in." }
@@ -226,7 +228,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         busy = null
         message = r.fold(::imported) { "Could not read it: ${it.message ?: it.javaClass.simpleName}" }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: file import", it) }
-        version++
+        version++; pushed()
         birthdays(true)
     }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importFile) }
@@ -485,7 +487,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 chosen.size
             }.onFailure { WriterLog.e("Contacts: link", it) }.getOrDefault(0) }
             busy = null
-            version++
+            version++; pushed()
             birthdays(false)
             faces(true)
             message = "$n linked; the other birthdays are in the calendar"
@@ -546,7 +548,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             }.getOrDefault(false) } }
             busy = null
             message = "$n photos from Photos"
-            version++
+            version++; pushed()
             faces(false)
         }
     }

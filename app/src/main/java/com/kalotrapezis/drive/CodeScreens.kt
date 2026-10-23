@@ -283,7 +283,7 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                         current.url?.let { url -> DriveWideAction(R.drawable.ic_open_in_browser, "Open in browser") { openLink(context, url); dismiss() } }
                         // a contact's card (Contacts › Share › QR code, or anyone's vCard QR): into Tetra's Contacts
                         if (current.value.trimStart().startsWith("BEGIN:VCARD", true)) DriveWideAction(R.drawable.ic_person, "Add to Contacts") {
-                            val r = runCatching { ContactsFiles.import(contactsRoot(), VCard.cards(current.value)) }
+                            val r = runCatching { ContactsFiles.import(contactsRoot(), VCard.cards(current.value)) }.onSuccess { ScopedSync.soon(context, "contacts", 0, orWhole = true) }
                             android.widget.Toast.makeText(context, r.fold({ if (it.added > 0) "Added to Contacts" else "Already in Contacts" }) { "Not added: ${it.message}" }, android.widget.Toast.LENGTH_SHORT).show()
                             dismiss()
                         }

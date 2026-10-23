@@ -18,6 +18,7 @@
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
@@ -110,6 +111,9 @@
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
         <activity-alias android:name=".AppMaps" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Maps" android:icon="@mipmap/applet_maps" android:roundIcon="@mipmap/applet_maps">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".AppContacts" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Contacts" android:icon="@mipmap/applet_contacts" android:roundIcon="@mipmap/applet_contacts">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
         <!-- Calendar: an .ics from any app (Open with › Tetra Calendar) is imported -->

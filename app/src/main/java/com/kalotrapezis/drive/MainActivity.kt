@@ -359,6 +359,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
     var mapsGo by remember { mutableStateOf<Place?>(null) } // a place on Home's Maps card: directions to it start at once
+    var contactsOpen by remember { mutableStateOf<String?>(null) } // Home's faces: Contacts opens on that person
     var calendarNew by remember { mutableStateOf<NewKind?>(null) } // Home's tiles: the Calendar opens on a new one of that kind
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
@@ -675,6 +676,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.Calendar -> { calendarNew = null; screen = Screen.Calendar }
             Applet.Timer -> screen = Screen.Timer
             Applet.Maps -> { mapsGo = null; screen = Screen.Maps }
+            Applet.Contacts -> { contactsOpen = null; screen = Screen.Contacts }
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -732,6 +734,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Calendar -> Unit
                 Screen.Timer -> Unit
                 Screen.Maps -> Unit
+                Screen.Contacts -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -784,6 +787,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     newEvent = { kind -> calendarNew = kind; screen = Screen.Calendar },
                     openTimer = { screen = Screen.Timer },
                     openMaps = { place -> mapsGo = place; screen = Screen.Maps },
+                    openContacts = { uid -> contactsOpen = uid; screen = Screen.Contacts },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -842,6 +846,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 }, startKind = calendarNew)
                 Screen.Maps -> MapsScreen(MapsFiles.root(driveRoot()), mapsGo, back = { mapsGo = null; screen = Screen.Home })
+                Screen.Contacts -> ContactsScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
+                    context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                }, start = contactsOpen)
                 Screen.Timer -> TimerScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -914,7 +921,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer, Maps }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer, Maps, Contacts }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -956,6 +963,7 @@ private fun Home(
     newEvent: (NewKind) -> Unit,
     openTimer: () -> Unit,
     openMaps: (Place?) -> Unit,
+    openContacts: (String?) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -1057,6 +1065,7 @@ private fun Home(
                 }
             }
         },
+        { HomeContactsGroup(openContacts) },
     )
     LazyColumn(
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -1129,6 +1138,33 @@ private fun Home(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Contacts (23 Oct): the icon's brown; four favourites' faces beside it, one tap opens that person (the plan's question 7,
+ * its recommended answer), an empty one "Add" opening Contacts.
+ */
+@Composable private fun HomeContactsGroup(open: (String?) -> Unit) {
+    val favs by produceState(emptyList<ContactInfo>()) {
+        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).map { it.info }.filter { it.favourite }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4) }.getOrDefault(emptyList()) }
+    }
+    HomeGroup(Category.Contacts.color) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HomeArtCard("Contacts", R.drawable.contacts_art, { open(null) }, Modifier.weight(1f), artSize = 76)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                (favs + List(4 - favs.size) { null }).chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { f ->
+                        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = Modifier.weight(1f).height(73.dp).clickable { open(f?.uid) }) {
+                            Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                if (f != null) ContactAvatar(f, 40.dp) else Icon(painterResource(R.drawable.ic_add), contentDescription = null, tint = lookTint(Color(0xFFD7A982), Color(0xFF8D5A3B)), modifier = Modifier.size(28.dp))
+                                Text(f?.let { it.given.ifBlank { it.name } } ?: "Add", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    } }
                 }
             }
         }
@@ -2135,6 +2171,7 @@ internal enum class Category(val color: Color, val icon: Int) {
     Calendar(Color(0xFFF41879), R.drawable.ic_calendar_today),
     Timer(Color(0xFF00796B), R.drawable.ic_timer),
     Maps(Color(0xFF5C6BC0), R.drawable.ic_map),
+    Contacts(CONTACTS_COLOR, R.drawable.ic_contacts),
 }
 
 @Composable

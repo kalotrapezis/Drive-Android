@@ -186,6 +186,8 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
+- [~] (contacts-build session, 23 Oct; branch claude/contacts-583397, the only writer there) **Contacts** on Android, § Contacts steps
+      1–5 and 7 (6 and 8 if the user says yes); no sync code touched (the user: "keep the sync for later").
 - [ ] (the user, 23 Oct: "with Bluetooth, could Files be in the sharing menu so you send files to the PC at once?")
       **Send to computer** in Android's share menu: Tetra a share target (ACTION_SEND / SEND_MULTIPLE, any type); the
       files go to the paired computer at once over the Wi-Fi link sync already has (not Bluetooth: ~2 Mbit/s against

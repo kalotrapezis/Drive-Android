@@ -231,7 +231,8 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importFile) }
     // the phone's copy (Tetra's account) follows every change: a save, an import, a merge, a file that came by sync
-    var systemOn by remember { mutableStateOf(ContactsAccount.on(context)) }
+    // on only when it can be: chosen (the default since the user's yes) and Tetra may write the phone's contacts
+    var systemOn by remember { mutableStateOf(ContactsAccount.on(context) && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
     LaunchedEffect(version, systemOn) { ContactsAccount.soon(context) }
     val askWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) { ContactsAccount.set(context, true); systemOn = true; message = "Your contacts are in the phone's contacts too" }

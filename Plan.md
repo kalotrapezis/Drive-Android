@@ -186,8 +186,11 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
-- [~] (contacts-build session, 23 Oct; branch claude/contacts-583397, the only writer there) **Contacts** on Android, § Contacts steps
-      1–5 and 7 (6 and 8 if the user says yes); no sync code touched (the user: "keep the sync for later").
+- [x] (contacts-build session, 23 Oct; branch claude/contacts-583397, not merged) **Contacts** on Android, § Contacts steps 1–8
+      (step 9 and the Contacts sync scope later); no sync code touched. On the phone (main + the branch, 22:32): 318 of its
+      contacts imported (71 photos, 14 birthdays into Γενέθλια), WhatsApp/Viber chips and Message strip seen. Waiting on the
+      user there: Link birthdays (2 suggested — "Ελπίδα (Όνομα)" may be a name day), Merge & fix (12), Allow for History and
+      In the phone's contacts. Tablet not connected: seen on the tablet emulator only.
 - [ ] (the user, 23 Oct: "with Bluetooth, could Files be in the sharing menu so you send files to the PC at once?")
       **Send to computer** in Android's share menu: Tetra a share target (ACTION_SEND / SEND_MULTIPLE, any type); the
       files go to the paired computer at once over the Wi-Fi link sync already has (not Bluetooth: ~2 Mbit/s against
@@ -2238,10 +2241,15 @@ I press Call on the PC and it starts on the phone?") — no dialer app needed fo
 - [x] (e73e2e1) 4. Photos' faces → photos (one and many). Not yet: "In Photos: 213 photos" on the page, Photos' person › Contact.
 - [x] (5b59438) 5. Call / Message / Video / Mail with the other apps' rows; call history. ACTION_DIAL (no CALL_PHONE);
    no fallback links (wa.me, viber://) when an app has no row; History = calls + the contact's dates (not notes naming them).
-- [ ] 6. Tetra's contacts in the system provider (caller ID, Android Auto) — waits for the user's yes (question 2).
+- [x] (290ca1a, 2af5ca8) 6. Tetra's contacts in the system provider (caller ID, Android Auto) — the user: yes (23 Oct). Account
+   "Tetra", one-way copy from the files, read-only elsewhere; Contacts › drawer › In the phone's contacts (asks WRITE_CONTACTS).
 - [x] (5a738e2, a922cf3) 7. Merge & fix; export; share as .vcf / QR (Codes: a scanned vCard › Add to Contacts).
-- [~] 8. Home and the icons: Contacts' group (its icon, four favourites' faces) is on Home (6e1314b); Maps one card beside
-   it, Maps' new icon and sky blue wait for the user (questions 7–8); desktop Contacts waits for the sync step.
+- [x] (6e1314b, 290ca1a) 8. Home and the icons (the user, 23 Oct: "Contacts light brown, the icon yes, 4 slots"): Contacts'
+   group (its icon, four favourites' faces); on the tablet Maps one group with four places beside it, on the phone as it
+   was with Contacts under it; Maps' new icon (maps.png) and Home's Maps group in its sky blue (#25C4FE; the map's own
+   markers stay indigo). Desktop Contacts waits for the sync step.
+- [x] (52f7d96) Choose many (the user, 23 Oct: "how do I multi select?"): long press, then Label · Favourites · Share ·
+   Export · Merge (two) · Delete.
 9. Calls through the PC: the ringing on the PC with Answer/Reject, Call on the PC dialling on the phone, the voice by Bluetooth.
 
 ### Questions for the user

@@ -45,5 +45,11 @@ class SendToComputerTest {
         val made = Outbox.safeName(null, "pdf")
         assertTrue(made, made.startsWith("Shared ") && made.endsWith(".pdf"))
         assertFalse(Outbox.safeName("..", null) == "..")
+        // two bytes a Greek letter, past the disk's 255: shortened by whole letters, the extension kept (the user's PDF, 23 Oct)
+        val long = "«Η αυτο - αποτελεσματικότητα των εκπαιδευτικών σε σχέση με την ικανοποίηση από τη ζωή τους» ΣΤΕΛΛΑ ΜΟΥΣΑΔΑΚΗ - 06.2023.pdf"
+        val fit = Outbox.safeName(long, null)
+        assertTrue(fit, fit.toByteArray().size <= 200 && fit.endsWith(".pdf") && fit.startsWith("«Η αυτο"))
+        val dir = scratchDir("from-computer-long")
+        assertEquals(fit, receive(dir, "x".toByteArray(), long).name)
     }
 }

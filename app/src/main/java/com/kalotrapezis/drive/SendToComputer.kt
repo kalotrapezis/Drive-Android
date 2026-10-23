@@ -86,9 +86,19 @@ internal object Outbox {
 
     /** A name the computer takes: no folders, no control characters; one is made up when the sending app gave none. */
     fun safeName(name: String?, ext: String?): String {
-        val clean = name.orEmpty().substringAfterLast('/').substringAfterLast('\\').filter { it >= ' ' }.trim().take(200)
+        val clean = fitName(name.orEmpty().substringAfterLast('/').substringAfterLast('\\').filter { it >= ' ' }.trim())
         return clean.takeIf { it.isNotEmpty() && it != "." && it != ".." }
             ?: "Shared ${java.text.SimpleDateFormat("yyyy-MM-dd HHmmss", java.util.Locale.ROOT).format(java.util.Date())}${ext?.let { ".$it" }.orEmpty()}"
+    }
+
+    /** Within [max] bytes: the disk allows 255 and a Greek letter is two (the user's PDF, 23 Oct); the extension kept, room for " (2)". */
+    fun fitName(name: String, max: Int = 200): String {
+        if (name.toByteArray().size <= max) return name
+        val dot = name.lastIndexOf('.').takeIf { it > 0 && name.length - it <= 20 } ?: name.length
+        val ext = name.substring(dot)
+        var base = name.substring(0, dot)
+        while (base.isNotEmpty() && (base + ext).toByteArray().size > max) base = base.substring(0, base.offsetByCodePoints(base.length, -1))
+        return base.trimEnd() + ext
     }
 
     fun add(context: Context, input: InputStream, name: String, modified: Long = 0): File {
@@ -144,6 +154,7 @@ internal object Outbox {
  */
 internal object FromComputer {
     const val FOLDER = "From computer"
+    const val SCREEN = "from-computer" // the notification's tap: Files at FOLDER (MainActivity)
     private const val CHANNEL = "from_computer"
     private const val NOTE = 4144
     private val handler by lazy { Handler(Looper.getMainLooper()) }
@@ -151,10 +162,11 @@ internal object FromComputer {
     private var shown: Runnable? = null
 
     /** The file kept, in [dir]. Throws IllegalArgumentException for a bad name or bytes that are not [sha]. */
-    fun receive(input: InputStream, length: Long, dir: File, sha: String, name: String, modified: Long): File {
-        require(name.isNotEmpty() && name.length < 256 && '/' !in name && '\\' !in name && '\u0000' !in name && name != "." && name != "..") { "Invalid name." }
+    fun receive(input: InputStream, length: Long, dir: File, sha: String, asked: String, modified: Long): File {
+        require(asked.isNotEmpty() && asked.length < 256 && '/' !in asked && '\\' !in asked && '\u0000' !in asked && asked != "." && asked != "..") { "Invalid name." }
+        val name = Outbox.fitName(asked)
         dir.mkdirs()
-        val part = File(dir, ".$name.${UUID.randomUUID()}.part")
+        val part = File(dir, ".${UUID.randomUUID()}.part")
         try {
             val digest = MessageDigest.getInstance("SHA-256")
             DigestOutputStream(part.outputStream(), digest).use { out ->
@@ -200,7 +212,7 @@ internal object FromComputer {
         val nm = context.getSystemService(NotificationManager::class.java)?.takeIf { it.areNotificationsEnabled() } ?: return
         if (nm.getNotificationChannel(CHANNEL) == null)
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "Files from the computer", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "Files the computer sends with Send to phone" })
-        val open = PendingIntent.getActivity(context, NOTE, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        val open = PendingIntent.getActivity(context, NOTE, Intent(context, MainActivity::class.java).putExtra(Applet.EXTRA, SCREEN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         nm.notify(NOTE, NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_computer)
             .setContentTitle("${if (files.size == 1) "1 file" else "${files.size} files"} from $from")

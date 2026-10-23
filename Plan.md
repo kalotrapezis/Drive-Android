@@ -232,6 +232,8 @@ How to write here:
       home — it has not synced since 22 Oct (hotspot). Notes: maps-slots-23oct.md. On the phone (36a602e, 22:01):
       home is one file, slot 7, its two other copies in its Trash — as the PC (newest fe7a06.json, slot 7). **Not on the
       tablet** (not connected); the desktop's fix comes with 0.6.0-beta.5 (Drive aa87cc4), not installed at 22:05.
+- [ ] (maps-icon session, 23 Oct, branch claude/nifty-bouman-6f4a52) Maps' icon: the user's own (Assets/Icons/Applets/Maps.png)
+      on Home and the launcher/Android Auto icon, Maps' colour its light blue. Started.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

@@ -563,3 +563,32 @@ class MapsReplayTest {
         }
     }
 }
+
+class MapsAddressTest {
+    /** The user's house in Άγιος Λουκάς (23 Oct): no house there has a number, so its street and the village's postcode. */
+    @Test fun aVillageWithoutNumbers() {
+        val root = File(System.getProperty("user.home"), "Tetra-maps")
+        assumeTrue(File(root, MapsAddresses.FILE).isFile && File(root, MapsStreets.FILE).isFile)
+        val pois = MapsSearch.load(root)
+        assertEquals("Οδός Παραδείγματος, 12345 Άγιος Λουκάς", MapsAddresses.describe(root, pois, 37.27642, 22.58903))
+        // a spot tapped on a road takes that road
+        assertEquals("Πλατάνι, 12345 Άγιος Λουκάς", MapsAddresses.describe(root, pois, 37.27642, 22.58903, "Πλατάνι"))
+    }
+
+    /** A sync's copies of the parked car ("parking (2).json") leave one car: the newest; deleting a place takes its copies. */
+    @Test fun oneCar() {
+        val root = Files.createTempDirectory("maps").toFile()
+        val dir = File(root, "Places").apply { mkdirs() }
+        fun car(file: String, lat: Double, at: Long) = File(dir, file).apply {
+            writeText("""{"id":"parking","name":"My car","lat":$lat,"lng":23.5,"icon":"parking"}"""); setLastModified(at)
+        }
+        car("parking (2).json", 38.1, 1_000_000L); car("parking (3).json", 38.3, 3_000_000L); car("parking.json", 38.2, 2_000_000L)
+        File(dir, "home.json").writeText("""{"id":"home","name":"Home","lat":38.0,"lng":23.0}""")
+        val places = MapsFiles.places(root)
+        assertEquals(listOf("Home", "My car"), places.map { it.name })
+        assertEquals(38.3, places.first { it.id == "parking" }.lat, 1e-9)
+        assertEquals(setOf("home.json", "parking (3).json"), dir.list()!!.toSet())
+        MapsFiles.delete(root, places.first { it.id == "parking" })
+        assertEquals(setOf("home.json"), dir.list()!!.toSet())
+    }
+}

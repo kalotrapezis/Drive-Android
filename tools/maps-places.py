@@ -7,7 +7,8 @@ Geofabrik's OSM extract of Greece, one line each:
 
 for the place's info page offline (the user, 21 Oct: "If I click touch on a place there is no info page for that?").
 
-kind is one of KINDS' keys below (the phone's pills) or a settlement (city, town, village, suburb, island…). Ways are put
+kind is one of KINDS' keys below (the phone's pills) or a settlement (city, town, village, suburb, island…), whose "more" is
+its postcode when OSM has one. Ways are put
 at the mean of their nodes; relations are left out (few of these kinds are relations).
 A second file, the addresses (the user, 21 Oct: "To click on a spot show the address the number the postcode"), one line
 for each thing with a house number: lat <TAB> lng <TAB> street <TAB> number <TAB> postcode <TAB> town.
@@ -87,6 +88,8 @@ class Handler(osmium.SimpleHandler):
     def write(self, k, lat, lng, tags):
         street = " ".join(x for x in (tags.get("addr:street"), tags.get("addr:housenumber")) if x)
         more = ", ".join(x for x in (street, tags.get("addr:city")) if x) or tags.get("brand") or tags.get("operator") or ""
+        if k in PLACES:  # a town's or village's postcode, for an address where no house has one (the user, 23 Oct)
+            more = tags.get("postal_code") or tags.get("addr:postcode") or ""
         if k == "toll":  # who runs it and, when OSM has it, what a car pays
             more = " · ".join(x for x in (tags.get("operator"), tags.get("charge")) if x)
         phone = tags.get("phone") or tags.get("contact:phone")

@@ -344,6 +344,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     var live by remember { mutableStateOf(false) } // a fix came while the map is open (not Android's stored last one)
     var granted by remember { mutableStateOf(hasLocation(context)) }
     var nav by remember { mutableStateOf<Nav?>(null) }
+    var tapRoad by remember { mutableStateOf<String?>(null) } // the road a spot was tapped on (roadAtPoint)
     var view by remember { mutableStateOf(DRIVING_VIEW) } // by car, the camera's zoom and tilt (carView)
     val carNav by CarLink.nav.collectAsState() // directions running on the car's screen, shown here too
     var preview by remember { mutableStateOf<Preview?>(null) }
@@ -581,7 +582,9 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     LaunchedEffect(selected, all) {
         val s = selected ?: run { address = null; return@LaunchedEffect }
         address = null
-        address = withContext(Dispatchers.IO) { runCatching { MapsAddresses.describe(root, all, s.lat, s.lng) }.getOrNull() }
+        // a spot tapped on a road: that road is its street where no house near has a number
+        val tapped = tapRoad?.takeIf { s.id.isEmpty() && s.name == it }
+        address = withContext(Dispatchers.IO) { runCatching { MapsAddresses.describe(root, all, s.lat, s.lng, tapped) }.getOrNull() }
         // a dropped pin is named by its address
         if (s.id.isEmpty() && detail == null && address != null && selected == s && (s.name == "Dropped pin" || s.name == road?.first)) selected = s.copy(name = address!!.substringBefore(","))
     }
@@ -692,6 +695,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                         }
                         else -> {
                             val r = roadAtPoint(map, pt)
+                            tapRoad = r?.first?.ifEmpty { null }
                             detail = null
                             selected = Place("", r?.first?.ifEmpty { null } ?: "Dropped pin", at.latitude, at.longitude)
                         }

@@ -105,9 +105,19 @@ internal object MapsFiles {
     fun map(root: File) = File(root, MAP)
     fun graph(root: File) = File(root, GRAPH)
 
+    /**
+     * The saved places, one per id: a sync that found a place changed on both sides keeps both files ("parking (2).json"),
+     * so the newest file is the place; a parked car's older copies are deleted, as there is one car (the user, 23 Oct:
+     * "it had 3 parkings, keep only the latest").
+     */
     fun places(root: File): List<Place> = File(root, PLACES).listFiles().orEmpty()
         .filter { it.isFile && !it.name.startsWith(".") && it.name.endsWith(".json", true) }
         .mapNotNull { f -> runCatching { Place.parse(f.readText(), f) }.getOrNull() }
+        .groupBy { it.id }.values.map { same ->
+            val newest = same.maxBy { it.file?.lastModified() ?: 0L }
+            if (newest.id == PARKING) same.filter { it !== newest }.forEach { it.file?.delete() }
+            newest
+        }
         .sortedBy { it.name.lowercase() }
 
     /** Home's six: slot n is the place that has it (two with one slot, after a sync: the first by name). */
@@ -128,7 +138,12 @@ internal object MapsFiles {
         return p.copy(file = to)
     }
 
-    fun delete(root: File, p: Place) { File(File(root, PLACES), "${p.id}.json").delete() }
+    /** Every file of [p]: its own and any copy a sync made of it under another name. */
+    fun delete(root: File, p: Place) {
+        File(root, PLACES).listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".json", true) }
+            .filter { f -> f.nameWithoutExtension == p.id || runCatching { Place.parse(f.readText(), f)?.id }.getOrNull() == p.id }
+            .forEach { it.delete() }
+    }
 
     /** What is in Tetra/Maps, for Settings: the map and the routing, each with its size and date. */
     fun installed(root: File): List<Pair<String, String>> {
@@ -593,8 +608,13 @@ internal object MapsAddresses {
         return null
     }
 
-    /** "Οδός 12, 67100 Ξάνθη": the nearest address within 60 m; else the town and the nearest postcode (within 1.5 km). */
-    fun describe(root: File, pois: List<Poi>, lat: Double, lng: Double): String? {
+    /**
+     * "Οδός 12, 67100 Ξάνθη": the nearest address within 60 m; where no house near has a number (most villages: Άγιος
+     * Λουκάς has none), the street — [road], the one tapped, or the nearest in greece-streets.tsv within 80 m — with the
+     * nearest postcode within 1.5 km or the town's own (the user, 23 Oct: "address, number, postcode"; "when I tap on the
+     * road give the address").
+     */
+    fun describe(root: File, pois: List<Poi>, lat: Double, lng: Double, road: String? = null): String? {
         val a = load(root)
         var best = -1; var bestD = 60.0; var post = ""; var postD = 1500.0
         if (a != null) for (i in a.lat.indices) {
@@ -604,12 +624,49 @@ internal object MapsAddresses {
             if (d < postD) a.rest[i].split('\t').getOrNull(2)?.takeIf { it.isNotEmpty() }?.let { post = it; postD = d }
         }
         val town = pois.asSequence().filter { it.kind in setOf("city", "town", "village", "suburb") && Math.abs(it.lat - lat) < 0.1 && Math.abs(it.lng - lng) < 0.13 }
-            .minByOrNull { metresBetween(lat, lng, it.lat, it.lng) }?.title.orEmpty()
+            .minByOrNull { metresBetween(lat, lng, it.lat, it.lng) }
         val r = if (best >= 0) a!!.rest[best].split('\t') else null
-        val street = r?.let { "${it[0]} ${it.getOrElse(1) { "" }}".trim() }.orEmpty()
-        val code = r?.getOrNull(2)?.ifEmpty { null } ?: post
-        val place = r?.getOrNull(3)?.ifEmpty { null } ?: town
+        val street = r?.let { "${it[0]} ${it.getOrElse(1) { "" }}".trim() } ?: road?.trim()?.ifEmpty { null } ?: MapsStreets.nearest(root, lat, lng, 80.0).orEmpty()
+        val code = r?.getOrNull(2)?.ifEmpty { null } ?: post.ifEmpty { null } ?: town?.more?.takeIf { POSTCODE.matches(it) }.orEmpty()
+        val place = r?.getOrNull(3)?.ifEmpty { null } ?: town?.title.orEmpty()
         return listOf(street, "$code $place".trim()).filter { it.isNotEmpty() }.joinToString(", ").ifEmpty { null }
+    }
+
+    /** A Greek postcode as OSM writes a town's: "12345" or "123 45". */
+    private val POSTCODE = Regex("""\d{3} ?\d{2}""")
+}
+
+/**
+ * The named roads (greece-streets.tsv, tools/maps-places.py: a name and the middle of each road piece), for the street of
+ * a spot where no house has a number.
+ */
+internal object MapsStreets {
+    const val FILE = "greece-streets.tsv"
+    private class All(val path: String, val at: Long, val lat: DoubleArray, val lng: DoubleArray, val name: Array<String>)
+    private var cache: All? = null
+
+    @Synchronized private fun load(root: File): All? {
+        val f = File(root, FILE)
+        if (!f.isFile) return null
+        cache?.let { if (it.path == f.path && it.at == f.lastModified()) return it }
+        val lat = ArrayList<Double>(); val lng = ArrayList<Double>(); val name = ArrayList<String>()
+        f.bufferedReader().useLines { lines -> lines.forEach { line ->
+            val a = line.indexOf('\t'); val b = line.indexOf('\t', a + 1)
+            if (a > 0 && b > a) { lat += line.substring(a + 1, b).toDoubleOrNull() ?: return@forEach; lng += line.substring(b + 1).toDoubleOrNull() ?: 0.0; name += line.substring(0, a) }
+        } }
+        return All(f.path, f.lastModified(), lat.toDoubleArray(), lng.toDoubleArray(), name.toTypedArray()).also { cache = it }
+    }
+
+    /** The name of the road piece whose middle is nearest [lat],[lng], within [within] metres. */
+    fun nearest(root: File, lat: Double, lng: Double, within: Double): String? {
+        val s = load(root) ?: return null
+        var best: String? = null; var bestD = within
+        for (i in s.lat.indices) {
+            if (Math.abs(s.lat[i] - lat) > 0.002 || Math.abs(s.lng[i] - lng) > 0.0025) continue
+            val d = metresBetween(lat, lng, s.lat[i], s.lng[i])
+            if (d < bestD) { bestD = d; best = s.name[i] }
+        }
+        return best
     }
 }
 

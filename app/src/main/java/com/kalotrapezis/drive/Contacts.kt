@@ -399,6 +399,7 @@ object ContactsFiles {
     fun sorted(all: List<Contact>, byLast: Boolean = false) = all.sortedWith(compareBy({ sortKey(it.info, byLast).isEmpty() }, { sortKey(it.info, byLast) }))
 
     fun sortKey(i: ContactInfo, byLast: Boolean): String = plain(if (byLast && i.family.isNotBlank()) "${i.family} ${i.given}" else i.name)
+        .trimStart { !it.isLetterOrDigit() } // a name written with a direction mark or a quote first sorts by its first letter
 
     /** Lower case, accents off: "Άννα" and "αννα" sort and search together. */
     fun plain(s: String) = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").trim()

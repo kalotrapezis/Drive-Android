@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -143,6 +144,9 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var exportOpen by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf<List<Contact>>(emptyList()) }
     var choosingCalendar by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(emptySet<String>()) } // long press: many at once (the user, 23 Oct: "how do I multi select?")
+    var labelling by remember { mutableStateOf(false) }
+    var deletingMany by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Pair<Contact?, ContactInfo>?>(null) } // the contact (null: a new one) and where its editor starts
     LaunchedEffect(message) { if (message != null) { delay(3500); message = null } }
     val root = remember { contactsRoot() }
@@ -247,7 +251,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             else -> true
         } }
     }
-    BackHandler(editing == null) { when { drawer -> drawer = false; !wide && open != null -> openUid = null; label != null -> label = null; query.isNotEmpty() -> query = ""; else -> back() } }
+    BackHandler(editing == null) { when { selected.isNotEmpty() -> selected = emptySet(); drawer -> drawer = false; !wide && open != null -> openUid = null; label != null -> label = null; query.isNotEmpty() -> query = ""; else -> back() } }
 
     val list: @Composable (Modifier) -> Unit = { m ->
         Box(m) {
@@ -301,12 +305,16 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     val l = ContactsFiles.letter(c.info, byLast)
                     if (l != last && query.isEmpty()) { last = l; item(key = "h:$l") { Text(l, Modifier.padding(start = 24.dp, top = 12.dp, bottom = 2.dp), color = CONTACTS_COLOR, fontWeight = FontWeight.Bold) } }
                     item(key = c.info.uid) {
-                        val chosen = wide && c.info.uid == openUid
+                        val picked = c.info.uid in selected
+                        val chosen = picked || (wide && selected.isEmpty() && c.info.uid == openUid)
+                        fun toggle() { selected = if (picked) selected - c.info.uid else selected + c.info.uid }
                         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp).clip(MaterialTheme.shapes.large)
-                            .background(if (chosen) CONTACTS_COLOR.copy(alpha = 0.22f) else Color.Transparent)
-                            .clickable { openUid = c.info.uid }.padding(horizontal = 12.dp, vertical = 8.dp),
+                            .background(if (picked) CONTACTS_COLOR.copy(alpha = 0.4f) else if (chosen) CONTACTS_COLOR.copy(alpha = 0.22f) else Color.Transparent)
+                            .combinedClickable(onLongClick = ::toggle) { if (selected.isNotEmpty()) toggle() else openUid = c.info.uid }.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            ContactAvatar(c.info, 40.dp)
+                            if (picked) Box(Modifier.size(40.dp).clip(CircleShape).background(CONTACTS_COLOR), contentAlignment = Alignment.Center) {
+                                Icon(painterResource(R.drawable.ic_check), contentDescription = "Selected", tint = Color.White)
+                            } else ContactAvatar(c.info, 40.dp)
                             Column(Modifier.weight(1f)) {
                                 Text(c.info.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 if (query.isNotEmpty()) (c.info.phones.firstOrNull()?.value ?: c.info.emails.firstOrNull()?.value)?.let {
@@ -317,6 +325,21 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     }
                 }
             }
+            // many chosen: their count, Select all and × in the search pill's place
+            if (selected.isNotEmpty()) Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                    IconButton(onClick = { selected = emptySet() }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Done choosing") }
+                }
+                Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.weight(1f)) {
+                    Row(Modifier.padding(start = 18.dp, end = 4.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${selected.size} selected", Modifier.weight(1f))
+                        TextButton(onClick = { selected = if (selected.size == shown.size) emptySet() else shown.map { it.info.uid }.toSet() }) {
+                            Text(if (selected.size == shown.size) "None" else "All ${shown.size}", color = islandContentColor())
+                        }
+                    }
+                }
+            } else
             // the search pill, floating over the list as Files' top does
             Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -364,10 +387,41 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             if (wide || (open == null && editing == null)) Row(Modifier.align(Alignment.BottomStart).then(if (wide) Modifier.width(380.dp) else Modifier.fillMaxWidth())
                 .navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
+                if (selected.isNotEmpty()) {
+                    val many = all.filter { it.info.uid in selected }
+                    Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
+                        Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+                            IconButton(onClick = { labelling = true }) { Icon(painterResource(R.drawable.ic_label), contentDescription = "Label") }
+                            IconButton(onClick = {
+                                val on = !many.all { it.info.favourite }
+                                act { many.forEach { c -> ContactsFiles.save(root, c, c.info.favourite(on)) }; if (on) "${many.size} added to favourites" else "${many.size} not favourites" }
+                            }) { Icon(painterResource(if (many.all { it.info.favourite }) R.drawable.ic_star else R.drawable.ic_star_border), contentDescription = "Favourites") }
+                            IconButton(onClick = {
+                                runCatching {
+                                    val f = File(File(context.cacheDir, "share").apply { mkdirs() }, "${many.size} contacts.vcf").apply { writeText(ContactsMerge.export(many)) }
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
+                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/x-vcard").putExtra(Intent.EXTRA_STREAM, uri)
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share ${many.size} contacts"))
+                                }.onFailure { WriterLog.e("Contacts: share many", it) }
+                            }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
+                            IconButton(onClick = { exporting = many; exportTo.launch("${many.size} contacts.vcf") }) { Icon(painterResource(R.drawable.ic_file_upload), contentDescription = "Export") }
+                            if (many.size == 2) IconButton(onClick = {
+                                val (a, b) = many.sortedByDescending { it.lines.size }
+                                selected = emptySet()
+                                act {
+                                    val kept = ContactsMerge.merge(root, a, b)
+                                    calendarRoot().let { cr -> runCatching { ContactsBirthdays.moveLinks(cr, b.info.uid, kept.info); ContactsBirthdays.sync(cr, kept.info, ContactsPrefs.birthdays(context), ContactsBirthdays.linked(cr)[kept.info.uid].orEmpty()) } }
+                                    openUid = kept.info.uid
+                                    "Merged"
+                                }
+                            }) { Icon(painterResource(R.drawable.ic_cell_merge), contentDescription = "Merge the two") }
+                            IconButton(onClick = { deletingMany = true }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete") }
+                        }
+                    }
+                } else IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
                     ContactsTab.entries.forEach { t -> IslandNavigationItem(t.label, tab == t, t.icon) { tab = t; label = null } }
                 }
-                IslandVisibility(!drawer) {
+                if (selected.isEmpty()) IslandVisibility(!drawer) {
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                         IconButton(onClick = { editing = null to ContactInfo(categories = listOfNotNull(label)) }) { Icon(painterResource(R.drawable.ic_add), contentDescription = "New contact") }
                     }
@@ -495,6 +549,31 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             faces(false)
         }
     }
+    if (labelling) {
+        val many = all.filter { it.info.uid in selected }
+        LabelPick(all.flatMap { it.info.labels }.distinctBy { it.lowercase() }.sortedBy { it.lowercase() }, many, { labelling = false }) { l ->
+            labelling = false
+            // all of them have it: taken off; otherwise given to each
+            val off = many.all { c -> c.info.labels.any { it.equals(l, true) } }
+            act {
+                many.forEach { c -> ContactsFiles.save(root, c, c.info.copy(categories = if (off) c.info.categories.filterNot { it.equals(l, true) } else (c.info.categories + l).distinctBy { it.lowercase() })) }
+                if (off) "$l taken off ${many.size}" else "$l given to ${many.size}"
+            }
+        }
+    }
+    if (deletingMany) androidx.compose.material3.AlertDialog(onDismissRequest = { deletingMany = false }, title = { Text("Delete ${selected.size} contacts?") },
+        text = { Text("They go to Tetra's Trash, with their birthdays' events, and can be restored from there (Contacts › Trash).") },
+        confirmButton = { TextButton(onClick = {
+            deletingMany = false
+            val many = all.filter { it.info.uid in selected }
+            selected = emptySet(); openUid = null
+            act {
+                val cr = calendarRoot(); val links = ContactsBirthdays.linked(cr)
+                many.forEach { c -> ContactsFiles.trash(root, c); runCatching { ContactsBirthdays.sync(cr, c.info, null, links[c.info.uid].orEmpty(), gone = true) } }
+                "${many.size} moved to the Trash"
+            }
+        }) { Text("Delete") } },
+        dismissButton = { TextButton(onClick = { deletingMany = false }) { Text("Cancel") } })
     if (trashOpen) ContactsTrash(root, version, { trashOpen = false }) { c -> act { ContactsFiles.restore(root, c); "${c.info.name} restored" } }
 }
 
@@ -868,6 +947,28 @@ private fun callText(c: CallEntry): String {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Many contacts' label: one of those in use (✓ when all the chosen have it: a tap takes it off), or a new one. */
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable private fun LabelPick(labels: List<String>, many: List<Contact>, dismiss: () -> Unit, pick: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
+        Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Label ${many.size} contacts", style = MaterialTheme.typography.titleMedium)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                labels.forEach { l ->
+                    val all = many.all { c -> c.info.labels.any { it.equals(l, true) } }
+                    androidx.compose.material3.FilterChip(all, { pick(l) }, label = { Text(l) },
+                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = CONTACTS_COLOR, selectedLabelColor = Color.White))
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.OutlinedTextField(name, { name = it }, singleLine = true, placeholder = { Text("New label") }, modifier = Modifier.weight(1f))
+                TextButton(enabled = name.isNotBlank(), onClick = { pick(name.trim()) }) { Text("Add") }
             }
         }
     }

@@ -144,4 +144,11 @@ object ContactsBirthdays {
         val c = ContactsFiles.all(contactsDir).firstOrNull { it.info.uid == l.contact.uid } ?: return l.contact
         return ContactsFiles.save(contactsDir, c, c.info.copy(birthday = VDate(year, m.start.monthValue, m.start.dayOfMonth))).info
     }
+
+    /** After a merge: [from]'s events become [to]'s, unless [to] has one of that kind already (then to the Trash). */
+    fun moveLinks(calRoot: File, from: String, to: ContactInfo) {
+        val have = linked(calRoot)
+        val kinds = have[to.uid].orEmpty().map { kind(it).lowercase() }
+        have[from].orEmpty().forEach { f -> if (kind(f).lowercase() in kinds) CalendarFiles.trash(calRoot, f.file) else CalendarFiles.setProp(f.file, "X-TETRA-CONTACT", to.uid) }
+    }
 }

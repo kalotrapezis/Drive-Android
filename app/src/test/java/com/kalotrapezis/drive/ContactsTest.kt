@@ -199,4 +199,32 @@ class ContactsTest {
         assertEquals(listOf(Triple("WhatsApp", Way.Message, 1L), Triple("WhatsApp", Way.Video, 2L), Triple("Viber", Way.Call, 3L)),
             ContactsWays.ways(rows, listOf("+30 697 000 0002")).map { Triple(it.app, it.way, it.id) })
     }
+
+    @Test fun mergeKeepsEveryValueAndNotTheSameIsRemembered() {
+        val dir = File(scratchDir("tetra"), ContactsFiles.FOLDER)
+        val a = ContactsFiles.save(dir, null, ContactInfo(given = "Μαρία", family = "Δοκιμή", formatted = "Μαρία Δοκιμή", phones = listOf(VField("Mobile", "+30 690 000 0011")), categories = listOf("Family")))
+        val b = ContactsFiles.save(dir, null, ContactInfo(formatted = "Μαρία Δοκιμή", phones = listOf(VField("Mobile", "6900000011"), VField("Work", "2521000011")),
+            emails = listOf(VField("Home", "maria@example.com")), birthday = VDate(1980, 2, 3), categories = listOf("School")))
+        val c = ContactsFiles.save(dir, null, ContactInfo(formatted = "Άλλος", emails = listOf(VField("Home", "MARIA@example.com"))))
+        ContactsFiles.save(dir, null, ContactInfo(formatted = "Κανείς"))
+        val pairs = ContactsMerge.pairs(ContactsFiles.all(dir))
+        assertEquals(setOf(setOf(a.info.uid, b.info.uid), setOf(b.info.uid, c.info.uid)), pairs.map { setOf(it.first.info.uid, it.second.info.uid) }.toSet())
+        // not the same: in both files, and not offered again
+        val (x, y) = pairs.single { it.first.info.uid == c.info.uid || it.second.info.uid == c.info.uid }
+        ContactsMerge.notTheSame(x, y)
+        assertTrue(c.file!!.readText().contains("X-TETRA-NOT-DUPLICATE:${b.info.uid}"))
+        val left = ContactsMerge.pairs(ContactsFiles.all(dir)).single()
+        val kept = ContactsMerge.merge(dir, left.first, left.second)
+        val m = kept.info
+        assertEquals(setOf("6900000011", "2521000011"), m.phones.map { it.value }.toSet()) // the fuller one kept: its form of the mobile
+        assertEquals(2, m.phones.size) // the same mobile written two ways is one
+        assertEquals(listOf("maria@example.com"), m.emails.map { it.value })
+        assertEquals(VDate(1980, 2, 3), m.birthday)
+        assertEquals(setOf("Family", "School"), m.labels.toSet())
+        assertEquals(3, ContactsFiles.all(dir).size)
+        assertTrue(File(dir.parentFile, "Trash").listFiles()!!.isNotEmpty())
+        // export: one file of cards, a QR's without the photo
+        val text = ContactsMerge.export(ContactsFiles.all(dir))
+        assertEquals(3, VCard.cards(text).size)
+    }
 }

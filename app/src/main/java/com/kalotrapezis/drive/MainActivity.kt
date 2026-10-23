@@ -1610,8 +1610,10 @@ private fun PairingQrScreen(store: SyncStore, back: () -> Unit) {
 }
 
 /** ML Kit reads codes but cannot draw one, so ZXing does — black and white, no colour to misread. */
-private fun qrBitmap(text: String, size: Int = 640): android.graphics.Bitmap {
-    val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
+internal fun qrBitmap(text: String, size: Int = 640, utf8: Boolean = false): android.graphics.Bitmap {
+    // utf8: Greek letters (a contact's card); ZXing's default is ISO-8859-1. The pairing code is ASCII and stays as it was.
+    val hints = if (utf8) mapOf(com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8") else emptyMap()
+    val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, size, size, hints)
     return android.graphics.Bitmap.createBitmap(matrix.width, matrix.height, android.graphics.Bitmap.Config.ARGB_8888).apply {
         for (x in 0 until matrix.width) for (y in 0 until matrix.height) {
             setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)

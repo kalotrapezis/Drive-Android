@@ -431,7 +431,7 @@ object ContactsFiles {
     }
 
     /** Written beside, then renamed over: sync or another app never reads half a contact. */
-    private fun writeFile(f: File, lines: List<ICalProp>) {
+    fun writeFile(f: File, lines: List<ICalProp>) {
         f.parentFile?.mkdirs()
         val part = File(f.parentFile, ".${f.name}.part")
         part.writeText(VCard.write(lines))
@@ -628,3 +628,68 @@ object ContactsImport {
         else -> s.trim()
     }
 }
+
+/** Merge & fix (Plan.md § Contacts): the same person twice, merged into one file; a pair said not to be is never offered again. */
+object ContactsMerge {
+    private val KNOWN = setOf("VERSION", "PRODID", "N", "FN", "NICKNAME", "ORG", "TITLE", "TEL", "EMAIL", "ADR", "URL", "BDAY", "X-ABDATE", "ANNIVERSARY",
+        "X-ABRELATEDNAMES", "RELATED", "NOTE", "CATEGORIES", "PHOTO", "X-TETRA-PERSON", "UID", "REV", "X-ABLABEL", "X-TETRA-NOT-DUPLICATE")
+
+    private fun notSame(c: Contact, uid: String) = with(VCard) { c.lines.any { it.key() == "X-TETRA-NOT-DUPLICATE" && it.value.trim() == uid } }
+
+    /** Suggested duplicates: the same name, or a phone or e-mail in common; a pair said not to be the same is left out. */
+    fun pairs(all: List<Contact>): List<Pair<Contact, Contact>> {
+        val names = all.map { ContactsFiles.plain(it.info.name) }
+        val keys = all.map { ContactsFiles.keys(it.info) }
+        val out = mutableListOf<Pair<Contact, Contact>>()
+        for (i in all.indices) for (j in i + 1 until all.size) {
+            if (!(names[i].isNotEmpty() && names[i] == names[j]) && keys[i].none { it in keys[j] }) continue
+            if (notSame(all[i], all[j].info.uid) || notSame(all[j], all[i].info.uid)) continue
+            // the one with more in it first: it is the one kept
+            out += if (all[j].lines.size > all[i].lines.size) all[j] to all[i] else all[i] to all[j]
+        }
+        return out
+    }
+
+    /** [a] with what [b] adds: [a]'s single values first (else [b]'s), every phone, e-mail, address, date and label of both. */
+    fun merged(a: ContactInfo, b: ContactInfo): ContactInfo {
+        fun s(x: String, y: String) = x.ifBlank { y }
+        return a.copy(
+            prefix = s(a.prefix, b.prefix), given = s(a.given, b.given), middle = s(a.middle, b.middle), family = s(a.family, b.family), suffix = s(a.suffix, b.suffix),
+            formatted = s(a.formatted, b.formatted), nickname = s(a.nickname, b.nickname), org = s(a.org, b.org), department = s(a.department, b.department), title = s(a.title, b.title),
+            phones = (a.phones + b.phones).distinctBy { ContactsWaysKey.key(it.value) },
+            emails = (a.emails + b.emails).distinctBy { it.value.lowercase().trim() },
+            addresses = (a.addresses + b.addresses).distinctBy { ContactsFiles.plain(it.text()) },
+            urls = (a.urls + b.urls).distinctBy { it.value.trim().lowercase() },
+            birthday = a.birthday?.let { x -> if (x.year == null && b.birthday?.month == x.month && b.birthday.day == x.day) b.birthday else x } ?: b.birthday,
+            dates = (a.dates + b.dates).distinctBy { it.label.lowercase() to it.value },
+            related = (a.related + b.related).distinctBy { it.label.lowercase() to ContactsFiles.plain(it.value) },
+            note = listOf(a.note, b.note).filter { it.isNotBlank() }.distinct().joinToString("\n\n"),
+            categories = (a.categories + b.categories).distinctBy { it.lowercase() },
+            photo = a.photo ?: b.photo, photoUrl = if (a.photo != null) a.photoUrl else a.photoUrl ?: b.photoUrl, person = a.person ?: b.person,
+        )
+    }
+
+    /**
+     * [b] merged into [a]: one file with every value of both ([b]'s lines Tetra does not read come along, if not in a group —
+     * shortcut: a grouped unknown line of [b] is dropped, its itemN could clash with [a]'s), [b]'s file to the Trash.
+     */
+    fun merge(dir: File, a: Contact, b: Contact, at: Instant = Instant.now()): Contact {
+        val saved = ContactsFiles.save(dir, a, merged(a.info, b.info), at)
+        val extra = with(VCard) { b.lines.filter { it.key() !in KNOWN && it.group().isEmpty() && saved.lines.none { s -> s.toString() == it.toString() } } }
+        val out = if (extra.isEmpty()) saved else Contact(saved.file, saved.lines + extra).also { ContactsFiles.writeFile(it.file!!, it.lines) }
+        ContactsFiles.trash(dir, b)
+        return out
+    }
+
+    /** "Not the same": remembered in both files (X-TETRA-NOT-DUPLICATE), so every device stops offering the pair. */
+    fun notTheSame(a: Contact, b: Contact) {
+        listOf(a to b, b to a).forEach { (x, y) -> ContactsFiles.writeFile(x.file!!, x.lines + ICalProp("X-TETRA-NOT-DUPLICATE", "", y.info.uid)) }
+    }
+
+    /** Cards for a .vcf: each as its file has it, one after another. [noPhoto]: the photo and Tetra's own lines left out (a QR code). */
+    fun export(cs: List<Contact>, noPhoto: Boolean = false): String = cs.joinToString("") { c ->
+        VCard.write(if (noPhoto) with(VCard) { c.lines.filterNot { it.key() == "PHOTO" || it.key().startsWith("X-TETRA") || it.key() == "REV" } } else c.lines)
+    }
+}
+
+private object ContactsWaysKey { fun key(n: String) = n.filter(Char::isDigit).takeLast(9).ifEmpty { n.trim() } }

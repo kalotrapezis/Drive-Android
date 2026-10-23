@@ -139,6 +139,9 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var reviewing by remember { mutableStateOf(false) }
     var faceMatches by remember { mutableStateOf<List<Pair<ContactInfo, PhotoPerson>>>(emptyList()) } // contacts with no photo Photos knows by name
     var facesOpen by remember { mutableStateOf(false) }
+    var mergeOpen by remember { mutableStateOf(false) }
+    var exportOpen by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf<List<Contact>>(emptyList()) }
     var choosingCalendar by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Pair<Contact?, ContactInfo>?>(null) } // the contact (null: a new one) and where its editor starts
     LaunchedEffect(message) { if (message != null) { delay(3500); message = null } }
@@ -223,6 +226,12 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         birthdays(true)
     }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importFile) }
+    // Export: all, the favourites or a label, as one .vcf saved where the person chooses
+    val exportTo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/vcard")) { uri ->
+        val cs = exporting
+        if (uri != null) act { context.contentResolver.openOutputStream(uri)!!.use { it.write(ContactsMerge.export(cs).toByteArray()) }; "${cs.size} contacts exported" }
+    }
+    val duplicates = remember(all) { ContactsMerge.pairs(all) }
 
     val shown = remember(all, query, tab, label) {
         all.filter { c -> ContactsFiles.matches(c.info, query) && when {
@@ -376,6 +385,10 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
             HorizontalDivider(color = islandContentColor().copy(alpha = 0.15f))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                DrawerButton(R.drawable.ic_file_upload, "Export", false, Modifier.weight(1f)) { drawer = false; exportOpen = true }
+                DrawerButton(R.drawable.ic_cell_merge, if (duplicates.isEmpty()) "Merge & fix" else "Merge & fix (${duplicates.size})", false, Modifier.weight(1f)) { drawer = false; mergeOpen = true }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DrawerButton(R.drawable.ic_sort_name, if (byLast) "Sort: last name" else "Sort: first name", byLast, Modifier.weight(1f)) {
                     byLast = !byLast; ContactsPrefs.setByLast(context, byLast)
                 }
@@ -425,6 +438,32 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             }
         }
     }
+    if (exportOpen) {
+        val choices = listOf("All contacts" to all, "Favourites" to all.filter { it.info.favourite }) +
+            all.flatMap { it.info.labels }.distinctBy { it.lowercase() }.sortedBy { it.lowercase() }.map { l -> l to all.filter { c -> c.info.labels.any { it.equals(l, true) } } }
+        ModalBottomSheet(onDismissRequest = { exportOpen = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
+            Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp).verticalScroll(rememberScrollState())) {
+                Text("Export as a .vcf", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
+                Text("One file any phone, Google Contacts or Apple's imports, each contact with its photo.", style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+                choices.filter { it.second.isNotEmpty() }.forEach { (name, cs) ->
+                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { exportOpen = false; exporting = cs; exportTo.launch("$name.vcf") }.padding(horizontal = 8.dp, vertical = 14.dp)) {
+                        Text(name, Modifier.weight(1f)); Text("${cs.size}", color = islandContentColor().copy(alpha = 0.7f))
+                    }
+                }
+            }
+        }
+    }
+    if (mergeOpen) MergeSheet(duplicates, { mergeOpen = false }, merge = { pairs ->
+        act {
+            val calRoot = calendarRoot()
+            pairs.forEach { (a, b) ->
+                val kept = ContactsMerge.merge(root, a, b)
+                runCatching { ContactsBirthdays.moveLinks(calRoot, b.info.uid, kept.info); ContactsBirthdays.sync(calRoot, kept.info, ContactsPrefs.birthdays(context), ContactsBirthdays.linked(calRoot)[kept.info.uid].orEmpty()) }
+                    .onFailure { WriterLog.e("Contacts: a merge's dates", it) }
+            }
+            if (pairs.size == 1) "Merged" else "${pairs.size} merged"
+        }
+    }, notSame = { a, b -> act { ContactsMerge.notTheSame(a, b); "Kept apart" } })
     if (facesOpen) FacesForMany(faceMatches, { facesOpen = false }) { chosen ->
         facesOpen = false
         scope.launch {
@@ -477,6 +516,7 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
         .onFailure { android.widget.Toast.makeText(context, "No app opens this", android.widget.Toast.LENGTH_SHORT).show() } }
     var history by remember(c.info.uid) { mutableStateOf(false) }
     var strip by remember { mutableStateOf<Pair<String, List<Pair<String, () -> Unit>>>?>(null) }
+    var qr by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding()
             .padding(top = 72.dp, bottom = 32.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -585,6 +625,20 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
             Spacer(Modifier.weight(1f))
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Share: as a .vcf (Viber, WhatsApp, mail take it) or as a QR code another phone scans
+                    IconButton(onClick = { strip = "Share ${i.name}" to listOf(
+                        "Send as a contact file (.vcf)" to {
+                            runCatching {
+                                val f = File(File(context.cacheDir, "share").apply { mkdirs() }, ContactsFiles.fileName(i.name, i.uid))
+                                f.writeText(ContactsMerge.export(listOf(c)))
+                                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
+                                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/x-vcard").putExtra(Intent.EXTRA_STREAM, uri)
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share ${i.name}").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }.onFailure { WriterLog.e("Contacts: share", it) }
+                            Unit
+                        },
+                        "Show as a QR code" to { qr = true },
+                    ) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
                     IconButton(onClick = star) {
                         Icon(painterResource(if (i.favourite) R.drawable.ic_star else R.drawable.ic_star_border), contentDescription = if (i.favourite) "Remove from favourites" else "Add to favourites",
                             tint = if (i.favourite) CONTACTS_COLOR else islandContentColor())
@@ -595,6 +649,19 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
         }
     }
     strip?.let { (title, options) -> WaysStrip(title, options) { strip = null } }
+    // the card without its photo (a QR code holds ~3 KB), black on white, for a phone's camera or Tetra's Codes
+    if (qr) {
+        val bmp = remember(c) { runCatching { qrBitmap(ContactsMerge.export(listOf(c), noPhoto = true), 720, utf8 = true).asImageBitmap() }.getOrNull() }
+        androidx.compose.ui.window.Dialog(onDismissRequest = { qr = false }) {
+            Surface(shape = MaterialTheme.shapes.extraLarge, color = Color.White, contentColor = Color.Black) {
+                Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (bmp != null) Image(bmp, contentDescription = "QR code of ${i.name}", modifier = Modifier.size(300.dp)) else Text("Too much to fit in a QR code: share it as a file.")
+                    Text(i.name, style = MaterialTheme.typography.titleMedium)
+                    Text("Scan it with a phone's camera, or Tetra › Codes › Add to Contacts.", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                }
+            }
+        }
+    }
 }
 
 /** Message, Call, Video or Mail with several ways: a strip from the bottom (no popup lists on a touch screen). */
@@ -740,4 +807,49 @@ private fun callText(c: CallEntry): String {
         }
     }
     if (fromPhotos) PhotosFacePicker(i.name, { fromPhotos = false }) { p, uri, box -> fromPhotos = false; use(uri, box, p.uuid) }
+}
+
+/**
+ * Merge & fix: the same person twice, side by side, what the second adds marked; Merge keeps every value in one file (the
+ * other to the Trash), Not the same remembers it in both files; Merge all at the top.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun MergeSheet(pairs: List<Pair<Contact, Contact>>, dismiss: () -> Unit, merge: (List<Pair<Contact, Contact>>) -> Unit, notSame: (Contact, Contact) -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
+        Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Merge & fix", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (pairs.size > 1) TextButton(onClick = { dismiss(); merge(pairs) }) { Text("Merge all ${pairs.size}") }
+            }
+            if (pairs.isEmpty()) Text("No one is here twice.", color = islandContentColor().copy(alpha = 0.7f))
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                pairs.forEach { (a, b) ->
+                    Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                listOf(a, b).forEach { c -> Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    ContactAvatar(c.info, 36.dp)
+                                    Column {
+                                        Text(c.info.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text((c.info.phones.map { it.value } + c.info.emails.map { it.value }).take(2).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+                                            color = islandContentColor().copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                } }
+                            }
+                            // what the second brings that the first has not (the fields that differ)
+                            val m = ContactsMerge.merged(a.info, b.info)
+                            val adds = (m.phones - a.info.phones.toSet()).map { it.value } + (m.emails - a.info.emails.toSet()).map { it.value } +
+                                listOfNotNull(m.birthday?.takeIf { a.info.birthday == null }?.let { "Birthday ${dateToText(it)}" }, "Photo".takeIf { a.info.photo == null && m.photo != null }) +
+                                (m.labels - a.info.labels.toSet())
+                            if (adds.isNotEmpty()) Text("Adds: " + adds.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = CONTACTS_COLOR)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = { notSame(a, b) }) { Text("Not the same") }
+                                TextButton(onClick = { merge(listOf(a to b)) }) { Text("Merge") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

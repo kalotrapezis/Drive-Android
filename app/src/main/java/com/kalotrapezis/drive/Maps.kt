@@ -224,18 +224,20 @@ internal fun progress(r: Route, cum: DoubleArray, lat: Double, lng: Double, from
 }
 
 /**
- * Which of a turn's spoken warnings is due ([step] its index, [toNext] metres ahead, [speed] m/s): "e" early, 2 km ahead
- * on a fast road; "f" far, about 20 s ahead (500 m at least); "n" at it, about 5 s ahead; or null. By car the warnings
- * follow the speed (the user, 21 Oct, on the Egnatia: "σε 3χμ πάρτη την έξοδο στα δεξιά" — 500 m at 120 km/h is 15 s).
+ * Which of a turn's spoken warnings is due ([step] its index, [toNext] metres ahead, [speed] m/s): "e" early, 3 km ahead
+ * on a fast road, as Google Maps does; "f" far, about 20 s ahead (500 m at least); "n" at it, about 7 s ahead — or, where
+ * the turn's lanes are known to begin 100–700 m before it ([begins], an exit's lane), there, as its broken line starts
+ * (the user, 23 Oct: "take the exit on the right when the dashed lines of the deceleration lane begin"); or null. By car the
+ * warnings follow the speed (the user, 21 Oct, on the Egnatia: "σε 3χμ πάρτη την έξοδο στα δεξιά").
  */
-internal fun dueWarning(step: Int, toNext: Double, speed: Double, car: Boolean, said: Set<String>): String? {
+internal fun dueWarning(step: Int, toNext: Double, speed: Double, car: Boolean, said: Set<String>, begins: Double = 0.0): String? {
     // by car a street early in town, 150 m or more out of it (the user, 23 Oct: at 50 m there was no slowing down for it)
-    val near = if (car) maxOf(120.0, speed * 7) else 20.0
+    val near = if (!car) 20.0 else if (begins in 100.0..700.0) begins + 20 else maxOf(120.0, speed * 7)
     val far = if (car) maxOf(500.0, speed * 20) else 150.0
     return when {
         toNext <= near -> "n".takeIf { "n$step" !in said }
         toNext <= far -> "f".takeIf { "f$step" !in said && toNext > near * 1.5 }
-        car && speed > 22 && toNext <= 2200 && toNext > far * 1.5 -> "e".takeIf { "e$step" !in said && "f$step" !in said }
+        car && speed > 22 && toNext <= 3200 && toNext > far * 1.5 -> "e".takeIf { "e$step" !in said && "f$step" !in said }
         else -> null
     }
 }
@@ -288,9 +290,15 @@ internal fun junctionPicture(j: Junction, px: Int): android.graphics.Bitmap {
     val grey = paint(0xFF9AA0A6.toInt(), px * 0.08f); val blue = paint(0xFF4C8DF6.toInt(), px * 0.08f)
     fun at(deg: Double, r: Float) = Math.toRadians(deg).let { (mid + Math.sin(it) * r).toFloat() to (mid - Math.cos(it) * r).toFloat() }
     fun arm(deg: Double, p: android.graphics.Paint) { val (x1, y1) = at(deg, ringR); val (x2, y2) = at(deg, far); c.drawLine(x1, y1, x2, y2, p) }
-    j.arms.forEach { arm(it, grey) }
+    // roads closer than 22° drawn apart, as a fork's two ways a few degrees apart would be one line
+    val shown = j.arms.toMutableList()
+    for (k in 0 until shown.size - 1) {
+        val gap = shown[k + 1] - shown[k]
+        if (gap < 22 && k != j.way && k + 1 != j.way) { shown[k] -= (22 - gap) / 2; shown[k + 1] += (22 - gap) / 2 }
+    }
+    shown.forEach { arm(it, grey) }
     if (j.roundabout) c.drawCircle(mid, mid, ringR, grey)
-    val inDeg = j.arms[j.way]; val outDeg = j.arms[j.taken]
+    val inDeg = shown[j.way]; val outDeg = shown[j.taken]
     arm(inDeg, blue); arm(outDeg, blue)
     if (j.roundabout) { // from the way in round to the way out, anticlockwise (canvas angles: 0 at three o'clock, clockwise)
         val sweep = -(((inDeg - outDeg) % 360 + 360) % 360).toFloat().let { if (it == 0f) 360f else it }

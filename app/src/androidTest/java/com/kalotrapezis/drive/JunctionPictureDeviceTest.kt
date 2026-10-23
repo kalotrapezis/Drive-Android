@@ -19,7 +19,15 @@ class JunctionPictureDeviceTest {
             "drama-slight-right" to Junction(listOf(-180.0, -162.0, -110.0, 35.0, 70.0), 3),
             "nikisiani-sharp-right" to Junction(listOf(-180.0, -32.0, 113.0), 2),
             "omonia-exit2" to Junction(listOf(-180.0, -164.0, -93.0, 2.0, 69.0, 88.0), 3, roundabout = true),
+            "corinth-fork-left" to Junction(listOf(-180.0, -6.0, 4.0), 1),
         )
+        // the lanes strips: Ελαιώνας' exit, Κόρινθος' left fork to Τρίπολη, a town's turn lanes
+        val strips = mapOf(
+            "lanes-elaionas" to Lanes(MapsLanes.parse("through|through|slight_right"), setOf(2)),
+            "lanes-corinth" to Lanes(MapsLanes.parse("slight_left|slight_left|through|through"), setOf(0, 1)),
+            "lanes-town" to Lanes(MapsLanes.parse("left|through|through;right"), setOf(2)),
+        )
+        for ((name, l) in strips) File(dir, "$name.png").outputStream().use { lanesPicture(l, 120).compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         for ((name, j) in cases) {
             val b = junctionPicture(j, 400)
             File(dir, "$name.png").outputStream().use { b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }

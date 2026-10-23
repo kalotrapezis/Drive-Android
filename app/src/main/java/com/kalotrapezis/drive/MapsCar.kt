@@ -325,6 +325,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private var panelHint: android.widget.TextView? = null // the instruction itself, smaller ("Στρίψτε κλειστά αριστερά")
     private var panelJunction: android.widget.ImageView? = null // a busy crossing's picture, near it
     private var junctionShown: Pair<Junction, Int>? = null
+    private var panelLanes: android.widget.ImageView? = null // the lanes before the turn, the ones to take white
+    private var lanesShown: Pair<Lanes, Int>? = null
 
     private fun turnPanel(c: android.content.Context): android.view.View {
         panelArrow = android.widget.ImageView(c).apply { setColorFilter(Color.WHITE) }
@@ -333,6 +335,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         panelText = android.widget.TextView(c).apply { setTextColor(0xFFE8EAED.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
         panelHint = android.widget.TextView(c).apply { setTextColor(0xFFBDC1C6.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
         panelJunction = android.widget.ImageView(c).apply { visibility = android.view.View.GONE }; junctionShown = null
+        panelLanes = android.widget.ImageView(c).apply { visibility = android.view.View.GONE; adjustViewBounds = true }; lanesShown = null
         val top = android.widget.LinearLayout(c).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
             addView(panelArrow); addView(panelDistance)
@@ -345,7 +348,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             orientation = android.widget.LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply { setColor(0xF0303134.toInt()); cornerRadius = 3 * u }
             layoutParams = android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.TOP or android.view.Gravity.START)
-            addView(top); addView(road); addView(panelHint); addView(panelJunction)
+            addView(top); addView(road); addView(panelHint); addView(panelLanes); addView(panelJunction)
             visibility = android.view.View.GONE
         }
     }
@@ -409,6 +412,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         panelText?.setTextSize(px, textPx)
         panelHint?.setTextSize(px, smallPx)
         panelJunction?.layoutParams = android.widget.LinearLayout.LayoutParams(cw - 2 * pad, cw - 2 * pad).apply { topMargin = pad }
+        panelLanes?.layoutParams = android.widget.LinearLayout.LayoutParams(-2, (iconPx * 0.8f).toInt()).apply { topMargin = pad; gravity = android.view.Gravity.CENTER_HORIZONTAL }
         // the bottom card: the card's width, a little less tall than the turn card
         eta?.setTextSize(px, textPx)
         etaBox?.apply {
@@ -515,6 +519,13 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         panelText?.apply { text = step.street; visibility = if (step.street.isEmpty() && step.ref.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE }
         // the instruction without the street, which is above it
         panelHint?.text = step.text.substringBefore(" στην ").substringBefore(" onto ").substringBefore(" στο ")
+        // the lanes before the turn, under the words (in the small card too: one short row)
+        val l = step.lanes?.takeIf { showLanes(it, p.toNext) }
+        panelLanes?.apply {
+            val h = layoutParams?.height ?: 0
+            if (l != null && h > 0 && lanesShown != l to h) { setImageBitmap(lanesPicture(l, h)); lanesShown = l to h }
+            visibility = if (l != null && h > 0) android.view.View.VISIBLE else android.view.View.GONE
+        }
         // a busy crossing near: its picture under the words (not in the small card, no room there)
         val j = step.junction?.takeIf { !compact && showJunction(it, p.toNext) }
         panelJunction?.apply {
@@ -778,11 +789,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 val (z, t) = carView(close); lc.zoomWhileTracking(z, 1500); lc.tiltWhileTracking(t, 1500)
             }
         }
-        val due = dueWarning(p.next, p.toNext, speed, true, said)
+        val due = dueWarning(p.next, p.toNext, speed, true, said, step.lanes?.begins ?: 0.0)
         when (due) {
-            "n" -> { say(nearWords(lang, p.toNext, true, step.text)); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
-            "f" -> { say(MapsPrefs.inDistance(lang, p.toNext, true, step.text)); said = said + "f${p.next}" + "e${p.next}" }
-            "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, true, step.text)); said = said + "e${p.next}" }
+            "n" -> { say(nearWords(lang, p.toNext, true, MapsLanes.said(step, lang))); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
+            "f" -> { say(MapsPrefs.inDistance(lang, p.toNext, true, MapsLanes.said(step, lang))); said = said + "f${p.next}" + "e${p.next}" }
+            "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, true, MapsLanes.said(step, lang))); said = said + "e${p.next}" }
         }
         if (due == null && MapsPrefs.bends(carContext)) dueBend(n.bends, p.along, speed, said)?.let { b ->
             say(MapsPrefs.bendWords(lang, n.bends[b].right)); said = said + "b$b"

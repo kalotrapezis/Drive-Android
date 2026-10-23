@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -520,11 +522,11 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                 val (z, t) = carView(close); lc.zoomWhileTracking(z, 1500); lc.tiltWhileTracking(t, 1500)
             }
         }
-        val due = dueWarning(p.next, p.toNext, speed, car, said)
+        val due = dueWarning(p.next, p.toNext, speed, car, said, step.lanes?.begins ?: 0.0)
         when (due) {
-            "n" -> { say(nearWords(lang, p.toNext, car, step.text)); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
-            "f" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, step.text)); said = said + "f${p.next}" + "e${p.next}" }
-            "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, step.text)); said = said + "e${p.next}" }
+            "n" -> { say(nearWords(lang, p.toNext, car, MapsLanes.said(step, lang))); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
+            "f" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, MapsLanes.said(step, lang))); said = said + "f${p.next}" + "e${p.next}" }
+            "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, MapsLanes.said(step, lang))); said = said + "e${p.next}" }
         }
         if (due == null && car && MapsPrefs.bends(context)) dueBend(n.bends, p.along, speed, said)?.let { b ->
             say(MapsPrefs.bendWords(lang, n.bends[b].right)); said = said + "b$b"
@@ -1222,6 +1224,12 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
             if (step.street.isNotEmpty()) Text(step.street, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(if (step.street.isEmpty()) step.text else instruction, style = MaterialTheme.typography.bodyMedium, color = white.copy(alpha = 0.75f),
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // the lanes before the turn, the ones to take white
+            val lanes = step.lanes?.takeIf { showLanes(it, n.p?.toNext ?: Double.MAX_VALUE) }
+            if (lanes != null) {
+                val strip = remember(lanes) { lanesPicture(lanes, 120).asImageBitmap() }
+                androidx.compose.foundation.Image(strip, contentDescription = null, modifier = Modifier.padding(top = 4.dp).height(40.dp).aspectRatio(strip.width.toFloat() / strip.height).align(Alignment.CenterHorizontally))
+            }
             // a busy crossing near: its picture, the way on in blue (the user, 23 Oct)
             val j = step.junction?.takeIf { showJunction(it, n.p?.toNext ?: Double.MAX_VALUE) }
             if (j != null) {

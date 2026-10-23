@@ -2,7 +2,7 @@
 # Builds Tetra's offline map of Greece on the computer (Plan.md § Maps): the Protomaps basemap cut to Greece's border
 # (greece.pmtiles — one file MapLibre opens on Android and, later, on the desktop) and Geofabrik's OSM extract of Greece
 # (greece-latest.osm.pbf), and from it the routing graph for car, foot, bike and wheelchair (greece-gh/, GraphHopper 10.2)
-# and the search list and addresses (greece-places.tsv, greece-addresses.tsv).
+# and the search list and addresses (greece-places.tsv, greece-addresses.tsv) and the lanes (greece-lanes.tsv).
 # Long and heavy: ~0.5 GB + 0.35 GB of downloads, then several minutes and ~4 GB of memory for the graph.
 # Usage: tools/maps-greece.sh [out-dir]   (default ~/Tetra-maps; MAXZOOM=15 by default)
 set -euo pipefail
@@ -64,6 +64,11 @@ fi
 if [ ! -f greece-addresses.tsv ] || [ greece-latest.osm.pbf -nt greece-places.tsv ]; then
   [ -x venv/bin/python ] || { python3 -m venv venv && venv/bin/pip install -q osmium; }
   venv/bin/python -I "$HERE/maps-places.py" greece-latest.osm.pbf greece-places.tsv greece-addresses.tsv greece-streets.tsv
+fi
+
+# the lane arrows before turns, for lane guidance (tools/maps-lanes.py)
+if [ ! -f greece-lanes.tsv ] || [ greece-latest.osm.pbf -nt greece-lanes.tsv ]; then
+  venv/bin/python -I "$HERE/maps-lanes.py" greece-latest.osm.pbf greece-lanes.tsv
 fi
 
 # EOPYY's own pharmacies, from EOPYY's site (tools/maps-eopyy.py); a failed fetch keeps the last list

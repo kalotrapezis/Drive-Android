@@ -104,18 +104,22 @@ class MapsImportTest {
 }
 
 class MapsWarningTest {
-    /** At 120 km/h (33 m/s) a turn is warned at 2 km, at ~660 m and at ~230 m; in town at 500 m and 120 m (a street early); each once. */
+    /** At 120 km/h (33 m/s) a turn is warned at 3 km, at ~660 m and at ~230 m; in town at 500 m and 120 m (a street early); each once. */
     @Test fun warningsFollowTheSpeed() {
         var said = emptySet<String>()
         val heard = ArrayList<Pair<Int, String>>()
-        for (d in 3000 downTo 0 step 30) dueWarning(4, d.toDouble(), 33.0, true, said)?.let { heard += d to it; said = said + "${it}4" }
+        for (d in 4000 downTo 0 step 30) dueWarning(4, d.toDouble(), 33.0, true, said)?.let { heard += d to it; said = said + "${it}4" }
         assertEquals(listOf("e", "f", "n"), heard.map { it.second })
-        assertTrue(heard[0].first in 2100..2200); assertTrue(heard[1].first in 630..660); assertTrue(heard[2].first in 200..231)
+        assertTrue(heard[0].first in 3100..3200); assertTrue(heard[1].first in 630..660); assertTrue(heard[2].first in 200..231)
         said = emptySet(); heard.clear()
         for (d in 1500 downTo 0 step 10) dueWarning(1, d.toDouble(), 12.0, true, said)?.let { heard += d to it; said = said + "${it}1" }
         assertEquals(listOf(500 to "f", 120 to "n"), heard)
         assertEquals(2.0 to true, spokenDistance(2140.0, true)); assertEquals(650.0 to false, spokenDistance(660.0, true))
         assertEquals(1.5 to true, spokenDistance(1400.0, true))
+        // an exit whose lane begins 300 m before it: "take the exit" there, where the broken line starts
+        said = emptySet(); heard.clear()
+        for (d in 4000 downTo 0 step 10) dueWarning(5, d.toDouble(), 33.0, true, said, begins = 300.0)?.let { heard += d to it; said = said + "${it}5" }
+        assertEquals(listOf("e", "f", "n"), heard.map { it.second }); assertEquals(320, heard[2].first)
     }
 }
 
@@ -443,5 +447,41 @@ class MapsJunctionTest {
         }
         println("$all crossings, $busy busy, $rings roundabouts")
         assertTrue(all >= 5 && busy >= 1)
+    }
+}
+
+class MapsLanesTest {
+    @Test fun lanesToTake() {
+        val exit = MapsLanes.parse("through|through|slight_right")
+        assertEquals(setOf(2), MapsLanes.use(exit, 7)) // keep right: the exit lane
+        assertEquals(setOf(0, 1), MapsLanes.use(exit, -7)) // keep left: the road goes on
+        assertEquals("από τη δεξιά λωρίδα", MapsLanes.words(Lanes(exit, setOf(2)), "el"))
+        assertEquals("από τις 2 αριστερές λωρίδες", MapsLanes.words(Lanes(exit, setOf(0, 1)), "el"))
+        val corinth = MapsLanes.parse("slight_left|slight_left|through|through") // Α7 to Τρίπολη leaves on the left
+        assertEquals(setOf(0, 1), MapsLanes.use(corinth, -7))
+        assertEquals("from the 2 left lanes", MapsLanes.words(Lanes(corinth, setOf(0, 1)), "en"))
+        assertEquals(listOf(listOf("left"), listOf("through"), listOf("through", "right")), MapsLanes.parse("left|none|through;right"))
+        assertEquals("από τη μεσαία λωρίδα", MapsLanes.words(Lanes(MapsLanes.parse("left|through|right"), setOf(1)), "el"))
+        assertNull(MapsLanes.words(Lanes(exit, setOf(0, 1, 2)), "el")) // all of them: nothing to say
+        assertTrue(MapsLanes.use(MapsLanes.parse("left|through"), 2).isEmpty()) // a right turn the lanes do not show
+    }
+
+    /** On the computer's graph and lanes file: the turns where the user met them (23 Oct). */
+    @Test fun lanesOnRealRoutes() {
+        val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
+        assumeTrue(File(dir, "properties").isFile && File(dir.parentFile, MapsLanes.FILE).isFile)
+        val tripoli = MapsRouting.route(dir, 37.9838, 23.7275, 37.5100, 22.3720, "car")
+        val corinth = tripoli.steps.first { "Τρίπολη" in it.text && it.sign == -7 }
+        println("Κόρινθος: ${corinth.text} — ${corinth.lanes}")
+        assertEquals(setOf(0, 1), corinth.lanes?.use)
+        // and its picture: the fork, Τρίπολη to the left (the user: "it says left — let it show it too")
+        val fork = corinth.junction
+        println("Κόρινθος fork: $fork")
+        assertTrue(fork != null && fork.busy && fork.arms[fork.taken] < 0)
+        assertTrue(corinth.lanes!!.begins in 100.0..700.0) // where the exit's lanes begin, for "take the exit" there
+        val elaionas = MapsRouting.route(dir, 37.2777, 22.5877, 38.4140, 23.2270, "car")
+        val with = elaionas.steps.filter { it.lanes != null }
+        with.forEach { println("Ελαιώνας: ${MapsLanes.said(it, "el")} — ${it.lanes}") }
+        assertTrue(with.isNotEmpty())
     }
 }

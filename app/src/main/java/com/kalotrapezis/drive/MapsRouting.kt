@@ -24,7 +24,7 @@ import java.util.Locale
 
 /** One leg of a route's spoken and shown directions; [at] is the index in [Route.points] where it begins. */
 internal data class Step(val text: String, val sign: Int, val metres: Double, val at: Int, val street: String, val ref: String = "",
-    val junction: Junction? = null)
+    val junction: Junction? = null, val lanes: Lanes? = null)
 
 /** [roads]: what it mostly runs on — "motorway", "main" or "local" — for the choice between routes. */
 internal data class Route(val mode: String, val lats: DoubleArray, val lngs: DoubleArray, val metres: Double, val millis: Long, val steps: List<Step>,
@@ -111,13 +111,13 @@ internal object MapsRouting {
             ahead.hints.putObject(Parameters.CH.DISABLE, true).putObject(Parameters.Routing.MAX_VISITED_NODES, MAX_HEADED_NODES)
                 .putObject(Parameters.Routing.HEADING_PENALTY, TURN_BACK_SECONDS)
             val r = gh.route(ahead)
-            if (!r.hasErrors()) return listOf(build(gh, r.best, gh.translationMap.getWithFallBack(locale), lang, mode))
+            if (!r.hasErrors()) return listOf(MapsLanes.on(build(gh, r.best, gh.translationMap.getWithFallBack(locale), lang, mode), dir.absoluteFile.parentFile))
         }
         var rsp = gh.route(req)
         if (rsp.hasErrors()) rsp = gh.route(req.setAlgorithm("")) // alternatives not to be had here: the one way
         check(!rsp.hasErrors()) { words(rsp.errors.firstOrNull(), lang) }
         val tr = gh.translationMap.getWithFallBack(locale)
-        val all = rsp.all.map { build(gh, it, tr, lang, mode) }
+        val all = rsp.all.map { MapsLanes.on(build(gh, it, tr, lang, mode), dir.absoluteFile.parentFile) }
         val usable = all.filter { r -> mode != "car" || r.roads != "track" }.ifEmpty { all }
         return usable.sortedBy { it.millis }
     }
@@ -203,8 +203,9 @@ internal object MapsRouting {
             else listOf(snap.closestEdge.baseNode, snap.closestEdge.adjNode).minBy { metresBetween(na.getLat(it), na.getLon(it), pts.getLat(at), pts.getLon(at)) }
         if (metresBetween(na.getLat(node), na.getLon(node), pts.getLat(at), pts.getLon(at)) > 15) return null
         val explorer = g.createEdgeExplorer()
-        /** The car roads at [n] (but [skip]ped ones): each one's first stretch and its point ~20 m along, to draw. */
-        class Arm(val first: Double, val lat: Double, val lng: Double)
+        /** The car roads at [n] (but [skip]ped ones): each one's first stretch, its point ~40 m along to draw, and whether
+         *  a car may leave [n] by it ([out]) and come to [n] by it ([into]). */
+        class Arm(val first: Double, val lat: Double, val lng: Double, val out: Boolean, val into: Boolean)
         fun arms(n: Int, skip: (EdgeIteratorState) -> Boolean): List<Arm> {
             val out = ArrayList<Arm>()
             val it = explorer.setBaseNode(n)
@@ -213,16 +214,19 @@ internal object MapsRouting {
                 val geo = it.fetchWayGeometry(com.graphhopper.util.FetchMode.ALL)
                 if (geo.size() < 2) continue
                 var k = 1
-                while (k < geo.size() - 1 && metresBetween(geo.getLat(0), geo.getLon(0), geo.getLat(k), geo.getLon(k)) < 20) k++
-                out += Arm(bearing(geo.getLat(0), geo.getLon(0), geo.getLat(1), geo.getLon(1)), geo.getLat(k), geo.getLon(k))
+                while (k < geo.size() - 1 && metresBetween(geo.getLat(0), geo.getLon(0), geo.getLat(k), geo.getLon(k)) < 40) k++
+                out += Arm(bearing(geo.getLat(0), geo.getLon(0), geo.getLat(1), geo.getLon(1)), geo.getLat(k), geo.getLon(k), it.get(access), it.getReverse(access))
             }
             return out
         }
         fun apart(a: Double, b: Double) = Math.abs(((a - b) % 360 + 540) % 360 - 180)
-        /** The way in, the way on, then each other road once: a dual carriageway's two halves (15° apart) are one. */
-        fun oneEach(d: List<Double>, inArm: Int, outArm: Int): List<Double> {
+        /** The way in, the way on, then each other road once: a dual carriageway's two halves — 15° apart, one only to the
+         *  crossing and one only from it — are one road; two ways out of a fork, however close, are two. */
+        fun oneEach(d: List<Double>, arms: List<Arm>, inArm: Int, outArm: Int): List<Double> {
             val keep = arrayListOf(inArm, outArm)
-            for (i in d.indices) if (keep.none { apart(d[i], d[it]) < 15 }) keep += i
+            fun halves(i: Int, j: Int) = apart(d[i], d[j]) < 15 && ((arms[i].out && !arms[i].into && arms[j].into && !arms[j].out) ||
+                (arms[i].into && !arms[i].out && arms[j].out && !arms[j].into))
+            for (i in d.indices) if (i !in keep && keep.none { halves(i, it) }) keep += i
             return keep.map { d[it] }
         }
         val dirs: List<Double>; val taken: Int
@@ -249,7 +253,7 @@ internal object MapsRouting {
             if (inArm == outArm) return null
             val ref = bearing(nLat, nLng, all[inArm].lat, all[inArm].lng) + 180 // the way in straight down
             val d = all.map { ((bearing(nLat, nLng, it.lat, it.lng) - ref) % 360 + 540) % 360 - 180 }
-            return oneEach(d, inArm, outArm)
+            return oneEach(d, all, inArm, outArm)
         }
         /** The roads leaving a crossing of several nodes, seen from its middle; the way on is where the route leaves it. */
         fun many(): List<Double>? {
@@ -264,7 +268,7 @@ internal object MapsRouting {
             if (inArm == outArm) return null
             val ref = far[inArm] + 180
             val d = far.map { ((it - ref) % 360 + 540) % 360 - 180 }
-            return oneEach(d, inArm, outArm)
+            return oneEach(d, all, inArm, outArm)
         }
         if (!roundabout) {
             // the crossing as several nodes only where that makes five roads or more; else the turn's own node, exactly
@@ -287,7 +291,7 @@ internal object MapsRouting {
             if (inArm == outArm) return null
             val far = all.map { (_, a) -> bearing(cLat, cLng, a.lat, a.lng) }
             val ref = far[inArm] + 180
-            dirs = oneEach(far.map { ((it - ref) % 360 + 540) % 360 - 180 }, inArm, outArm); taken = 1
+            dirs = oneEach(far.map { ((it - ref) % 360 + 540) % 360 - 180 }, all.map { it.second }, inArm, outArm); taken = 1
         }
         if (dirs.size < 3) return null
         val sorted = dirs.sorted()

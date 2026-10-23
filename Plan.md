@@ -186,6 +186,14 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
+- [x] (contacts-build session, 23 Oct; branch claude/contacts-583397, not merged) **Contacts** on Android, § Contacts steps 1–8
+      (step 9 later). Then the sync and the desktop (the user, 23 Oct: "now do the desktop and the sync"): main merged
+      into the branch; scope `contacts` (SYNC_PLAN 6ap) — on the real pair a PC-made contact reached the phone in 7 s with
+      its birthday's event, a star on the phone the PC in 4 s, a delete on the PC the phone's Trash in 6 s; desktop Contacts
+      (Drive branch `contacts`, Drive-worktrees/contacts: contacts.js + Contacts.tsx, 0.6.0-beta.6 .deb built, not installed). On the phone (main + the branch, 22:32): 318 of its
+      contacts imported (71 photos, 14 birthdays into Γενέθλια), WhatsApp/Viber chips and Message strip seen. Waiting on the
+      user there: Link birthdays (2 suggested — "Ελπίδα (Όνομα)" may be a name day), Merge & fix (12), Allow for History and
+      In the phone's contacts. Tablet not connected: seen on the tablet emulator only.
 - [x] (send-to-computer session, 23 Oct; branch claude/keen-grothendieck-9e0fad, Drive branch send-to-computer in
       Drive-worktrees/send-to-computer) (the user, 23 Oct: "with Bluetooth, could Files be in the sharing menu so you send
       files to the PC at once?") **Send to computer** in Android's share menu, over sync's Wi-Fi link (not Bluetooth), into
@@ -2257,15 +2265,23 @@ I press Call on the PC and it starts on the phone?") — no dialer app needed fo
   birthday ↔ event both ways, merge.
 
 ### Steps (each a commit, each checked on the tablet, then the phone and the PC)
-1. Files + import (the phone's contacts, vCard, Takeout, CSV) + the list and the page (read only).
-2. Edit, new, delete, labels, favourites. (The scope sync — later: the user, 23 Oct, "keep the sync for later so we
+- [x] (6e1314b) 1. Files + import (the phone's contacts, vCard, Takeout, CSV) + the list and the page (read only).
+      Google's photo links (googleusercontent) are kept as links, not fetched (no network use yet).
+- [x] (4d5bf65) 2. Edit, new, delete, labels, favourites. (The scope sync — later: the user, 23 Oct, "keep the sync for later so we
    dont have conflicts" with the send-to-computer work; until then the files travel with the whole Files sync as now.)
-3. Birthdays and dates → the chosen calendar; Γενέθλια's 11 matched; the Calendar's Birthday action on the setting.
-4. Photos' faces → photos (one and many).
-5. Call / Message / Video / Mail with the other apps' rows; call history.
-6. Tetra's contacts in the system provider (caller ID, Android Auto).
-7. Merge & fix; export; share as .vcf / QR.
-8. Home (Maps one card, Contacts beside it) and the icons; desktop Contacts.
+- [x] (f4fc436) 3. Birthdays and dates → the chosen calendar; Γενέθλια's 11 matched; the Calendar's Birthday action on the setting.
+- [x] (e73e2e1) 4. Photos' faces → photos (one and many). Not yet: "In Photos: 213 photos" on the page, Photos' person › Contact.
+- [x] (5b59438) 5. Call / Message / Video / Mail with the other apps' rows; call history. ACTION_DIAL (no CALL_PHONE);
+   no fallback links (wa.me, viber://) when an app has no row; History = calls + the contact's dates (not notes naming them).
+- [x] (290ca1a, 2af5ca8) 6. Tetra's contacts in the system provider (caller ID, Android Auto) — the user: yes (23 Oct). Account
+   "Tetra", one-way copy from the files, read-only elsewhere; Contacts › drawer › In the phone's contacts (asks WRITE_CONTACTS).
+- [x] (5a738e2, a922cf3) 7. Merge & fix; export; share as .vcf / QR (Codes: a scanned vCard › Add to Contacts).
+- [x] (6e1314b, 290ca1a) 8. Home and the icons (the user, 23 Oct: "Contacts light brown, the icon yes, 4 slots"): Contacts'
+   group (its icon, four favourites' faces); on the tablet Maps one group with four places beside it, on the phone as it
+   was with Contacts under it; Maps' new icon (maps.png) and Home's Maps group in its sky blue (#25C4FE; the map's own
+   markers stay indigo). Desktop Contacts: Drive branch `contacts` (ea6f7a3), the tablet's layout, the same files.
+- [x] (52f7d96) Choose many (the user, 23 Oct: "how do I multi select?"): long press, then Label · Favourites · Share ·
+   Export · Merge (two) · Delete.
 9. Calls through the PC: the ringing on the PC with Answer/Reject, Call on the PC dialling on the phone, the voice by Bluetooth.
 
 ### Questions for the user

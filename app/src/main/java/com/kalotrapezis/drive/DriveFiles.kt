@@ -86,10 +86,11 @@ object DriveRules {
     val SYSTEM_FOLDERS get() = REQUIRED_FOLDERS + OPTIONAL_FOLDERS.filter { it in chosenFolders }
     fun isSystem(relativePath: String) = relativePath in SYSTEM_FOLDERS
     /**
-     * The Calendar's, the Timer's and Maps' folders: synced as files (a dot name would not sync), but kept out of Files' lists,
-     * search and Move (the user, 18 Oct: "can we hide the folders of the calendar and the timer"). The computer hides the same.
+     * The Calendar's, the Timer's, Maps' and Contacts' folders: synced as files (a dot name would not sync), but kept out of Files'
+     * lists, search and Move (the user, 18 Oct: "can we hide the folders of the calendar and the timer"). The computer hides the
+     * same.
      */
-    private val APP_FOLDERS = listOf(CalendarFiles.FOLDER, TimerFiles.FOLDER, MapsFiles.FOLDER)
+    private val APP_FOLDERS = listOf(CalendarFiles.FOLDER, TimerFiles.FOLDER, MapsFiles.FOLDER, ContactsFiles.FOLDER)
     fun isAppFolder(relativePath: String) = APP_FOLDERS.any { relativePath == it || relativePath.startsWith("$it/") }
     /**
      * Sync of the choice, folder by folder (the computer has the same rule): the later answer wins, and on a tie (a
@@ -613,7 +614,8 @@ data class DriveFileEntry(val relativePath: String, val sizeBytes: Long, val mod
  * computer reads the same names (desktop files.js SCOPES); a new one (the Timer) is a line in each.
  */
 internal object DriveScope {
-    private val scopes = mapOf("calendar" to (listOf("Calendar") to listOf(".ics")), "timer" to (listOf(TimerFiles.FOLDER) to emptyList<String>()))
+    private val scopes = mapOf("calendar" to (listOf("Calendar") to listOf(".ics")), "timer" to (listOf(TimerFiles.FOLDER) to emptyList<String>()),
+        "contacts" to (listOf(ContactsFiles.FOLDER) to listOf(".vcf")))
     fun contains(scope: String, relative: String): Boolean {
         val (dirs, trashExts) = scopes[scope] ?: return false
         return dirs.any { relative.startsWith("$it/") } || (relative.startsWith("Trash/") && trashExts.any { relative.lowercase().endsWith(it) })

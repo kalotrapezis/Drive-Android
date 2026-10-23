@@ -359,6 +359,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
     var mapsGo by remember { mutableStateOf<Place?>(null) } // a place on Home's Maps card: directions to it start at once
+    var contactsOpen by remember { mutableStateOf<String?>(null) }
+    var mapsSearch by remember { mutableStateOf<String?>(null) } // a contact's address, looked for in Tetra Maps
+    var mapsBack by remember { mutableStateOf(Screen.Home) } // Home's faces: Contacts opens on that person
     var calendarNew by remember { mutableStateOf<NewKind?>(null) } // Home's tiles: the Calendar opens on a new one of that kind
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
@@ -678,7 +681,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
             Applet.Calendar -> { calendarNew = null; screen = Screen.Calendar }
             Applet.Timer -> screen = Screen.Timer
-            Applet.Maps -> { mapsGo = null; screen = Screen.Maps }
+            Applet.Maps -> { mapsGo = null; mapsSearch = null; mapsBack = Screen.Home; screen = Screen.Maps }
+            Applet.Contacts -> { contactsOpen = null; screen = Screen.Contacts }
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -736,6 +740,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Calendar -> Unit
                 Screen.Timer -> Unit
                 Screen.Maps -> Unit
+                Screen.Contacts -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -787,7 +792,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     openCalendar = { calendarNew = null; screen = Screen.Calendar },
                     newEvent = { kind -> calendarNew = kind; screen = Screen.Calendar },
                     openTimer = { screen = Screen.Timer },
-                    openMaps = { place -> mapsGo = place; screen = Screen.Maps },
+                    openMaps = { place -> mapsGo = place; mapsSearch = null; mapsBack = Screen.Home; screen = Screen.Maps },
+                    openContacts = { uid -> contactsOpen = uid; screen = Screen.Contacts },
                 )
                 Screen.Drive -> DriveTab(
                     home = { screen = Screen.Home },
@@ -844,8 +850,11 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Pdf -> pdfOpen?.let { androidx.compose.runtime.key(it) { PdfScreen(back = { screen = writerBack }, open = it, openWords = { w -> writerOpen = w; screen = Screen.Writer }) } }
                 Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
-                }, startKind = calendarNew)
-                Screen.Maps -> MapsScreen(MapsFiles.root(driveRoot()), mapsGo, back = { mapsGo = null; screen = Screen.Home })
+                }, startKind = calendarNew, openContact = { uid -> contactsOpen = uid; screen = Screen.Contacts })
+                Screen.Maps -> MapsScreen(MapsFiles.root(driveRoot()), mapsGo, back = { mapsGo = null; mapsSearch = null; screen = mapsBack }, search = mapsSearch)
+                Screen.Contacts -> ContactsScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
+                    context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                }, start = contactsOpen, openMaps = { q -> mapsGo = null; mapsSearch = q; mapsBack = Screen.Contacts; screen = Screen.Maps })
                 Screen.Timer -> TimerScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
@@ -918,7 +927,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer, Maps }
+private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer, Maps, Contacts }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -960,6 +969,7 @@ private fun Home(
     newEvent: (NewKind) -> Unit,
     openTimer: () -> Unit,
     openMaps: (Place?) -> Unit,
+    openContacts: (String?) -> Unit,
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -1090,21 +1100,24 @@ private fun Home(
                 HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings, Modifier.weight(1f))
             } else HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync)
         }
-        if (wide) items(groups.chunked(2)) { pair ->
+        // Contacts and Maps (23 Oct, the user: Maps one card with 4 slots, Contacts beside it): a pair on a tablet; on a phone
+        // Maps as it was, Contacts under it
+        val more: List<@Composable () -> Unit> = listOf({ HomeContactsGroup(openContacts) }, { HomeMapsGroup(wide, openMaps) })
+        if (wide) items((groups + more).chunked(2)) { pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 pair.forEach { Box(Modifier.weight(1f)) { it() } }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
-        } else items(groups) { it() }
-        item { HomeMapsGroup(wide, openMaps) }
+        } else items(groups + more.reversed()) { it() }
         if (!wide) item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
     }
 }
 
 /**
- * Maps (21 Oct): indigo, the whole width on a tablet (the user, 20 Oct: "A home tab doeble the size, with slots for 6
- * locations"); six saved places beside the map, each one tap to directions there (the user, 21 Oct: "favorite locations
- * navigation with one click"), an empty slot opening the map to save one.
+ * Maps (21 Oct): saved places beside the map, each one tap to directions there (the user, 21 Oct: "favorite locations
+ * navigation with one click"), an empty slot opening the map to save one. A tablet: one group like the others, four places
+ * two by two, beside Contacts (the user, 23 Oct: "4 slots"; the twelve stay in the app); a phone: the first eight, half-size.
+ * Sky blue, the new icon's colour.
  */
 @Composable private fun HomeMapsGroup(wide: Boolean, openMaps: (Place?) -> Unit) {
     val slots by produceState(List<Place?>(MapsFiles.SLOTS) { null }) {
@@ -1113,11 +1126,10 @@ private fun Home(
     HomeGroup(Category.Maps.color) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeArtCard("Maps", R.drawable.maps_art, { openMaps(null) }, Modifier.weight(1f), artSize = 76)
-            Column(Modifier.weight(if (wide) 3f else 1.6f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // a tablet: all twelve, six a row; a phone: the first eight, half-size, two a row (the user, 21 Oct: "very big on
-                // the tablet we can double them"; the phone: "half the size, so we can have 8"); each by its Home name
-                val tint = lookTint(Color(0xFF9FA8DA), Color(0xFF3949AB))
-                if (wide) slots.chunked(6).forEach { row ->
+            Column(Modifier.weight(if (wide) 1f else 1.6f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // a phone: the first eight, half-size, two a row (the user, 21 Oct: "half the size, so we can have 8"); each by its Home name
+                val tint = lookTint(Color(0xFF81D4FA), Color(0xFF0277BD))
+                if (wide) slots.take(4).chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         row.forEach { p ->
                             if (p == null) HomeTile("Add", R.drawable.ic_add, tint.copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
@@ -1133,6 +1145,33 @@ private fun Home(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Contacts (23 Oct): the icon's brown; four favourites' faces beside it, one tap opens that person (the plan's question 7,
+ * its recommended answer), an empty one "Add" opening Contacts.
+ */
+@Composable private fun HomeContactsGroup(open: (String?) -> Unit) {
+    val favs by produceState(emptyList<ContactInfo>()) {
+        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).map { it.info }.filter { it.favourite }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4) }.getOrDefault(emptyList()) }
+    }
+    HomeGroup(Category.Contacts.color) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HomeArtCard("Contacts", R.drawable.contacts_art, { open(null) }, Modifier.weight(1f), artSize = 76)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                (favs + List(4 - favs.size) { null }).chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { f ->
+                        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = Modifier.weight(1f).height(73.dp).clickable { open(f?.uid) }) {
+                            Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                if (f != null) ContactAvatar(f, 40.dp) else Icon(painterResource(R.drawable.ic_add), contentDescription = null, tint = lookTint(Color(0xFFD7A982), Color(0xFF8D5A3B)), modifier = Modifier.size(28.dp))
+                                Text(f?.let { it.given.ifBlank { it.name } } ?: "Add", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    } }
                 }
             }
         }
@@ -1578,8 +1617,10 @@ private fun PairingQrScreen(store: SyncStore, back: () -> Unit) {
 }
 
 /** ML Kit reads codes but cannot draw one, so ZXing does — black and white, no colour to misread. */
-private fun qrBitmap(text: String, size: Int = 640): android.graphics.Bitmap {
-    val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
+internal fun qrBitmap(text: String, size: Int = 640, utf8: Boolean = false): android.graphics.Bitmap {
+    // utf8: Greek letters (a contact's card); ZXing's default is ISO-8859-1. The pairing code is ASCII and stays as it was.
+    val hints = if (utf8) mapOf(com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8") else emptyMap()
+    val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, size, size, hints)
     return android.graphics.Bitmap.createBitmap(matrix.width, matrix.height, android.graphics.Bitmap.Config.ARGB_8888).apply {
         for (x in 0 until matrix.width) for (y in 0 until matrix.height) {
             setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
@@ -2138,7 +2179,8 @@ internal enum class Category(val color: Color, val icon: Int) {
     Text(Color(0xFF8E5BD8), R.drawable.ic_file_text),
     Calendar(Color(0xFFF41879), R.drawable.ic_calendar_today),
     Timer(Color(0xFF00796B), R.drawable.ic_timer),
-    Maps(Color(0xFF5C6BC0), R.drawable.ic_map),
+    Maps(Color(0xFF25C4FE), R.drawable.ic_map),
+    Contacts(CONTACTS_COLOR, R.drawable.ic_contacts),
 }
 
 @Composable

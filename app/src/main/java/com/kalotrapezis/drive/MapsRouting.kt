@@ -42,6 +42,12 @@ internal object MapsRouting {
      */
     const val CAR_TIME = 1.2
 
+    /** How far a search that keeps the car's heading may look before the shortcuts take over (on the computer it gives up on Athens–Thessaloniki in 0.8 s). */
+    private const val MAX_HEADED_NODES = 300_000
+
+    /** What turning back on the road costs a route (GraphHopper's 300 s had it say "turn back" all the way, 23 Oct). */
+    private const val TURN_BACK_SECONDS = 1200
+
     /** maps-graph.yml's profiles, as Jackson reads them there: GraphHopper compares their hash with the graph's. */
     private val PROFILES = linkedMapOf(
         "car" to """{"name":"car","turn_costs":{"vehicle_types":["motorcar","motor_vehicle"]},"custom_model_files":["car.json"]}""",
@@ -80,21 +86,32 @@ internal object MapsRouting {
     }
 
     /** A route by [mode] (car, foot, bike), its directions in [lang] (el or en: GraphHopper's own translations). */
-    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el"): Route =
-        routes(dir, fromLat, fromLng, toLat, toLng, mode, lang).first()
+    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el", heading: Double = Double.NaN): Route =
+        routes(dir, fromLat, fromLng, toLat, toLng, mode, lang, heading).first()
 
     /**
      * Up to three ways there, the fastest first (the user, 21 Oct, beside Google Maps: "can our map have alternative routs with
      * tolls or without, main roads over roral roads"): GraphHopper's alternatives on the same graph; for a car, none that
      * runs a tenth of its way on tracks.
      */
-    fun routes(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el"): List<Route> {
+    fun routes(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el",
+               heading: Double = Double.NaN): List<Route> {
         val gh = open(dir)
         val locale = Locale.forLanguageTag(lang)
         val mode = if (mode == "wheelchair" && "wheelchair" !in profiles(dir)) "foot" else mode // a graph from before Rolling
         val req = GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale).setAlgorithm(Parameters.Algorithms.ALT_ROUTE)
             .setPathDetails(listOf("street_name", "street_ref", "road_environment", "road_class"))
         req.hints.putObject("alternative_route.max_paths", 3)
+        // a moving car goes on the way it faces (the user, 23 Oct: each new route said "turn back" for kilometres): one way,
+        // without the graph's shortcuts, which take no heading; where that search grows too big, the shortcuts without it
+        if (heading.isFinite()) {
+            val ahead = GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale).setHeadings(listOf(heading, Double.NaN))
+                .setAlgorithm(Parameters.Algorithms.ASTAR_BI).setPathDetails(req.pathDetails)
+            ahead.hints.putObject(Parameters.CH.DISABLE, true).putObject(Parameters.Routing.MAX_VISITED_NODES, MAX_HEADED_NODES)
+                .putObject(Parameters.Routing.HEADING_PENALTY, TURN_BACK_SECONDS)
+            val r = gh.route(ahead)
+            if (!r.hasErrors()) return listOf(build(r.best, gh.translationMap.getWithFallBack(locale), lang, mode))
+        }
         var rsp = gh.route(req)
         if (rsp.hasErrors()) rsp = gh.route(req.setAlgorithm("")) // alternatives not to be had here: the one way
         check(!rsp.hasErrors()) { words(rsp.errors.firstOrNull(), lang) }
@@ -195,7 +212,7 @@ internal object MapsRouting {
                 DefaultTurnCostProvider(em.getTurnBooleanEncodedValue(TurnRestriction.key(profile.name)), o, baseGraph.baseGraph,
                     TurnCostsConfig(profile.turnCostsConfig).setUTurnCosts(u))
             } else TurnCostProvider.NO_TURN_COST_PROVIDER
-            val heading = profile.customModel?.headingPenalty ?: Parameters.Routing.DEFAULT_HEADING_PENALTY
+            val heading = hints.getDouble(Parameters.Routing.HEADING_PENALTY, profile.customModel?.headingPenalty ?: Parameters.Routing.DEFAULT_HEADING_PENALTY)
             fun b(n: String) = em.getBooleanEncodedValue(n)
             fun d(n: String) = em.getDecimalEncodedValue(n)
             fun i(n: String) = em.getIntEncodedValue(n)

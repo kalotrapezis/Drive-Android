@@ -1978,6 +1978,15 @@ private fun SettingsTab(
                     }
                     Switch(checked = autoPark, onCheckedChange = { autoPark = it; MapsPrefs.setAutoPark(mapsContext, it) })
                 }
+                var bends by remember { mutableStateOf(MapsPrefs.bends(mapsContext)) }
+                Row(Modifier.fillMaxWidth().clickable { bends = !bends; MapsPrefs.setBends(mapsContext, bends) }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Warn of sharp bends", style = MaterialTheme.typography.titleSmall)
+                        Text("By car, \"Sharp bend to the right ahead\" a little before each tight curve where no turn is said, as on mountain roads.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = bends, onCheckedChange = { bends = it; MapsPrefs.setBends(mapsContext, it) })
+                }
                 var radius by remember { mutableStateOf(MapsPrefs.parkingRadius(mapsContext)) }
                 Text("ΑμεΑ parking near the destination", style = MaterialTheme.typography.titleSmall)
                 Text("How far from where you are going the car's Parking button looks for ΑμεΑ spots.", style = MaterialTheme.typography.bodySmall)

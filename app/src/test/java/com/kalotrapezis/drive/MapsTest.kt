@@ -104,16 +104,16 @@ class MapsImportTest {
 }
 
 class MapsWarningTest {
-    /** At 120 km/h (33 m/s) a turn is warned at 2 km, at ~660 m and at ~165 m; in town at 500 m and 80 m; each once. */
+    /** At 120 km/h (33 m/s) a turn is warned at 2 km, at ~660 m and at ~230 m; in town at 500 m and 120 m (a street early); each once. */
     @Test fun warningsFollowTheSpeed() {
         var said = emptySet<String>()
         val heard = ArrayList<Pair<Int, String>>()
         for (d in 3000 downTo 0 step 30) dueWarning(4, d.toDouble(), 33.0, true, said)?.let { heard += d to it; said = said + "${it}4" }
         assertEquals(listOf("e", "f", "n"), heard.map { it.second })
-        assertTrue(heard[0].first in 2100..2200); assertTrue(heard[1].first in 630..660); assertTrue(heard[2].first in 140..165)
+        assertTrue(heard[0].first in 2100..2200); assertTrue(heard[1].first in 630..660); assertTrue(heard[2].first in 200..231)
         said = emptySet(); heard.clear()
         for (d in 1500 downTo 0 step 10) dueWarning(1, d.toDouble(), 12.0, true, said)?.let { heard += d to it; said = said + "${it}1" }
-        assertEquals(listOf(500 to "f", 80 to "n"), heard)
+        assertEquals(listOf(500 to "f", 120 to "n"), heard)
         assertEquals(2.0 to true, spokenDistance(2140.0, true)); assertEquals(650.0 to false, spokenDistance(660.0, true))
         assertEquals(1.5 to true, spokenDistance(1400.0, true))
     }
@@ -350,5 +350,67 @@ class MapsTripTest {
         assertEquals(22.53, back[0].stops[1].lng, 1e-9)
         MapsFiles.deleteTrip(root, back[0])
         assertTrue(MapsFiles.trips(root).isEmpty())
+    }
+
+    /** A moving car's new route goes on the way it faces, not back (the user, 23 Oct, near Σκάλα: "a new route" every 11 s for 3 km). */
+    @Test fun headed() {
+        val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
+        assumeTrue(File(dir, "properties").isFile)
+        fun bearing(r: Route): Double { // of the route's first ~50 m
+            var k = 1; while (k < r.lats.size - 1 && metresBetween(r.lats[0], r.lngs[0], r.lats[k], r.lngs[k]) < 50) k++
+            val y = Math.sin(Math.toRadians(r.lngs[k] - r.lngs[0])) * Math.cos(Math.toRadians(r.lats[k]))
+            val x = Math.cos(Math.toRadians(r.lats[0])) * Math.sin(Math.toRadians(r.lats[k])) -
+                Math.sin(Math.toRadians(r.lats[0])) * Math.cos(Math.toRadians(r.lats[k])) * Math.cos(Math.toRadians(r.lngs[k] - r.lngs[0]))
+            return (Math.toDegrees(Math.atan2(y, x)) + 360) % 360
+        }
+        fun apart(a: Double, b: Double) = Math.abs(((a - b) % 360 + 540) % 360 - 180)
+        // from Σκάλα to the school of Άγιος Λουκάς; then from points along that way, facing back where it came from
+        val plain = MapsRouting.route(dir, 37.2115, 22.5470, 37.2777, 22.5877, "car")
+        var turned = 0; var tried = 0
+        for (k in listOf(plain.lats.size / 5, plain.lats.size / 3, plain.lats.size / 2, plain.lats.size * 2 / 3)) {
+            val lat = (plain.lats[k] + plain.lats[k + 1]) / 2; val lng = (plain.lngs[k] + plain.lngs[k + 1]) / 2 // between two points: on the road
+            val on = MapsRouting.route(dir, lat, lng, 37.2777, 22.5877, "car")
+            val back = (bearing(on) + 180) % 360
+            val t0 = System.nanoTime()
+            val headed = MapsRouting.route(dir, lat, lng, 37.2777, 22.5877, "car", heading = back)
+            println("at $k: ${on.metres.toInt()} m at ${bearing(on).toInt()}°; facing ${back.toInt()}°: ${headed.metres.toInt()} m at " +
+                "${bearing(headed).toInt()}° in ${(System.nanoTime() - t0) / 1_000_000} ms")
+            tried++; if (apart(bearing(headed), back) < 60) turned++
+        }
+        assertTrue("$turned of $tried went on the way they faced", turned >= tried / 2)
+        val t1 = System.nanoTime() // too far for the headed search: the shortcuts' route, at once
+        val far = MapsRouting.route(dir, 37.9838, 23.7275, 40.6401, 22.9444, "car", heading = 0.0)
+        println("Athens–Thessaloniki facing north: ${far.metres.toInt()} m in ${(System.nanoTime() - t1) / 1_000_000} ms")
+        assertTrue(far.metres in 400_000.0..600_000.0)
+    }
+}
+
+class MapsBendTest {
+    /** A way north then east every 10 m, turning through a curve of radius [radius] m. */
+    private fun way(radius: Double, steps: List<Step> = emptyList()): Route {
+        val lats = ArrayList<Double>(); val lngs = ArrayList<Double>()
+        val m = 1 / 111_320.0; val e = m / Math.cos(Math.toRadians(38.0))
+        for (i in 0..20) { lats += 38.0 + i * 10 * m; lngs += 23.5 } // 200 m north
+        val cy = 38.0 + 200 * m; val cx = 23.5 + radius * e
+        val arc = (Math.PI / 2 * radius / 10).toInt().coerceAtLeast(1)
+        for (k in 1..arc) { val a = Math.PI - k * (Math.PI / 2) / arc; lats += cy + Math.sin(a) * radius * m; lngs += cx + Math.cos(a) * radius * e }
+        val y = lats.last(); val x = lngs.last()
+        for (i in 1..20) { lats += y; lngs += x + i * 10 * e } // 200 m east
+        return Route("car", lats.toDoubleArray(), lngs.toDoubleArray(), 0.0, 0L, steps)
+    }
+
+    @Test fun sharpBendsOnly() {
+        val tight = way(20.0)
+        val bends = bendsOn(tight, cumulative(tight))
+        assertEquals(1, bends.size); assertTrue(bends[0].right); assertEquals(215.0, bends[0].along, 30.0)
+        val wide = way(250.0) // a gentle curve: nothing to say
+        assertTrue(bendsOn(wide, cumulative(wide)).isEmpty())
+        val turn = way(20.0, listOf(Step("Στρίψτε δεξιά", 2, 0.0, 21, ""))) // a turn the directions say already
+        assertTrue(bendsOn(turn, cumulative(turn)).isEmpty())
+        // said once, from 150 m before at town speed, never within the last 30 m
+        assertEquals(null, dueBend(bends, bends[0].along - 200, 10.0, emptySet()))
+        assertEquals(0, dueBend(bends, bends[0].along - 140, 10.0, emptySet()))
+        assertEquals(null, dueBend(bends, bends[0].along - 140, 10.0, setOf("b0")))
+        assertEquals(null, dueBend(bends, bends[0].along - 20, 10.0, emptySet()))
     }
 }

@@ -139,7 +139,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         // on the map: drag it (pan), zoom in and out, and back to me once moved (the user, 22 Oct: "it does not zoom?")
         val mapActions = ActionStrip.Builder().addAction(Action.PAN)
             .addAction(icon(R.drawable.ic_add) { zoom(1.0) }).addAction(icon(R.drawable.ic_remove) { zoom(-1.0) })
-        if (!tracking) mapActions.addAction(icon(R.drawable.ic_my_location) { follow(); invalidate() })
+        // back to the car: while directions run always there (the user, 23 Oct), else once the map was moved
+        if (!tracking || n != null) mapActions.addAction(icon(R.drawable.ic_my_location) { back?.cancel(); follow(); invalidate() })
         val t = NavigationTemplate.Builder().setActionStrip(actions.build()).setMapActionStrip(mapActions.build())
             .setPanModeListener { }
         val message = when {
@@ -690,7 +691,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private fun onFix(loc: Location) {
         here = loc; fixAt = android.os.SystemClock.elapsedRealtime()
         if (signalLost) { signalLost = false; showSpeed() }
-        map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.forceLocationUpdate(loc)
+        map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.let { lc ->
+            lc.forceLocationUpdate(loc)
+            // following, but the camera let go of the car (the user, 23 Oct: at the start it stayed off the car): on it again
+            if (tracking && lc.cameraMode != CameraMode.TRACKING_GPS) { WriterLog.i("Maps car: the camera had left the car"); follow() }
+        }
         // the limit at most every two seconds, off the main thread (the graph is opened the first time)
         if (System.currentTimeMillis() - limitAsked > 2000 && File(graphDir, "properties").isFile) {
             limitAsked = System.currentTimeMillis()
@@ -751,10 +756,15 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         var said = n.said
         val step = n.route.steps[p.next]
-        when (dueWarning(p.next, p.toNext, if (loc.hasSpeed()) loc.speed.toDouble() else 0.0, true, said)) {
-            "n" -> { say(step.text); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
+        val speed = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+        val due = dueWarning(p.next, p.toNext, speed, true, said)
+        when (due) {
+            "n" -> { say(nearWords(lang, p.toNext, true, step.text)); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
             "f" -> { say(MapsPrefs.inDistance(lang, p.toNext, true, step.text)); said = said + "f${p.next}" + "e${p.next}" }
             "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, true, step.text)); said = said + "e${p.next}" }
+        }
+        if (due == null && MapsPrefs.bends(carContext)) dueBend(n.bends, p.along, speed, said)?.let { b ->
+            say(MapsPrefs.bendWords(lang, n.bends[b].right)); said = said + "b$b"
         }
         nav = n.copy(index = i, p = p, offFixes = 0, said = said)
         CarLink.nav.value = nav
@@ -792,13 +802,14 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         val from = here ?: run { CarToast.makeText(carContext, "Waiting for the GPS", CarToast.LENGTH_SHORT).show(); return }
         if (!File(graphDir, "properties").isFile) { CarToast.makeText(carContext, "No routing graph yet in Tetra/Maps", CarToast.LENGTH_LONG).show(); return }
         finding = "Finding the way…"; showSpeed(); invalidate()
+        val t0 = System.currentTimeMillis()
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang) }
+            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang, headingOf(from)) }
                 .onSuccess { MapsSearch.load(root) } } // the tolls on it, below, from the search list (read once)
             finding = null
             r.onSuccess { route ->
                 val rerouted = nav?.target == target
-                WriterLog.i("Maps car: route, ${route.metres.toInt()} m, ${route.steps.size} steps")
+                WriterLog.i("Maps car: route, ${route.metres.toInt()} m, ${route.steps.size} steps, in ${System.currentTimeMillis() - t0} ms")
                 nav = Nav(target, "car", route, cumulative(route), System.currentTimeMillis())
                 lastAlong = 0.0; backFixes = 0
                 val onRoute = runCatching { tollsOn(route, cumulative(route), MapsSearch.load(root)) }.getOrDefault(emptyList())
@@ -829,7 +840,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     /** Telling the car a route started or ended: a car's Android Auto can refuse it ("not a navigation app", the
      *  user's car 23 Oct, Tetra being from Unknown sources) — the route is driven all the same, the car just isn't told. */
-    private fun hostNav(call: NavigationManager.() -> Unit) = runCatching { navigation.call() }.onFailure { WriterLog.e("Maps car: the car refused", it) }
+    private fun hostNav(call: NavigationManager.() -> Unit) = runCatching { navigation.call() }.onFailure { WriterLog.i("Maps car: the car refused: ${it.cause?.cause?.message ?: it.message}") }
 
     fun stop(keepTrip: Boolean = false) {
         if (!keepTrip) { queue = emptyList(); tripLetter = null; waitNext = null; trip = null; MapsPrefs.setPendingTrip(carContext, null) }
@@ -963,8 +974,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             val radii = ItemList.Builder().setSelectedIndex(MapsPrefs.RADII.indexOfFirst { it.first == MapsPrefs.parkingRadius(carContext) }.coerceAtLeast(0))
                 .setOnSelectedListener { i -> MapsPrefs.setParkingRadius(carContext, MapsPrefs.RADII[i].first); nav?.target?.let { tg -> lifecycleScope.launch { showParking(withContext(Dispatchers.IO) { parkingNear(tg).size }) } }; invalidate() }
             MapsPrefs.RADII.forEach { (_, label) -> radii.addItem(Row.Builder().setTitle(label).build()) }
+            val roads = ItemList.Builder().addItem(Row.Builder().setTitle("Warn of sharp bends")
+                .setToggle(androidx.car.app.model.Toggle.Builder { on -> MapsPrefs.setBends(carContext, on) }.setChecked(MapsPrefs.bends(carContext)).build()).build())
             return ListTemplate.Builder().setTitle("Settings").setHeaderAction(Action.BACK)
                 .addSectionedList(androidx.car.app.model.SectionedItemList.create(items.build(), "Voice"))
+                .addSectionedList(androidx.car.app.model.SectionedItemList.create(roads.build(), "Roads"))
                 .addSectionedList(androidx.car.app.model.SectionedItemList.create(radii.build(), "ΑμεΑ parking near the destination")).build()
         }
     }

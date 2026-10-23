@@ -229,7 +229,8 @@ internal fun progress(r: Route, cum: DoubleArray, lat: Double, lng: Double, from
  * follow the speed (the user, 21 Oct, on the Egnatia: "σε 3χμ πάρτη την έξοδο στα δεξιά" — 500 m at 120 km/h is 15 s).
  */
 internal fun dueWarning(step: Int, toNext: Double, speed: Double, car: Boolean, said: Set<String>): String? {
-    val near = if (car) maxOf(80.0, speed * 5) else 20.0
+    // by car a street early in town, 150 m or more out of it (the user, 23 Oct: at 50 m there was no slowing down for it)
+    val near = if (car) maxOf(120.0, speed * 7) else 20.0
     val far = if (car) maxOf(500.0, speed * 20) else 150.0
     return when {
         toNext <= near -> "n".takeIf { "n$step" !in said }
@@ -238,6 +239,46 @@ internal fun dueWarning(step: Int, toNext: Double, speed: Double, car: Boolean, 
         else -> null
     }
 }
+
+/** A sharp bend on a route where no turn is said: [along] metres from its start, to the [right] or left. */
+internal data class Bend(val along: Double, val right: Boolean)
+
+/**
+ * The sharp bends of route [r] (its [cum]ulative metres), for "a sharp bend ahead" on mountain roads (the user, 23 Oct, by
+ * Σκάλα): where the way turns 60° or more between 40 m before a point and 40 m after it — a curve of ~50 m radius or
+ * tighter — and no turn of the directions is within 50 m.
+ */
+internal fun bendsOn(r: Route, cum: DoubleArray): List<Bend> {
+    val n = r.lats.size
+    if (n < 3) return emptyList()
+    fun bearing(a: Int, b: Int): Double {
+        val la1 = Math.toRadians(r.lats[a]); val la2 = Math.toRadians(r.lats[b]); val dl = Math.toRadians(r.lngs[b] - r.lngs[a])
+        return Math.toDegrees(Math.atan2(Math.sin(dl) * Math.cos(la2), Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dl)))
+    }
+    val turns = r.steps.filter { it.sign != 0 && it.at in 0 until n }.map { cum[it.at] }
+    val found = ArrayList<Pair<Double, Double>>() // along, the turn there (+ right)
+    var a = 0; var b = 0
+    for (i in 1 until n - 1) {
+        while (a + 1 < i && cum[i] - cum[a + 1] >= 40) a++
+        while (b < n - 1 && (b <= i || cum[b] - cum[i] < 40)) b++
+        if (cum[i] - cum[a] < 40 || cum[b] - cum[i] < 40) continue
+        val turn = ((bearing(i, b) - bearing(a, i)) % 360 + 540) % 360 - 180
+        if (Math.abs(turn) < 60 || turns.any { Math.abs(it - cum[i]) < 50 }) continue
+        val last = found.lastOrNull()
+        if (last != null && cum[i] - last.first < 60 && (last.second > 0) == (turn > 0)) { // the same bend: its sharpest point
+            if (Math.abs(turn) > Math.abs(last.second)) found[found.lastIndex] = cum[i] to turn
+        } else found += cum[i] to turn
+    }
+    return found.map { Bend(it.first, it.second > 0) }
+}
+
+/** The warning at a turn: with its distance while that is over 100 m by car, so the right street is clear. */
+internal fun nearWords(lang: String, toNext: Double, car: Boolean, text: String) =
+    if (car && toNext > 100) MapsPrefs.inDistance(lang, toNext, true, text) else text
+
+/** The sharp bend ([bendsOn]) to warn of now, as its index: 30 m to ~7 s ahead (150 m at least), once each. */
+internal fun dueBend(bends: List<Bend>, along: Double, speed: Double, said: Set<String>): Int? =
+    bends.indices.firstOrNull { i -> "b$i" !in said && bends[i].along - along in 30.0..maxOf(150.0, speed * 7) }
 
 /** A warning's distance as said: whole or half kilometres from 1 km, else metres to 50 (to 10 on foot). */
 internal fun spokenDistance(m: Double, car: Boolean): Pair<Double, Boolean> =
@@ -260,6 +301,9 @@ internal fun tollsOn(r: Route, cum: DoubleArray, pois: List<Poi>): List<Pair<Poi
         else if (out.last().first.name.isEmpty() && t.first.name.isNotEmpty()) out[out.lastIndex] = t
     return out
 }
+
+/** The way a moving car faces, from the GPS (the compass shows the phone in its holder, and the car's metal sways it); NaN when slow. */
+internal fun headingOf(loc: android.location.Location): Double = if (loc.hasBearing() && loc.hasSpeed() && loc.speed > 2.5f) loc.bearing.toDouble() else Double.NaN
 
 internal fun metresBetween(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
     val p1 = Math.toRadians(lat1); val p2 = Math.toRadians(lat2)

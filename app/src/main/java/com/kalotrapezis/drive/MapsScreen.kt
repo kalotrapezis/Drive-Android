@@ -200,6 +200,7 @@ private data class Preview(val target: Place, val mode: String, val routes: List
 internal data class Nav(
     val target: Place, val mode: String, val route: Route, val cum: DoubleArray, val since: Long,
     val index: Int = 0, val p: Progress? = null, val offFixes: Int = 0, val said: Set<String> = emptySet(),
+    val bends: List<Bend> = if (mode == "car") bendsOn(route, cum) else emptyList(),
 )
 
 /**
@@ -214,6 +215,11 @@ internal object MapsPrefs {
     fun setMapTheme(c: Context, theme: String) = prefs(c).edit().putString("map_theme", theme).apply()
     fun rolling(c: Context) = prefs(c).getBoolean("rolling", false)
     fun setRolling(c: Context, on: Boolean) = prefs(c).edit().putBoolean("rolling", on).apply()
+    fun bends(c: Context) = prefs(c).getBoolean("bends", true)
+    fun setBends(c: Context, on: Boolean) = prefs(c).edit().putBoolean("bends", on).apply()
+    /** What is said a little before a sharp bend ([bendsOn]). */
+    fun bendWords(lang: String, right: Boolean) = if (lang == "en") "Sharp bend to the ${if (right) "right" else "left"} ahead"
+        else "Ακολουθεί απότομη στροφή ${if (right) "δεξιά" else "αριστερά"}"
     fun autoPark(c: Context) = prefs(c).getBoolean("auto_park", true)
     fun setAutoPark(c: Context, on: Boolean) = prefs(c).edit().putBoolean("auto_park", on).apply()
     fun openAtCar(c: Context) = prefs(c).getBoolean("open_at_car", false)
@@ -423,7 +429,8 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         if (target.id.isEmpty()) MapsPrefs.addRecent(context, target)
         finding = "Finding the way…"
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.routes(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), lang) } }
+            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.routes(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), lang,
+                if (mode == "car" && !choose) headingOf(from) else Double.NaN) } }
             finding = null
             r.onSuccess { routes ->
                 if (choose && routes.size > 1) {
@@ -500,10 +507,15 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             Toast.makeText(context, "Arrived: ${n.target.name}", Toast.LENGTH_LONG).show(); return
         }
         val step = n.route.steps[p.next]
-        when (dueWarning(p.next, p.toNext, if (loc.hasSpeed()) loc.speed.toDouble() else 0.0, car, said)) {
-            "n" -> { say(step.text); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
+        val speed = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+        val due = dueWarning(p.next, p.toNext, speed, car, said)
+        when (due) {
+            "n" -> { say(nearWords(lang, p.toNext, car, step.text)); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
             "f" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, step.text)); said = said + "f${p.next}" + "e${p.next}" }
             "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, step.text)); said = said + "e${p.next}" }
+        }
+        if (due == null && car && MapsPrefs.bends(context)) dueBend(n.bends, p.along, speed, said)?.let { b ->
+            say(MapsPrefs.bendWords(lang, n.bends[b].right)); said = said + "b$b"
         }
         nav = n.copy(index = i, p = p, offFixes = 0, said = said)
     }

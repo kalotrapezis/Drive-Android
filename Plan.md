@@ -187,7 +187,10 @@ How to write here:
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
 - [x] (contacts-build session, 23 Oct; branch claude/contacts-583397, not merged) **Contacts** on Android, § Contacts steps 1–8
-      (step 9 later); sync and desktop now (the user, 23 Oct: "now do the desktop and the sync"). On the phone (main + the branch, 22:32): 318 of its
+      (step 9 later). Then the sync and the desktop (the user, 23 Oct: "now do the desktop and the sync"): main merged
+      into the branch; scope `contacts` (SYNC_PLAN 6ap) — on the real pair a PC-made contact reached the phone in 7 s with
+      its birthday's event, a star on the phone the PC in 4 s, a delete on the PC the phone's Trash in 6 s; desktop Contacts
+      (Drive branch `contacts`, Drive-worktrees/contacts: contacts.js + Contacts.tsx, 0.6.0-beta.6 .deb built, not installed). On the phone (main + the branch, 22:32): 318 of its
       contacts imported (71 photos, 14 birthdays into Γενέθλια), WhatsApp/Viber chips and Message strip seen. Waiting on the
       user there: Link birthdays (2 suggested — "Ελπίδα (Όνομα)" may be a name day), Merge & fix (12), Allow for History and
       In the phone's contacts. Tablet not connected: seen on the tablet emulator only.
@@ -2263,7 +2266,7 @@ I press Call on the PC and it starts on the phone?") — no dialer app needed fo
 - [x] (6e1314b, 290ca1a) 8. Home and the icons (the user, 23 Oct: "Contacts light brown, the icon yes, 4 slots"): Contacts'
    group (its icon, four favourites' faces); on the tablet Maps one group with four places beside it, on the phone as it
    was with Contacts under it; Maps' new icon (maps.png) and Home's Maps group in its sky blue (#25C4FE; the map's own
-   markers stay indigo). Desktop Contacts waits for the sync step.
+   markers stay indigo). Desktop Contacts: Drive branch `contacts` (ea6f7a3), the tablet's layout, the same files.
 - [x] (52f7d96) Choose many (the user, 23 Oct: "how do I multi select?"): long press, then Label · Favourites · Share ·
    Export · Merge (two) · Delete.
 9. Calls through the PC: the ringing on the PC with Answer/Reject, Call on the PC dialling on the phone, the voice by Bluetooth.

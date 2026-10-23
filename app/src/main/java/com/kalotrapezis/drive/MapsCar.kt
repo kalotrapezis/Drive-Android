@@ -297,7 +297,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         parkingSpots = count
         parkingButton?.apply {
             visibility = if (count > 0) android.view.View.VISIBLE else android.view.View.GONE
-            (getChildAt(1) as? android.widget.TextView)?.text = "Parking $count"
+            (getChildAt(1) as? android.widget.TextView)?.apply { text = "$count"; visibility = if (count > 0) android.view.View.VISIBLE else android.view.View.GONE }
         }
     }
 
@@ -388,23 +388,22 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     private fun etaCard(c: android.content.Context): android.view.View {
         eta = android.widget.TextView(c).apply { gravity = android.view.Gravity.CENTER; setTextColor(Color.WHITE); typeface = android.graphics.Typeface.DEFAULT_BOLD }
-        // labelled buttons, two by two, filling the space under the card (the user, 22 Oct: "at the bottom you can still make
-        // it bigger its just ded space … favoriets, nearby and parking")
+        // the buttons as icons side by side in one row, so the card is low and the map large (the user, 23 Oct: "remove all
+        // text from the buttons so we can place them side by side"); End the red ✕; Parking with its count
         fun button(icon: Int, label: String, color: Int, tap: () -> Unit) = android.widget.LinearLayout(c).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER
             background = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = 100 * u }
+            contentDescription = label
             addView(android.widget.ImageView(c).apply { setImageResource(icon); setColorFilter(Color.WHITE) })
-            addView(android.widget.TextView(c).apply { text = label; setTextColor(Color.WHITE); typeface = android.graphics.Typeface.DEFAULT_BOLD; maxLines = 1 })
+            addView(android.widget.TextView(c).apply { setTextColor(Color.WHITE); typeface = android.graphics.Typeface.DEFAULT_BOLD; maxLines = 1; visibility = android.view.View.GONE })
         }.also { etaTaps = etaTaps + (it to tap) }
         etaTaps = emptyList()
         fun row(vararg b: android.view.View) = android.widget.LinearLayout(c).apply { orientation = android.widget.LinearLayout.HORIZONTAL; b.forEach(::addView) }
         parkingButton = button(R.drawable.ic_accessible, "Parking", 0xFF1565C0.toInt()) { nav?.let { screenManager.push(ParkingScreen(it.target)) } }
-        etaButtons = android.widget.LinearLayout(c).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            addView(row(button(R.drawable.ic_close, "End", 0xFFC62828.toInt()) { stop() },
-                button(R.drawable.ic_call_split, "Routes", 0xFF5F6368.toInt()) { nav?.let { screenManager.push(RoutesScreen(it.target)) } }))
-            addView(row(button(R.drawable.ic_add_location, "Stop", 0xFF5F6368.toInt()) { screenManager.push(KindsScreen(stop = true)) }, parkingButton!!.apply { visibility = if (parkingSpots > 0) android.view.View.VISIBLE else android.view.View.GONE }))
-        }
+        etaButtons = row(button(R.drawable.ic_close, "End", 0xFFC62828.toInt()) { stop() },
+            button(R.drawable.ic_call_split, "Routes", 0xFF5F6368.toInt()) { nav?.let { screenManager.push(RoutesScreen(it.target)) } },
+            button(R.drawable.ic_add_location, "Stop", 0xFF5F6368.toInt()) { screenManager.push(KindsScreen(stop = true)) },
+            parkingButton!!.apply { visibility = if (parkingSpots > 0) android.view.View.VISIBLE else android.view.View.GONE })
         return android.widget.LinearLayout(c).also { etaBox = it }.apply {
             orientation = android.widget.LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply { setColor(0xF0303134.toInt()); cornerRadius = 3 * u }

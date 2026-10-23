@@ -186,6 +186,11 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
+- [ ] (the user, 23 Oct: "with Bluetooth, could Files be in the sharing menu so you send files to the PC at once?")
+      **Send to computer** in Android's share menu: Tetra a share target (ACTION_SEND / SEND_MULTIPLE, any type); the
+      files go to the paired computer at once over the Wi-Fi link sync already has (not Bluetooth: ~2 Mbit/s against
+      Wi-Fi's tens to hundreds), into a folder there (where: the user's call); offline → waits and goes when the PC is
+      seen, as ScopedSync's job. Desktop the other way: "Send to phone". Not started.
 - [x] (f5c3277, 23 Oct) Android Auto in the user's car: stuck on "Finding the way…" — the car refused navigationStarted and
       the HostException crashed Tetra; now logged and the route driven anyway. Android Auto lists a sideloaded Car App
       Library app in a real car only after a desktop head unit run (Unknown sources doesn't cover it, Google's docs); every
@@ -209,6 +214,8 @@ How to write here:
       -PT15H "Reminder", SEQUENCE 1), 16:53:27Z Delete › This event on 27 Jun 2027 in Personal (EXDATE, SEQUENCE 1);
       both moved into the phone's Trash. Desktop 0.6.0-beta.4 installed; Personal cleaned (387, no copies); phone and
       computer Calendar byte for byte the same (468 files). Tablet not yet synced (hotspot isolates it); APKs not installed.
+- [x] (contacts-plan session, 23 Oct) **Contacts** planned, not built (§ Contacts below): research, files, sync, birthdays,
+      photos from Photos' faces, UI, Home, icons, integrations. Nine questions at its end wait for the user's answers.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode
@@ -224,6 +231,7 @@ How to write here:
   merge/split, pictures' brightness/contrast, SmartArt, right-to-left text.
   Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
   (1), (5). Change it in the morning if you like; each is a commit of its own, ticked here as it is done.
+- (23 Oct) **Contacts**: the plan's nine questions (§ Contacts › Questions for the user); nothing is built before the yes.
 - (none else now — the .odp's sources: answered 17 Oct, see B › References)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)
@@ -1974,6 +1982,274 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.
+
+## Contacts — the next applet (planned 23 Oct by the contacts-plan session; nothing built until the user agrees)
+
+**The user, 23 Oct (in Greek, relayed):** a Contacts applet: what Google Contacts has, Tetra's own way; the photo from the
+faces Photos already finds; each birthday an event in the right calendar (now: move the birthdays out of Google
+Contacts); synced to the desktop and the storage drive by itself; the classic island; the contact page like the
+iPhone's (round photo, name, round Message/Call/Video/Mail buttons, Details | Voicemail, the last call, Call history);
+on the tablet's Home, Maps shrinks to one card so Contacts fits; a brown colour; the two new icons; Viber, Revolut and
+other apps. Free software: Google's and Apple's apps are feature lists only.
+
+### What Google Contacts has (checked 23 Oct) → what Tetra's has
+| Google Contacts | Tetra |
+|---|---|
+| Name: prefix, first, middle, last, suffix, phonetic, nickname, "file as" | the same (N, FN, NICKNAME, X-PHONETIC-*); sort by first or last name (setting) |
+| Company, job title, department | the same (ORG, TITLE) |
+| Phones, emails, addresses, websites, chat/SIP — each with a label (Mobile, Home, Work, custom) | the same, labels as Google writes them (TYPE, or `itemN.X-ABLabel` for custom ones) |
+| Birthday (year optional), significant dates (Anniversary, custom) | the same; each becomes a yearly event in a calendar (below) |
+| Related people (Spouse, Mother, Child, custom) | the same (`itemN.X-ABRELATEDNAMES`); a related name that is a contact opens it |
+| Custom fields, notes | the same (NOTE; custom fields as Google's X- lines, kept) |
+| Labels (groups), one contact in many | the same — `CATEGORIES`, so not folders (a contact can be in several) |
+| Starred (favourites) | Favourites (Google writes `starred` in CATEGORIES; Tetra the same, so it round-trips) |
+| Photo | from Photos' faces (below), or any photo cropped, or the imported one |
+| Merge & fix: suggested duplicates (same name/phone/email), merge one or all, dismiss | the same; a dismissed pair stays dismissed on every device |
+| Import vCard / CSV; export Google CSV, Outlook CSV, vCard (all, starred, a label) | import vCard 2.1/3.0/4.0 (Samsung's, Google's, Apple's), Google CSV, a Takeout zip, the phone's own contacts; export vCard (all, favourites, a label) |
+| Trash (30 days), "Undo changes" (back to a time) | Tetra's Trash (moving the file), Files' version history for a file |
+| "Other contacts" (people you e-mailed), contact sharing from Gmail | no (Tetra reads no mail) |
+| Google Takeout › Contacts: a zip, one .vcf per label (`All Contacts/All Contacts.vcf`) | read as a zip: labels from the folder names and CATEGORIES |
+
+Not doing: Google's account sync or API (no sign-in, nothing online), directory/workspace contacts, "Other contacts".
+Seen in the user's own exports (only field names counted): Samsung's two (vCard 2.1, 242 contacts each, 54/115 photos
+inline, `X-SAMSUNGADR`, birthdays `YYYY-MM-DD`) and Google's (vCard 3.0, 198 contacts, labels in CATEGORIES, custom labels
+as `itemN.X-ABLabel`, photos as googleusercontent links, birthdays `YYYYMMDD`). The importer must read all of these.
+
+### The files (the Calendar's way: one file per contact, plain, any AI can edit)
+```
+Tetra/Contacts/                        (~/Tetra/Files/Contacts on the PC, /sdcard/Tetra/Contacts on a phone)
+  maria-papadopoulou-3f9a2c.vcf        one contact = one vCard; the file name means nothing, the UID inside is the identity
+  dentist-81be07.vcf
+```
+- **vCard 3.0** (RFC 2426) — what Google and Apple export and Android's own importer takes; a year-less birthday as
+  `BDAY:--10-23` (vCard 4's form; Google and Apple read it). Read forgiving: 2.1 (QUOTED-PRINTABLE, CHARSET), 3.0, 4.0,
+  `YYYYMMDD`, Apple's `1604-` year. Write strict (CRLF, folded at 75). **Lines Tetra does not understand are kept as
+  they were** (the Calendar's rule): an edit changes only its lines.
+- Tetra's own lines: `UID`, `REV` (last change, for "the newer of two versions"), `X-TETRA-PERSON:<Photos person uuid>`
+  (the face the photo came from), `X-TETRA-NOT-DUPLICATE:<other UID>` (a dismissed merge suggestion).
+- **The photo inside the file** (`PHOTO;ENCODING=b;TYPE=JPEG:`, 512 px square, ~40 KB): the contact stays one file that
+  any app imports with its face; 250 contacts ≈ 10 MB. (A photo beside the file would be two files to keep in step.)
+- New file name: the name plus six letters of the UID's hash, never renamed (Calendar's rule). Delete = move to
+  `Tetra/Trash/` (never rm; SYNC_PLAN 6an). Two versions after a sync (`x (2).vcf`, same UID): shown as one, the newer
+  REV, with "2 versions · Keep this one", as the Calendar does.
+- No folders inside: labels are CATEGORIES, not folders (a contact is often in two). `Contacts` becomes a required
+  folder like `Calendar` and is hidden in Files (as the Calendar's and Timer's are) — or shown (question 3).
+
+### Sync — desktop and the storage drive, by itself
+- **Later** (the user, 23 Oct: "keep the sync for later so we dont have conflicts"): the Contacts builder touches no
+  sync code (DriveFiles.kt's DriveScope, Sync*.kt, desktop sync.js/files.js) until the send-to-computer work is in.
+- **Nothing new to build for the files**: Files sync already carries everything under Tetra. As the Calendar: a
+  scope `contacts` = `Contacts/` + the Trash's `.vcf` — one line in `DriveScope` (DriveFiles.kt) and one in the
+  desktop's `files.js SCOPES` — and `ScopedSync.soon(context, "contacts", …)` after every save, so a change is on the
+  other devices in seconds (SYNC_PLAN 6am), deletions followed into Trash (6an).
+- **The storage drive (T7-TEO)**: the desktop's backup to a drive already copies Drive's files when the drive's rule has
+  "Files" on (sync.js backUpToDrive) — Contacts go with them, nothing to build. To check with the user: that rule is on.
+- The phone's system contacts (below) are a copy made from the files, never synced themselves.
+
+### Birthdays (and other dates) into the right calendar
+- **The contact is the truth; the event follows it.** Settings › Contacts › "Birthdays go into": a calendar, by default
+  `Γενέθλια` (the one with that name or "Birthdays"; asked once if neither). Anniversaries/other dates: the same
+  calendar, or another (setting).
+- Each birthday = one `.ics` in that calendar, written by Contacts: all day, `RRULE:FREQ=YEARLY`, `SUMMARY` the name,
+  `X-TETRA-BIRTH-YEAR` when the year is known (the age shows, as the Calendar's Birthday action), `X-TETRA-CONTACT:<UID>`,
+  the reminders Γενέθλια's events use now (9:00 on the day and 9:00 the day before; two also a week before) unless
+  the setting says otherwise. Changing or removing the birthday in Contacts rewrites the event or moves it to
+  Trash; the contact moved to Trash → its events too. In the Calendar, such an event shows "From Contacts" and Edit opens
+  the contact's birthday (one place to change it).
+- **The 11 events already in Γενέθλια** (from Google Calendar): on the first import each is matched to a contact by name;
+  a review list shows the pairs ("Link" adds `X-TETRA-CONTACT` to the existing file — no second event), the unmatched
+  stay as they are. No duplicates either way.
+- **The Calendar's own Birthday action** writes into a calendar called "Birthdays" and makes one if missing — next to
+  Γενέθλια that would make a second birthdays calendar. It uses the same setting from now on (and offers "Save as a
+  contact too").
+- **Moving the birthdays out of Google Contacts now** (the user's immediate need): contacts.google.com › Export ›
+  vCard (or Takeout's zip) → Tetra › Contacts › Import → every contact in, every birthday into Γενέθλια, matched with the
+  11 already there. Until the applet exists, the same could be done once by hand with the tetra-calendar skill from the
+  exported .vcf (question 5).
+- Later, if wanted: Greek name days (ονομαστικές εορτές) for each contact from a list of the fixed ones and the Easter-
+  dependent ones (question 6).
+
+### The photo from Photos' faces
+- Photos already groups faces into people, each with a **uuid that crosses devices** (face_groups.uuid, SYNC_PLAN 6y)
+  and a cover face (cover_uuid with its box in face_samples). Phone and desktop agree on both.
+- **Link**: a contact's photo › "From Photos": the people Photos knows, those whose name matches the contact's first;
+  tap one → its faces (the cover first) → tap the best → the face cropped square with room round it (the box × 1.8),
+  512 px, into the contact's PHOTO, and `X-TETRA-PERSON` set. Also from the other side: a person's page in Photos ›
+  "Contact" (link to one, or make one with that name).
+- **Many at once**: after an import, "Photos knows 37 of these people — use their faces?" — a list, each with its face,
+  untick any, OK.
+- What it gives back: the contact page shows "In Photos: 213 photos" with a strip of the latest; Photos' person shows
+  the contact's call/message buttons.
+- The photo is copied into the file on purpose: other apps, the desktop and an export see it without Photos.
+  "Update from Photos" makes it again (e.g. after a new cover).
+- Other sources: any picture (picked, cropped round), the photo an import brought (Samsung's inline ones; Google's
+  googleusercontent links fetched once at import — the only network use, can be skipped), Remove → the initial.
+
+### Screens (the classic Tetra island; the iPhone's page made Tetra's)
+**Phone — the list**
+```
+ ( Search contacts ………………… )         ← top pill, floats over the list as in Files
+ ★ Favourites:  (●)(●)(●)(●)(●) →       ← round faces, one tap opens, long tap calls
+ A  Αλέξης Π.                    (●)
+    Άννα Κ.                      (●)
+ B  …                                 ‹A–Ω› letter rail at the right edge
+ [ All · Favourites · Labels ]   (+)    ← bottom island, + New contact at the right;
+                                           pulled up: the drawer (Import, Export, Merge & fix (3), Trash, Settings)
+```
+**Phone — a contact** (the user's screenshot, in Tetra's dark look and the contact's own colour)
+```
+ (‹)                              (Edit)
+            ╭─────────╮
+            │  photo  │                  ← 120 dp circle: the face, or the initial on a soft brown gradient
+            ╰─────────╯
+          Μαρία Παπαδοπούλου
+          Teacher · 3rd Primary
+   (💬)   (📞)   (🎥)   (✉)                ← round buttons; one with several ways opens a bottom strip
+  [  Details  |  History  ]              ← "History" instead of Voicemail (see Integrations)
+ ┌ Last call ─ Mon 15:36 · in · 2 min ┐
+ │ Call history                     › │
+ └────────────────────────────────────┘
+ ┌ Mobile   +30 69…  (Viber)(WhatsApp)┐  ← each number's apps as small chips
+ │ Home     +30 2310…                 │
+ ├ Email    maria@…                   ┤
+ ├ Birthday 23 Oct · turns 41 · Γενέθλια ┤
+ ├ Address  Οδός Παραδείγματος 3   Open in Maps ┤  ← Tetra Maps
+ ├ Labels   Family · School           ┤
+ ├ Notes …                            ┤
+ └ In Photos  213 photos  [▣▣▣▣▣ ›]   ┘
+```
+History = calls with this person (from the phone's call log), and Tetra's own: events with them (the birthday, events
+naming them), notes naming them.
+Message → a strip: SMS · Viber · WhatsApp · Signal… (those the number has, below), per number; Call → Phone · Viber ·
+WhatsApp; Video → WhatsApp/Viber/Meet video; Mail → the address(es). The first choice can be remembered per contact.
+
+**Edit** (Edit at the top right, as the iPhone): one page, the fields grouped (name, phones, emails, dates, address,
+more…), "Add field" for the rest (Google's Show more), ✓/× at the top. Many fields → a full page, not a popup (the
+Office rule).
+
+**Tablet / wide**: the list at the left (≈ 360 dp, its search pill on top), the open contact on the right as the phone's
+page, wider (the buttons and cards in two columns under the photo); the island at the bottom left (All · Favourites ·
+Labels), + at the right; Merge & fix and Import in the drawer. Portrait tablet: the phone's layout. Desktop: the same as
+the tablet at the same widths (Notes' island and drawer), files read on every look and fs.watch'd as the Calendar.
+
+**Merge & fix**: pairs side by side, the fields that differ marked; Merge (all values kept, one file, the other to
+Trash) · Not the same (remembered in both files) · Merge all.
+
+### Home
+- **Tablet**: the groups stay two by two; Maps is no longer the whole width but one group like the others (its art and
+  four places, 2×2 — the twelve stay in the app), paired with **Contacts**: its art and four favourites as round faces
+  (an empty one "Add"), or New · Search · Favourites · Import (question 7).
+- **Phone**: Contacts a group of its own under Maps; Maps unchanged (its eight half-size places).
+- **Colour**: **the icon's own brown, ≈ #BB7848** (its edges run #B06E40–#C78656; tools/applet-icons.py takes the
+  launcher's from the art as for every applet) — no applet is brown yet; tiles `lookTint(#D7A982 light, #8D5A3B dark)`.
+- **Maps' colour**: the new Maps icon is sky blue (#24C3FE), the Maps group indigo (#5C6BC0). The groups follow their
+  art's colour, so Maps → sky blue (distinct from Files' navy), question 8.
+
+### Icons (found: ~/Tetra/Files/contacts.png and ~/Tetra/Files/maps.png, 1254 px, 23 Oct 20:39–20:40)
+- Both are tiles with white corners, like the user's 17 Oct tiles: `tools/applet-icons.py` already cuts the corners
+  (flood fill), makes Home's art (`drawable-nodpi/<name>_art.png`), the launcher foreground and `applet_colors.xml`.
+  Wiring = add ("maps", "maps_art") and ("contacts", "contacts_art") to its two lists and run it; delete the hand-made
+  vector `maps_art.xml`, `maps_launcher_fg.xml` and `applet_maps.xml`; `Applet.Contacts` + the `AppContacts` alias in the
+  manifest (Settings › App icons). The two PNGs are copied into the repo's icon source folder first (not read from
+  ~/Tetra at build time).
+- Desktop: its nav uses symbol icons (Icon.tsx), not the art; Contacts gets a person symbol in its brown.
+
+### Outside Tetra: what Android and the desktop allow (public APIs only, nothing paid)
+**Possible on Android**
+- Call: `ACTION_DIAL tel:` (no permission, opens the dialer) or `ACTION_CALL` (CALL_PHONE: rings at once). SMS:
+  `smsto:`. Mail: `mailto:`. Address: geo: → Tetra Maps.
+- **Other apps for a number — the system's own way**: Viber, WhatsApp, Signal, Telegram, Meet put rows in the phone's
+  contacts for the numbers that have them (their own MIME types, e.g. Viber's "Free message"/"Free call", WhatsApp's
+  "Message"/"Voice call"/"Video call"). With READ_CONTACTS Tetra reads those rows for a contact's numbers and opens one
+  with `ACTION_VIEW` on the row — exactly what the phone's own Contacts app does, so Message/Call/Video show only the
+  apps that work for that number. Fallback links: `https://wa.me/<number>`, `viber://chat?number=<number>` (Viber does
+  not document it; to try on the phone), `https://signal.me/#p/+<number>`, `tg://resolve?phone=<number>`.
+- **Tetra's contacts seen by every app**: Tetra adds its own account ("Tetra", AccountManager) and writes its contacts
+  into the system provider (ContactsContract RawContacts, read-only to other apps) from the files, one way. Then the
+  dialer's caller ID, Viber/WhatsApp names, Android Auto's calling in the car and the keyboard all know them. Android
+  joins them with the same person from the Google account. Edits are made in Tetra (the files are the truth).
+- **The phone's contacts into Tetra**: the Google account's contacts already on the phone are read once (READ_CONTACTS,
+  photos full size) — Google's contacts in without any export.
+- Call history: READ_CALL_LOG, the calls to and from a contact's numbers. A restricted permission (Google Play allows it
+  only for dialers); Tetra is installed by adb (tools/phone-install.sh), which allows it — to check on the phone.
+- Share a contact: as a .vcf (Viber, WhatsApp, mail take it) or as a QR code (the Codes applet; scanning a vCard QR
+  there offers "Add to Contacts").
+- **Revolut**: there is no public way to send money to a phone number from another app. What works: a contact's
+  Revolut username (a field "Revolut") opens `https://revolut.me/<username>` in Revolut to pay them. IRIS (Greek bank
+  payments) has no public link either.
+
+**Not possible (said plainly)**
+- **Voicemail**: only the default phone app or the carrier's voicemail app may read it — so the iPhone's "Voicemail"
+  tab becomes "History".
+- Making Tetra the phone's dialer (the in-call screen, recording): possible only by becoming the default phone app —
+  a whole dialer; not proposed.
+- Reading Viber/WhatsApp chats, Viber Out credit, Revolut balances or payments: private, no public API.
+- Google Contacts' own sync or API: needs a Google account sign-in and Google's servers — not Tetra's way.
+
+**The desktop**
+- The same files, a Contacts view as the tablet's. Mail opens `mailto:`; Viber desktop `viber://chat?number=`; WhatsApp
+  `https://wa.me/…`. **A PC cannot place a phone call itself**; "Call on the phone" could ask the paired phone to dial
+  (the computer already asks the phone things, SYNC_PLAN 6am) — later, question 9.
+
+### Calls through the PC (the user, 23 Oct: "a notification from Tetra and I answer on the PC when the phone rings, or
+I press Call on the PC and it starts on the phone?") — no dialer app needed for either
+- **The phone rings → the PC shows it**: Tetra on the phone sees the call ringing (READ_PHONE_STATE, the number with
+  READ_CALL_LOG) and tells the paired computer over Wi-Fi; desktop Tetra shows "Μαρία Π. is calling" with her photo,
+  Answer · Reject. Answer → the phone answers (TelecomManager.acceptRingingCall, ANSWER_PHONE_CALLS — a runtime
+  permission any app may ask); Reject / Hang up → endCall (same permission; Android marks it old — to try on the Xiaomi).
+- **Call on the PC → the phone dials**: `POST /call` on the phone's SyncServer, as `/location` (6am): the same token
+  and certificate; `SyncListenService` already listens with Tetra closed; the phone places it (TelecomManager.placeCall,
+  CALL_PHONE). To check on the Xiaomi: HyperOS may hold calls started in the background (its "pop-up windows while in
+  the background" permission). No phone answering → "Open Tetra on the phone", as the location says.
+- **Where you talk**: only the PC's Bluetooth can carry the call's sound — paired as a hands-free kit (the PC here:
+  Bluetooth controller, PipeWire 1.6.2, which has the hands-free role; not tried). Over Wi-Fi it is not possible: Android
+  lets no app take a call's sound. So: Tetra carries the ringing and the buttons over Wi-Fi, Bluetooth the voice;
+  without Bluetooth an answered call is spoken on the phone.
+- **Bluetooth in the pairing** (the user, 23 Oct: "after the QR code in the setup ask for a Bluetooth connection too,
+  and a Skip for whoever does not want it"): the computer's QR also carries its Bluetooth address; after the scan the
+  phone asks "Connect Bluetooth for calls on the computer?" — Connect (BLUETOOTH_CONNECT; the phone bonds to that
+  address, desktop Tetra makes the PC pairable for that minute and shows the same six digits as the phone) · Skip.
+  Settings › Sync › the computer's card offers it again later. Phones only (a tablet has no calls).
+- **Without Bluetooth** (the user: "on the contacts page, tapping the phone greyed out without Bluetooth, with a caption
+  Connect bluetooth now to get calls"): on the computer's contact page, the Call buttons are grey while the phone is not
+  connected by Bluetooth, and a tap shows "Connect Bluetooth now to get calls" with Connect (the same pairing). On the
+  phone itself Call always works (it is the phone's own call).
+- To check: PipeWire's hands-free role (WirePlumber's `bluez5.roles` with `hfp_hf`) on in the PC's setup.
+- A step of its own after the Contacts (step 9), started with a hand test: the phone paired to the PC as a headset,
+  one call.
+
+### Code (smallest that holds)
+- Android: `Contacts.kt` (vCard read/write, keep-the-rest, merge, import of 2.1/3.0/4.0/CSV/zip), `ContactsScreen.kt`
+  (list, page, edit, merge), `ContactsSystem.kt` (the account and the provider copy, the other apps' rows), the birthday
+  writer next to the Calendar's (CalendarFiles), the photo crop from Photos' face box. Reuse: the island and drawer,
+  the Office strip for choosers, Calendar's file conventions, Codes for QR, Maps' geo: opening.
+- Desktop: `contacts.js` (the same reading and writing; tests on the same fixtures as Android's) and `Contacts.tsx`.
+- Tests: the user's three exports' field forms as fixtures (made-up names), round trip byte for byte on unknown lines,
+  birthday ↔ event both ways, merge.
+
+### Steps (each a commit, each checked on the tablet, then the phone and the PC)
+1. Files + import (the phone's contacts, vCard, Takeout, CSV) + the list and the page (read only).
+2. Edit, new, delete, labels, favourites. (The scope sync — later: the user, 23 Oct, "keep the sync for later so we
+   dont have conflicts" with the send-to-computer work; until then the files travel with the whole Files sync as now.)
+3. Birthdays and dates → the chosen calendar; Γενέθλια's 11 matched; the Calendar's Birthday action on the setting.
+4. Photos' faces → photos (one and many).
+5. Call / Message / Video / Mail with the other apps' rows; call history.
+6. Tetra's contacts in the system provider (caller ID, Android Auto).
+7. Merge & fix; export; share as .vcf / QR.
+8. Home (Maps one card, Contacts beside it) and the icons; desktop Contacts.
+9. Calls through the PC: the ringing on the PC with Answer/Reject, Call on the PC dialling on the phone, the voice by Bluetooth.
+
+### Questions for the user
+1. Plan OK as a whole? Start with steps 1–3 (in: the Google contacts and their birthdays) first?
+2. Tetra's contacts in the phone's system contacts (caller ID, Viber names, the car) — yes? And later stop Google's
+   contacts sync on the phone, or keep both?
+3. The Contacts folder: hidden in Files like the Calendar's, or visible?
+4. Birthday reminders: the same as Γενέθλια's now (9:00 on the day and 9:00 the day before), or other?
+5. Birthdays out of Google now, before the applet: export the vCard and Claude puts them into Γενέθλια by hand?
+6. Name days (ονομαστικές εορτές): wanted, later?
+7. Home's Contacts tiles: four favourite faces, or New · Search · Favourites · Import?
+8. Maps on Home: four places on the tablet's card? And its colour sky blue to match the new icon?
+9. Desktop: a Contacts view; calls through the PC (§ Calls through the PC) as step 9 — wanted?
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

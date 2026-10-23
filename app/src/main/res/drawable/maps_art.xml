@@ -1,7 +1,0 @@
-<!-- Home's Maps tile: the folded map in white on Tetra's Maps indigo, as the other parts' tiles -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="96dp" android:height="96dp" android:viewportWidth="960" android:viewportHeight="960">
-    <path android:fillColor="#FF5C6BC0" android:pathData="M200,0H760Q960,0 960,200V760Q960,960 760,960H200Q0,960 0,760V200Q0,0 200,0Z"/>
-    <group android:translateX="120" android:translateY="840" android:scaleX="0.75" android:scaleY="0.75">
-        <path android:fillColor="#FFFFFFFF" android:pathData="M600,-120 L360,-204 174,-132Q154,-124 137,-136.5T120,-170V-730Q120,-743 127.5,-753T148,-768L360,-840 600,-756 786,-828Q806,-836 823,-823.5T840,-790V-230Q840,-217 832.5,-207T812,-192L600,-120ZM560,-218V-686L400,-742V-274L560,-218ZM640,-218L760,-258V-732L640,-686V-218ZM200,-228L320,-274V-742L200,-702V-228Z"/>
-    </group>
-</vector>

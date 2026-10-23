@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Settings › App icons: the Maps launcher foreground, Home's folded map in white (its art is a vector, as the Timer's). -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="2400" android:viewportHeight="2400">
-    <group android:translateX="720" android:translateY="1680">
-        <path android:fillColor="#FFFFFFFF" android:pathData="M600,-120 L360,-204 174,-132Q154,-124 137,-136.5T120,-170V-730Q120,-743 127.5,-753T148,-768L360,-840 600,-756 786,-828Q806,-836 823,-823.5T840,-790V-230Q840,-217 832.5,-207T812,-192L600,-120ZM560,-218V-686L400,-742V-274L560,-218ZM640,-218L760,-258V-732L640,-686V-218ZM200,-228L320,-274V-742L200,-702V-228Z"/>
-    </group>
-</vector>

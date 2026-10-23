@@ -235,4 +235,14 @@ class ContactsTest {
         assertFalse(DriveScope.contains("contacts", "Documents/maria.vcf"))
         assertFalse(DriveScope.contains("calendar", "Contacts/maria-3f9a2c.vcf"))
     }
+
+    /** The computer's contacts.js wrote desktop-written.vcf from the same contact: the phone writes the very same bytes. */
+    @Test fun theDesktopWritesWhatThePhoneWrites() {
+        val desktop = String(fixture("desktop-written.vcf"))
+        val i = ContactInfo(uid = "desktop-1", given = "Νέα", family = "Επαφή", phones = listOf(VField("Mobile", "6900000009"), VField("Κουμπάρος", "6900000010")),
+            emails = listOf(VField("Work", "nea@example.com")), birthday = VDate(null, 1, 2), addresses = listOf(VAddress("Home", listOf("", "", "Οδός 5", "Δράμα", "", "66100", ""))),
+            dates = listOf(VField("Anniversary", "2015-06-12")), related = listOf(VField("Spouse", "Γιώργος")), categories = listOf("starred", "Family"), note = "Δύο\nγραμμές, και κόμμα")
+        assertEquals(desktop, VCard.write(VCard.build(i, Instant.parse("2026-10-23T18:00:00Z"))))
+        assertEquals(desktop, VCard.write(VCard.cards(desktop).single()))
+    }
 }

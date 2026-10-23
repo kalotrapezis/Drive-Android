@@ -1,0 +1,19 @@
+BEGIN:VCARD
+VERSION:3.0
+N:Επαφή;Νέα;;;
+FN:Νέα Επαφή
+TEL;TYPE=CELL:6900000009
+item1.TEL:6900000010
+item1.X-ABLabel:Κουμπάρος
+EMAIL;TYPE=INTERNET,WORK:nea@example.com
+ADR;TYPE=HOME:;;Οδός 5;Δράμα;;66100;
+BDAY:--01-02
+item2.X-ABDATE:2015-06-12
+item2.X-ABLabel:_$!<Anniversary>!$_
+item3.X-ABRELATEDNAMES:Γιώργος
+item3.X-ABLabel:_$!<Spouse>!$_
+NOTE:Δύο\nγραμμές\, και κόμμα
+CATEGORIES:starred,Family
+UID:desktop-1
+REV:2026-10-23T18:00:00Z
+END:VCARD

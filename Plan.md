@@ -1745,6 +1745,16 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       8.7 s); the desktop seen hidden with a stand-in phone. Not yet between the user's real phone and the installed
       /opt/Tetra (needs both new builds). Android freezes a backgrounded Tetra within about a minute: then only opening
       it on the phone helps, and the computer says so.
+      On the user's phone (23 Oct, debug build, the new desktop code from source with the phone's real pairing): Tetra open,
+      a GPS fix ±20 m in 4.3 s over Wi-Fi. Tetra in the background (5 s or 35 s after Home): no answer at all — the
+      phone's network policy shows Tetra `blocked=APP_BACKGROUND`, so the computer says "No phone answered. Open Tetra on
+      the phone". The notification path only works while something keeps Tetra out of the cached state (a running timer's
+      service), and on the emulator.
+- [ ] Desktop Maps' where-I-am with the phone in a pocket: Android cuts a backgrounded Tetra off the network within ~5 s
+      (above), so the phone can answer only while Tetra is open. Needs a decision from the user: Tetra on the phone keeps
+      listening in the background (a foreground service with its own small notification while paired with a computer;
+      it would also let the computer's "sync now" reach a pocketed phone), or it stays "open Tetra to answer" as now.
+      Not a test: a design change (SyncServer's "nothing listens once the app is closed" rule, SYNC_PLAN 6i).
 - [x] (maps-link session, 21 Oct) Nearby (the user: "πατάω αναζήτηση πατάω πύργο και βγάζει την καρτέλα … βάλε και ένα κουμπί
       Nearby και βγάλε σημεία ενιδαφέροντος"): a place's card › Nearby opens Search around it ("Near Πύργος"), nearest first,
       distances from it, the pills narrowing it. Search's panel now rides above the keyboard, and says it is loading.

@@ -237,7 +237,7 @@ How to write here:
       applet_maps_fg.png (Settings › App icons and Android Auto, both @mipmap/applet_maps) — byte-identical to the contacts
       branch's, so only the script's lists and applet_colors.xml meet in that merge. Maps' colour is the icon's light blue
       #25C4FE (Category.Maps, applet_maps; maps_colors.xml, maps_art.xml, maps_launcher_fg.xml gone); the slots' tint light
-      blue too. Inside Maps the indigo accents (buttons, markers, the car's tint; desktop Maps.tsx MAPS_COLOR) are unchanged;
+      blue too. Inside Maps the indigo accents (buttons, markers, the car's tint; desktop Maps.tsx MAPS_COLOR) stay indigo (the user, 23 Oct);
       the desktop has no Maps applet icon or colour. Checked on the emulator, light and dark; not on the tablet (not connected).
 
 ## Waiting on the user

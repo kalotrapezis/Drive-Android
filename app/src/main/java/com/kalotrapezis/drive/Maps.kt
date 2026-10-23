@@ -107,27 +107,52 @@ internal object MapsFiles {
 
     /**
      * The saved places, one per id: a sync that found a place changed on both sides keeps both files ("parking (2).json"),
-     * so the newest file is the place; a parked car's older copies are deleted, as there is one car (the user, 23 Oct:
-     * "it had 3 parkings, keep only the latest").
+     * so the newest file is the place and the older copies go to Tetra's Trash (the user, 23 Oct: "it had 3 parkings, keep
+     * only the latest"; and home in three files on the phone, where a save into an empty slot lost to an older copy).
      */
     fun places(root: File): List<Place> = File(root, PLACES).listFiles().orEmpty()
         .filter { it.isFile && !it.name.startsWith(".") && it.name.endsWith(".json", true) }
         .mapNotNull { f -> runCatching { Place.parse(f.readText(), f) }.getOrNull() }
         .groupBy { it.id }.values.map { same ->
             val newest = same.maxBy { it.file?.lastModified() ?: 0L }
-            if (newest.id == PARKING) same.filter { it !== newest }.forEach { it.file?.delete() }
+            same.filter { it !== newest }.forEach { it.file?.let { f -> trash(root, f) } }
             newest
         }
+        .let(::settle)
         .sortedBy { it.name.lowercase() }
 
-    /** Home's six: slot n is the place that has it (two with one slot, after a sync: the first by name). */
+    /**
+     * One place a slot, both kept: two devices that each put a place into one slot while apart (the user, 23 Oct: slot 7
+     * a supermarket on the tablet, home on the computer) — the newest file keeps it, the other takes the first free slot
+     * (none free: off Home, still saved). Worked out from the files alone, by second (a sync keeps a file's date to the
+     * second), so the phone, the tablet and the computer show the same card without a write; maps.js does the same.
+     */
+    fun settle(places: List<Place>): List<Place> {
+        val taken = mutableSetOf<Int>()
+        val late = places.filter { it.slot > 0 }
+            .sortedWith(compareByDescending<Place> { (it.file?.lastModified() ?: 0L) / 1000 }.thenBy { it.id })
+            .filter { !taken.add(it.slot) }
+        val moved = late.associate { p -> p.id to ((1..SLOTS).firstOrNull { it !in taken }?.also { taken += it } ?: 0) }
+        return places.map { p -> moved[p.id]?.let { p.copy(slot = it) } ?: p }
+    }
+
+    /** Home's twelve: slot n is the place that has it ([settle]d, so one each). */
     fun slots(places: List<Place>): List<Place?> = (1..SLOTS).map { n -> places.firstOrNull { it.slot == n } }
 
     /** Written beside, then renamed over, so a sync never reads half a place; taking a slot frees it on any other place. */
     fun save(root: File, p: Place): Place {
         val dir = File(root, PLACES).apply { mkdirs() }
         if (p.slot > 0) places(root).filter { it.slot == p.slot && it.id != p.id }.forEach { write(dir, it.copy(slot = 0)) }
-        return write(dir, p)
+        return write(dir, p).also { saved -> files(root, p.id).filter { it != saved.file }.forEach { trash(root, it) } }
+    }
+
+    /** Every file of place [id]: its own and any copy a sync made of it under another name. */
+    private fun files(root: File, id: String) = File(root, PLACES).listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".json", true) }
+        .filter { f -> f.nameWithoutExtension == id || runCatching { Place.parse(f.readText(), f)?.id }.getOrNull() == id }
+
+    /** To Tetra/Trash, never deleted: a synced file's removal crosses as a move, and it can be put back. */
+    private fun trash(root: File, f: File) {
+        runCatching { DriveRules.moveToTrash(root.parentFile!!, f.relativeTo(root.parentFile!!).path) }
     }
 
     private fun write(dir: File, p: Place): Place {
@@ -138,12 +163,8 @@ internal object MapsFiles {
         return p.copy(file = to)
     }
 
-    /** Every file of [p]: its own and any copy a sync made of it under another name. */
-    fun delete(root: File, p: Place) {
-        File(root, PLACES).listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".json", true) }
-            .filter { f -> f.nameWithoutExtension == p.id || runCatching { Place.parse(f.readText(), f)?.id }.getOrNull() == p.id }
-            .forEach { it.delete() }
-    }
+    /** Every file of [p] to the Trash. */
+    fun delete(root: File, p: Place) = files(root, p.id).forEach { trash(root, it) }
 
     /** What is in Tetra/Maps, for Settings: the map and the routing, each with its size and date. */
     fun installed(root: File): List<Pair<String, String>> {

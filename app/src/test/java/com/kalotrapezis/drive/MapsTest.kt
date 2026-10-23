@@ -11,7 +11,7 @@ import org.junit.Test
 /** Maps (Plan.md § Maps): saved places as files, Home's six slots, and offline routing on the computer's graph. */
 class MapsTest {
     @Test fun places() {
-        val root = Files.createTempDirectory("maps").toFile()
+        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps") // its Trash beside it, as in Tetra
         val home = MapsFiles.save(root, Place("a1", "Home", 37.97, 23.72, "home", slot = 1))
         MapsFiles.save(root, Place("b2", "Work", 38.0, 23.8, "work", slot = 2, mode = "foot"))
         assertEquals(listOf("Home", "Work"), MapsFiles.places(root).map { it.name })
@@ -28,6 +28,38 @@ class MapsTest {
         MapsFiles.delete(root, home)
         assertEquals(2, MapsFiles.places(root).size)
         assertEquals("350 m", metresText(347.0)); assertEquals("1.4 km", metresText(1380.0)); assertEquals("12 km", metresText(12400.0))
+    }
+
+    /** Two devices each put a place into slot 7 while apart: the newer keeps it, the other moves to the first free slot. */
+    @Test fun slotsAfterSync() {
+        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps") // its Trash beside it, as in Tetra
+        val dir = File(root, "Places").apply { mkdirs() }
+        fun put(name: String, p: Place, at: Long) = File(dir, name).apply { writeText(p.json()); setLastModified(at) }
+        val day = 1_792_700_000_000L
+        (1..5).forEach { put("s$it.json", Place("s$it", "School $it", 38.0, 23.5, slot = it), day) }
+        put("market.json", Place("market", "My Market", 37.35, 22.58, "shop", slot = 7), day + 60_000)
+        put("home.json", Place("home", "Σπίτι", 37.27, 22.58, "home", slot = 7), day + 120_000)
+        // a sync's older copy of home, in slot 6: not a place of its own
+        put("home (2).json", Place("home", "Σπίτι", 37.27, 22.58, "home", slot = 6), day)
+        val slots = MapsFiles.slots(MapsFiles.places(root))
+        assertEquals(listOf("School 1", "School 2", "School 3", "School 4", "School 5", "My Market", "Σπίτι", null),
+            slots.take(8).map { it?.name })
+        // on Home's card as on the place's own page; nothing written
+        assertEquals(6, MapsFiles.places(root).first { it.id == "market" }.slot)
+        assertEquals(7, Place.parse(File(dir, "market.json").readText())?.slot)
+        // the one moved can be put back: taking slot 7 frees it on home
+        MapsFiles.save(root, MapsFiles.places(root).first { it.id == "market" }.copy(slot = 7))
+        assertEquals(listOf("market", null), MapsFiles.slots(MapsFiles.places(root)).let { listOf(it[6]?.id, it[5]?.id) })
+        assertEquals(listOf("home (2).json"), File(root.parentFile, "Trash").list()!!.toList())
+        // a save is the place even when an older copy's date is the same or later (the phone, 23 Oct): its copies go
+        put("market (2).json", Place("market", "My Market", 37.35, 22.58, "shop", slot = 9), System.currentTimeMillis() + 60_000)
+        MapsFiles.save(root, Place("market", "My Market", 37.35, 22.58, "shop", slot = 8))
+        assertEquals(8, MapsFiles.places(root).first { it.id == "market" }.slot)
+        assertTrue(!File(dir, "market (2).json").exists())
+        // all twelve full: the older stays saved, off Home
+        listOf(6, 8, 9, 10, 11, 12).forEach { put("x$it.json", Place("x$it", "X$it", 38.0, 23.5, slot = it), day) }
+        put("late.json", Place("late", "Late", 38.0, 23.5, slot = 1), day - 60_000)
+        assertEquals(0, MapsFiles.places(root).first { it.id == "late" }.slot)
     }
 
     /** On the computer's graph (tools/maps-greece.sh), when it is there: Syntagma to the Acropolis, each way to go. */
@@ -92,7 +124,7 @@ class MapsImportTest {
         val g = MapsImport.geojson("Starred places", gj)
         assertEquals(2, g.size); assertEquals(37.9715, g[0].lat!!, 1e-9); assertNull(g[1].lat)
         // into Tetra: the unplaced one found by its exact name in the search list, the other missed
-        val root = Files.createTempDirectory("import").toFile()
+        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps")
         val r = MapsImport.into(root, listOf(Poi("pharmacy", 41.13, 24.88, "Φαρμακείο Χ")), es + g)
         assertEquals(4, r.places); assertEquals(listOf("Nowhere (Starred places)"), r.missed)
         assertEquals(setOf("Want to go", "Starred places"), MapsFiles.lists(root).map { it.name }.toSet())
@@ -577,7 +609,7 @@ class MapsAddressTest {
 
     /** A sync's copies of the parked car ("parking (2).json") leave one car: the newest; deleting a place takes its copies. */
     @Test fun oneCar() {
-        val root = Files.createTempDirectory("maps").toFile()
+        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps") // its Trash beside it, as in Tetra
         val dir = File(root, "Places").apply { mkdirs() }
         fun car(file: String, lat: Double, at: Long) = File(dir, file).apply {
             writeText("""{"id":"parking","name":"My car","lat":$lat,"lng":23.5,"icon":"parking"}"""); setLastModified(at)
@@ -590,5 +622,7 @@ class MapsAddressTest {
         assertEquals(setOf("home.json", "parking (3).json"), dir.list()!!.toSet())
         MapsFiles.delete(root, places.first { it.id == "parking" })
         assertEquals(setOf("home.json"), dir.list()!!.toSet())
+        // to Tetra's Trash, never deleted
+        assertEquals(setOf("parking.json", "parking (2).json", "parking (3).json"), File(root.parentFile, "Trash").list()!!.toSet())
     }
 }

@@ -189,7 +189,8 @@ How to write here:
 - [x] (f5c3277, 23 Oct) Android Auto in the user's car: stuck on "Finding the way…" — the car refused navigationStarted and
       the HostException crashed Tetra; now logged and the route driven anyway. Android Auto lists a sideloaded Car App
       Library app in a real car only after a desktop head unit run (Unknown sources doesn't cover it, Google's docs); every
-      new install drops it until the DHU is run again (DHU: LD_LIBRARY_PATH to libc++1/libc++abi1 unpacked from Ubuntu's .debs).
+      new install drops it until the DHU is run again. So the phone is installed with tools/phone-install.sh: install, wait for
+      the user's Start head unit server, the DHU until Android Auto's check passes Tetra, then closed (~15 s).
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

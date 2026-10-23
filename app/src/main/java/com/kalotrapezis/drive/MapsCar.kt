@@ -216,6 +216,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 frame.addView(v)
                 u = c.height / 100f
                 frame.addView(turnPanel(context))
+                frame.addView(junctionCard(context))
                 frame.addView(etaCard(context))
                 frame.addView(favesGrid(context))
                 frame.addView(speedSign(context), android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START))
@@ -344,7 +345,6 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         panelRef = android.widget.TextView(c).apply { typeface = android.graphics.Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) }
         panelText = android.widget.TextView(c).apply { setTextColor(0xFFE8EAED.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
         panelHint = android.widget.TextView(c).apply { setTextColor(0xFFBDC1C6.toInt()); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
-        panelJunction = android.widget.ImageView(c).apply { visibility = android.view.View.GONE }; junctionShown = null
         panelLanes = android.widget.ImageView(c).apply { visibility = android.view.View.GONE; adjustViewBounds = true }; lanesShown = null
         val top = android.widget.LinearLayout(c).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
@@ -358,7 +358,22 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             orientation = android.widget.LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply { setColor(0xF0303134.toInt()); cornerRadius = 3 * u }
             layoutParams = android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.TOP or android.view.Gravity.START)
-            addView(top); addView(road); addView(panelHint); addView(panelLanes); addView(panelJunction)
+            addView(top); addView(road); addView(panelHint); addView(panelLanes)
+            visibility = android.view.View.GONE
+        }
+    }
+
+    /**
+     * A busy crossing's picture in a small square of its own in the map's top corner away from the driver (the user, 23 Oct:
+     * "a window, a square up in the corner, since it does not fit there"), not in the turn card, where it covered the rest.
+     */
+    private var junctionBox: android.widget.FrameLayout? = null
+
+    private fun junctionCard(c: android.content.Context): android.view.View {
+        panelJunction = android.widget.ImageView(c); junctionShown = null
+        return android.widget.FrameLayout(c).also { junctionBox = it }.apply {
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(0xF0303134.toInt()); cornerRadius = 3 * u }
+            addView(panelJunction)
             visibility = android.view.View.GONE
         }
     }
@@ -421,7 +436,16 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         panelText?.setTextSize(px, textPx)
         panelHint?.setTextSize(px, smallPx)
-        panelJunction?.layoutParams = android.widget.LinearLayout.LayoutParams(cw - 2 * pad, cw - 2 * pad).apply { topMargin = pad }
+        // the crossing's square: under a third of the height shown, in the top corner away from the driver, clear of the
+        // map round the car (the user's drawing, 23 Oct)
+        val side = (r.height() * 0.3f).toInt(); val edge = r.width() / 25
+        junctionBox?.apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(side, side, android.view.Gravity.TOP or android.view.Gravity.START).apply {
+                setMargins(if (driverRight) r.left + edge else r.right - edge - side, r.top + edge, 0, 0)
+            }
+            setPadding(pad / 2, pad / 2, pad / 2, pad / 2)
+        }
+        panelJunction?.layoutParams = android.widget.FrameLayout.LayoutParams(side - pad, side - pad)
         panelLanes?.layoutParams = android.widget.LinearLayout.LayoutParams(-2, (iconPx * 0.8f).toInt()).apply { topMargin = pad; gravity = android.view.Gravity.CENTER_HORIZONTAL }
         // the bottom card: the card's width, a little less tall than the turn card
         eta?.setTextSize(px, textPx)
@@ -517,7 +541,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         faves?.visibility = if (grid) android.view.View.VISIBLE else android.view.View.GONE
         panel?.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
         etaBox?.visibility = panel?.visibility ?: android.view.View.GONE
-        if (!on) return
+        if (!on) { junctionBox?.visibility = android.view.View.GONE; return }
         val left = secondsLeft(n!!, p!!).toLong()
         val time = java.time.LocalTime.now().plusSeconds(left).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
         eta?.text = "${if (left >= 3600) "${left / 3600} h ${left % 3600 / 60} min" else "${(left + 59) / 60} min"} · $time · ${metresText(p.left)}" +
@@ -546,7 +570,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         panelJunction?.apply {
             val px = layoutParams?.width ?: 0
             if (j != null && px > 0 && junctionShown != j to px) { setImageBitmap(junctionPicture(j, px)); junctionShown = j to px }
-            visibility = if (j != null && px > 0) android.view.View.VISIBLE else android.view.View.GONE
+            junctionBox?.visibility = if (j != null && px > 0) android.view.View.VISIBLE else android.view.View.GONE
         }
     }
 
@@ -693,7 +717,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         CarLink.connected.value = true
         // the graph opened now, so the first route does not wait for it (it took 25 s on 22 Oct)
-        lifecycleScope.launch(Dispatchers.IO) { if (File(graphDir, "properties").isFile) runCatching { MapsRouting.open(graphDir) } }
+        lifecycleScope.launch(Dispatchers.IO) { if (File(graphDir, "properties").isFile) runCatching { WriterLog.timed("Maps car: graph opened") { MapsRouting.open(graphDir) } } }
         if (!granted()) return
         // no fix for 10 s: "No GPS" on the map, and said while directions run
         lifecycleScope.launch {
@@ -804,7 +828,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         // near a busy crossing the map comes close and flat; past it, back
         if (g.close != closeUp) {
             closeUp = g.close
-            WriterLog.i(if (g.close) "Maps car: camera close over the crossing of step ${p.next}, ${p.toNext.toInt()} m ahead" else "Maps car: camera back from close")
+            WriterLog.i(if (g.close) "Maps car: camera close for step ${p.next}, ${p.toNext.toInt()} m ahead, ${Math.round(speed * 3.6)} km/h" else "Maps car: camera back from close")
             map?.locationComponent?.takeIf { tracking && it.isLocationComponentActivated }?.let { lc ->
                 val (z, t) = carView(g.close); lc.zoomWhileTracking(z, 1500); lc.tiltWhileTracking(t, 1500)
             }
@@ -851,8 +875,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         val t0 = System.currentTimeMillis()
         val facing = headingOf(from)
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang, facing) }
-                .onSuccess { MapsSearch.load(root) } } // the tolls on it, below, from the search list (read once)
+            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang, facing) } }
             finding = null
             r.onSuccess { route ->
                 val rerouted = nav?.target == target
@@ -862,14 +885,21 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 MapsTrace.start(carContext, "car", target, "car")
                 nav = Nav(target, "car", route, cumulative(route), System.currentTimeMillis())
                 lastAlong = 0.0; backFixes = 0
-                val onRoute = runCatching { tollsOn(route, cumulative(route), MapsSearch.load(root)) }.getOrDefault(emptyList())
-                tolls = onRoute.map { it.second }; tollsAhead = tolls.size; tollSaid = emptySet()
-                (map?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(
-                    onRoute.map { (t, _) -> org.maplibre.geojson.Feature.fromGeometry(org.maplibre.geojson.Point.fromLngLat(t.lng, t.lat)) }))
-                if (!rerouted && tolls.isNotEmpty()) launch {
-                    kotlinx.coroutines.delay(4000) // after the first direction
-                    say(t(if (tolls.size == 1) "Η διαδρομή έχει ένα διόδιο" else "Η διαδρομή έχει ${tolls.size} διόδια",
-                        if (tolls.size == 1) "The route has one toll" else "The route has ${tolls.size} tolls"))
+                // the tolls on it, found beside the directions, which do not wait for them
+                tolls = emptyList(); tollsAhead = 0; tollSaid = emptySet()
+                (map?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(emptyList()))
+                launch {
+                    val onRoute = withContext(Dispatchers.IO) { runCatching { tollsOn(route, cumulative(route), MapsSearch.tolls(root)) }.getOrDefault(emptyList()) }
+                    if (nav?.route !== route) return@launch
+                    tolls = onRoute.map { it.second }; tollsAhead = tolls.size
+                    (map?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(
+                        onRoute.map { (t, _) -> org.maplibre.geojson.Feature.fromGeometry(org.maplibre.geojson.Point.fromLngLat(t.lng, t.lat)) }))
+                    if (!rerouted && tolls.isNotEmpty()) {
+                        kotlinx.coroutines.delay(4000) // after the first direction
+                        say(t(if (tolls.size == 1) "Η διαδρομή έχει ένα διόδιο" else "Η διαδρομή έχει ${tolls.size} διόδια",
+                            if (tolls.size == 1) "The route has one toll" else "The route has ${tolls.size} tolls"))
+                    }
+                    invalidate()
                 }
                 // "new route" said once in two minutes at most (the user, 23 Oct: it said it all the way for kilometres)
                 if (rerouted && System.currentTimeMillis() - newRouteSaidAt > 120_000) { newRouteSaidAt = System.currentTimeMillis(); say(t("Νέα διαδρομή", "New route"), important = true) }
@@ -1091,7 +1121,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             lifecycleScope.launch {
                 routes = if (h == null) emptyList() else withContext(Dispatchers.IO) {
                     runCatching { MapsRouting.routes(graphDir, h.latitude, h.longitude, target.lat, target.lng, "car", lang) }.getOrDefault(emptyList())
-                        .also { rs -> tollCounts = rs.map { r -> runCatching { tollsOn(r, cumulative(r), MapsSearch.load(root)).size }.getOrDefault(0) } }
+                        .also { rs -> tollCounts = rs.map { r -> runCatching { tollsOn(r, cumulative(r), MapsSearch.tolls(root)).size }.getOrDefault(0) } }
                 }
                 invalidate()
             }

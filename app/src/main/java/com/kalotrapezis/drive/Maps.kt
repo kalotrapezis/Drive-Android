@@ -267,10 +267,14 @@ internal data class Junction(val arms: List<Double>, val taken: Int, val roundab
  * Whether the map comes close and looks straight down now, to see which street is which: a busy crossing about 12 s or
  * 250 m ahead (the user, 23 Oct: at Νικήσιανη's 5–6 streets, counting them, they took the one next to it).
  */
-internal fun closeView(j: Junction?, toNext: Double, speed: Double) = j != null && j.busy && toNext < maxOf(250.0, speed * 12)
+internal fun closeView(j: Junction?, toNext: Double, speed: Double, sign: Int = 0) =
+    (j != null && j.busy && toNext < maxOf(250.0, speed * 12)) ||
+        // any turn, slowing for it (the user, 23 Oct: "zoom too when I come near where I must turn and slow down")
+        (sign in setOf(-98, -3, -2, -1, 1, 2, 3, 6) && toNext < 150 && speed < 9)
 
-/** Directions' camera by car: zoom and tilt, close and flat at a busy crossing ([closeView]). */
-internal fun carView(close: Boolean) = if (close) 18.0 to 0.0 else 16.5 to 45.0
+/** Directions' camera by car: zoom and tilt, close and flat at a busy crossing ([closeView]) — a little back from the
+ *  closest (the user, 23 Oct: "the graphics a bit further away"). */
+internal fun carView(close: Boolean) = if (close) 17.5 to 0.0 else 16.5 to 45.0
 
 /** Whether the turn card shows [j]'s picture now, [toNext] metres before it. */
 internal fun showJunction(j: Junction?, toNext: Double) = j != null && j.busy && toNext < 400
@@ -283,11 +287,11 @@ internal fun showJunction(j: Junction?, toNext: Double) = j != null && j.busy &&
 internal fun junctionPicture(j: Junction, px: Int): android.graphics.Bitmap {
     val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
     val c = android.graphics.Canvas(b)
-    val mid = px / 2f; val far = px * 0.44f; val ringR = if (j.roundabout) px * 0.17f else 0f
+    val mid = px / 2f; val far = px * 0.38f; val ringR = if (j.roundabout) px * 0.15f else 0f
     fun paint(color: Int, w: Float) = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         this.color = color; strokeWidth = w; style = android.graphics.Paint.Style.STROKE; strokeCap = android.graphics.Paint.Cap.ROUND
     }
-    val grey = paint(0xFF9AA0A6.toInt(), px * 0.08f); val blue = paint(0xFF4C8DF6.toInt(), px * 0.08f)
+    val grey = paint(0xFF9AA0A6.toInt(), px * 0.07f); val blue = paint(0xFF4C8DF6.toInt(), px * 0.07f)
     fun at(deg: Double, r: Float) = Math.toRadians(deg).let { (mid + Math.sin(it) * r).toFloat() to (mid - Math.cos(it) * r).toFloat() }
     fun arm(deg: Double, p: android.graphics.Paint) { val (x1, y1) = at(deg, ringR); val (x2, y2) = at(deg, far); c.drawLine(x1, y1, x2, y2, p) }
     // roads closer than 22° drawn apart, as a fork's two ways a few degrees apart would be one line
@@ -468,6 +472,21 @@ internal object MapsSearch {
 
     /** The places put in by hand (added-places.tsv), drawn on the map always, as the map's own. */
     fun added(root: File): List<Poi> = File(root, ADDED).takeIf { it.isFile }?.readLines()?.mapNotNull(::parse).orEmpty()
+
+    private var tollCache: Pair<Long, List<Poi>>? = null
+
+    /**
+     * Only the search list's toll stations, read in about a second: the whole list takes ~20 s on the phone the first time,
+     * and a route waited for it (the user's "Finding the way…" that stayed, 23 Oct).
+     */
+    @Synchronized fun tolls(root: File): List<Poi> {
+        val f = File(root, FILE)
+        if (!f.isFile) return emptyList()
+        tollCache?.let { (at, list) -> if (at == f.lastModified()) return list }
+        val list = f.bufferedReader().useLines { lines -> lines.filter { it.startsWith("toll\t") }.mapNotNull(::parse).toList() }
+        tollCache = f.lastModified() to list
+        return list
+    }
 
     /** The search list in [root] with EOPYY's, read once (about 140 000 places) and kept while the files are the same. */
     @Synchronized fun load(root: File): List<Poi> {

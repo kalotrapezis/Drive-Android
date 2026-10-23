@@ -113,11 +113,14 @@ internal object MapsRouting {
             val r = gh.route(ahead)
             if (!r.hasErrors()) return listOf(MapsLanes.on(build(gh, r.best, gh.translationMap.getWithFallBack(locale), lang, mode), dir.absoluteFile.parentFile))
         }
+        val t0 = System.nanoTime()
         var rsp = gh.route(req)
-        if (rsp.hasErrors()) rsp = gh.route(req.setAlgorithm("")) // alternatives not to be had here: the one way
+        if (rsp.hasErrors()) rsp = gh.route(req.setAlgorithm(""))
+        val t1 = System.nanoTime() // alternatives not to be had here: the one way
         check(!rsp.hasErrors()) { words(rsp.errors.firstOrNull(), lang) }
         val tr = gh.translationMap.getWithFallBack(locale)
         val all = rsp.all.map { MapsLanes.on(build(gh, it, tr, lang, mode), dir.absoluteFile.parentFile) }
+        WriterLog.i("Maps: route found in ${(t1 - t0) / 1_000_000} ms, its crossings and lanes in ${(System.nanoTime() - t1) / 1_000_000} ms")
         val usable = all.filter { r -> mode != "car" || r.roads != "track" }.ifEmpty { all }
         return usable.sortedBy { it.millis }
     }

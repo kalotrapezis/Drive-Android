@@ -522,7 +522,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         // by car, near a busy crossing the map comes close and flat; past it, back
         if (g.close != closeUp) {
             closeUp = g.close
-            WriterLog.i(if (g.close) "Maps: camera close over the crossing of step ${p.next}, ${p.toNext.toInt()} m ahead" else "Maps: camera back from close")
+            WriterLog.i(if (g.close) "Maps: camera close for step ${p.next}, ${p.toNext.toInt()} m ahead, ${Math.round(speedMs * 3.6)} km/h" else "Maps: camera back from close")
             lc?.takeIf { it.cameraMode == CameraMode.TRACKING_GPS }?.let { val (z, t) = carView(g.close); it.zoomWhileTracking(z, 1500); it.tiltWhileTracking(t, 1500) }
         }
         g.words(lang, car)?.let { say(it, why = g.why()) }
@@ -1230,7 +1230,7 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
             val j = step.junction?.takeIf { showJunction(it, n.p?.toNext ?: Double.MAX_VALUE) }
             if (j != null) {
                 val picture = remember(j) { junctionPicture(j, 480).asImageBitmap() }
-                androidx.compose.foundation.Image(picture, contentDescription = null, modifier = Modifier.padding(top = 4.dp).size(160.dp).align(Alignment.CenterHorizontally))
+                androidx.compose.foundation.Image(picture, contentDescription = null, modifier = Modifier.padding(top = 4.dp).size(120.dp).align(Alignment.CenterHorizontally))
             }
         }
     }

@@ -53,7 +53,7 @@ internal fun guide(n: Nav, lat: Double, lng: Double, speed: Double, now: Long, b
     val arrived = p.left < (if (car) 50.0 else 20.0) || metresBetween(lat, lng, n.target.lat, n.target.lng) < (if (car) 60.0 else 25.0)
     val due = if (arrived) null else dueWarning(p.next, p.toNext, speed, car, n.said, step.lanes?.begins ?: 0.0)
     val bend = if (due == null && !arrived && car && bends) dueBend(n.bends, p.along, speed, n.said) else null
-    return Tick(p, i, step, speed, off = false, reroute = false, arrived = arrived, due = due, bend = bend, close = car && closeView(step.junction, p.toNext, speed))
+    return Tick(p, i, step, speed, off = false, reroute = false, arrived = arrived, due = due, bend = bend, close = car && closeView(step.junction, p.toNext, speed, step.sign))
 }
 
 /**

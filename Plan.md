@@ -198,6 +198,10 @@ How to write here:
       keep along the through lanes; exits warned at 3 km and "take the exit" where its lane begins. Not yet driven.
 - [x] (a9d9756, 23 Oct) Maps drive traces (files/logs/drive, 7 days, Settings › Maps › Send log), richer navigation log
       lines, MapsGuide.guide shared by car, phone and MapsReplayTest (traces in ~/Tetra-maps/traces are replayed).
+- [x] (fd304b1, 66bdce9, 6ad773a, 23 Oct) Android Auto tried with the user on the head unit: the first route no longer
+      waits 22 s for the search list (tolls from their own lines); camera by speed and what is ahead (carView), car low on
+      the screen; crossing square under ⚙ / in the corner; cards at the edges, bottom card icons in one row; bigger arrow;
+      recenter checked (drag → let go, ◎ → back). Not yet driven.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

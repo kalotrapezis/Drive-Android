@@ -229,9 +229,9 @@ How to write here:
       copy won. Now one file a place (older copies to Tetra/Trash on read; a save trashes its other copies; delete trashes),
       and two places in one slot both stay — the newest keeps it, the other the first free slot (settle), the same on phone
       and desktop. The tablet: My Market (slot 6), Joy, Πάρκινγκ Αμεα never reached the PC (not marked deleted) and it has no
-      home — it has not synced since 22 Oct (hotspot). Notes: maps-slots-23oct.md. **Not yet on the phone** (the Send to
-      computer build is there; it carries main next, or the user's go), **not on the tablet** (not connected), desktop
-      not rebuilt (its old code already agrees on today's files).
+      home — it has not synced since 22 Oct (hotspot). Notes: maps-slots-23oct.md. On the phone (36a602e, 22:01):
+      home is one file, slot 7, its two other copies in its Trash — as the PC (newest fe7a06.json, slot 7). **Not on the
+      tablet** (not connected); the desktop's fix comes with 0.6.0-beta.5 (Drive aa87cc4), not installed at 22:05.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

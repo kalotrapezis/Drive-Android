@@ -121,7 +121,7 @@ private enum class ContactsTab(val label: String, val icon: Int) { All("All", R.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, start: String? = null) {
+internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, start: String? = null, openMaps: (String) -> Unit = {}) {
     val context = LocalContext.current
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val scope = rememberCoroutineScope()
@@ -342,7 +342,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 photo = { i, set -> ContactPhotoEdit(i, set) }) { i -> editing = null; save(ed.first, i, if (ed.first == null) "Contact created" else "Saved") }
             else if (open != null) ContactPage(open, all, wide, close = { openUid = null }, edit = { editing = open to open.info },
                 star = { save(open, open.info.favourite(!open.info.favourite), if (open.info.favourite) "Not a favourite" else "Added to favourites") }, keep = { act { ContactsFiles.copies(root, open).forEach { f -> DriveRules.moveToTrash(root.parentFile!!, f.relativeTo(root.parentFile!!).path) }; "Kept this version; the other went to the Trash" } },
-                openUid = { openUid = it })
+                openUid = { openUid = it }, openMaps = openMaps)
             else if (wide) Hint("Choose a contact.", Modifier.align(Alignment.Center))
         }
     }
@@ -509,7 +509,7 @@ internal fun dateText(d: VDate, birthday: Boolean, today: LocalDate = LocalDate.
  * Call · Video · Mail buttons, then the details in cards.
  */
 @Composable
-private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: () -> Unit, edit: () -> Unit, star: () -> Unit, keep: () -> Unit, openUid: (String) -> Unit) {
+private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: () -> Unit, edit: () -> Unit, star: () -> Unit, keep: () -> Unit, openUid: (String) -> Unit, openMaps: (String) -> Unit) {
     val context = LocalContext.current
     val i = c.info
     fun go(uri: String, action: String = Intent.ACTION_VIEW) { runCatching { context.startActivity(Intent(action, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -604,7 +604,7 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                     i.dates.forEach { f -> VDate.parse(f.value)?.let { DetailRow(f.label, dateText(it, false)) } }
                 }
                 if (i.addresses.isNotEmpty()) DetailCard { i.addresses.forEach { a ->
-                    DetailRow(a.label.ifEmpty { "Address" }, a.text(), action = "Open in Maps") { go("geo:0,0?q=${Uri.encode(a.text())}") }
+                    DetailRow(a.label.ifEmpty { "Address" }, a.text(), action = "Open in Maps", onClick = { openMaps(listOf(a.street, a.city).filter { it.isNotBlank() }.joinToString(", ").ifEmpty { a.text() }) })
                 } }
                 if (i.urls.isNotEmpty()) DetailCard { i.urls.forEach { f -> DetailRow(f.label.ifEmpty { "Website" }, f.value, onClick = { go(if (f.value.contains("://")) f.value else "https://${f.value}") }) } }
                 if (i.related.isNotEmpty()) DetailCard { i.related.forEach { f ->

@@ -359,7 +359,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     var screen by remember { mutableStateOf(if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
     var mapsGo by remember { mutableStateOf<Place?>(null) } // a place on Home's Maps card: directions to it start at once
-    var contactsOpen by remember { mutableStateOf<String?>(null) } // Home's faces: Contacts opens on that person
+    var contactsOpen by remember { mutableStateOf<String?>(null) }
+    var mapsSearch by remember { mutableStateOf<String?>(null) } // a contact's address, looked for in Tetra Maps
+    var mapsBack by remember { mutableStateOf(Screen.Home) } // Home's faces: Contacts opens on that person
     var calendarNew by remember { mutableStateOf<NewKind?>(null) } // Home's tiles: the Calendar opens on a new one of that kind
     var writerOpen by remember { mutableStateOf<String?>(null) } // the document Writer edits; null a new one
     var writerBack by remember { mutableStateOf(Screen.Office) } // where Writer's back goes: Office, or Files it was opened from
@@ -675,7 +677,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.TextEditor -> { editorStart = null; screen = Screen.TextEditor }
             Applet.Calendar -> { calendarNew = null; screen = Screen.Calendar }
             Applet.Timer -> screen = Screen.Timer
-            Applet.Maps -> { mapsGo = null; screen = Screen.Maps }
+            Applet.Maps -> { mapsGo = null; mapsSearch = null; mapsBack = Screen.Home; screen = Screen.Maps }
             Applet.Contacts -> { contactsOpen = null; screen = Screen.Contacts }
         }
     }
@@ -786,7 +788,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     openCalendar = { calendarNew = null; screen = Screen.Calendar },
                     newEvent = { kind -> calendarNew = kind; screen = Screen.Calendar },
                     openTimer = { screen = Screen.Timer },
-                    openMaps = { place -> mapsGo = place; screen = Screen.Maps },
+                    openMaps = { place -> mapsGo = place; mapsSearch = null; mapsBack = Screen.Home; screen = Screen.Maps },
                     openContacts = { uid -> contactsOpen = uid; screen = Screen.Contacts },
                 )
                 Screen.Drive -> DriveTab(
@@ -845,10 +847,10 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Calendar -> CalendarScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 }, startKind = calendarNew, openContact = { uid -> contactsOpen = uid; screen = Screen.Contacts })
-                Screen.Maps -> MapsScreen(MapsFiles.root(driveRoot()), mapsGo, back = { mapsGo = null; screen = Screen.Home })
+                Screen.Maps -> MapsScreen(MapsFiles.root(driveRoot()), mapsGo, back = { mapsGo = null; mapsSearch = null; screen = mapsBack }, search = mapsSearch)
                 Screen.Contacts -> ContactsScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
-                }, start = contactsOpen)
+                }, start = contactsOpen, openMaps = { q -> mapsGo = null; mapsSearch = q; mapsBack = Screen.Contacts; screen = Screen.Maps })
                 Screen.Timer -> TimerScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })

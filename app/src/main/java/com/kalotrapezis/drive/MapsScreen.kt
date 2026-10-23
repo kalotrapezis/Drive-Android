@@ -282,7 +282,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
  * on the phone (MapsRouting) and spoken in Greek. [go] (a place on Home's card) starts its directions as soon as there is a fix.
  */
 @SuppressLint("MissingPermission")
-@Composable internal fun MapsScreen(root: File, go: Place?, back: () -> Unit) {
+@Composable internal fun MapsScreen(root: File, go: Place?, back: () -> Unit, search: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -292,8 +292,9 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     var selected by remember { mutableStateOf<Place?>(null) }
     var editing by remember { mutableStateOf<Place?>(null) }
     var deleting by remember { mutableStateOf<Place?>(null) }
-    var tab by remember { mutableStateOf<MapsTab?>(null) }
-    var query by remember { mutableStateOf("") }
+    // [search]: an address from Contacts, looked for at once
+    var tab by remember { mutableStateOf(if (search != null) MapsTab.Search else null) }
+    var query by remember { mutableStateOf(search ?: "") }
     var pill by remember { mutableStateOf<String?>(null) }
     var navQuery by remember { mutableStateOf("") }
     var navMode by remember { mutableStateOf("car") }

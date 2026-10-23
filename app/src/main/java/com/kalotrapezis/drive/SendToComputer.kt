@@ -49,7 +49,7 @@ class SendToComputer : Activity() {
         }
         val app = applicationContext
         thread(name = "tetra-send") {
-            val failed = uris.count { uri -> runCatching { Outbox.add(app, contentResolver.openInputStream(uri)!!, displayName(uri)) }.onFailure { WriterLog.w("Send to computer: $uri: ${it.message}") }.isFailure }
+            val failed = uris.count { uri -> runCatching { val (name, modified) = describe(uri); Outbox.add(app, contentResolver.openInputStream(uri)!!, name, modified) }.onFailure { WriterLog.w("Send to computer: $uri: ${it.message}") }.isFailure }
             runOnUiThread {
                 if (failed > 0) Toast.makeText(this, "$failed of ${uris.size} could not be read", Toast.LENGTH_LONG).show()
                 finish()
@@ -63,12 +63,16 @@ class SendToComputer : Activity() {
     @Suppress("DEPRECATION")
     private fun Intent.streamsExtra(): List<Uri> = getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
 
-    private fun displayName(uri: Uri): String {
+    /** Its name, and when it was last changed where the provider says (a photo keeps its own date on the computer), else 0. */
+    private fun describe(uri: Uri): Pair<String, Long> {
         val named = runCatching {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
         }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')
+        val modified = runCatching { // seconds, in MediaStore and the system's own pickers; not every app gives it
+            contentResolver.query(uri, arrayOf(android.provider.MediaStore.MediaColumns.DATE_MODIFIED), null, null, null)?.use { if (it.moveToFirst()) it.getLong(0) * 1000 else 0 }
+        }.getOrNull() ?: 0
         val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(contentResolver.getType(uri))
-        return Outbox.safeName(named, ext)
+        return Outbox.safeName(named, ext) to modified
     }
 }
 
@@ -87,10 +91,11 @@ internal object Outbox {
             ?: "Shared ${java.text.SimpleDateFormat("yyyy-MM-dd HHmmss", java.util.Locale.ROOT).format(java.util.Date())}${ext?.let { ".$it" }.orEmpty()}"
     }
 
-    fun add(context: Context, input: InputStream, name: String): File {
+    fun add(context: Context, input: InputStream, name: String, modified: Long = 0): File {
         val tmp = File(dir(context), "." + UUID.randomUUID()).apply { mkdirs() }
         val digest = MessageDigest.getInstance("SHA-256")
         input.use { DigestOutputStream(File(tmp, name).outputStream(), digest).use(it::copyTo) }
+        if (modified > 0) File(tmp, name).setLastModified(modified) // what the computer gets as its date
         val held = File(dir(context), SyncRules.hex(digest.digest()))
         if (held.exists()) { tmp.deleteRecursively(); return File(held, name) } // shared twice: it goes once
         check(tmp.renameTo(held)) { "could not keep it" }

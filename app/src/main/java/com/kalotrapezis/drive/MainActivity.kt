@@ -372,14 +372,16 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     // Opening the app is the moment to catch up with the computer, if it is cheap to (see syncInBackground).
     LaunchedEffect(Unit) { withContext(Dispatchers.IO) { SyncService.syncInBackground(context); SyncJob.schedule(context) } }
     // And for as long as it is open, the computer may say "there is something new here" and this phone will go
-    // and fetch it (SYNC_PLAN.md 6i). It answers only devices it is already paired with, and only "sync now" —
-    // the work stays ours. It stops with the app: nothing of ours listens on a phone nobody is using.
+    // and fetch it (SYNC_PLAN.md 6i). It answers only devices it is already paired with. With a computer paired it
+    // goes on listening when the app closes (SyncListenService, the user's choice of 23 Oct), and opening the app is
+    // the moment that service may take the location right too.
     androidx.compose.runtime.DisposableEffect(Unit) {
         runCatching { SyncServer.acquire(context.applicationContext, SyncStore(context.applicationContext)) }
+        SyncListenService.start(context)
         onDispose { runCatching { SyncServer.release() } }
     }
     // the computer asks where the phone is (desktop Maps) and Tetra may not use the location yet: Android's question, here
-    val askLocation = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+    val askLocation = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { SyncListenService.start(context) }
     androidx.compose.runtime.DisposableEffect(Unit) {
         PhoneLocation.askPermission = { askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }
         onDispose { PhoneLocation.askPermission = null }
@@ -902,7 +904,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     },
                     openSync = { screen = Screen.Sync },
                     pairedDevice = pairedDevice,
-                    forgetPairedDevice = { syncStore.forgetPairing(); pairedDevice = null },
+                    forgetPairedDevice = { syncStore.forgetPairing(); pairedDevice = null; SyncListenService.stop(context) },
                     folders = photoFolders,
                     setFolderIncluded = { name, on -> photoMetadata.setFolderIncluded(name, on); loadPhotos() },
                 )
@@ -1767,6 +1769,15 @@ private fun SettingsTab(
                 Text("Sync automatically", style = MaterialTheme.typography.titleMedium)
                 Text("Tetra wakes up and syncs this often, with the app closed too — on any local network, a phone's hotspot included. Android may run it a little later to save battery.", style = MaterialTheme.typography.bodySmall)
                 Choices(SyncJob.choices, every) { every = it; SyncJob.setMinutes(syncContext, it) }
+                var listen by remember { mutableStateOf(SyncListenService.enabled(syncContext)) }
+                Row(Modifier.fillMaxWidth().clickable { listen = !listen; SyncListenService.setEnabled(syncContext, listen) }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Listen in the background", style = MaterialTheme.typography.titleMedium)
+                        Text(if (listen) "With Tetra closed, the computer's syncs reach this phone at once and its Maps can ask where the phone is. A small notification shows while it listens."
+                            else "Only while Tetra is open does the computer reach this phone; otherwise it syncs on the schedule above.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = listen, onCheckedChange = { listen = it; SyncListenService.setEnabled(syncContext, it) })
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = openSync) { Text("Open Sync") }
                     if (pairedDevice != null) TextButton(onClick = forgetPairedDevice) { Text("Forget ${pairedDevice.name}") }

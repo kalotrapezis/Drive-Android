@@ -1,0 +1,92 @@
+package com.kalotrapezis.drive
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+
+/**
+ * Tetra listening for the paired computer with the app closed. The old rule was "nothing listens once the app is
+ * closed"; the user changed it on 23 Oct, because Android cuts a backgrounded app off the network within seconds
+ * (`APP_BACKGROUND`, measured on the user's Xiaomi 15) and only a foreground service keeps SyncServer reachable. With
+ * it, the computer's "sync now" and desktop Maps' "where is the phone" reach a phone in a pocket.
+ *
+ * Runs while a computer is paired and Settings › Sync › Listen in the background is on: started when Tetra opens and
+ * after a restart. With the location allowed, and started from the open app as Android requires, it is also a
+ * location service, so the phone answers where it is without a tap (PhoneLocation).
+ */
+internal class SyncListenService : Service() {
+    companion object {
+        private const val ID = 0x5EA7
+        private const val CHANNEL = "listening"
+        private const val ACTION_STOP = "com.kalotrapezis.drive.LISTEN_STOP"
+        private const val PREF = "listen_in_background"
+
+        @Volatile private var listening = false
+        /** Holding the location right in the background: PhoneLocation needs no tap. */
+        @Volatile var withLocation = false
+            private set
+
+        private fun prefs(c: Context) = c.getSharedPreferences("sync_listen", Context.MODE_PRIVATE)
+        fun enabled(c: Context) = prefs(c).getBoolean(PREF, true)
+        fun setEnabled(c: Context, on: Boolean) {
+            prefs(c).edit().putBoolean(PREF, on).apply()
+            if (on) start(c) else stop(c)
+        }
+
+        /** Starts it, or (from the open app) lets it take the location right it may now have. */
+        fun start(c: Context) {
+            if (!enabled(c) || SyncStore(c.applicationContext).pairing() == null) return
+            runCatching { ContextCompat.startForegroundService(c, Intent(c, SyncListenService::class.java)) }
+                .onFailure { WriterLog.e("Sync: cannot listen in the background", it) }
+        }
+
+        fun stop(c: Context) { c.stopService(Intent(c, SyncListenService::class.java)) }
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) { setEnabled(this, false); return START_NOT_STICKY }
+        val n = notification()
+        // the location right only from the open app (Android refuses it from a restart or the background): plain then
+        val placed = hasLocation(this) && runCatching {
+            startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        }.isSuccess
+        if (!placed && runCatching { startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) }.onFailure { WriterLog.e("Sync: cannot listen in the background", it) }.isFailure) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        withLocation = placed
+        if (!listening) listening = runCatching { SyncServer.acquire(applicationContext, SyncStore(applicationContext)) }.isSuccess
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        if (listening) runCatching { SyncServer.release() }
+        listening = false
+        withLocation = false
+        super.onDestroy()
+    }
+
+    private fun notification(): android.app.Notification {
+        val nm = getSystemService(NotificationManager::class.java)
+        if (nm.getNotificationChannel(CHANNEL) == null)
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Listening for the computer", NotificationManager.IMPORTANCE_MIN).apply { description = "Tetra answers the paired computer with the app closed" })
+        val open = PendingIntent.getActivity(this, ID, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val stop = PendingIntent.getService(this, ID, Intent(this, SyncListenService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
+        val computer = SyncStore(applicationContext).pairing()?.name ?: "the computer"
+        return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_sync)
+            .setContentTitle("Listening for $computer")
+            .setContentText("Its syncs and Maps reach this phone with Tetra closed")
+            .setOngoing(true).setSilent(true).setPriority(NotificationCompat.PRIORITY_MIN)
+            .setContentIntent(open).addAction(0, "Stop", stop).build()
+    }
+}

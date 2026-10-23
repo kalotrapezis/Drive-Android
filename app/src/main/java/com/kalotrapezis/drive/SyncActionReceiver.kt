@@ -14,6 +14,7 @@ internal class SyncActionReceiver : BroadcastReceiver() {
         when (intent.action) {
             SyncService.ACTION_PAUSE -> if (SyncService.isRunning) SyncService.togglePause()
             PhotoAnalysisService.ACTION_PAUSE -> if (PhotoAnalysisService.isRunning) PhotoAnalysisService.togglePause()
+            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> SyncListenService.start(context) // listening again after a restart or an update
         }
     }
 }

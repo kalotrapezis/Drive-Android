@@ -37,8 +37,8 @@ import kotlin.concurrent.thread
  * It answers two things. **Pairing**, while the QR code is on screen. And **"sync now"** from a device already
  * paired, for as long as Tetra is open here — that is what makes the other direction automatic: the computer
  * has no way to put a photo on this phone by itself, but it can say that there is one, and this phone then does
- * its own sync under its own rules. Nothing listens once the app is closed; something that listens all day is a
- * decision to make out loud, not by leaving a process behind.
+ * its own sync under its own rules. With a computer paired it goes on listening with the app closed, in
+ * SyncListenService and its notification (decided out loud by the user, 23 Oct; Settings › Sync turns it off).
  */
 internal class SyncServer(private val context: Context, private val store: SyncStore) {
     companion object {

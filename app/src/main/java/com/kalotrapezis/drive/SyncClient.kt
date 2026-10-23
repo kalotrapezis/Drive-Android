@@ -413,6 +413,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val name = body.optString("name", qr.name)
         store.savePeer(Peer(name, hosts, qr.port, qr.fingerprint, body.getString("token"), ourToken))
         Pairing(name, hosts, qr.port, qr.fingerprint, body.getString("token")).also(store::savePairing)
+            .also { SyncListenService.start(context) } // paired with a computer: listening for it from now on
     }
 
     /**

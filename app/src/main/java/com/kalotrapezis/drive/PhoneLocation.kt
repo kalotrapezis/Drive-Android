@@ -51,7 +51,7 @@ internal object PhoneLocation {
         val until = SystemClock.elapsedRealtime() + waitMs
         val lm = context.getSystemService(LocationManager::class.java)
         if (lm != null && hasLocation(context)) recent(lm)?.let { return reply(true, true, it) }
-        if (!onScreen()) {
+        if (!onScreen() && !SyncListenService.withLocation) {
             if (!tapToAnswer(context)) return reply(true, true, null, onScreen = false) // notifications are off: nothing to wait for
             while (!onScreen() && SystemClock.elapsedRealtime() < until) Thread.sleep(300)
             context.getSystemService(NotificationManager::class.java)?.cancel(NOTE)

@@ -1750,11 +1750,18 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       phone's network policy shows Tetra `blocked=APP_BACKGROUND`, so the computer says "No phone answered. Open Tetra on
       the phone". The notification path only works while something keeps Tetra out of the cached state (a running timer's
       service), and on the emulator.
-- [ ] Desktop Maps' where-I-am with the phone in a pocket: Android cuts a backgrounded Tetra off the network within ~5 s
+- [x] (the commit beside this line, 23 Oct) Desktop Maps' where-I-am with the phone in a pocket: Android cuts a backgrounded Tetra off the network within ~5 s
       (above), so the phone can answer only while Tetra is open. Needs a decision from the user: Tetra on the phone keeps
       listening in the background (a foreground service with its own small notification while paired with a computer;
       it would also let the computer's "sync now" reach a pocketed phone), or it stays "open Tetra to answer" as now.
       Not a test: a design change (SyncServer's "nothing listens once the app is closed" rule, SYNC_PLAN 6i).
+      The user, 23 Oct: "we had such a rule ok change it". Built: SyncListenService, a foreground service while a computer
+      is paired (started when Tetra opens, after pairing, after a restart or an update; Settings › Sync › Listen in the
+      background turns it off, as does Stop on its notification, which is the quietest kind: only Android's services
+      indicator). Started from the open app with the location allowed it also holds the location right, so the phone
+      answers without a tap. On the user's phone: Tetra closed 40 s, a GPS fix ±7 m in 7.5 s; the user saw only the
+      services indicator, and the location pointer when the computer asked. Not tried: the screen off for long (Doze) and
+      a day's battery; Xiaomi's battery saver may still stop it (then Tetra's battery setting: No restrictions).
 - [x] (maps-link session, 21 Oct) Nearby (the user: "πατάω αναζήτηση πατάω πύργο και βγάζει την καρτέλα … βάλε και ένα κουμπί
       Nearby και βγάλε σημεία ενιδαφέροντος"): a place's card › Nearby opens Search around it ("Near Πύργος"), nearest first,
       distances from it, the pills narrowing it. Search's panel now rides above the keyboard, and says it is loading.

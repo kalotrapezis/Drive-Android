@@ -1760,8 +1760,9 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       background turns it off, as does Stop on its notification, which is the quietest kind: only Android's services
       indicator). Started from the open app with the location allowed it also holds the location right, so the phone
       answers without a tap. On the user's phone: Tetra closed 40 s, a GPS fix ±7 m in 7.5 s; the user saw only the
-      services indicator, and the location pointer when the computer asked. Not tried: the screen off for long (Doze) and
-      a day's battery; Xiaomi's battery saver may still stop it (then Tetra's battery setting: No restrictions).
+      services indicator, and the location pointer when the computer asked. Phone locked (screen off): ±10 m in 5.8 s.
+      Not tried: deep Doze (the phone was on USB, so charging, which keeps Doze away) and a day's battery; Tetra is
+      locked in MIUI's recents on the user's phone, so the battery saver should not stop it there.
 - [x] (maps-link session, 21 Oct) Nearby (the user: "πατάω αναζήτηση πατάω πύργο και βγάζει την καρτέλα … βάλε και ένα κουμπί
       Nearby και βγάλε σημεία ενιδαφέροντος"): a place's card › Nearby opens Search around it ("Near Πύργος"), nearest first,
       distances from it, the pills narrowing it. Search's panel now rides above the keyboard, and says it is loading.

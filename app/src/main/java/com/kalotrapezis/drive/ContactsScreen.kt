@@ -473,8 +473,10 @@ internal fun dateText(d: VDate, birthday: Boolean, today: LocalDate = LocalDate.
 private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: () -> Unit, edit: () -> Unit, star: () -> Unit, keep: () -> Unit, openUid: (String) -> Unit) {
     val context = LocalContext.current
     val i = c.info
-    fun go(uri: String, action: String = Intent.ACTION_VIEW) = runCatching { context.startActivity(Intent(action, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        .onFailure { android.widget.Toast.makeText(context, "No app opens this", android.widget.Toast.LENGTH_SHORT).show() }
+    fun go(uri: String, action: String = Intent.ACTION_VIEW) { runCatching { context.startActivity(Intent(action, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        .onFailure { android.widget.Toast.makeText(context, "No app opens this", android.widget.Toast.LENGTH_SHORT).show() } }
+    var history by remember(c.info.uid) { mutableStateOf(false) }
+    var strip by remember { mutableStateOf<Pair<String, List<Pair<String, () -> Unit>>>?>(null) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding()
             .padding(top = 72.dp, bottom = 32.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -482,22 +484,81 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                 ContactAvatar(i, 120.dp)
                 Text(i.name, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
                 if (i.job.isNotEmpty()) Text(i.job, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                val phone = i.phones.firstOrNull()?.value
-                val mail = i.emails.firstOrNull()?.value
+                // the other apps' rows for these numbers, and the calls with them (both need the phone's permissions)
+                var permits by remember { mutableIntStateOf(0) }
+                val ways by produceState(emptyList<AppWay>(), i.phones, permits) { value = withContext(Dispatchers.IO) { runCatching { ContactsSystem.appWays(context, i.phones.map { it.value }) }.getOrDefault(emptyList()) } }
+                val calls by produceState(emptyList<CallEntry>(), i.phones, permits) { value = withContext(Dispatchers.IO) { runCatching { ContactsSystem.calls(context, i.phones.map { it.value }) }.getOrDefault(emptyList()) } }
+                val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permits++ }
+                fun open(w: AppWay) { runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(android.content.ContentUris.withAppendedId(android.provider.ContactsContract.Data.CONTENT_URI, w.id), w.mime).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure { android.widget.Toast.makeText(context, "${w.app} did not open", android.widget.Toast.LENGTH_SHORT).show() } }
+                fun sms(n: String) = go("smsto:${Uri.encode(n)}", Intent.ACTION_SENDTO)
+                fun dial(n: String) = go("tel:${Uri.encode(n)}", Intent.ACTION_DIAL)
+                fun mail(m: String) = go("mailto:$m", Intent.ACTION_SENDTO)
+                /** One way: at once; several (a number's apps, two numbers): a strip from the bottom to choose. */
+                fun choose(title: String, options: List<Pair<String, () -> Unit>>) { if (options.size == 1) options.single().second() else if (options.isNotEmpty()) strip = title to options }
+                fun numberText(n: String) = i.phones.firstOrNull { it.value == n }?.label?.ifEmpty { null }?.let { "$it $n" } ?: n
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    RoundAction(R.drawable.ic_chat, "Message", phone != null) { go("smsto:${Uri.encode(phone)}", Intent.ACTION_SENDTO) }
-                    RoundAction(R.drawable.ic_call, "Call", phone != null) { go("tel:${Uri.encode(phone)}", Intent.ACTION_DIAL) }
-                    RoundAction(R.drawable.ic_videocam, "Video", false) {}
-                    RoundAction(R.drawable.ic_mail, "Mail", mail != null) { go("mailto:$mail", Intent.ACTION_SENDTO) }
+                    RoundAction(R.drawable.ic_chat, "Message", i.phones.isNotEmpty()) {
+                        choose("Message", i.phones.map { f -> "SMS · ${numberText(f.value)}" to { sms(f.value) } } + ways.filter { it.way == Way.Message }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
+                    }
+                    RoundAction(R.drawable.ic_call, "Call", i.phones.isNotEmpty()) {
+                        choose("Call", i.phones.map { f -> "Phone · ${numberText(f.value)}" to { dial(f.value) } } + ways.filter { it.way == Way.Call }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
+                    }
+                    RoundAction(R.drawable.ic_videocam, "Video", ways.any { it.way == Way.Video }) {
+                        choose("Video", ways.filter { it.way == Way.Video }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
+                    }
+                    RoundAction(R.drawable.ic_mail, "Mail", i.emails.isNotEmpty()) { choose("Mail", i.emails.map { e -> e.value to { mail(e.value) } }) }
                 }
+                // Details | History (the iPhone's Voicemail cannot be read by any app but the phone's own: History instead)
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = CircleShape) {
+                    Row(Modifier.padding(4.dp)) {
+                        listOf(false, true).forEach { h ->
+                            Surface(onClick = { history = h }, shape = CircleShape, color = if (history == h) CONTACTS_COLOR else Color.Transparent,
+                                contentColor = if (history == h) Color.White else MaterialTheme.colorScheme.onSurface) {
+                                Text(if (h) "History" else "Details", Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
+                            }
+                        }
+                    }
+                }
+                val canCalls = context.checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+                if (history) {
+                    if (!canCalls) DetailCard {
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Calls with ${i.given.ifBlank { i.name }} come from the phone's call log.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = { askCalls.launch(Manifest.permission.READ_CALL_LOG) }) { Text("Allow", color = CONTACTS_COLOR) }
+                        }
+                    } else if (calls.isEmpty()) Hint("No calls with ${i.given.ifBlank { i.name }} in the phone's call log.")
+                    else DetailCard { calls.forEach { call -> CallRow(call, i.phones.size > 1) { dial(call.number) } } }
+                    val dates = i.birthday?.let { listOf("Birthday" to dateText(it, true)) }.orEmpty() + i.dates.mapNotNull { f -> VDate.parse(f.value)?.let { f.label to dateText(it, false) } }
+                    if (dates.isNotEmpty()) DetailCard { dates.forEach { (l, t) -> DetailRow(l, t) } }
+                    return@Column
+                }
+                calls.firstOrNull()?.let { last -> DetailCard {
+                    Row(Modifier.fillMaxWidth().clickable { history = true }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Last call", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(callText(last), style = MaterialTheme.typography.bodyLarge)
+                        }
+                        Text("Call history ›", color = CONTACTS_COLOR)
+                    }
+                } }
                 if (c.versions > 1) DetailCard {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${c.versions} versions of this contact (a change on two devices). This is the newer.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = keep) { Text("Keep this one") }
                     }
                 }
-                if (i.phones.isNotEmpty()) DetailCard { i.phones.forEach { f -> DetailRow(f.label.ifEmpty { "Phone" }, f.value, onClick = { go("tel:${Uri.encode(f.value)}", Intent.ACTION_DIAL) }) } }
-                if (i.emails.isNotEmpty()) DetailCard { i.emails.forEach { f -> DetailRow(f.label.ifEmpty { "Email" }, f.value, onClick = { go("mailto:${f.value}", Intent.ACTION_SENDTO) }) } }
+                if (i.phones.isNotEmpty()) DetailCard { i.phones.forEach { f ->
+                    // each number's apps as small chips: a tap writes to them there
+                    val apps = ways.filter { it.number == f.value }.groupBy { it.app }
+                    DetailRow(f.label.ifEmpty { "Phone" }, f.value, onClick = { dial(f.value) }) {
+                        apps.forEach { (app, ws) -> Surface(onClick = { open(ws.firstOrNull { it.way == Way.Message } ?: ws.first()) }, shape = CircleShape, color = CONTACTS_COLOR.copy(alpha = 0.2f)) {
+                            Text(app, Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+                        } }
+                    }
+                } }
+                if (i.emails.isNotEmpty()) DetailCard { i.emails.forEach { f -> DetailRow(f.label.ifEmpty { "Email" }, f.value, onClick = { mail(f.value) }) } }
                 if (i.birthday != null || i.dates.isNotEmpty()) DetailCard {
                     i.birthday?.let { DetailRow("Birthday", dateText(it, true)) }
                     i.dates.forEach { f -> VDate.parse(f.value)?.let { DetailRow(f.label, dateText(it, false)) } }
@@ -533,6 +594,20 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
             }
         }
     }
+    strip?.let { (title, options) -> WaysStrip(title, options) { strip = null } }
+}
+
+/** Message, Call, Video or Mail with several ways: a strip from the bottom (no popup lists on a touch screen). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun WaysStrip(title: String, options: List<Pair<String, () -> Unit>>, dismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
+        Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
+            options.forEach { (label, act) ->
+                Text(label, Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { dismiss(); act() }.padding(horizontal = 8.dp, vertical = 14.dp))
+            }
+        }
+    }
 }
 
 @Composable private fun RoundAction(icon: Int, label: String, enabled: Boolean, click: () -> Unit) {
@@ -550,7 +625,7 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
         Column(Modifier.padding(vertical = 4.dp)) { content() }
     }
 
-@Composable private fun DetailRow(label: String, value: String, action: String? = null, onClick: (() -> Unit)? = null) {
+@Composable private fun DetailRow(label: String, value: String, action: String? = null, onClick: (() -> Unit)? = null, trailing: @Composable () -> Unit = {}) {
     Row(Modifier.fillMaxWidth().then(if (onClick != null && action == null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -558,8 +633,32 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
             Text(value, style = MaterialTheme.typography.bodyLarge, color = if (onClick != null && action == null) CONTACTS_COLOR else MaterialTheme.colorScheme.onSurface)
         }
         if (action != null && onClick != null) TextButton(onClick = onClick) { Text(action, color = CONTACTS_COLOR) }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { trailing() }
     }
 }
+
+/** "Mon 15:36 · in · 2 min": a call in a few words. */
+private fun callText(c: CallEntry): String {
+    val at = java.time.Instant.ofEpochMilli(c.at).atZone(java.time.ZoneId.systemDefault())
+    val day = if (at.toLocalDate() == LocalDate.now()) "Today" else if (at.toLocalDate() == LocalDate.now().minusDays(1)) "Yesterday"
+        else at.format(DateTimeFormatter.ofPattern(if (at.year == LocalDate.now().year) "EEE d MMM" else "d MMM yyyy", Locale.ENGLISH))
+    val kind = when (c.type) {
+        android.provider.CallLog.Calls.INCOMING_TYPE -> "in"; android.provider.CallLog.Calls.OUTGOING_TYPE -> "out"
+        android.provider.CallLog.Calls.MISSED_TYPE -> "missed"; android.provider.CallLog.Calls.REJECTED_TYPE -> "declined"; else -> "call"
+    }
+    val length = if (c.seconds <= 0) "" else " · " + if (c.seconds < 60) "${c.seconds} s" else "${(c.seconds + 30) / 60} min"
+    return "$day ${at.format(DateTimeFormatter.ofPattern("HH:mm"))} · $kind$length"
+}
+
+@Composable private fun CallRow(c: CallEntry, showNumber: Boolean, click: () -> Unit) =
+    Row(Modifier.fillMaxWidth().clickable(onClick = click).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val missed = c.type == android.provider.CallLog.Calls.MISSED_TYPE || c.type == android.provider.CallLog.Calls.REJECTED_TYPE
+        Icon(painterResource(R.drawable.ic_call), contentDescription = null, tint = if (missed) MaterialTheme.colorScheme.error else CONTACTS_COLOR, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text(callText(c), color = if (missed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+            if (showNumber) Text(c.number, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 
 /** Contacts' part of Tetra's Trash, newest first, each with Restore. */
 @OptIn(ExperimentalMaterial3Api::class)

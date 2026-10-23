@@ -186,4 +186,17 @@ class ContactsTest {
             ContactsFaces.matches(contacts, people) { it }.map { it.first.name to it.second })
         assertEquals(2, ContactsFaces.score("Μαρία Π.", "μαρια π."))
     }
+
+    @Test fun otherAppsRowsForAContactsNumbers() {
+        val rows = listOf(
+            AppRow(1, "vnd.android.cursor.item/vnd.com.whatsapp.profile", "306970000002@s.whatsapp.net", "WhatsApp"),
+            AppRow(2, "vnd.android.cursor.item/vnd.com.whatsapp.video.call", "306970000002@s.whatsapp.net", "WhatsApp"),
+            AppRow(3, "vnd.android.cursor.item/vnd.com.viber.voip.viber_number_call", "+306970000002", "Viber"),
+            AppRow(4, "vnd.android.cursor.item/vnd.com.viber.voip.viber_number_call", "+306970000002", "Viber"), // Google's copy of Viber's row
+            AppRow(5, "vnd.android.cursor.item/vnd.com.viber.voip.viber_out_call_viber", "+306970000002", "Viber"), // Viber Out: paid, not offered
+            AppRow(6, "vnd.android.cursor.item/vnd.com.whatsapp.profile", "306999999999@s.whatsapp.net", "WhatsApp"), // someone else
+        )
+        assertEquals(listOf(Triple("WhatsApp", Way.Message, 1L), Triple("WhatsApp", Way.Video, 2L), Triple("Viber", Way.Call, 3L)),
+            ContactsWays.ways(rows, listOf("+30 697 000 0002")).map { Triple(it.app, it.way, it.id) })
+    }
 }

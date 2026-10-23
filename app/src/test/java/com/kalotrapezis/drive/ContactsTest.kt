@@ -164,4 +164,16 @@ class ContactsTest {
         assertEquals("Κ", ContactsFiles.letter(i, true))
         assertNotNull(VDate.parse("1985-03-14T00:00:00Z"))
     }
+
+    @Test fun theEditorsDates() {
+        assertEquals(VDate(1985, 10, 23), dateFromText("23/10/1985"))
+        assertEquals(VDate(null, 10, 23), dateFromText("23/10"))
+        assertEquals(VDate(1985, 10, 23), dateFromText("23.10.85"))
+        assertEquals(VDate(2010, 1, 2), dateFromText("2-1-10"))
+        assertNull(dateFromText("32/1"))
+        assertNull(dateFromText("tomorrow"))
+        assertEquals("23/10", dateToText(VDate(null, 10, 23)))
+        assertEquals("14 Mar · turns 42", dateText(VDate(1985, 3, 14), true, java.time.LocalDate.of(2026, 10, 23)))
+        assertEquals("23 Oct · 41 today", dateText(VDate(1985, 10, 23), true, java.time.LocalDate.of(2026, 10, 23)))
+    }
 }

@@ -117,6 +117,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var byLast by remember { mutableStateOf(ContactsPrefs.byLast(context)) }
     var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
+    var editing by remember { mutableStateOf<Pair<Contact?, ContactInfo>?>(null) } // the contact (null: a new one) and where its editor starts
     LaunchedEffect(message) { if (message != null) { delay(3500); message = null } }
     val root = remember { contactsRoot() }
 
@@ -145,6 +146,12 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         val r = withContext(Dispatchers.IO) { runCatching(work) }
         message = r.getOrElse { "Not done: ${it.message ?: it.javaClass.simpleName}" }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: a change failed", it) }
+        version++
+    }
+    /** [c] (null: a new contact) saved as [i]; the page opens on it. */
+    fun save(c: Contact?, i: ContactInfo, said: String = "Saved") = scope.launch {
+        val r = withContext(Dispatchers.IO) { runCatching { ContactsFiles.save(root, c, i) } }
+        r.onSuccess { openUid = it.info.uid; message = said }.onFailure { message = "Not saved: ${it.message}"; WriterLog.e("Contacts: save", it) }
         version++
     }
     fun imported(r: ContactsFiles.Imported) = "Imported: ${r.added} new" + if (r.same > 0) ", ${r.same} already here" else ""
@@ -183,7 +190,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             else -> true
         } }
     }
-    BackHandler { when { drawer -> drawer = false; !wide && open != null -> openUid = null; label != null -> label = null; query.isNotEmpty() -> query = ""; else -> back() } }
+    BackHandler(editing == null) { when { drawer -> drawer = false; !wide && open != null -> openUid = null; label != null -> label = null; query.isNotEmpty() -> query = ""; else -> back() } }
 
     val list: @Composable (Modifier) -> Unit = { m ->
         Box(m) {
@@ -275,7 +282,12 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     }
     val page: @Composable (Modifier) -> Unit = { m ->
         Box(m) {
-            if (open != null) ContactPage(open, all, wide, close = { openUid = null }, keep = { act { ContactsFiles.copies(root, open).forEach { f -> DriveRules.moveToTrash(root.parentFile!!, f.relativeTo(root.parentFile!!).path) }; "Kept this version; the other went to the Trash" } },
+            val ed = editing
+            if (ed != null) ContactEditor(ed.second, ed.first == null, all.flatMap { it.info.labels }.distinctBy { it.lowercase() }, cancel = { editing = null },
+                delete = ed.first?.let { c -> { editing = null; openUid = null; act { ContactsFiles.trash(root, c); "${c.info.name} moved to the Trash" } } },
+                photo = { i, _ -> ContactAvatar(i, 96.dp) }) { i -> editing = null; save(ed.first, i, if (ed.first == null) "Contact created" else "Saved") }
+            else if (open != null) ContactPage(open, all, wide, close = { openUid = null }, edit = { editing = open to open.info },
+                star = { save(open, open.info.favourite(!open.info.favourite), if (open.info.favourite) "Not a favourite" else "Added to favourites") }, keep = { act { ContactsFiles.copies(root, open).forEach { f -> DriveRules.moveToTrash(root.parentFile!!, f.relativeTo(root.parentFile!!).path) }; "Kept this version; the other went to the Trash" } },
                 openUid = { openUid = it })
             else if (wide) Hint("Choose a contact.", Modifier.align(Alignment.Center))
         }
@@ -286,13 +298,18 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             if (wide) Row(Modifier.fillMaxSize()) {
                 list(Modifier.width(380.dp).fillMaxHeight())
                 page(Modifier.weight(1f).fillMaxHeight())
-            } else if (open != null) page(Modifier.fillMaxSize()) else list(Modifier.fillMaxSize())
+            } else if (open != null || editing != null) page(Modifier.fillMaxSize()) else list(Modifier.fillMaxSize())
             // Tetra's island at the bottom, + at the right (Files', the Calendar's); on a wide screen under the list
-            if (wide || open == null) Row(Modifier.align(Alignment.BottomStart).then(if (wide) Modifier.width(380.dp) else Modifier.fillMaxWidth())
+            if (wide || (open == null && editing == null)) Row(Modifier.align(Alignment.BottomStart).then(if (wide) Modifier.width(380.dp) else Modifier.fillMaxWidth())
                 .navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
                     ContactsTab.entries.forEach { t -> IslandNavigationItem(t.label, tab == t, t.icon) { tab = t; label = null } }
+                }
+                IslandVisibility(!drawer) {
+                    Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                        IconButton(onClick = { editing = null to ContactInfo(categories = listOfNotNull(label)) }) { Icon(painterResource(R.drawable.ic_add), contentDescription = "New contact") }
+                    }
                 }
             }
             message?.let { m ->
@@ -351,7 +368,7 @@ internal fun dateText(d: VDate, birthday: Boolean, today: LocalDate = LocalDate.
  * Call · Video · Mail buttons, then the details in cards.
  */
 @Composable
-private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: () -> Unit, keep: () -> Unit, openUid: (String) -> Unit) {
+private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: () -> Unit, edit: () -> Unit, star: () -> Unit, keep: () -> Unit, openUid: (String) -> Unit) {
     val context = LocalContext.current
     val i = c.info
     fun go(uri: String, action: String = Intent.ACTION_VIEW) = runCatching { context.startActivity(Intent(action, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -403,7 +420,15 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                 IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Contacts") }
             }
             Spacer(Modifier.weight(1f))
-            if (i.favourite) Icon(painterResource(R.drawable.ic_star), contentDescription = "Favourite", tint = CONTACTS_COLOR, modifier = Modifier.padding(12.dp))
+            Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = star) {
+                        Icon(painterResource(if (i.favourite) R.drawable.ic_star else R.drawable.ic_star_border), contentDescription = if (i.favourite) "Remove from favourites" else "Add to favourites",
+                            tint = if (i.favourite) CONTACTS_COLOR else islandContentColor())
+                    }
+                    TextButton(onClick = edit) { Text("Edit", color = islandContentColor()) }
+                }
+            }
         }
     }
 }

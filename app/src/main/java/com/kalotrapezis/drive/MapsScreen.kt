@@ -14,6 +14,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -1273,7 +1274,7 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
     var slot by remember { mutableStateOf(p.slot) }
     var mode by remember { mutableStateOf(p.mode) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(if (p.id.isEmpty()) "Save place" else "Place") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        text = { Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { // a phone shows half of it (the user, 23 Oct: "it needs scroll")
             if (p.id.isEmpty() && onMap != null) {
                 // one tap: an ΑμεΑ spot here, on the map
                 Button(onClick = { onMap(Poi("disabled_parking", p.lat, p.lng, "")) }, colors = panelButton(), modifier = Modifier.fillMaxWidth()) { Text("♿  ΑμεΑ parking here") }

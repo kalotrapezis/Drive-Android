@@ -180,12 +180,12 @@ internal class SyncServer(private val context: Context, private val store: SyncS
         val stream = BufferedInputStream(input)
         val request = readLine(stream) ?: return
         val (method, path) = request.split(' ').let { (it.getOrNull(0) ?: "") to (it.getOrNull(1) ?: "") }
-        var length = 0
+        var length = 0L
         var bearer: String? = null
         while (true) {
             val header = readLine(stream) ?: return
             if (header.isEmpty()) break
-            if (header.startsWith("Content-Length:", true)) length = header.substringAfter(':').trim().toIntOrNull() ?: 0
+            if (header.startsWith("Content-Length:", true)) length = header.substringAfter(':').trim().toLongOrNull() ?: 0
             if (header.startsWith("Authorization:", true)) bearer = header.substringAfter(':').trim().removePrefix("Bearer ").trim()
         }
         // "Sync now" from a device we are paired with: it says nothing and carries nothing, it only asks. The
@@ -199,6 +199,7 @@ internal class SyncServer(private val context: Context, private val store: SyncS
             NotesSync.soon(context, 0) // a note changed on the computer, most likely: those first, at once
             ScopedSync.soon(context, "calendar", 0) // or an event (Claude's, the skill's): the Calendar's part, at once
             ScopedSync.soon(context, "timer", 0) // or a timer started, paused, stopped or answered on another device
+            Outbox.soon(context) // the computer is there: what was shared while it was away goes now
             SyncService.syncInBackground(context, gap = 60_000)
             return reply(output, 200, JSONObject().put("ok", true))
         }
@@ -209,8 +210,23 @@ internal class SyncServer(private val context: Context, private val store: SyncS
             val (status, body) = PhoneLocation.answer(context)
             return reply(output, status, body)
         }
+        // Send to phone: a file from the computer, into Files › From computer (FromComputer). Only a paired device.
+        if (method == "PUT" && path.startsWith("/send/")) {
+            val peer = bearer?.let { b -> store.peers().firstOrNull { it.theirToken == b } } ?: return reply(output, 401, JSONObject().put("error", "Not paired."))
+            val url = android.net.Uri.parse("https://x$path")
+            val sha = url.path.orEmpty().removePrefix("/send/")
+            if (!Regex("[0-9a-f]{64}").matches(sha)) return reply(output, 400, JSONObject().put("error", "Invalid file."))
+            val dir = java.io.File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), FromComputer.FOLDER)
+            return try {
+                val kept = FromComputer.receive(stream, length, dir, sha, url.getQueryParameter("name").orEmpty(), url.getQueryParameter("modified")?.toLongOrNull() ?: 0)
+                FromComputer.arrived(context, kept.name, peer.name)
+                reply(output, 200, JSONObject().put("sha256", sha).put("path", "${FromComputer.FOLDER}/${kept.name}").put("verified", true))
+            } catch (e: IllegalArgumentException) {
+                reply(output, if ("transit" in e.message.orEmpty()) 422 else 400, JSONObject().put("error", e.message))
+            }
+        }
         if (method != "POST" || path != "/pair" || length !in 1..8192) return reply(output, 404, JSONObject().put("error", "Unknown request."))
-        val body = ByteArray(length).also { var read = 0; while (read < length) { val n = stream.read(it, read, length - read); if (n < 0) break; read += n } }
+        val body = ByteArray(length.toInt()).also { var read = 0; while (read < length.toInt()) { val n = stream.read(it, read, length.toInt() - read); if (n < 0) break; read += n } }
         reply(output, 200, pair(runCatching { JSONObject(String(body, Charsets.UTF_8)) }.getOrDefault(JSONObject())))
     }
 

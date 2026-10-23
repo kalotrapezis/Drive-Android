@@ -663,6 +663,10 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     LaunchedEffect(applet.value) {
         // the Timer's notification and its App icon open its screen
         if (applet.value == TimerService.SCREEN && screen != Screen.PhotoSetup) { applet.value = null; screen = Screen.Timer; return@LaunchedEffect }
+        // "2 files from <computer>": its tap opens Files at From computer
+        if (applet.value == FromComputer.SCREEN && screen != Screen.PhotoSetup) {
+            applet.value = null; screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = FromComputer.FOLDER; loadDrive(FromComputer.FOLDER); return@LaunchedEffect
+        }
         val a = Applet.of(applet.value) ?: return@LaunchedEffect
         applet.value = null
         if (screen == Screen.PhotoSetup) return@LaunchedEffect

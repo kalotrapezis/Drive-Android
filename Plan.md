@@ -187,15 +187,22 @@ How to write here:
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
 - [x] (contacts-build session, 23 Oct; branch claude/contacts-583397, not merged) **Contacts** on Android, § Contacts steps 1–8
-      (step 9 and the Contacts sync scope later); no sync code touched. On the phone (main + the branch, 22:32): 318 of its
+      (step 9 later); sync and desktop now (the user, 23 Oct: "now do the desktop and the sync"). On the phone (main + the branch, 22:32): 318 of its
       contacts imported (71 photos, 14 birthdays into Γενέθλια), WhatsApp/Viber chips and Message strip seen. Waiting on the
       user there: Link birthdays (2 suggested — "Ελπίδα (Όνομα)" may be a name day), Merge & fix (12), Allow for History and
       In the phone's contacts. Tablet not connected: seen on the tablet emulator only.
-- [ ] (the user, 23 Oct: "with Bluetooth, could Files be in the sharing menu so you send files to the PC at once?")
-      **Send to computer** in Android's share menu: Tetra a share target (ACTION_SEND / SEND_MULTIPLE, any type); the
-      files go to the paired computer at once over the Wi-Fi link sync already has (not Bluetooth: ~2 Mbit/s against
-      Wi-Fi's tens to hundreds), into a folder there (where: the user's call); offline → waits and goes when the PC is
-      seen, as ScopedSync's job. Desktop the other way: "Send to phone". Not started.
+- [x] (send-to-computer session, 23 Oct; branch claude/keen-grothendieck-9e0fad, Drive branch send-to-computer in
+      Drive-worktrees/send-to-computer) (the user, 23 Oct: "with Bluetooth, could Files be in the sharing menu so you send
+      files to the PC at once?") **Send to computer** in Android's share menu, over sync's Wi-Fi link (not Bluetooth), into
+      the PC's ~/Tetra/Files/From phone (the user's choice); offline → a private outbox, sent when the computer is seen
+      (JobScheduler retry, any sync, its "sync now"). The other way too (the user: "Yes, both ways"): desktop Files'
+      Send to phone and the tray's "Send files to phone…", into the phone's Tetra/From computer. Both folders are in Files,
+      so sync then carries them to the other side as well (accepted with the choice).
+      Built and tried on the real pair (Drive SYNC_PLAN 6ao): photo + PDF on the PC in ~1.2 s, SHA-256 equal; with the PC's
+      Tetra stopped the PDF waited and landed when it came back; two files to the phone in 0.7 s; each side's notification
+      opens Files at the folder. The user's own try found a crash (a long Greek PDF name past 255 bytes) — fixed and re-run.
+      Merged into main in both repos (the user, 23 Oct: "Merge both branches into main and build the new desktop .deb"):
+      desktop 0.6.0-beta.5. Not done: sharing text or a link (no file) says "Nothing to send".
 - [x] (f5c3277, 23 Oct) Android Auto in the user's car: stuck on "Finding the way…" — the car refused navigationStarted and
       the HostException crashed Tetra; now logged and the route driven anyway. Android Auto lists a sideloaded Car App
       Library app in a real car only after a desktop head unit run (Unknown sources doesn't cover it, Google's docs); every
@@ -221,6 +228,15 @@ How to write here:
       computer Calendar byte for byte the same (468 files). Tablet not yet synced (hotspot isolates it); APKs not installed.
 - [x] (contacts-plan session, 23 Oct) **Contacts** planned, not built (§ Contacts below): research, files, sync, birthdays,
       photos from Photos' faces, UI, Home, icons, integrations. Nine questions at its end wait for the user's answers.
+- [x] (fef0be0, Drive ebad077; maps-slots session, 23 Oct) Maps from the user: saving into an empty Home slot did nothing
+      (the phone); slot 7 a supermarket on the tablet, home on the PC. Found: the phone held home in three files (fe7a06.json,
+      (2), (3)) from syncs that saw it changed on both sides, the phone's own save stamped with an older copy's date, so a
+      copy won. Now one file a place (older copies to Tetra/Trash on read; a save trashes its other copies; delete trashes),
+      and two places in one slot both stay — the newest keeps it, the other the first free slot (settle), the same on phone
+      and desktop. The tablet: My Market (slot 6), Joy, Πάρκινγκ Αμεα never reached the PC (not marked deleted) and it has no
+      home — it has not synced since 22 Oct (hotspot). Notes: maps-slots-23oct.md. On the phone (36a602e, 22:01):
+      home is one file, slot 7, its two other copies in its Trash — as the PC (newest fe7a06.json, slot 7). **Not on the
+      tablet** (not connected); the desktop's fix comes with 0.6.0-beta.5 (Drive aa87cc4), not installed at 22:05.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

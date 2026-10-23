@@ -191,6 +191,11 @@ How to write here:
       Library app in a real car only after a desktop head unit run (Unknown sources doesn't cover it, Google's docs); every
       new install drops it until the DHU is run again. So the phone is installed with tools/phone-install.sh: install, wait for
       the user's Start head unit server, the DHU until Android Auto's check passes Tetra, then closed (~15 s).
+- [x] (0428e49, df4b2f0, 2170623, 23 Oct) Maps by car after the user's drive: a new route keeps the car's heading; turns
+      warned a street early / 150 m+; sharp-bend warnings (setting); the car's recenter button; a busy crossing's picture in
+      the turn card and the map close and flat near it (Νικήσιανη, Δράμα's 5 Δρόμοι); lane guidance from OSM's turn:lanes
+      (tools/maps-lanes.py → greece-lanes.tsv in Tetra/Maps): a lane strip, "από τη δεξιά λωρίδα", "Συνεχίστε ευθεία" for a
+      keep along the through lanes; exits warned at 3 km and "take the exit" where its lane begins. Not yet driven.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

@@ -216,6 +216,15 @@ How to write here:
       computer Calendar byte for byte the same (468 files). Tablet not yet synced (hotspot isolates it); APKs not installed.
 - [x] (contacts-plan session, 23 Oct) **Contacts** planned, not built (§ Contacts below): research, files, sync, birthdays,
       photos from Photos' faces, UI, Home, icons, integrations. Nine questions at its end wait for the user's answers.
+- [x] (fef0be0, Drive ebad077; maps-slots session, 23 Oct) Maps from the user: saving into an empty Home slot did nothing
+      (the phone); slot 7 a supermarket on the tablet, home on the PC. Found: the phone held home in three files (fe7a06.json,
+      (2), (3)) from syncs that saw it changed on both sides, the phone's own save stamped with an older copy's date, so a
+      copy won. Now one file a place (older copies to Tetra/Trash on read; a save trashes its other copies; delete trashes),
+      and two places in one slot both stay — the newest keeps it, the other the first free slot (settle), the same on phone
+      and desktop. The tablet: My Market (slot 6), Joy, Πάρκινγκ Αμεα never reached the PC (not marked deleted) and it has no
+      home — it has not synced since 22 Oct (hotspot). Notes: maps-slots-23oct.md. **Not yet on the phone** (the Send to
+      computer build is there; it carries main next, or the user's go), **not on the tablet** (not connected), desktop
+      not rebuilt (its old code already agrees on today's files).
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

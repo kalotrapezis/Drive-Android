@@ -367,7 +367,11 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         t = TextToSpeech(context.applicationContext) { ok -> if (ok == TextToSpeech.SUCCESS) { t?.language = MapsPrefs.ttsLocale(lang); tts.value = t } }
         onDispose { t.stop(); t.shutdown() }
     }
-    fun say(text: String) { WriterLog.i("Maps: say \"$text\"${if (muted) " (muted)" else ""}"); if (!muted) tts.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "maps") }
+    /** [text] spoken; [why] in the log only: which warning, how far, how fast. */
+    fun say(text: String, why: String = "") {
+        WriterLog.i("Maps: say \"$text\"${if (muted) " (muted)" else ""}" + if (why.isNotEmpty()) " ($why)" else "")
+        if (!muted) tts.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "maps")
+    }
 
     /** The car is here: one place, "My car", saved over the last one. */
     fun park(loc: Location, why: String) {
@@ -410,7 +414,10 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     var fix: (Location) -> Unit = {} // onFix, below: it and startNav call each other
     /** Directions on [route], from [from]: spoken, followed, the car's spot cleared for a car. */
     fun begin(target: Place, mode: String, route: Route, from: Location) {
-        WriterLog.i("Maps: route by $mode, ${route.metres.toInt()} m, ${route.steps.size} steps, ${route.roads}")
+        WriterLog.i("Maps: route by $mode to ${target.name}, ${route.metres.toInt()} m, ${route.steps.size} steps, ${route.roads}, from ${where(from)}" +
+            (if (mode == "car") if (headingOf(from).isFinite()) ", keeping the heading" else ", no heading (slow or still)" else "") +
+            "; first: ${route.steps.getOrNull(1)?.text ?: route.steps.firstOrNull()?.text}")
+        MapsTrace.start(context, "phone", target, mode)
         val rerouted = nav?.target?.id == target.id
         nav = Nav(target, mode, route, cumulative(route), System.currentTimeMillis())
         selected = null; preview = null
@@ -485,21 +492,21 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             }
         }
         val n = nav ?: return
-        val (p, i) = progress(n.route, n.cum, loc.latitude, loc.longitude, n.index)
         val car = n.mode == "car"
-        if (p.off > (if (car) 50.0 else 30.0)) {
-            val off = n.offFixes + 1
-            nav = n.copy(offFixes = off)
-            if (off >= 3 && System.currentTimeMillis() - n.since > 10_000 && finding == null) {
-                WriterLog.i("Maps: off the route by ${p.off.toInt()} m, a new one"); startNav(n.target, n.mode, loc)
-            }
+        val speedMs = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+        val g = guide(n, loc.latitude, loc.longitude, speedMs, System.currentTimeMillis(), MapsPrefs.bends(context), finding != null)
+        val p = g.p
+        val lc = mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }
+        MapsTrace.fix(loc, p.takeIf { !g.off }, lc?.let { (if (it.cameraMode == CameraMode.TRACKING_GPS) "follow" else "free") +
+            "/z%.1f/t%.0f".format(java.util.Locale.ROOT, mapRef?.cameraPosition?.zoom ?: 0.0, mapRef?.cameraPosition?.tilt ?: 0.0) + if (closeUp) "/close" else "" } ?: "none")
+        if (g.off) {
+            nav = n.copy(offFixes = n.offFixes + 1)
+            if (g.reroute) { WriterLog.i("Maps: off the route by ${p.off.toInt()} m at ${where(loc)}, a new one"); startNav(n.target, n.mode, loc) }
             return
         }
-        var said = n.said
-        // there: at the route's end, or near the place itself (a place saved off the road ends its route short of it)
-        if (p.left < (if (car) 50.0 else 20.0) || metresBetween(loc.latitude, loc.longitude, n.target.lat, n.target.lng) < (if (car) 60.0 else 25.0)) {
-            WriterLog.i("Maps: arrived, ${p.left.toInt()} m left on the route")
-            if ("n${n.route.steps.lastIndex}" !in said) say(n.route.steps.lastOrNull()?.text ?: "")
+        if (g.arrived) {
+            WriterLog.i("Maps: arrived at ${where(loc)}, ${p.left.toInt()} m left on the route")
+            if ("n${n.route.steps.lastIndex}" !in n.said) say(n.route.steps.lastOrNull()?.text ?: "")
             stopNav()
             // a trip's stop: the next one starts when the car moves on (the user: "When we comtinue from a stop … start automaticaly")
             tripRun?.let { (t, i) ->
@@ -512,26 +519,15 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             if (car && MapsPrefs.autoPark(context)) park(loc, "a car trip ended")
             Toast.makeText(context, "Arrived: ${n.target.name}", Toast.LENGTH_LONG).show(); return
         }
-        val step = n.route.steps[p.next]
-        val speed = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
         // by car, near a busy crossing the map comes close and flat; past it, back
-        val close = car && closeView(step.junction, p.toNext, speed)
-        if (close != closeUp) {
-            closeUp = close
-            mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated && it.cameraMode == CameraMode.TRACKING_GPS }?.let { lc ->
-                val (z, t) = carView(close); lc.zoomWhileTracking(z, 1500); lc.tiltWhileTracking(t, 1500)
-            }
+        if (g.close != closeUp) {
+            closeUp = g.close
+            WriterLog.i(if (g.close) "Maps: camera close over the crossing of step ${p.next}, ${p.toNext.toInt()} m ahead" else "Maps: camera back from close")
+            lc?.takeIf { it.cameraMode == CameraMode.TRACKING_GPS }?.let { val (z, t) = carView(g.close); it.zoomWhileTracking(z, 1500); it.tiltWhileTracking(t, 1500) }
         }
-        val due = dueWarning(p.next, p.toNext, speed, car, said, step.lanes?.begins ?: 0.0)
-        when (due) {
-            "n" -> { say(nearWords(lang, p.toNext, car, MapsLanes.said(step, lang))); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
-            "f" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, MapsLanes.said(step, lang))); said = said + "f${p.next}" + "e${p.next}" }
-            "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, car, MapsLanes.said(step, lang))); said = said + "e${p.next}" }
-        }
-        if (due == null && car && MapsPrefs.bends(context)) dueBend(n.bends, p.along, speed, said)?.let { b ->
-            say(MapsPrefs.bendWords(lang, n.bends[b].right)); said = said + "b$b"
-        }
-        nav = n.copy(index = i, p = p, offFixes = 0, said = said)
+        g.words(lang, car)?.let { say(it, why = g.why()) }
+        g.bend?.let { b -> say(MapsPrefs.bendWords(lang, n.bends[b].right), why = "bend ${(n.bends[b].along - p.along).toInt()} m ahead, ${Math.round(speedMs * 3.6)} km/h") }
+        nav = n.copy(index = g.index, p = p, offFixes = 0, said = g.said(n.said))
     }
 
     fix = ::onFix

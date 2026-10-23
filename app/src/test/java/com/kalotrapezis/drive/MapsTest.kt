@@ -485,3 +485,81 @@ class MapsLanesTest {
         assertTrue(with.isNotEmpty())
     }
 }
+
+/**
+ * A drive replayed (the user, 23 Oct: "a test that replays a trace"): its fixes one by one through [guide], as the car's
+ * screen takes them, a new route from the fix where it says so — with the car's heading or, to compare, without.
+ */
+class MapsReplayTest {
+    private val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
+
+    data class Played(val reroutes: Int, val said: List<String>, val arrived: Boolean)
+
+    private fun replay(d: MapsTrace.Drive, heading: Boolean): Played {
+        val target = Place("", d.name, d.lat, d.lng, "pin", mode = d.mode)
+        fun route(f: MapsTrace.Fix) = MapsRouting.route(dir, f.lat, f.lng, d.lat, d.lng, d.mode,
+            heading = if (heading && f.speed > 2.5 && f.bearing >= 0) f.bearing else Double.NaN)
+        var r = route(d.fixes.first())
+        var n = Nav(target, d.mode, r, cumulative(r), d.fixes.first().time)
+        var reroutes = 0; val said = ArrayList<String>()
+        for (f in d.fixes) {
+            val g = guide(n, f.lat, f.lng, maxOf(0.0, f.speed), f.time, true, false)
+            if (g.off) {
+                n = n.copy(offFixes = n.offFixes + 1)
+                if (g.reroute) { r = route(f); n = Nav(target, d.mode, r, cumulative(r), f.time); reroutes++; said += "Νέα διαδρομή" }
+                continue
+            }
+            if (g.arrived) return Played(reroutes, said, true)
+            g.words("el", d.mode == "car")?.let { said += it }
+            g.bend?.let { said += MapsPrefs.bendWords("el", n.bends[it].right) }
+            n = n.copy(index = g.index, p = g.p, offFixes = 0, said = g.said(n.said))
+        }
+        return Played(reroutes, said, false)
+    }
+
+    /** A drive along [r] at [ms] m/s, a fix a second, each facing the way on. */
+    private fun drive(r: Route, ms: Double, to: Place): MapsTrace.Drive {
+        val cum = cumulative(r); val fixes = ArrayList<MapsTrace.Fix>(); var at = 0.0; var i = 0; var t = 1_000_000L
+        while (at < cum.last()) {
+            while (i < cum.size - 2 && cum[i + 1] < at) i++
+            val k = if (cum[i + 1] > cum[i]) (at - cum[i]) / (cum[i + 1] - cum[i]) else 0.0
+            val lat = r.lats[i] + k * (r.lats[i + 1] - r.lats[i]); val lng = r.lngs[i] + k * (r.lngs[i + 1] - r.lngs[i])
+            fixes += MapsTrace.Fix(t, lat, lng, ms, (bearing(r.lats[i], r.lngs[i], r.lats[i + 1], r.lngs[i + 1]) + 360) % 360, 5.0)
+            at += ms; t += 1000
+        }
+        return MapsTrace.Drive("synthetic", to.lat, to.lng, "car", to.name, fixes)
+    }
+
+    /** Directions to Άγιος Λουκάς from Σκάλα, the driver going towards Πύλη instead (23 Oct: "a new route" every 11 s). */
+    @Test fun aDriverWhoGoesElsewhere() {
+        assumeTrue(File(dir, "properties").isFile)
+        val elsewhere = MapsRouting.route(dir, 37.2115, 22.5470, 37.2180, 22.4100, "car") // Σκάλα → west, to Πύλη
+        val d = drive(elsewhere, 15.0, Place("", "Δημοτικό Σχολείο Αγίου Λουκά", 37.2777, 22.5877, "pin"))
+        val plain = replay(d, heading = false); val headed = replay(d, heading = true)
+        println("${d.fixes.size} s of driving away: without the heading ${plain.reroutes} new routes, with it ${headed.reroutes}")
+        assertTrue(headed.reroutes <= plain.reroutes)
+    }
+
+    /** Directions followed: the turns said in order, no new route, and there at the end. */
+    @Test fun aDriverWhoFollows() {
+        assumeTrue(File(dir, "properties").isFile)
+        val to = Place("", "Δημοτικό Σχολείο Αγίου Λουκά", 37.2777, 22.5877, "pin")
+        val r = MapsRouting.route(dir, 37.2115, 22.5470, to.lat, to.lng, "car")
+        val played = replay(drive(r, 14.0, to), heading = true)
+        played.said.forEach { println("  $it") }
+        assertEquals(0, played.reroutes)
+        assertTrue(played.said.size >= r.steps.size - 2)
+    }
+
+    /** The phone's own traces, put in ~/Tetra-maps/traces (adb pull …/files/logs/drive): each drive replayed and told. */
+    @Test fun realTraces() {
+        val traces = File(dir.parentFile, "traces").listFiles { f -> f.name.endsWith(".csv") }.orEmpty()
+        assumeTrue(File(dir, "properties").isFile && traces.isNotEmpty())
+        for (f in traces.sortedBy { it.name }) for (d in MapsTrace.read(f)) {
+            if (d.fixes.size < 10) continue
+            val played = replay(d, heading = true)
+            println("${f.name} ${d.header}: ${d.fixes.size} fixes, ${played.reroutes} new routes, arrived ${played.arrived}")
+            played.said.forEach { println("  $it") }
+        }
+    }
+}

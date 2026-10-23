@@ -2015,6 +2015,11 @@ private fun SettingsTab(
                     }) { Text("Test voice") }
                     OutlinedButton(onClick = { runCatching { mapsContext.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text("Voice settings") }
                 }
+                // the log and the last 7 days' drive traces (MapsTrace), for a problem seen on the road (the user, 23 Oct)
+                Text("Send log", style = MaterialTheme.typography.titleSmall)
+                Text("Tetra's log and the traces of your drives of the last 7 days (where the car was while directions ran), as one zip. They stay on this phone until you send them.",
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = { MapsTrace.export(mapsContext)?.let { shareDriveFile(mapsContext, it) } }) { Text("Send log") }
             }
         }
         item {

@@ -64,6 +64,7 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.sources.GeoJsonSource
 import java.io.File
+import java.util.Locale
 import java.util.TimeZone
 import androidx.car.app.navigation.model.Step as CarStep
 
@@ -140,7 +141,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         val mapActions = ActionStrip.Builder().addAction(Action.PAN)
             .addAction(icon(R.drawable.ic_add) { zoom(1.0) }).addAction(icon(R.drawable.ic_remove) { zoom(-1.0) })
         // back to the car: while directions run always there (the user, 23 Oct), else once the map was moved
-        if (!tracking || n != null) mapActions.addAction(icon(R.drawable.ic_my_location) { back?.cancel(); follow(); invalidate() })
+        if (!tracking || n != null) mapActions.addAction(icon(R.drawable.ic_my_location) { back?.cancel(); follow("my location"); invalidate() })
         val t = NavigationTemplate.Builder().setActionStrip(actions.build()).setMapActionStrip(mapActions.build())
             .setPanModeListener { }
         val message = when {
@@ -162,14 +163,22 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     /** The camera following me; false once the map was moved by hand, until "my location". */
     private var tracking = true
+    private var unsureAt = 0L // when a poor GPS accuracy was last written down
+    private var newRouteSaidAt = 0L
+    /** What the camera does, for the drive's trace: following (zoom, tilt) or let go, and close over a crossing. */
+    private fun camera(): String {
+        val m = map ?: return "none"
+        return (if (tracking) "follow" else "free") + "/z%.1f/t%.0f".format(Locale.ROOT, m.cameraPosition.zoom, m.cameraPosition.tilt) + if (closeUp) "/close" else ""
+    }
     private var closeUp = false // the camera close over a busy crossing (closeView)
 
     /** By hand: the camera stops following me. */
     private fun loose() {
         // while directions run, back to the car's arrow 15 s after the last touch (as Google Maps does)
         back?.cancel()
-        back = lifecycleScope.launch { kotlinx.coroutines.delay(15_000); if (nav != null && !tracking) { follow(); invalidate() } }
+        back = lifecycleScope.launch { kotlinx.coroutines.delay(15_000); if (nav != null && !tracking) { follow("15 s after the last touch"); invalidate() } }
         if (!tracking) return
+        WriterLog.i("Maps car: camera let go of the car (a finger on the map)")
         tracking = false
         map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.cameraMode = CameraMode.NONE
         invalidate()
@@ -327,6 +336,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private var junctionShown: Pair<Junction, Int>? = null
     private var panelLanes: android.widget.ImageView? = null // the lanes before the turn, the ones to take white
     private var lanesShown: Pair<Lanes, Int>? = null
+    private var cardLogged: Pair<Route, Int>? = null // the step whose crossing or lanes the log has
 
     private fun turnPanel(c: android.content.Context): android.view.View {
         panelArrow = android.widget.ImageView(c).apply { setColorFilter(Color.WHITE) }
@@ -528,6 +538,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         // a busy crossing near: its picture under the words (not in the small card, no room there)
         val j = step.junction?.takeIf { !compact && showJunction(it, p.toNext) }
+        if ((j != null || l != null) && cardLogged != n.route to p.next) {
+            cardLogged = n.route to p.next
+            WriterLog.i("Maps car: the card shows step ${p.next}${j?.let { " crossing ${it.arms.map { a -> a.toInt() }} taken ${it.arms[it.taken].toInt()}" + if (it.roundabout) " (roundabout)" else "" } ?: ""}" +
+                (l?.let { " lanes ${it.turns.joinToString("|") { x -> x.joinToString(";") }} use ${it.use.sorted()}" } ?: ""))
+        }
         panelJunction?.apply {
             val px = layoutParams?.width ?: 0
             if (j != null && px > 0 && junctionShown != j to px) { setImageBitmap(junctionPicture(j, px)); junctionShown = j to px }
@@ -641,8 +656,9 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     }
 
     /** The camera on me, turned the way I go: closer and tilted while directions run. */
-    private fun follow() {
+    private fun follow(why: String = "") {
         val lc = map?.locationComponent?.takeIf { it.isLocationComponentActivated } ?: return
+        if (why.isNotEmpty()) WriterLog.i("Maps car: camera on the car again ($why)")
         lc.renderMode = RenderMode.GPS
         tracking = true
         // zoom and tilt once the tracking has taken hold (asked during its transition, they are dropped)
@@ -718,7 +734,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.let { lc ->
             lc.forceLocationUpdate(loc)
             // following, but the camera let go of the car (the user, 23 Oct: at the start it stayed off the car): on it again
-            if (tracking && lc.cameraMode != CameraMode.TRACKING_GPS) { WriterLog.i("Maps car: the camera had left the car"); follow() }
+            if (tracking && lc.cameraMode != CameraMode.TRACKING_GPS) follow("it had left the car (mode ${lc.cameraMode})")
         }
         // the limit at most every two seconds, off the main thread (the graph is opened the first time)
         if (System.currentTimeMillis() - limitAsked > 2000 && File(graphDir, "properties").isFile) {
@@ -732,17 +748,23 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             }
         }
         val n = nav ?: return
-        val (p, i) = progress(n.route, n.cum, loc.latitude, loc.longitude, n.index)
-        if (p.off > 50.0) {
+        val speed = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+        val g = guide(n, loc.latitude, loc.longitude, speed, System.currentTimeMillis(), MapsPrefs.bends(carContext), finding != null)
+        val p = g.p
+        MapsTrace.fix(loc, p.takeIf { !g.off }, camera())
+        // the GPS unsure: written down, once a minute at most
+        if (loc.hasAccuracy() && loc.accuracy > 30 && System.currentTimeMillis() - unsureAt > 60_000) {
+            unsureAt = System.currentTimeMillis(); WriterLog.i("Maps car: GPS accuracy ${loc.accuracy.toInt()} m (${loc.provider})")
+        }
+        if (g.off) {
             // the card still shows the way on (the start of a route is often off it: a house back from the road)
             nav = n.copy(offFixes = n.offFixes + 1, p = n.p ?: p)
             invalidate()
-            if (n.offFixes + 1 >= 3 && System.currentTimeMillis() - n.since > 10_000 && finding == null) {
-                WriterLog.i("Maps car: off the route by ${p.off.toInt()} m, a new one"); go(n.target)
-            }
+            if (g.reroute) { WriterLog.i("Maps car: off the route by ${p.off.toInt()} m at ${where(loc)}, a new one"); go(n.target) }
             return
         }
-        if (p.left < 50.0 || metresBetween(loc.latitude, loc.longitude, n.target.lat, n.target.lng) < 60.0) {
+        if (g.arrived) {
+            WriterLog.i("Maps car: arrived at ${where(loc)}, ${p.left.toInt()} m left on the route")
             if ("n${n.route.steps.lastIndex}" !in n.said) say(n.route.steps.lastOrNull()?.text ?: "", important = true)
             // a stop reached with more to go (a trip's, or one added on the way): the next leg starts when the car moves on
             if (queue.isNotEmpty()) {
@@ -778,26 +800,18 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 say(t("Υπάρχουν $parkingSpots θέσεις ΑμεΑ κοντά στον προορισμό. Πατήστε Parking για να πάτε σε μία.",
                     "There are $parkingSpots disabled parking spots near your destination. Press Parking to go to one."), important = true)
         }
-        var said = n.said
-        val step = n.route.steps[p.next]
-        val speed = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+        val step = g.step
         // near a busy crossing the map comes close and flat; past it, back
-        val close = closeView(step.junction, p.toNext, speed)
-        if (close != closeUp) {
-            closeUp = close
+        if (g.close != closeUp) {
+            closeUp = g.close
+            WriterLog.i(if (g.close) "Maps car: camera close over the crossing of step ${p.next}, ${p.toNext.toInt()} m ahead" else "Maps car: camera back from close")
             map?.locationComponent?.takeIf { tracking && it.isLocationComponentActivated }?.let { lc ->
-                val (z, t) = carView(close); lc.zoomWhileTracking(z, 1500); lc.tiltWhileTracking(t, 1500)
+                val (z, t) = carView(g.close); lc.zoomWhileTracking(z, 1500); lc.tiltWhileTracking(t, 1500)
             }
         }
-        val due = dueWarning(p.next, p.toNext, speed, true, said, step.lanes?.begins ?: 0.0)
-        when (due) {
-            "n" -> { say(nearWords(lang, p.toNext, true, MapsLanes.said(step, lang))); said = said + "n${p.next}" + "f${p.next}" + "e${p.next}" }
-            "f" -> { say(MapsPrefs.inDistance(lang, p.toNext, true, MapsLanes.said(step, lang))); said = said + "f${p.next}" + "e${p.next}" }
-            "e" -> { say(MapsPrefs.inDistance(lang, p.toNext, true, MapsLanes.said(step, lang))); said = said + "e${p.next}" }
-        }
-        if (due == null && MapsPrefs.bends(carContext)) dueBend(n.bends, p.along, speed, said)?.let { b ->
-            say(MapsPrefs.bendWords(lang, n.bends[b].right)); said = said + "b$b"
-        }
+        g.words(lang, true)?.let { say(it, why = g.why()) }
+        g.bend?.let { b -> say(MapsPrefs.bendWords(lang, n.bends[b].right), why = "bend ${(n.bends[b].along - p.along).toInt()} m ahead, ${(speed * 3.6).toInt()} km/h") }
+        val said = g.said(n.said); val i = g.index
         nav = n.copy(index = i, p = p, offFixes = 0, said = said)
         CarLink.nav.value = nav
         invalidate()
@@ -835,13 +849,17 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         if (!File(graphDir, "properties").isFile) { CarToast.makeText(carContext, "No routing graph yet in Tetra/Maps", CarToast.LENGTH_LONG).show(); return }
         finding = "Finding the way…"; showSpeed(); invalidate()
         val t0 = System.currentTimeMillis()
+        val facing = headingOf(from)
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang, headingOf(from)) }
+            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang, facing) }
                 .onSuccess { MapsSearch.load(root) } } // the tolls on it, below, from the search list (read once)
             finding = null
             r.onSuccess { route ->
                 val rerouted = nav?.target == target
-                WriterLog.i("Maps car: route, ${route.metres.toInt()} m, ${route.steps.size} steps, in ${System.currentTimeMillis() - t0} ms")
+                WriterLog.i("Maps car: route to ${target.name}, ${route.metres.toInt()} m, ${route.steps.size} steps, in ${System.currentTimeMillis() - t0} ms, " +
+                    "from ${where(from)}, " + (if (chosen != null) "chosen" else if (facing.isFinite()) "keeping the heading" else "no heading (slow or still)") +
+                    "; first: ${route.steps.getOrNull(1)?.text ?: route.steps.firstOrNull()?.text}")
+                MapsTrace.start(carContext, "car", target, "car")
                 nav = Nav(target, "car", route, cumulative(route), System.currentTimeMillis())
                 lastAlong = 0.0; backFixes = 0
                 val onRoute = runCatching { tollsOn(route, cumulative(route), MapsSearch.load(root)) }.getOrDefault(emptyList())
@@ -853,7 +871,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                     say(t(if (tolls.size == 1) "Η διαδρομή έχει ένα διόδιο" else "Η διαδρομή έχει ${tolls.size} διόδια",
                         if (tolls.size == 1) "The route has one toll" else "The route has ${tolls.size} tolls"))
                 }
-                if (rerouted) say(t("Νέα διαδρομή", "New route"), important = true)
+                // "new route" said once in two minutes at most (the user, 23 Oct: it said it all the way for kilometres)
+                if (rerouted && System.currentTimeMillis() - newRouteSaidAt > 120_000) { newRouteSaidAt = System.currentTimeMillis(); say(t("Νέα διαδρομή", "New route"), important = true) }
                 else { showParking(0); launch { val c = withContext(Dispatchers.IO) { parkingNear(target).size }; if (nav?.target == target) showParking(c) } }
                 if (!rerouted) {
                     hostNav { navigationStarted() }
@@ -907,10 +926,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private fun t(el: String, en: String) = if (lang == "en") en else el
 
     /** Spoken unless the voice is off, or set to the important ones only and this is not one. */
-    private fun say(text: String, important: Boolean = false) {
+    /** [text] spoken over the music; [why] in the log only: which warning, how far, how fast. */
+    private fun say(text: String, important: Boolean = false, why: String = "") {
         val voice = MapsPrefs.voice(carContext)
         if (text.isEmpty() || voice == "off" || (voice == "important" && !important)) return
-        WriterLog.i("Maps car: say \"$text\"")
+        WriterLog.i("Maps car: say \"$text\"" + if (why.isNotEmpty()) " ($why)" else "")
         audio.requestAudioFocus(focus)
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "car")
     }

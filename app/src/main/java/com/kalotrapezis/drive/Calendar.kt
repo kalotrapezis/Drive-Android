@@ -191,12 +191,14 @@ data class CalEvent(
     val cancelled: Boolean = false,
     val alarms: List<CalAlarm> = emptyList(),
     val modified: Instant? = null,
+    val sequence: Int = 0,
 )
 
 /** An event file: the event, its changed days, and the parsed file kept for writing it back. */
 class CalFile(val file: File, val comps: List<ICalComp>, val master: CalEvent?, val overrides: List<CalEvent>) {
     val uid get() = master?.uid ?: overrides.firstOrNull()?.uid ?: file.nameWithoutExtension
     val modified: Instant get() = (listOfNotNull(master) + overrides).mapNotNull { it.modified }.maxOrNull() ?: Instant.ofEpochMilli(file.lastModified())
+    val sequence: Int get() = (listOfNotNull(master) + overrides).maxOfOrNull { it.sequence } ?: 0
     /** Copies of this event in the same calendar (sync's "x (2).ics" after a change on two devices); 1 when alone. */
     var versions = 1
 }
@@ -251,8 +253,9 @@ object CalendarFiles {
                 cache[f.path]?.takeIf { it.first == f.length() && it.second == f.lastModified() }?.third
             } ?: read(f).also { synchronized(cache) { cache[f.path] = Triple(f.length(), f.lastModified(), it) } }
         }
-        // The same event twice (a conflict in sync): the newer is shown and says so; the other stays on disk.
-        return read.groupBy { it.uid }.values.map { same -> same.maxBy { it.modified }.also { it.versions = same.size } }
+        // The same event twice (a conflict in sync): the higher SEQUENCE, then the newer, is shown and says so (RFC 5545's
+        // own order, the user 23 Oct); the other stays on disk.
+        return read.groupBy { it.uid }.values.map { same -> same.maxWith(compareBy<CalFile>({ it.sequence }, { it.modified })).also { it.versions = same.size } }
     }
 
     fun read(f: File): CalFile = parse(f, runCatching { f.readText() }.getOrDefault(""))
@@ -282,6 +285,7 @@ object CalendarFiles {
             cancelled = c.prop("STATUS")?.value.equals("CANCELLED", true),
             alarms = c.comps("VALARM").mapNotNull(::alarm),
             modified = (c.prop("LAST-MODIFIED") ?: c.prop("DTSTAMP"))?.let { ICal.time(it, deviceZone)?.first?.toInstant() },
+            sequence = c.prop("SEQUENCE")?.value?.trim()?.toIntOrNull() ?: 0,
         )
     }
 

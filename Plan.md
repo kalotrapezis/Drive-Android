@@ -202,6 +202,13 @@ How to write here:
       waits 22 s for the search list (tolls from their own lines); camera by speed and what is ahead (carView), car low on
       the screen; crossing square under ⚙ / in the corner; cards at the edges, bottom card icons in one row; bigger arrow;
       recenter checked (drag → let go, ◎ → back). Not yet driven.
+- [x] (calendar-sync fix, 23 Oct; Drive 77b9d08) The user's ~/Tetra/TETRA_BUG_calendar.md: rm'd events came back, identical "(2)" copies,
+      a birthday changed. Fixed in both repos (Drive SYNC_PLAN 6an): a path removed here is not asked back, Calendar events
+      follow into the other side's Trash, the same bytes never land as "(2)", SEQUENCE first between two versions. The
+      birthday: the phone's two changed copies read 23 Oct — 16:53:21Z an editor save in Γενέθλια (VALARM rewritten as
+      -PT15H "Reminder", SEQUENCE 1), 16:53:27Z Delete › This event on 27 Jun 2027 in Personal (EXDATE, SEQUENCE 1);
+      both moved into the phone's Trash. Desktop 0.6.0-beta.4 installed; Personal cleaned (387, no copies); phone and
+      computer Calendar byte for byte the same (468 files). Tablet not yet synced (hotspot isolates it); APKs not installed.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode
@@ -1393,7 +1400,8 @@ Tetra/Calendar/                      (~/Tetra/Files/Calendar on the PC, /sdcard/
   renames it (a rename would be a move in sync for nothing). The name means nothing to the reader: the UID inside is
   the identity, and a file an AI writes may be called anything ending in `.ics`.
 - **Deleting** = moving the file into `Tetra/Trash/` (sync never deletes; a move into Trash crosses as a move, §6h).
-  An AI deletes with `mv`, not `rm` — an `rm`'d file would come back from the other device.
+  An AI deletes with `mv`, not `rm` — an `rm`'d file came back from the other device until 23 Oct (SYNC_PLAN 6an:
+  now the other devices put theirs in their Trash, but nothing is left here to restore).
 - **Moving an event to another calendar** = moving its file to the other folder. **A calendar** = a folder: make one
   with `mkdir` + a `color` file; rename = rename the folder; delete = the folder to Trash.
 - **Conflicts**: an event changed on two devices between syncs arrives as `x (2).ics` beside `x.ics`, both with the

@@ -1019,7 +1019,11 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val rel = file.getString("path")
         val replaces = file.optString("replaces").takeIf { it.length == 64 }
         val here = runCatching { DriveRules.file(root, rel) }.getOrNull()?.takeIf { it.isFile }
-        val update = replaces != null && here != null && SyncRules.hex(MessageDigest.getInstance("SHA-256").also { d -> here.inputStream().use { pump(it, java.io.OutputStream.nullOutputStream(), d) } }.digest()) == replaces
+        val hereSha = if (here != null) sha256(here) else null
+        // Those very bytes are already at that path (two syncs asked at once): nothing to add. 330 of Personal's 334
+        // "(2)" events were byte for byte their original (23 Oct).
+        if (hereSha == sha) return
+        val update = replaces != null && hereSha == replaces
         val target = if (update) here!! else DriveRules.newFile(root, rel)
         target.parentFile?.mkdirs()
         val part = File(target.parentFile, ".${target.name}.${java.util.UUID.randomUUID()}.part")
@@ -1040,9 +1044,19 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         }
     }
 
-    /** Follows a move the computer made. It never overwrites: if something is already there, both are kept. */
-    private fun moveFile(root: File, from: String, to: String) {
+    private suspend fun sha256(f: File): String = SyncRules.hex(MessageDigest.getInstance("SHA-256").also { d -> f.inputStream().use { pump(it, java.io.OutputStream.nullOutputStream(), d) } }.digest())
+
+    /**
+     * Follows a move the computer made. It never overwrites: if something else is already there, both are kept; the
+     * same bytes already there are the move done, so the source goes rather than land as "(2)".
+     */
+    private suspend fun moveFile(root: File, from: String, to: String) {
         val source = DriveRules.file(root, from)
+        val there = runCatching { DriveRules.file(root, to) }.getOrNull() // null: nothing there yet
+        if (from != to && there != null && there.length() == source.length() && sha256(there) == sha256(source)) {
+            if (!source.delete()) throw SyncException("Could not move ${from} to ${to}.")
+            return
+        }
         val target = DriveRules.newFile(root, to)
         target.parentFile?.mkdirs()
         if (!source.renameTo(target)) throw SyncException("Could not move ${from} to ${to}.")

@@ -107,6 +107,19 @@ class CalendarTest {
         assertEquals(2, shown[0].versions)
     }
 
+    @Test fun `two versions show the higher SEQUENCE, then the newer, and the same UID in two calendars is two events`() {
+        fun ev(seq: Int, mod: String, title: String) = listOf("BEGIN:VCALENDAR", "VERSION:2.0", "BEGIN:VEVENT", "UID:bday-1", "DTSTAMP:20261018T101618Z",
+            "LAST-MODIFIED:$mod", "SEQUENCE:$seq", "SUMMARY:$title", "DTSTART;VALUE=DATE:20160627", "DTEND;VALUE=DATE:20160628", "RRULE:FREQ=YEARLY",
+            "END:VEVENT", "END:VCALENDAR", "").joinToString("\r\n")
+        File(cal.dir, "bday.ics").writeText(ev(3, "20250101T000000Z", "Edited three times"))
+        File(cal.dir, "bday (2).ics").writeText(ev(1, "20260101T000000Z", "Newer but behind"))
+        val other = CalendarFiles.newCalendar(root, "Γενέθλια", CalendarFiles.PALETTE[0])
+        val there = File(other.dir, "bday.ics").apply { writeText(ev(0, "20200101T000000Z", "In the other calendar")) }
+        val shown = occ("2027-06-01T00:00", "2027-07-01T00:00").filter { it.event.uid == "bday-1" }
+        assertEquals(listOf("Edited three times", "In the other calendar"), shown.map { it.event.title }.sorted())
+        assertEquals(ev(0, "20200101T000000Z", "In the other calendar"), there.readText()) // reading writes nothing
+    }
+
     @Test fun `durations both ways`() {
         assertEquals("-P2DT15H", ICal.durationValue(-2, -15 * 3600))
         assertEquals("-PT15M", ICal.durationValue(0, -900))

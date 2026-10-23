@@ -2230,15 +2230,18 @@ I press Call on the PC and it starts on the phone?") — no dialer app needed fo
   birthday ↔ event both ways, merge.
 
 ### Steps (each a commit, each checked on the tablet, then the phone and the PC)
-1. Files + import (the phone's contacts, vCard, Takeout, CSV) + the list and the page (read only).
-2. Edit, new, delete, labels, favourites. (The scope sync — later: the user, 23 Oct, "keep the sync for later so we
+- [x] (6e1314b) 1. Files + import (the phone's contacts, vCard, Takeout, CSV) + the list and the page (read only).
+      Google's photo links (googleusercontent) are kept as links, not fetched (no network use yet).
+- [x] (4d5bf65) 2. Edit, new, delete, labels, favourites. (The scope sync — later: the user, 23 Oct, "keep the sync for later so we
    dont have conflicts" with the send-to-computer work; until then the files travel with the whole Files sync as now.)
-3. Birthdays and dates → the chosen calendar; Γενέθλια's 11 matched; the Calendar's Birthday action on the setting.
-4. Photos' faces → photos (one and many).
-5. Call / Message / Video / Mail with the other apps' rows; call history.
-6. Tetra's contacts in the system provider (caller ID, Android Auto).
-7. Merge & fix; export; share as .vcf / QR.
-8. Home (Maps one card, Contacts beside it) and the icons; desktop Contacts.
+- [x] (f4fc436) 3. Birthdays and dates → the chosen calendar; Γενέθλια's 11 matched; the Calendar's Birthday action on the setting.
+- [x] (e73e2e1) 4. Photos' faces → photos (one and many). Not yet: "In Photos: 213 photos" on the page, Photos' person › Contact.
+- [x] (5b59438) 5. Call / Message / Video / Mail with the other apps' rows; call history. ACTION_DIAL (no CALL_PHONE);
+   no fallback links (wa.me, viber://) when an app has no row; History = calls + the contact's dates (not notes naming them).
+- [ ] 6. Tetra's contacts in the system provider (caller ID, Android Auto) — waits for the user's yes (question 2).
+- [x] (5a738e2, a922cf3) 7. Merge & fix; export; share as .vcf / QR (Codes: a scanned vCard › Add to Contacts).
+- [~] 8. Home and the icons: Contacts' group (its icon, four favourites' faces) is on Home (6e1314b); Maps one card beside
+   it, Maps' new icon and sky blue wait for the user (questions 7–8); desktop Contacts waits for the sync step.
 9. Calls through the PC: the ringing on the PC with Answer/Reject, Call on the PC dialling on the phone, the voice by Bluetooth.
 
 ### Questions for the user

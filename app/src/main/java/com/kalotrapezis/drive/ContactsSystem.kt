@@ -111,6 +111,9 @@ internal object ContactsWays {
         "vnd.org.telegram.messenger.android.call.video" to Way.Video,
     )
     private val NAMES = mapOf("whatsapp.w4b" to "WhatsApp Business", "whatsapp" to "WhatsApp", "viber" to "Viber", "securesms" to "Signal", "telegram" to "Telegram")
+    /** The app a row belongs to: opened in it, not in another that claims the MIME type too (Mindomo did, on the user's phone). */
+    private val PACKAGES = mapOf("whatsapp.w4b" to "com.whatsapp.w4b", "whatsapp" to "com.whatsapp", "viber" to "com.viber.voip", "securesms" to "org.thoughtcrime.securesms", "telegram" to "org.telegram.messenger")
+    fun packageOf(mime: String) = PACKAGES.entries.firstOrNull { mime.contains(it.key) }?.value
 
     /** A number's last nine digits: "+30 697 000 0002", "00306970000002" and "6970000002" alike. */
     fun key(n: String) = n.substringBefore('@').filter(Char::isDigit).takeLast(9)

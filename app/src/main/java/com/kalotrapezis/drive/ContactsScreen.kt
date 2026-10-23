@@ -226,6 +226,13 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         birthdays(true)
     }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::importFile) }
+    // the phone's copy (Tetra's account) follows every change: a save, an import, a merge, a file that came by sync
+    var systemOn by remember { mutableStateOf(ContactsAccount.on(context)) }
+    LaunchedEffect(version, systemOn) { ContactsAccount.soon(context) }
+    val askWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) { ContactsAccount.set(context, true); systemOn = true; message = "Your contacts are in the phone's contacts too" }
+        else message = "Tetra needs to write the phone's contacts for this."
+    }
     // Export: all, the favourites or a label, as one .vcf saved where the person chooses
     val exportTo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/vcard")) { uri ->
         val cs = exporting
@@ -394,6 +401,15 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 }
                 DrawerButton(R.drawable.ic_delete, "Trash", false, Modifier.weight(1f)) { drawer = false; trashOpen = true }
             }
+            DrawerButton(R.drawable.ic_phone, if (systemOn) "In the phone's contacts: on" else "In the phone's contacts: off", systemOn, Modifier.fillMaxWidth()) {
+                when {
+                    systemOn -> { ContactsAccount.set(context, false); systemOn = false; message = "Tetra's copy left the phone's contacts" }
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED -> { ContactsAccount.set(context, true); systemOn = true }
+                    else -> askWrite.launch(Manifest.permission.WRITE_CONTACTS)
+                }
+            }
+            Text("A read-only copy under the account Tetra, so the dialer, Viber, WhatsApp and the car show these names and photos. Edits are made here.",
+                style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 val calName = remember(drawer) { runCatching { CalendarFiles.calendars(calendarRoot()).let { cals -> cals.firstOrNull { it.dir.name == ContactsPrefs.birthdays(context) } ?: ContactsBirthdays.existing(cals) }?.name }.getOrNull() ?: ContactsBirthdays.NAME }
                 DrawerButton(R.drawable.ic_cake, "Birthdays: $calName", false, Modifier.weight(1f)) { drawer = false; choosingCalendar = true }
@@ -491,7 +507,9 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         ?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
     if (photo != null) Image(photo, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size).clip(CircleShape))
     else Box(Modifier.size(size).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFD7A982), CONTACTS_COLOR, Color(0xFF8D5A3B)))), contentAlignment = Alignment.Center) {
-        Text(i.name.trim().firstOrNull()?.uppercase() ?: "?", color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.Medium)
+        val first = i.name.trim().firstOrNull()?.takeIf { it.isLetterOrDigit() }
+        if (first == null) Icon(painterResource(R.drawable.ic_person), contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.55f))
+        else Text(first.uppercase(), color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -530,7 +548,8 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                 val calls by produceState(emptyList<CallEntry>(), i.phones, permits) { value = withContext(Dispatchers.IO) { runCatching { ContactsSystem.calls(context, i.phones.map { it.value }) }.getOrDefault(emptyList()) } }
                 val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permits++ }
                 fun open(w: AppWay) { runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(android.content.ContentUris.withAppendedId(android.provider.ContactsContract.Data.CONTENT_URI, w.id), w.mime).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    val i = Intent(Intent.ACTION_VIEW).setDataAndType(android.content.ContentUris.withAppendedId(android.provider.ContactsContract.Data.CONTENT_URI, w.id), w.mime).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try { context.startActivity(Intent(i).setPackage(ContactsWays.packageOf(w.mime))) } catch (_: android.content.ActivityNotFoundException) { context.startActivity(i) }
                 }.onFailure { android.widget.Toast.makeText(context, "${w.app} did not open", android.widget.Toast.LENGTH_SHORT).show() } }
                 fun sms(n: String) = go("smsto:${Uri.encode(n)}", Intent.ACTION_SENDTO)
                 fun dial(n: String) = go("tel:${Uri.encode(n)}", Intent.ACTION_DIAL)

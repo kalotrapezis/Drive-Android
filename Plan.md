@@ -253,6 +253,19 @@ How to write here:
       Checked: FileThumbsTest 3/3; desktop npm test 125/0 (thumbs.test.js 4); desktop seen in list and grid (hidden QA
       copy, scripts/shot.js, scratch folder). **Not seen on a device**: the emulator was in the contacts session's use and
       the tablet/phone wait for the user's OK.
+- [x] (maps-icon session, 23 Oct, branch claude/nifty-bouman-6f4a52) Maps' icon: the user's own (Assets/Icons/Applets/Maps.png,
+      the same file as on claude/contacts-583397) made by tools/applet-icons.py into maps_art.png (Home's card) and
+      applet_maps_fg.png (Settings › App icons and Android Auto, both @mipmap/applet_maps) — byte-identical to the contacts
+      branch's, so only the script's lists and applet_colors.xml meet in that merge. Maps' colour is the icon's light blue
+      #25C4FE (Category.Maps, applet_maps; maps_colors.xml, maps_art.xml, maps_launcher_fg.xml gone); the slots' tint light
+      blue too. Inside Maps the indigo accents (buttons, markers, the car's tint; desktop Maps.tsx MAPS_COLOR) stay indigo (the user, 23 Oct);
+      the desktop has no Maps applet icon or colour. Checked on the emulator, light and dark. Merged into main 23 Oct after
+      Contacts, which had brought the same icon: main kept Contacts' Maps group (four slots, its tint); only the Timer icon was new.
+- [x] (maps-icon session, 23 Oct, same branch) Timer's icon: the user's own (their ~/Tetra/Files/Timer.png of 18 Oct, copied to
+      Assets/Icons/Applets/Timer.png, the original then moved to Tetra/Files/Trash as the user asked) made the same way into
+      timer_art.png and applet_timer_fg.png; the launcher background its own edge turquoise #04D5CC (applet_colors.xml;
+      timer_colors.xml, timer_art.xml, timer_launcher_fg.xml gone). Home's Timer teal (#00796B) kept: the same family as the
+      icon. The desktop has no Timer applet icon. Checked on the emulator, light and dark.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

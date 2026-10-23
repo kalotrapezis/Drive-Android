@@ -1,18 +1,18 @@
-# Usage: python3 tools/applet-icons.py app/src/main/res <folder with DocScan.png, QRScan.png, Files.png, Calendar.png — any of them>
+# Usage: python3 tools/applet-icons.py app/src/main/res <folder with DocScan.png, QRScan.png, Files.png, Calendar.png, Maps.png, Timer.png — any of them> (Assets/Icons/Applets)
 # The applets' launcher icons from Home's own art, each on its own colour (asked 17 Oct: the corners in the applet's colour).
 import sys, os, glob
 from PIL import Image, ImageDraw
 res, dl = sys.argv[1], sys.argv[2]
 nodpi = f"{res}/drawable-nodpi"
 # the user's new tiles (17 Oct): their solid corners cut away (flood from each corner), at the other arts' size
-for src, out in [("DocScan", "scanner_art"), ("QRScan", "codes_art"), ("Files", "files_art"), ("Calendar", "calendar_art"), ("Contacts", "contacts_art"), ("Maps", "maps_art")]:
+for src, out in [("DocScan", "scanner_art"), ("QRScan", "codes_art"), ("Files", "files_art"), ("Calendar", "calendar_art"), ("Contacts", "contacts_art"), ("Maps", "maps_art"), ("Timer", "timer_art")]:
     if not os.path.exists(f"{dl}/{src}.png"): continue  # only the tiles given are made again
     a = Image.open(f"{dl}/{src}.png").convert("RGBA")
     for c in [(0, 0), (a.width - 1, 0), (0, a.height - 1), (a.width - 1, a.height - 1)]:
         ImageDraw.floodfill(a, c, (0, 0, 0, 0), thresh=60)
     a.resize((627, 627), Image.LANCZOS).save(f"{nodpi}/{out}.png", optimize=True)
 apps = [("photos", "gallery_art"), ("files", "files_art"), ("notes", "notes_art"), ("scanner", "scanner_art"),
-        ("codes", "codes_art"), ("office", "office_art"), ("text_editor", "text_editor_art"), ("calendar", "calendar_art"), ("contacts", "contacts_art"), ("maps", "maps_art")]
+        ("codes", "codes_art"), ("office", "office_art"), ("text_editor", "text_editor_art"), ("calendar", "calendar_art"), ("contacts", "contacts_art"), ("maps", "maps_art"), ("timer", "timer_art")]
 for f in glob.glob(f"{res}/drawable/applet_*_fg.xml"): os.remove(f)
 FALLBACK = {"notes": (0xF2, 0xB7, 0x05)}  # Home's Notes yellow (Category.Notes)
 colors = ['<?xml version="1.0" encoding="utf-8"?>', "<!-- The applet icons' backgrounds: each art's own edge colour, so its tile's corners blend in (tools/applet-icons.py). -->", "<resources>"]

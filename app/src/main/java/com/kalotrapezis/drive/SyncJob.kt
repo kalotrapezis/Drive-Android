@@ -26,6 +26,14 @@ internal class SyncJob : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         val store = SyncStore(applicationContext)
+        // Send to computer's files, waiting for the computer (Outbox): tried again until it has them.
+        if (params.extras.getBoolean(Outbox.EXTRA)) {
+            scope.launch {
+                val error = runCatching { SyncClient(applicationContext, store).sendOutbox() }.exceptionOrNull()
+                jobFinished(params, error != null && !ScopedSync.tooOld(error))
+            }
+            return true
+        }
         // A part of Drive waiting to travel (ScopedSync), or the Calendar's quarter-hourly look: that part alone.
         params.extras.getString(ScopedSync.SCOPE)?.let { part ->
             if (SyncService.isRunning || store.pairing() == null) return false // (the whole sync carries it; not paired)

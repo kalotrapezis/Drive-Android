@@ -157,6 +157,16 @@
                 <data android:mimeType="application/xml" />
             </intent-filter>
         </activity>
+        <!-- Send to computer: Tetra in the share menu; shared files go to the paired computer (SendToComputer.kt) -->
+        <activity android:name=".SendToComputer" android:exported="true" android:label="Send to computer"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
         <receiver android:name=".CalendarAlarmReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

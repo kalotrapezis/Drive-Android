@@ -601,6 +601,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val paired = store.pairing() ?: throw SyncException("Pair with a computer first.")
         val p = reach(paired)
         val host = p.hosts.first()
+        if (Outbox.waiting(context).isNotEmpty()) Outbox.soon(context) // the computer is there: Send to computer's waiting files go
         val failed = mutableListOf<String>()
         val bySha = linkedMapOf<String, Entry>()
         entries.forEachIndexed { i, e ->
@@ -931,6 +932,29 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         if (store.root.parentFile?.isDirectory != true) return 0
         val answer = postJson(host, p, "/notes", store.payload())
         return (if (answer.optBoolean("off")) 0 else store.apply(answer)).also { if (it > 0) NotesSync.changed.value++ }
+    }
+
+    /**
+     * Send to computer: everything in the [Outbox], each into the computer's Files › From phone (desktop sync.js PUT
+     * /send) and gone from the outbox once the computer has it verified. The count sent; the computer away, it throws.
+     */
+    fun sendOutbox(): Int = synchronized(Outbox) { // a share, a sync and the job may all try at once: one sends
+        val files = Outbox.waiting(context)
+        if (files.isEmpty()) return@synchronized 0
+        val p = reach(store.pairing() ?: throw SyncException("No computer is paired."))
+        val host = p.hosts.first()
+        for (f in files) {
+            val sha = f.parentFile!!.name
+            val c = open(host, p.port, p.fingerprint, "/send/$sha?name=${URLEncoder.encode(f.name, "UTF-8").replace("+", "%20")}&modified=${f.lastModified()}", "PUT", p.token)
+            c.doOutput = true
+            c.setFixedLengthStreamingMode(f.length())
+            c.setRequestProperty("Content-Type", "application/octet-stream")
+            c.outputStream.use { out -> f.inputStream().use { it.copyTo(out, 256 * 1024) } }
+            val receipt = c.jsonResult().also { c.disconnect() }
+            if (receipt.optString("sha256") != sha || !receipt.optBoolean("verified")) throw SyncException("No verified receipt.")
+            f.parentFile!!.deleteRecursively()
+        }
+        files.size
     }
 
     /** Only the notes, a few kilobytes: what a pause in writing sends (NotesSync). */

@@ -10,11 +10,11 @@ import java.util.Locale
 /**
  * One fix's decisions while directions run — the same on the car's screen, the phone's, and in a drive replayed from its
  * trace (MapsReplayTest): where on the route the fix is, whether it is off it and a new route is due, whether this is the
- * arrival, which warning of the next turn and which sharp bend is due, whether the map should be close over a crossing.
+ * arrival, which warning of the next turn and which sharp bend is due, and the camera's zoom and tilt by car ([carView]).
  */
 internal data class Tick(
     val p: Progress, val index: Int, val step: Step, val speed: Double,
-    val off: Boolean, val reroute: Boolean, val arrived: Boolean, val due: String?, val bend: Int?, val close: Boolean,
+    val off: Boolean, val reroute: Boolean, val arrived: Boolean, val due: String?, val bend: Int?, val view: Pair<Double, Double>,
 ) {
     /** What was said, with this tick's warning and bend added. */
     fun said(before: Set<String>): Set<String> {
@@ -47,13 +47,13 @@ internal fun guide(n: Nav, lat: Double, lng: Double, speed: Double, now: Long, b
     val step = n.route.steps[p.next]
     if (p.off > (if (car) 50.0 else 30.0)) {
         val reroute = n.offFixes + 1 >= 3 && now - n.since > 10_000 && !finding
-        return Tick(p, i, step, speed, off = true, reroute = reroute, arrived = false, due = null, bend = null, close = false)
+        return Tick(p, i, step, speed, off = true, reroute = reroute, arrived = false, due = null, bend = null, view = DRIVING_VIEW)
     }
     // there: at the route's end, or near the place itself (a place saved off the road ends its route short of it)
     val arrived = p.left < (if (car) 50.0 else 20.0) || metresBetween(lat, lng, n.target.lat, n.target.lng) < (if (car) 60.0 else 25.0)
     val due = if (arrived) null else dueWarning(p.next, p.toNext, speed, car, n.said, step.lanes?.begins ?: 0.0)
     val bend = if (due == null && !arrived && car && bends) dueBend(n.bends, p.along, speed, n.said) else null
-    return Tick(p, i, step, speed, off = false, reroute = false, arrived = arrived, due = due, bend = bend, close = car && closeView(step.junction, p.toNext, speed, step.sign))
+    return Tick(p, i, step, speed, off = false, reroute = false, arrived = arrived, due = due, bend = bend, view = if (car) carView(step.junction, step.sign, p.toNext, speed) else DRIVING_VIEW)
 }
 
 /**

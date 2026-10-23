@@ -168,9 +168,9 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     /** What the camera does, for the drive's trace: following (zoom, tilt) or let go, and close over a crossing. */
     private fun camera(): String {
         val m = map ?: return "none"
-        return (if (tracking) "follow" else "free") + "/z%.1f/t%.0f".format(Locale.ROOT, m.cameraPosition.zoom, m.cameraPosition.tilt) + if (closeUp) "/close" else ""
+        return (if (tracking) "follow" else "free") + "/z%.1f/t%.0f".format(Locale.ROOT, m.cameraPosition.zoom, m.cameraPosition.tilt) 
     }
-    private var closeUp = false // the camera close over a busy crossing (closeView)
+    private var view = DRIVING_VIEW // the camera's zoom and tilt while directions run (carView)
 
     /** By hand: the camera stops following me. */
     private fun loose() {
@@ -245,12 +245,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 val edge = (1.5f * u).toInt()
                 // the big side: at the screen's edge, past the cards; the small card: inside it (the surface reaches under the other app)
                 // lined up with the cards (Android Auto's own no longer push the visible part in)
-                val left = r.left + r.width() / 25; val right = w - r.right + r.width() / 25
+                val left = r.left + gap(r); val right = w - r.right + gap(r)
                 (layoutParams as android.widget.FrameLayout.LayoutParams).setMargins(if (driverRight) 0 else left, r.top, if (driverRight) right else 0, h - r.bottom + if (compact) edge + (textPx * 1.4f + 2 * r.width() / 25).toInt() + edge else 0); requestLayout()
             } }
-            map?.locationComponent?.takeIf { it.isLocationComponentActivated }
-                ?.paddingWhileTracking(doubleArrayOf(r.left + (if (!compact && nav != null && !driverRight) cardWidth(r).toDouble() else 0.0), r.top + (if (compact) r.width() * 0.45 else 0.0),
-                    (w - r.right) + (if (!compact && nav != null && driverRight) cardWidth(r).toDouble() else 0.0), (h - r.bottom).toDouble()))
+            placeSpeed()
+            padCamera()
         }
 
         // a tap: on a card, that place; on the map with no directions, a pin there (Go, or ✕)
@@ -416,7 +415,38 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
 
     /** The cards' width: the small card's, or on the big side a column at the driver's side. */
     private fun cardWidth(r: Rect) = if (compact) r.width() - 2 * (r.width() / 25) else maxOf((r.width() * 0.4f).toInt(), (44 * u).toInt()).coerceAtMost(r.width() - 2 * (r.width() / 25))
-    private fun cardLeft(r: Rect, w: Int) = if (compact || !driverRight) r.left + r.width() / 25 else r.right - r.width() / 25 - cardWidth(r)
+    private fun cardLeft(r: Rect, w: Int) = if (compact || !driverRight) r.left + gap(r) else r.right - gap(r) - cardWidth(r)
+
+    /**
+     * While directions run on the big side, the speed and its limit between the turn card and the bottom card, not over
+     * them (the 23 Oct head unit picture: the limit's sign on the bottom card).
+     */
+    private fun placeSpeed() {
+        val r = shown ?: return
+        val col = sign?.parent as? android.view.View ?: return
+        val lp = col.layoutParams as? android.widget.FrameLayout.LayoutParams ?: return
+        val cards = nav != null && !compact && panel?.visibility == android.view.View.VISIBLE
+        val top = if (cards) r.top + gap(r) + (panel?.height ?: 0) else r.top
+        val bottom = if (cards) surfaceH - r.bottom + gap(r) + (etaBox?.height ?: 0) else lp.bottomMargin
+        if (lp.topMargin != top || lp.bottomMargin != bottom) { lp.topMargin = top; lp.bottomMargin = bottom; col.layoutParams = lp }
+    }
+
+    /** The space between the cards and the screen's edges: little on the big side, so the map between is as wide as can be
+     *  (the user, 23 Oct: "push everything to the edges to open the map view"). */
+    private fun gap(r: Rect) = if (compact) r.width() / 25 else (1.2f * u).toInt()
+
+    /**
+     * Where the car's arrow sits: in the part of the map the cards leave, and while directions run low in it, so more of
+     * the road ahead shows (as Google Maps does); padding in the map's own pixels from each edge.
+     */
+    private fun padCamera() {
+        val r = shown ?: return; val w = surfaceW; val h = surfaceH
+        val ahead = if (!compact && nav != null) r.height() * 0.3 else 0.0
+        map?.locationComponent?.takeIf { it.isLocationComponentActivated }
+            ?.paddingWhileTracking(doubleArrayOf(r.left + (if (!compact && nav != null && !driverRight) (cardLeft(r, w) - r.left + cardWidth(r)).toDouble() else 0.0),
+                r.top + (if (compact) r.width() * 0.45 else 0.0) + ahead,
+                (w - r.right) + (if (!compact && nav != null && driverRight) cardWidth(r).toDouble() + gap(r) else 0.0), (h - r.bottom).toDouble()))
+    }
 
     private fun sizePanel(r: Rect, w: Int) {
         val px = android.util.TypedValue.COMPLEX_UNIT_PX
@@ -424,7 +454,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         val cw = cardWidth(r); val cl = cardLeft(r, w)
         panel?.apply {
             layoutParams = android.widget.FrameLayout.LayoutParams(cw, -2, android.view.Gravity.TOP or android.view.Gravity.START)
-                .apply { setMargins(cl, r.top + r.width() / 25, 0, 0) }
+                .apply { setMargins(cl, r.top + gap(r), 0, 0) }
             setPadding(pad, pad, pad, pad)
         }
         panelArrow?.layoutParams = android.widget.LinearLayout.LayoutParams(iconPx.toInt(), iconPx.toInt()).apply { rightMargin = pad }
@@ -436,12 +466,14 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         panelText?.setTextSize(px, textPx)
         panelHint?.setTextSize(px, smallPx)
-        // the crossing's square: under a third of the height shown, in the top corner away from the driver, clear of the
-        // map round the car (the user's drawing, 23 Oct)
-        val side = (r.height() * 0.3f).toInt(); val edge = r.width() / 25
+        // the crossing's square: under a third of the height shown, at the screen's edge away from the driver, at the top of
+        // the part shown — right under the settings button while Android Auto's buttons show, in the corner once they go
+        // (the user, 23 Oct: "below the settings button"; "further to the corner when everything goes away"), clear of the
+        // map round the car
+        val side = (r.height() * 0.3f).toInt()
         junctionBox?.apply {
             layoutParams = android.widget.FrameLayout.LayoutParams(side, side, android.view.Gravity.TOP or android.view.Gravity.START).apply {
-                setMargins(if (driverRight) r.left + edge else r.right - edge - side, r.top + edge, 0, 0)
+                setMargins(if (driverRight) gap(r) else w - gap(r) - side, r.top + gap(r), 0, 0)
             }
             setPadding(pad / 2, pad / 2, pad / 2, pad / 2)
         }
@@ -452,7 +484,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         etaBox?.apply {
             setPadding(pad, pad, pad, pad)
             layoutParams = android.widget.FrameLayout.LayoutParams(cw, -2, android.view.Gravity.BOTTOM or android.view.Gravity.START)
-                .apply { setMargins(cl, 0, 0, surfaceH - r.bottom + r.width() / 25) }
+                .apply { setMargins(cl, 0, 0, surfaceH - r.bottom + gap(r)) }
         }
         // the buttons big enough for a finger at a glance, only where the car passes taps on (the big side)
         val b = (iconPx * 0.75f).toInt()
@@ -542,6 +574,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         panel?.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
         etaBox?.visibility = panel?.visibility ?: android.view.View.GONE
         if (!on) { junctionBox?.visibility = android.view.View.GONE; return }
+        panel?.post { placeSpeed() } // once the cards have their height
         val left = secondsLeft(n!!, p!!).toLong()
         val time = java.time.LocalTime.now().plusSeconds(left).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
         eta?.text = "${if (left >= 3600) "${left / 3600} h ${left % 3600 / 60} min" else "${(left + 59) / 60} min"} · $time · ${metresText(p.left)}" +
@@ -671,7 +704,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             .target(here?.let { org.maplibre.android.geometry.LatLng(it.latitude, it.longitude) } ?: org.maplibre.android.geometry.LatLng(38.4, 23.8))
             .zoom(if (here != null) 15.0 else 5.6).build()
         if (granted()) {
-            activateArrow(carContext, m, style, scale = 1.1f) // the car's screen is seen from further than the phone's
+            activateArrow(carContext, m, style, scale = 2.6f) // the car's screen is seen from further than the phone's (the user, 23 Oct: "a bit bigger")
             m.locationComponent.isLocationComponentEnabled = true
             here?.let { m.locationComponent.forceLocationUpdate(it) }
             follow()
@@ -688,7 +721,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         // zoom and tilt once the tracking has taken hold (asked during its transition, they are dropped)
         lc.setCameraMode(CameraMode.TRACKING_GPS, object : org.maplibre.android.location.OnLocationCameraTransitionListener {
             override fun onLocationCameraTransitionFinished(cameraMode: Int) {
-                val (z, t) = if (nav != null) carView(closeUp) else 15.0 to 0.0
+                val (z, t) = if (nav != null) view else 15.0 to 0.0
                 lc.zoomWhileTracking(z); lc.tiltWhileTracking(t)
             }
             override fun onLocationCameraTransitionCanceled(cameraMode: Int) = Unit
@@ -825,12 +858,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                     "There are $parkingSpots disabled parking spots near your destination. Press Parking to go to one."), important = true)
         }
         val step = g.step
-        // near a busy crossing the map comes close and flat; past it, back
-        if (g.close != closeUp) {
-            closeUp = g.close
-            WriterLog.i(if (g.close) "Maps car: camera close for step ${p.next}, ${p.toNext.toInt()} m ahead, ${Math.round(speed * 3.6)} km/h" else "Maps car: camera back from close")
+        // the camera: further out at speed on a long stretch, closer towards a busy crossing or a turn slowed for
+        if (g.view != view) {
+            view = g.view
+            WriterLog.i("Maps car: camera zoom ${view.first} tilt ${view.second.toInt()} (step ${p.next} ${p.toNext.toInt()} m ahead, ${Math.round(speed * 3.6)} km/h)")
             map?.locationComponent?.takeIf { tracking && it.isLocationComponentActivated }?.let { lc ->
-                val (z, t) = carView(g.close); lc.zoomWhileTracking(z, 1500); lc.tiltWhileTracking(t, 1500)
+                lc.zoomWhileTracking(view.first, 1500); lc.tiltWhileTracking(view.second, 1500)
             }
         }
         g.words(lang, true)?.let { say(it, why = g.why()) }
@@ -910,7 +943,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                     // a car trip: the car is no longer where it was parked
                     if (target.id != MapsFiles.PARKING) MapsFiles.places(root).firstOrNull { it.id == MapsFiles.PARKING }?.let { MapsFiles.delete(root, it) }
                 }
-                drawRoute(); follow(); onFix(here ?: from)
+                drawRoute(); padCamera(); follow(); onFix(here ?: from)
             }.onFailure {
                 WriterLog.e("Maps car: no route", it)
                 CarToast.makeText(carContext, it.message ?: "No way found", CarToast.LENGTH_LONG).show()
@@ -926,11 +959,11 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     fun stop(keepTrip: Boolean = false) {
         if (!keepTrip) { queue = emptyList(); tripLetter = null; waitNext = null; trip = null; MapsPrefs.setPendingTrip(carContext, null) }
         if (nav == null) return
-        nav = null; closeUp = false; tolls = emptyList(); tollsAhead = 0; showPlaces = true; parkingAsked = null; showParking(0)
+        nav = null; view = DRIVING_VIEW; tolls = emptyList(); tollsAhead = 0; showPlaces = true; parkingAsked = null; showParking(0)
         (map?.style?.getSource("tolls") as? GeoJsonSource)?.setGeoJson(org.maplibre.geojson.FeatureCollection.fromFeatures(emptyList()))
         CarLink.nav.value = null
         hostNav { navigationEnded() }
-        drawRoute(); follow(); showSpeed(); invalidate()
+        drawRoute(); padCamera(); follow(); showSpeed(); invalidate()
     }
 
     // —— the voice: over the music, which is lowered meanwhile ——

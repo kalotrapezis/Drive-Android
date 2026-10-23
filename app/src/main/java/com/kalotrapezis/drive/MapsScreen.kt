@@ -344,7 +344,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     var live by remember { mutableStateOf(false) } // a fix came while the map is open (not Android's stored last one)
     var granted by remember { mutableStateOf(hasLocation(context)) }
     var nav by remember { mutableStateOf<Nav?>(null) }
-    var closeUp by remember { mutableStateOf(false) } // by car, the camera close over a busy crossing (closeView)
+    var view by remember { mutableStateOf(DRIVING_VIEW) } // by car, the camera's zoom and tilt (carView)
     val carNav by CarLink.nav.collectAsState() // directions running on the car's screen, shown here too
     var preview by remember { mutableStateOf<Preview?>(null) }
     var navSheet by remember { mutableStateOf(false) } // the handle's sheet over the directions bar: tolls and the turns ahead
@@ -395,7 +395,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
 
     fun stopNav() {
         nav = null
-        closeUp = false
+        view = DRIVING_VIEW
         mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }?.apply { cameraMode = CameraMode.NONE; renderMode = RenderMode.COMPASS }
     }
 
@@ -405,7 +405,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         lc.renderMode = RenderMode.GPS
         lc.setCameraMode(CameraMode.TRACKING_GPS, object : org.maplibre.android.location.OnLocationCameraTransitionListener {
             override fun onLocationCameraTransitionFinished(cameraMode: Int) {
-                val (z, t) = if (mode == "car") carView(closeUp) else 17.5 to 0.0
+                val (z, t) = if (mode == "car") view else 17.5 to 0.0
                 lc.zoomWhileTracking(z); lc.tiltWhileTracking(t)
             }
             override fun onLocationCameraTransitionCanceled(cameraMode: Int) = Unit
@@ -498,7 +498,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         val p = g.p
         val lc = mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }
         MapsTrace.fix(loc, p.takeIf { !g.off }, lc?.let { (if (it.cameraMode == CameraMode.TRACKING_GPS) "follow" else "free") +
-            "/z%.1f/t%.0f".format(java.util.Locale.ROOT, mapRef?.cameraPosition?.zoom ?: 0.0, mapRef?.cameraPosition?.tilt ?: 0.0) + if (closeUp) "/close" else "" } ?: "none")
+            "/z%.1f/t%.0f".format(java.util.Locale.ROOT, mapRef?.cameraPosition?.zoom ?: 0.0, mapRef?.cameraPosition?.tilt ?: 0.0) } ?: "none")
         if (g.off) {
             nav = n.copy(offFixes = n.offFixes + 1)
             if (g.reroute) { WriterLog.i("Maps: off the route by ${p.off.toInt()} m at ${where(loc)}, a new one"); startNav(n.target, n.mode, loc) }
@@ -519,11 +519,11 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             if (car && MapsPrefs.autoPark(context)) park(loc, "a car trip ended")
             Toast.makeText(context, "Arrived: ${n.target.name}", Toast.LENGTH_LONG).show(); return
         }
-        // by car, near a busy crossing the map comes close and flat; past it, back
-        if (g.close != closeUp) {
-            closeUp = g.close
-            WriterLog.i(if (g.close) "Maps: camera close for step ${p.next}, ${p.toNext.toInt()} m ahead, ${Math.round(speedMs * 3.6)} km/h" else "Maps: camera back from close")
-            lc?.takeIf { it.cameraMode == CameraMode.TRACKING_GPS }?.let { val (z, t) = carView(g.close); it.zoomWhileTracking(z, 1500); it.tiltWhileTracking(t, 1500) }
+        // by car, the camera: further out at speed on a long stretch, closer towards a busy crossing or a turn slowed for
+        if (car && g.view != view) {
+            view = g.view
+            WriterLog.i("Maps: camera zoom ${view.first} tilt ${view.second.toInt()} (step ${p.next} ${p.toNext.toInt()} m ahead, ${Math.round(speedMs * 3.6)} km/h)")
+            lc?.takeIf { it.cameraMode == CameraMode.TRACKING_GPS }?.let { it.zoomWhileTracking(view.first, 1500); it.tiltWhileTracking(view.second, 1500) }
         }
         g.words(lang, car)?.let { say(it, why = g.why()) }
         g.bend?.let { b -> say(MapsPrefs.bendWords(lang, n.bends[b].right), why = "bend ${(n.bends[b].along - p.along).toInt()} m ahead, ${Math.round(speedMs * 3.6)} km/h") }

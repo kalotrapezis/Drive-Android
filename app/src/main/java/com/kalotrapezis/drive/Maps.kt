@@ -263,18 +263,29 @@ internal data class Junction(val arms: List<Double>, val taken: Int, val roundab
     val way get() = arms.indices.minBy { Math.abs(Math.abs(arms[it]) - 180) }
 }
 
-/**
- * Whether the map comes close and looks straight down now, to see which street is which: a busy crossing about 12 s or
- * 250 m ahead (the user, 23 Oct: at Νικήσιανη's 5–6 streets, counting them, they took the one next to it).
- */
-internal fun closeView(j: Junction?, toNext: Double, speed: Double, sign: Int = 0) =
-    (j != null && j.busy && toNext < maxOf(250.0, speed * 12)) ||
-        // any turn, slowing for it (the user, 23 Oct: "zoom too when I come near where I must turn and slow down")
-        (sign in setOf(-98, -3, -2, -1, 1, 2, 3, 6) && toNext < 150 && speed < 9)
+/** Directions' camera by car where nothing is near: zoom 16.5, tilted 45° to look ahead. */
+internal val DRIVING_VIEW = 16.5 to 45.0
 
-/** Directions' camera by car: zoom and tilt, close and flat at a busy crossing ([closeView]) — a little back from the
- *  closest (the user, 23 Oct: "the graphics a bit further away"). */
-internal fun carView(close: Boolean) = if (close) 17.5 to 0.0 else 16.5 to 45.0
+/**
+ * Directions' camera by car, as zoom and tilt (the user, 23 Oct: "zoom in when we have to, zoom out when the car gains speed
+ * on a straight road"; "zoom in and pitch to look more forward as it gets closer to a complicated road"): further out at
+ * speed with the next turn far (15 over 90 km/h and 1.5 km, 15.75 over 60 km/h and 800 m); closer step by step towards a
+ * busy crossing from ~12 s or 250 m before it (to 17.75 at it), and at any turn slowed for (under 150 m and 32 km/h),
+ * tilted further there to look along the road. In quarter steps, so the camera moves only now and then.
+ */
+internal fun carView(j: Junction?, sign: Int, toNext: Double, speed: Double): Pair<Double, Double> {
+    val reach = maxOf(250.0, speed * 12)
+    val busy = j != null && j.busy && toNext < reach
+    val slowTurn = sign in setOf(-98, -3, -2, -1, 1, 2, 3, 6) && toNext < 150 && speed < 9
+    val (zoom, tilt) = when {
+        busy -> 16.5 + 1.25 * (1 - toNext / reach).coerceIn(0.0, 1.0) to 55.0
+        slowTurn -> 17.5 to 55.0
+        speed > 25 && toNext > 1500 -> 15.0 to 45.0
+        speed > 17 && toNext > 800 -> 15.75 to 45.0
+        else -> DRIVING_VIEW
+    }
+    return Math.round(zoom * 4) / 4.0 to tilt
+}
 
 /** Whether the turn card shows [j]'s picture now, [toNext] metres before it. */
 internal fun showJunction(j: Junction?, toNext: Double) = j != null && j.busy && toNext < 400

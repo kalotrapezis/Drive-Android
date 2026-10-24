@@ -187,7 +187,8 @@ How to write here:
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
 - [x] (phone session, 24 Oct; branches `phone` in Drive-Android (worktree Drive-Android-worktrees/phone, from main bc485fb) and
-      Drive (worktree Drive-worktrees/phone, from main bfc589c); **not merged, not on the phone**) **Phone**, § Phone steps 1–9 (the
+      Drive (worktree Drive-worktrees/phone, from main bfc589c); **merged into main in both repos 24 Oct at the user's word ("comit
+      murge"; fast-forward to fdcd703 / Drive 4ce779d), branches and worktrees removed; not on the phone yet**) **Phone**, § Phone steps 1–9 (the
       user: "ok make a phone branch"; "No dont stop for every step use the emulator"; "use an island for recents, favorites and
       contacts, recordings, everything centered … see the apps UI UX follow along"). Each step checked on the emulator
       (emulator-5556, tetra_check; fake calls with `adb emu gsm`), the desktop pages rendered off-screen; see § Phone › Steps for
@@ -366,8 +367,8 @@ How to write here:
   Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
   (1), (5). Change it in the morning if you like; each is a commit of its own, ticked here as it is done.
 - (23 Oct) **Contacts**: the plan's nine questions (§ Contacts › Questions for the user); nothing is built before the yes.
-- (24 Oct) **Phone (the dialer)**: built on branches `phone` (§ Phone); waiting: the OK to install on the phone, question 2
-  (the phone's own recording) and 6 (the colour), then the merge.
+- (24 Oct) **Phone (the dialer)**: on main (§ Phone); waiting: the OK to install on the phone and the desktop .deb, question 2
+  (the phone's own recording) and 6 (the colour).
 - (none else now — the .odp's sources: answered 17 Oct, see B › References)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)

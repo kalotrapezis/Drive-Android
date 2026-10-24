@@ -186,6 +186,13 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
+- [x] (contacts-build session, 24 Oct; branches claude/contacts-583397 and Drive contacts, not merged) Contacts after the
+      user's look at the desktop: read ahead and a spinner (not "No contacts yet" while loading); the contact's island in
+      the middle with Call · Mail · WhatsApp · Viber, ♥ and Edit in an island beside it, icons on the cards; From Photos
+      (Photos' people and faces, a "Person 12" takes the contact's name) and Faces from Photos for many; Call = the paired
+      phone places it (SyncServer /call: at once with CALL_PHONE, else a notification to tap). Phone: Edit at the bottom
+      right (the user). Desktop 0.6.0-beta.7 .deb built, not installed; the phone build not installed (the user: not yet),
+      so a call from the PC is not tried on the real pair.
 - [x] (contacts-build session, 23 Oct; merged into main in both repos at the user's word, with the thumbnails work committed first; desktop 0.6.0-beta.6 .deb built from Drive main, not installed) **Contacts** on Android, § Contacts steps 1–8
       (step 9 later). Then the sync and the desktop (the user, 23 Oct: "now do the desktop and the sync"): main merged
       into the branch; scope `contacts` (SYNC_PLAN 6ap) — on the real pair a PC-made contact reached the phone in 7 s with
@@ -2135,6 +2142,23 @@ Tetra/Contacts/                        (~/Tetra/Files/Contacts on the PC, /sdcar
   "Update from Photos" makes it again (e.g. after a new cover).
 - Other sources: any picture (picked, cropped round), the photo an import brought (Samsung's inline ones; Google's
   googleusercontent links fetched once at import — the only network use, can be skipped), Remove → the initial.
+
+### Contact ↔ Photos person: one link (the user, 24 Oct: "face and name sync"; built 24 Oct)
+- **In the contact's file:** `X-TETRA-PERSON` = the person's uuid (the same on every device, Drive SYNC_PLAN 6m/6y) and
+  `X-TETRA-FACE` = "<the photo's SHA-256>;left,top,right,bottom" (fractions of the upright photo), the face the portrait
+  shows. Both travel with Contacts' part, so any device can act on them.
+- **The computer keeps the two sides in step** (desktop `contactfaces.js`, at start, on every contact change, every 5
+  minutes): a portrait picked on the phone from an ordinary photo → the face its own analysis found inside that square on
+  its copy of the photo goes to the contact's person (made with the contact's name; or the face's existing person —
+  named, or "Person 12" with its other photos — becomes the contact's link) and is the person's portrait; names:
+  "Person 12" takes the contact's, otherwise the side changed last wins; portraits: the contact's face is the person's
+  cover, a cover chosen in Photos afterwards becomes the contact's photo. Photos' side reaches the phone by the faces' own
+  sync (6y), the contact's by Contacts' part. Nothing happens until the photo is on the computer and analysed.
+- **If the phone stopped detecting faces** (the user is considering it; nothing removed): Contacts would not change on the
+  phone except that its From Photos and "Photos knows N of these people" would list the people the computer sends (they
+  already land in the phone's face catalog through 6y); "Choose a picture" already records only the photo's SHA-256 and
+  the middle square, needing no detector; the computer does every match. What would go: a portrait from a photo the
+  computer does not have (not backed up) would stay a picture in the contact, not a face in Photos.
 
 ### Screens (the classic Tetra island; the iPhone's page made Tetra's)
 **Phone — the list**

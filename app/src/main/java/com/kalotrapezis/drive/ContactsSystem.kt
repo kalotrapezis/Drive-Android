@@ -53,7 +53,10 @@ internal object ContactsSystem {
     fun square(bytes: ByteArray, box: RectF? = null, room: Float = 1.8f, size: Int = 512): String? =
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { square(it, box, room, size) }
 
-    fun square(bmp: Bitmap, box: RectF? = null, room: Float = 1.8f, size: Int = 512): String {
+    fun square(bmp: Bitmap, box: RectF? = null, room: Float = 1.8f, size: Int = 512): String = squareAndBox(bmp, box, room, size).first
+
+    /** [square], and the square taken as fractions of the picture (left, top, right, bottom): the X-TETRA-FACE box. */
+    fun squareAndBox(bmp: Bitmap, box: RectF? = null, room: Float = 1.8f, size: Int = 512): Pair<String, List<Float>> {
         val w = bmp.width; val h = bmp.height
         val side: Int; val cx: Float; val cy: Float
         if (box != null) {
@@ -62,7 +65,8 @@ internal object ContactsSystem {
         val left = (cx - side / 2f).toInt().coerceIn(0, w - side)
         val top = (cy - side / 2f).toInt().coerceIn(0, h - side)
         val out = Bitmap.createScaledBitmap(Bitmap.createBitmap(bmp, left, top, side, side), minOf(size, side), minOf(size, side), true)
-        return ByteArrayOutputStream().use { b -> out.compress(Bitmap.CompressFormat.JPEG, 85, b); java.util.Base64.getEncoder().encodeToString(b.toByteArray()) }
+        val photo = ByteArrayOutputStream().use { b -> out.compress(Bitmap.CompressFormat.JPEG, 85, b); java.util.Base64.getEncoder().encodeToString(b.toByteArray()) }
+        return photo to listOf(left.toFloat() / w, top.toFloat() / h, (left + side).toFloat() / w, (top + side).toFloat() / h)
     }
 
     /** The other apps' rows for a contact's numbers (Plan.md § Contacts › Outside Tetra), as the phone's own Contacts shows them. */
@@ -130,3 +134,36 @@ internal object ContactsWays {
         }.distinctBy { Triple(it.app, it.way, key(it.number)) }
     }
 }
+
+/**
+ * A call asked for by the computer's Contacts (the user, 24 Oct: "phone calls"): a PC cannot place one, so this phone does
+ * (SyncServer /call) — at once when Tetra may call (CALL_PHONE, Contacts › More › Calls from the computer), else a
+ * notification "Call Μαρία" that opens the dialer at a tap. The voice is the phone's, or a Bluetooth headset's.
+ */
+internal object PhoneCall {
+    private const val CHANNEL = "calls_from_computer"
+    private const val NOTE = 4146
+
+    fun allowed(c: Context) = c.checkSelfPermission(android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    fun fromComputer(c: Context, number: String, name: String): org.json.JSONObject {
+        val uri = android.net.Uri.fromParts("tel", number, null)
+        if (allowed(c)) runCatching {
+            c.getSystemService(android.telecom.TelecomManager::class.java).placeCall(uri, android.os.Bundle())
+            WriterLog.i("Contacts: a call from the computer placed")
+            return org.json.JSONObject().put("how", "calling")
+        }.onFailure { WriterLog.e("Contacts: a call from the computer could not be placed", it) }
+        if (!androidx.core.app.NotificationManagerCompat.from(c).areNotificationsEnabled())
+            return org.json.JSONObject().put("error", "Tetra's notifications are off on the phone, and it may not call by itself.")
+        val nm = c.getSystemService(android.app.NotificationManager::class.java)
+        if (nm.getNotificationChannel(CHANNEL) == null) nm.createNotificationChannel(android.app.NotificationChannel(CHANNEL, "Calls from the computer", android.app.NotificationManager.IMPORTANCE_HIGH))
+        val tap = android.app.PendingIntent.getActivity(c, 0, android.content.Intent(android.content.Intent.ACTION_DIAL, uri).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
+        nm.notify(NOTE, androidx.core.app.NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_call)
+            .setContentTitle("Call ${name.ifBlank { number }}").setContentText("From the computer: tap to call $number")
+            .setContentIntent(tap).setAutoCancel(true).setCategory(androidx.core.app.NotificationCompat.CATEGORY_CALL)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH).build())
+        return org.json.JSONObject().put("how", "notification")
+    }
+}
+

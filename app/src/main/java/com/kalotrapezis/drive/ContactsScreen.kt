@@ -236,6 +236,8 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     // on only when it can be: chosen (the default since the user's yes) and Tetra may write the phone's contacts
     var systemOn by remember { mutableStateOf(ContactsAccount.on(context) && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
     LaunchedEffect(version, systemOn) { ContactsAccount.soon(context) }
+    var callsOn by remember { mutableStateOf(PhoneCall.allowed(context)) }
+    val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> callsOn = ok; message = if (ok) "A call from the computer now rings at once" else "Calls from the computer come as a notification to tap" }
     val askWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) { ContactsAccount.set(context, true); systemOn = true; message = "Your contacts are in the phone's contacts too" }
         else message = "Tetra needs to write the phone's contacts for this."
@@ -465,6 +467,9 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     else -> askWrite.launch(Manifest.permission.WRITE_CONTACTS)
                 }
             }
+            DrawerButton(R.drawable.ic_call, if (callsOn) "Calls from the computer: at once" else "Calls from the computer: as a notification", callsOn, Modifier.fillMaxWidth()) {
+                if (!callsOn) askCalls.launch(Manifest.permission.CALL_PHONE) else message = "Turn it off in Android's settings › Apps › Tetra › Permissions › Phone"
+            }
             Text("A read-only copy under the account Tetra, so the dialer, Viber, WhatsApp and the car show these names and photos. Edits are made here.",
                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -542,9 +547,9 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         scope.launch {
             busy = "Making photos…"
             val n = withContext(Dispatchers.IO) { chosen.count { (c, p) -> runCatching {
-                val photo = p.cover?.let { ContactsFaces.square(context, it, p.box) } ?: return@runCatching false
+                val (photo, face) = p.cover?.let { ContactsFaces.portrait(context, it, p.box) } ?: return@runCatching false
                 val now = ContactsFiles.all(root).firstOrNull { it.info.uid == c.uid } ?: return@runCatching false
-                ContactsFiles.save(root, now, now.info.copy(photo = photo, photoUrl = null, person = p.uuid)); true
+                ContactsFiles.save(root, now, now.info.copy(photo = photo, face = face, photoUrl = null, person = p.uuid)); true
             }.getOrDefault(false) } }
             busy = null
             message = "$n photos from Photos"
@@ -619,7 +624,7 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
     var qr by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding()
-            .padding(top = 72.dp, bottom = 32.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            .padding(top = 72.dp, bottom = 96.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { // clear of Edit at the bottom
             Column(Modifier.widthIn(max = 640.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ContactAvatar(i, 120.dp)
                 Text(i.name, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
@@ -744,8 +749,15 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                         Icon(painterResource(if (i.favourite) R.drawable.ic_star else R.drawable.ic_star_border), contentDescription = if (i.favourite) "Remove from favourites" else "Add to favourites",
                             tint = if (i.favourite) CONTACTS_COLOR else islandContentColor())
                     }
-                    TextButton(onClick = edit) { Text("Edit", color = islandContentColor()) }
                 }
+            }
+        }
+        // Edit at the bottom right, within the thumb's reach (the user, 24 Oct), as the list's +
+        Surface(onClick = edit, color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp)) {
+            Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(painterResource(R.drawable.ic_edit), contentDescription = null)
+                Text("Edit")
             }
         }
     }
@@ -892,9 +904,11 @@ private fun callText(c: CallEntry): String {
     var working by remember { mutableStateOf(false) }
     fun use(uri: Uri, box: android.graphics.Rect?, person: String?) = scope.launch {
         working = true
-        val b = withContext(Dispatchers.IO) { ContactsFaces.square(context, uri, box) }
+        val b = withContext(Dispatchers.IO) { ContactsFaces.portrait(context, uri, box) }
         working = false
-        if (b != null) set { it.copy(photo = b, photoUrl = null, person = person) }
+        // a face from Photos keeps its person; any picture gets the contact's (a new uuid if none): the computer then finds
+        // that face in its copy of the picture and puts it in Photos under this contact's name (desktop contactfaces.js)
+        if (b != null) set { it.copy(photo = b.first, face = b.second, photoUrl = null, person = person ?: it.person ?: java.util.UUID.randomUUID().toString()) }
         else android.widget.Toast.makeText(context, "That picture could not be read", android.widget.Toast.LENGTH_SHORT).show()
     }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { use(it, null, null) } }
@@ -904,7 +918,7 @@ private fun callText(c: CallEntry): String {
         Row {
             TextButton(onClick = { fromPhotos = true }) { Text("From Photos", color = CONTACTS_COLOR) }
             TextButton(onClick = { pick.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Choose a picture", color = CONTACTS_COLOR) }
-            if (i.photo != null || i.photoUrl != null) TextButton(onClick = { set { it.copy(photo = null, photoUrl = null, person = null) } }) { Text("Remove", color = CONTACTS_COLOR) }
+            if (i.photo != null || i.photoUrl != null) TextButton(onClick = { set { it.copy(photo = null, photoUrl = null, face = null) } }) { Text("Remove", color = CONTACTS_COLOR) }
         }
     }
     if (fromPhotos) PhotosFacePicker(i.name, { fromPhotos = false }) { p, uri, box -> fromPhotos = false; use(uri, box, p.uuid) }

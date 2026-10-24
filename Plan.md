@@ -278,7 +278,7 @@ How to write here:
       (hidden QA copy) checked; the user said merge. Not yet on the tablet or phone.
       Files2.png (the user: "Replace the first one on the phone"): the phone's Files icon now — Home's card, Settings ›
       App icons (tools/applet-icons.py from it as Files.png; applet_files #177BFC); the desktop keeps its own.
-- [~] (file-thumbnails session, 24 Oct; branches claude/pdf-icon and Drive pdf-icon) The user's PDF tile (Assets/pdf.png):
+- [x] (f69bad4, Drive f17a77c; file-thumbnails session, 24 Oct; merged at the user's word) The user's PDF tile (Assets/pdf.png):
       "pdf" in file-kinds.json — its icon where it has no preview, and Home's Open PDFs. Then (the user: "When we have a
       preview of the file have no icon"): no badge over any preview, phone or desktop. The user's video and music tiles
       (Assets/video.png, music.png) as two more categories, and their new Office tile (Assets/Office.png, square like

@@ -267,7 +267,7 @@ How to write here:
       Checked: FileThumbsTest 3/3; desktop npm test 125/0 (thumbs.test.js 4); desktop seen in list and grid (hidden QA
       copy, scripts/shot.js, scratch folder). **Not seen on a device**: the emulator was in the contacts session's use and
       the tablet/phone wait for the user's OK.
-- [~] (file-thumbnails session, 24 Oct; branches claude/file-icons in Drive-Android and file-icons in Drive, not merged)
+- [x] (2bbd907, Drive b50a1d5; file-thumbnails session, 24 Oct; merged into main in both repos at the user's word)
       **File-type icons** (the user: "icons for file types … so the user can see at a glance what file it is, on phone or
       desktop. The Office ones you can also use in buttons"): the user's tiles (Assets/Archives, docs-txt, docs-word, excel,
       slides, bash-scripts, ebooks, html-pages, programs-executables) made 256 px by tools/file-icons.py (one rounded corner
@@ -275,7 +275,7 @@ How to write here:
       (FileKinds.kt; the desktop copies it in scripts/copy-skill.js). Files' list and grid show them where a file has no
       thumbnail; Words/Tables/Slides thumbnails carry the tile as their badge instead of the glyph; Home's Open Words /
       Tables / Slides show the tiles (PDFs keeps its red icon). Before/after shown to the user. Emulator and desktop
-      (hidden QA copy) checked. Waiting: the user's word on the badge and the Home tiles, and the merge.
+      (hidden QA copy) checked; the user said merge. Not yet on the tablet or phone.
       Files2.png (the user: "Replace the first one on the phone"): the phone's Files icon now — Home's card, Settings ›
       App icons (tools/applet-icons.py from it as Files.png; applet_files #177BFC); the desktop keeps its own.
 - [x] (maps-icon session, 23 Oct, branch claude/nifty-bouman-6f4a52) Maps' icon: the user's own (Assets/Icons/Applets/Maps.png,

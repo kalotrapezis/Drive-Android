@@ -337,7 +337,7 @@ How to write here:
       the shorter way, smaller roads slower (tertiary 0.8 … track 0.1), searched without the shortcuts up to 500 000 nodes
       (~160 km; farther, the shortest way), phone, Android Auto (⚙ › Roads) and desktop (beside Car). MapsMainRoadsTest:
       Σκάλα 11.7 km/17 min no track, My Market 11.1 km on secondary. Road surface and slope are not in the graph (a rebuild
-      would add them). Default Main roads — the user's yes asked. Not installed, not merged.
+      would add them). Default Main roads (the user: yes). On the phone 24 Oct (phone-install.sh, Android Auto re-approved); not merged.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

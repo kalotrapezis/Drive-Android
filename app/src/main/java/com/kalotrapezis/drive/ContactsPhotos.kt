@@ -91,6 +91,29 @@ internal object ContactsFaces {
     }.onFailure { WriterLog.e("Contacts: a photo", it) }.getOrNull()
 
     /**
+     * A contact's portrait from a picture and its X-TETRA-FACE: "<the picture's SHA-256>;left,top,right,bottom" (fractions of
+     * the upright picture), so the computer finds that face in its copy and puts it in Photos under the contact's person
+     * (desktop contactfaces.js) — whichever device detects faces. [box]: a face Photos found; none: the middle square.
+     */
+    fun portrait(context: Context, uri: Uri, box: Rect?): Pair<String, String>? = runCatching {
+        val sha = context.contentResolver.openInputStream(uri)!!.use { input ->
+            val d = java.security.MessageDigest.getInstance("SHA-256"); val buf = ByteArray(256 * 1024)
+            while (true) { val n = input.read(buf); if (n < 0) break; d.update(buf, 0, n) }
+            d.digest().joinToString("") { "%02x".format(it) }
+        }
+        val bmp: Bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
+            val scale = if (box != null) minOf(1f, 1280f / maxOf(info.size.width, info.size.height)) else minOf(1f, 2048f / maxOf(info.size.width, info.size.height))
+            decoder.setTargetSize((info.size.width * scale).toInt(), (info.size.height * scale).toInt())
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+        val (photo, square) = ContactsSystem.squareAndBox(bmp, box?.let { RectF(it) })
+        photo to faceValue(sha, square)
+    }.onFailure { WriterLog.e("Contacts: a portrait", it) }.getOrNull()
+
+    /** "sha;0.2,0.1,0.6,0.6": four decimals, as the computer writes it. */
+    fun faceValue(sha: String, box: List<Float>) = sha + ";" + box.joinToString(",") { (Math.round(it * 10000) / 10000.0).toBigDecimal().stripTrailingZeros().toPlainString() }
+
+    /**
      * Contacts with no photo that Photos knows by the same name (or the same first name, when only one person has it), for
      * "Photos knows N of these people — use their faces?" after an import.
      */

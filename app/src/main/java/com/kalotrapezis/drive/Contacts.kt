@@ -82,8 +82,13 @@ data class ContactInfo(
     val photo: String? = null,
     /** An imported photo given as a link (Google's googleusercontent ones). */
     val photoUrl: String? = null,
-    /** The Photos person the photo came from (X-TETRA-PERSON). */
+    /** The Photos person the photo came from (X-TETRA-PERSON): one link between a contact and a person, the same uuid everywhere. */
     val person: String? = null,
+    /**
+     * The face the portrait shows (X-TETRA-FACE): "<the photo's SHA-256>;left,top,right,bottom", fractions of the upright
+     * photo. The computer finds that face in its copy of the photo and puts it in Photos under [person] (ContactsFaceLink).
+     */
+    val face: String? = null,
     val rev: String = "",
 ) {
     /** The name as written by the person: FN, else the parts, else the company, a phone, an e-mail. */
@@ -279,6 +284,7 @@ object VCard {
             photo = photo,
             photoUrl = photoLine?.takeIf { photo == null && it.value.startsWith("http", true) }?.value?.trim(),
             person = text("X-TETRA-PERSON").ifEmpty { null },
+            face = text("X-TETRA-FACE").ifEmpty { null },
             rev = text("REV"),
         )
     }
@@ -358,6 +364,7 @@ object VCard {
             else -> emptyList()
         })
         if (was.person != now.person) replace(setOf("X-TETRA-PERSON"), listOfNotNull(now.person?.let { ICalProp("X-TETRA-PERSON", "", it) }))
+        if (was.face != now.face) replace(setOf("X-TETRA-FACE"), listOfNotNull(now.face?.let { ICalProp("X-TETRA-FACE", "", it) }))
         if (out.none { it.key() == "UID" }) out.add(ICalProp("UID", "", now.uid.ifBlank { UUID.randomUUID().toString() }))
         if (out.none { it.key() == "FN" }) out.add(ICalProp("FN", "", esc(now.name)))
         if (out.none { it.key() == "N" }) out.add(ICalProp("N", "", listOf(now.family, now.given, now.middle, now.prefix, now.suffix).joinToString(";") { esc(it) }))
@@ -635,7 +642,7 @@ object ContactsImport {
 /** Merge & fix (Plan.md § Contacts): the same person twice, merged into one file; a pair said not to be is never offered again. */
 object ContactsMerge {
     private val KNOWN = setOf("VERSION", "PRODID", "N", "FN", "NICKNAME", "ORG", "TITLE", "TEL", "EMAIL", "ADR", "URL", "BDAY", "X-ABDATE", "ANNIVERSARY",
-        "X-ABRELATEDNAMES", "RELATED", "NOTE", "CATEGORIES", "PHOTO", "X-TETRA-PERSON", "UID", "REV", "X-ABLABEL", "X-TETRA-NOT-DUPLICATE")
+        "X-ABRELATEDNAMES", "RELATED", "NOTE", "CATEGORIES", "PHOTO", "X-TETRA-PERSON", "X-TETRA-FACE", "UID", "REV", "X-ABLABEL", "X-TETRA-NOT-DUPLICATE")
 
     private fun notSame(c: Contact, uid: String) = with(VCard) { c.lines.any { it.key() == "X-TETRA-NOT-DUPLICATE" && it.value.trim() == uid } }
 
@@ -669,6 +676,7 @@ object ContactsMerge {
             note = listOf(a.note, b.note).filter { it.isNotBlank() }.distinct().joinToString("\n\n"),
             categories = (a.categories + b.categories).distinctBy { it.lowercase() },
             photo = a.photo ?: b.photo, photoUrl = if (a.photo != null) a.photoUrl else a.photoUrl ?: b.photoUrl, person = a.person ?: b.person,
+            face = if (a.photo != null) a.face else a.face ?: b.face,
         )
     }
 

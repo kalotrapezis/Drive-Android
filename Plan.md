@@ -2143,6 +2143,23 @@ Tetra/Contacts/                        (~/Tetra/Files/Contacts on the PC, /sdcar
 - Other sources: any picture (picked, cropped round), the photo an import brought (Samsung's inline ones; Google's
   googleusercontent links fetched once at import — the only network use, can be skipped), Remove → the initial.
 
+### Contact ↔ Photos person: one link (the user, 24 Oct: "face and name sync"; built 24 Oct)
+- **In the contact's file:** `X-TETRA-PERSON` = the person's uuid (the same on every device, Drive SYNC_PLAN 6m/6y) and
+  `X-TETRA-FACE` = "<the photo's SHA-256>;left,top,right,bottom" (fractions of the upright photo), the face the portrait
+  shows. Both travel with Contacts' part, so any device can act on them.
+- **The computer keeps the two sides in step** (desktop `contactfaces.js`, at start, on every contact change, every 5
+  minutes): a portrait picked on the phone from an ordinary photo → the face its own analysis found inside that square on
+  its copy of the photo goes to the contact's person (made with the contact's name; or the face's existing person —
+  named, or "Person 12" with its other photos — becomes the contact's link) and is the person's portrait; names:
+  "Person 12" takes the contact's, otherwise the side changed last wins; portraits: the contact's face is the person's
+  cover, a cover chosen in Photos afterwards becomes the contact's photo. Photos' side reaches the phone by the faces' own
+  sync (6y), the contact's by Contacts' part. Nothing happens until the photo is on the computer and analysed.
+- **If the phone stopped detecting faces** (the user is considering it; nothing removed): Contacts would not change on the
+  phone except that its From Photos and "Photos knows N of these people" would list the people the computer sends (they
+  already land in the phone's face catalog through 6y); "Choose a picture" already records only the photo's SHA-256 and
+  the middle square, needing no detector; the computer does every match. What would go: a portrait from a photo the
+  computer does not have (not backed up) would stay a picture in the contact, not a face in Photos.
+
 ### Screens (the classic Tetra island; the iPhone's page made Tetra's)
 **Phone — the list**
 ```

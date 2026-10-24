@@ -547,9 +547,9 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         scope.launch {
             busy = "Making photos…"
             val n = withContext(Dispatchers.IO) { chosen.count { (c, p) -> runCatching {
-                val photo = p.cover?.let { ContactsFaces.square(context, it, p.box) } ?: return@runCatching false
+                val (photo, face) = p.cover?.let { ContactsFaces.portrait(context, it, p.box) } ?: return@runCatching false
                 val now = ContactsFiles.all(root).firstOrNull { it.info.uid == c.uid } ?: return@runCatching false
-                ContactsFiles.save(root, now, now.info.copy(photo = photo, photoUrl = null, person = p.uuid)); true
+                ContactsFiles.save(root, now, now.info.copy(photo = photo, face = face, photoUrl = null, person = p.uuid)); true
             }.getOrDefault(false) } }
             busy = null
             message = "$n photos from Photos"
@@ -904,9 +904,11 @@ private fun callText(c: CallEntry): String {
     var working by remember { mutableStateOf(false) }
     fun use(uri: Uri, box: android.graphics.Rect?, person: String?) = scope.launch {
         working = true
-        val b = withContext(Dispatchers.IO) { ContactsFaces.square(context, uri, box) }
+        val b = withContext(Dispatchers.IO) { ContactsFaces.portrait(context, uri, box) }
         working = false
-        if (b != null) set { it.copy(photo = b, photoUrl = null, person = person) }
+        // a face from Photos keeps its person; any picture gets the contact's (a new uuid if none): the computer then finds
+        // that face in its copy of the picture and puts it in Photos under this contact's name (desktop contactfaces.js)
+        if (b != null) set { it.copy(photo = b.first, face = b.second, photoUrl = null, person = person ?: it.person ?: java.util.UUID.randomUUID().toString()) }
         else android.widget.Toast.makeText(context, "That picture could not be read", android.widget.Toast.LENGTH_SHORT).show()
     }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { use(it, null, null) } }
@@ -916,7 +918,7 @@ private fun callText(c: CallEntry): String {
         Row {
             TextButton(onClick = { fromPhotos = true }) { Text("From Photos", color = CONTACTS_COLOR) }
             TextButton(onClick = { pick.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Choose a picture", color = CONTACTS_COLOR) }
-            if (i.photo != null || i.photoUrl != null) TextButton(onClick = { set { it.copy(photo = null, photoUrl = null, person = null) } }) { Text("Remove", color = CONTACTS_COLOR) }
+            if (i.photo != null || i.photoUrl != null) TextButton(onClick = { set { it.copy(photo = null, photoUrl = null, face = null) } }) { Text("Remove", color = CONTACTS_COLOR) }
         }
     }
     if (fromPhotos) PhotosFacePicker(i.name, { fromPhotos = false }) { p, uri, box -> fromPhotos = false; use(uri, box, p.uuid) }

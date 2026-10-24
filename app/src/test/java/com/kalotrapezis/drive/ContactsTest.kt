@@ -245,4 +245,13 @@ class ContactsTest {
         assertEquals(desktop, VCard.write(VCard.build(i, Instant.parse("2026-10-23T18:00:00Z"))))
         assertEquals(desktop, VCard.write(VCard.cards(desktop).single()))
     }
+
+    @Test fun aPortraitsFaceIsKeptInTheFile() {
+        val dir = scratchDir("contacts")
+        val face = "${"a".repeat(64)};0.2,0.1,0.6,0.6"
+        val c = ContactsFiles.save(dir, null, ContactInfo(given = "Νέα", person = "p-new", face = face))
+        assertTrue(c.file!!.readText().replace("\r\n ", "").contains("X-TETRA-FACE:$face\r\n")) // folded at 75, as every long line
+        assertEquals(face, ContactsFiles.read(c.file).info.face)
+        assertEquals(face, ContactsFaces.faceValue("a".repeat(64), listOf(0.2f, 0.1f, 0.6f, 0.6f)))
+    }
 }

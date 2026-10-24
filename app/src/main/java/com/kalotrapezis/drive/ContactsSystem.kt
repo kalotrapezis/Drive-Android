@@ -53,7 +53,10 @@ internal object ContactsSystem {
     fun square(bytes: ByteArray, box: RectF? = null, room: Float = 1.8f, size: Int = 512): String? =
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { square(it, box, room, size) }
 
-    fun square(bmp: Bitmap, box: RectF? = null, room: Float = 1.8f, size: Int = 512): String {
+    fun square(bmp: Bitmap, box: RectF? = null, room: Float = 1.8f, size: Int = 512): String = squareAndBox(bmp, box, room, size).first
+
+    /** [square], and the square taken as fractions of the picture (left, top, right, bottom): the X-TETRA-FACE box. */
+    fun squareAndBox(bmp: Bitmap, box: RectF? = null, room: Float = 1.8f, size: Int = 512): Pair<String, List<Float>> {
         val w = bmp.width; val h = bmp.height
         val side: Int; val cx: Float; val cy: Float
         if (box != null) {
@@ -62,7 +65,8 @@ internal object ContactsSystem {
         val left = (cx - side / 2f).toInt().coerceIn(0, w - side)
         val top = (cy - side / 2f).toInt().coerceIn(0, h - side)
         val out = Bitmap.createScaledBitmap(Bitmap.createBitmap(bmp, left, top, side, side), minOf(size, side), minOf(size, side), true)
-        return ByteArrayOutputStream().use { b -> out.compress(Bitmap.CompressFormat.JPEG, 85, b); java.util.Base64.getEncoder().encodeToString(b.toByteArray()) }
+        val photo = ByteArrayOutputStream().use { b -> out.compress(Bitmap.CompressFormat.JPEG, 85, b); java.util.Base64.getEncoder().encodeToString(b.toByteArray()) }
+        return photo to listOf(left.toFloat() / w, top.toFloat() / h, (left + side).toFloat() / w, (top + side).toFloat() / h)
     }
 
     /** The other apps' rows for a contact's numbers (Plan.md § Contacts › Outside Tetra), as the phone's own Contacts shows them. */

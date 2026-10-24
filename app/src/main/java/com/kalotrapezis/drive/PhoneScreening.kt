@@ -19,14 +19,81 @@ class PhoneScreening : CallScreeningService() {
         val ok = CallResponse.Builder().build()
         if (details.callDirection != Call.Details.DIRECTION_INCOMING) return respondToCall(details, ok)
         val number = details.handle?.schemeSpecificPart?.takeIf { it.isNotBlank() && details.handlePresentation == TelecomManager.PRESENTATION_ALLOWED }
+        val spam = number?.let { PhoneSpam.matches(PhoneSpam.read(), it) }
         val response = when {
+            // spam and unwanted (Tetra/Phone/spam.txt, the same list on every device): declined before it rings, no notice; Recents keeps it
+            spam != null -> CallResponse.Builder().setDisallowCall(true).setRejectCall(true).setSkipNotification(true).build()
             number == null && PhonePrefs.declineHidden(this) -> CallResponse.Builder().setDisallowCall(true).setRejectCall(true).build()
             number != null && PhonePrefs.silenceUnknown(this) && PhoneCalls.contactFor(number) == null -> CallResponse.Builder().setSilenceCall(true).build()
             else -> ok
         }
-        if (response !== ok) WriterLog.i("Phone: a call ${if (number == null) "from a hidden number declined" else "from a number not in Contacts silenced"}")
+        if (response !== ok) WriterLog.i("Phone: a call ${when { spam != null -> "on the spam list declined"; number == null -> "from a hidden number declined"; else -> "from a number not in Contacts silenced" }}")
         respondToCall(details, response)
     }
+}
+
+/**
+ * Spam and unwanted callers (the user, 24 Oct: "a list; when they call and are in it, the call is closed and never rings"):
+ * Tetra/Phone/spam.txt, plain text any AI can read — one number a line, a note after #, a * at the end for every number
+ * that starts so (69800* for a whole range). The same file on the phone, the tablet and the computer (scope phone); the
+ * phone app's screening declines a match before it rings. Marking on the phone also puts the number in Android's own
+ * blocked list (its SMS are blocked too).
+ */
+internal object PhoneSpam {
+    const val FILE = "spam.txt"
+    private const val HEAD = "# Spam and unwanted (Tetra Phone): one number a line, a note after #; a * at the end takes every number that starts so.\n" +
+        "# Calls from these are declined before they ring. The same list on the phone, the tablet and the computer.\n"
+    data class Entry(val number: String, val note: String)
+
+    fun parse(text: String): List<Entry> = text.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        .map { l -> Entry(l.substringBefore('#').trim().replace(" ", ""), l.substringAfter('#', "").trim()) }.filter { e -> e.number.any(Char::isDigit) }
+
+    /** A number in the form it is compared in: a Greek one without +30 / 0030, another country's with + and its code. */
+    fun national(n: String): String {
+        val t = n.trim(); val d = n.filter(Char::isDigit)
+        return when {
+            t.startsWith("+30") -> d.drop(2)
+            t.startsWith("0030") -> d.drop(4)
+            t.startsWith("+") -> "+$d"
+            t.startsWith("00") -> "+" + d.drop(2)
+            else -> d
+        }
+    }
+
+    /** The list's line that takes this number, if any. */
+    fun matches(list: List<Entry>, number: String): Entry? = list.firstOrNull { e ->
+        if (e.number.endsWith("*")) national(e.number.dropLast(1)).let { p -> p.count(Char::isDigit) >= 2 && national(number).startsWith(p) }
+        else PhoneLog.same(e.number, number)
+    }
+
+    private fun file() = java.io.File(phoneRoot(), FILE)
+    fun read(): List<Entry> = runCatching { parse(file().readText()) }.getOrDefault(emptyList())
+
+    fun add(c: Context, number: String, note: String = "") = runCatching {
+        if (matches(read(), number) != null) return@runCatching
+        val f = file().apply { parentFile?.mkdirs() }
+        val was = if (f.exists()) f.readText() else HEAD
+        f.writeText(was.trimEnd('\n') + "\n" + number.trim() + (if (note.isNotBlank()) "  # ${note.trim()}" else "") + "\n")
+        ScopedSync.soon(c, "phone")
+    }.onFailure { WriterLog.w("Phone: not marked as spam (${it.message})") }
+
+    /** The lines for exactly this number go; notes, ranges and every other line stay as they were. */
+    fun remove(c: Context, number: String) = runCatching {
+        val f = file().takeIf { it.exists() } ?: return@runCatching
+        f.writeText(f.readLines().filterNot { l -> !l.trim().startsWith("#") && parse(l).firstOrNull()?.let { !it.number.endsWith("*") && PhoneLog.same(it.number, number) } == true }
+            .joinToString("\n") + "\n")
+        ScopedSync.soon(c, "phone")
+    }.onFailure { WriterLog.w("Phone: not taken off the spam list (${it.message})") }
+
+    /** A range's line (69800*) taken off as written. */
+    fun removeLine(c: Context, e: Entry) = runCatching {
+        val f = file().takeIf { it.exists() } ?: return@runCatching
+        f.writeText(f.readLines().filterNot { l -> parse(l).firstOrNull() == e }.joinToString("\n") + "\n")
+        ScopedSync.soon(c, "phone")
+    }
+
+    /** CallInsider's page for a Greek number, opened in the browser as a person would (its terms forbid automated look-ups). */
+    fun lookUp(number: String): String? = national(number).takeIf { it.length == 10 && !it.startsWith("+") }?.let { "https://www.callinsider.gr/gr/$it" }
 }
 
 /** Android's blocked numbers (BlockedNumberContract): only the phone app, the SMS app and the carrier may read and change them. */

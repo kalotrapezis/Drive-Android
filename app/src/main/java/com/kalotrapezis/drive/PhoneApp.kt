@@ -113,6 +113,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     val calls by produceState(emptyList<LoggedCall>(), version) {
         value = withContext(Dispatchers.IO) { if (tablet) PhoneRelay.calls() else PhoneLog.read(context).also { PhoneHistory.write(context) } }
     }
+    val spam by produceState(PhoneSpam.read(), version) { value = withContext(Dispatchers.IO) { PhoneSpam.read() } }
     val byKey = remember(contacts) { contacts.flatMap { c -> c.phones.map { ContactsWays.key(it.value) to c } }.filter { it.first.length >= 5 }.toMap() }
     fun who(n: String) = byKey[ContactsWays.key(n)]
     LaunchedEffect(tab, dialer, calls.size) { if (tab == PhoneTab.Recents && dialer && !tablet) withContext(Dispatchers.IO) { PhoneLog.seen(context) } }
@@ -133,7 +134,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
         Box(Modifier.fillMaxHeight().widthIn(max = 560.dp).fillMaxWidth()) {
             if (keypad.value) Keypad(number, contacts, call = ::call)
             else when (tab) {
-                PhoneTab.Recents -> Recents(calls, ::who, dialer, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
+                PhoneTab.Recents -> Recents(calls, ::who, { PhoneSpam.matches(spam, it) != null }, dialer, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
                     askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
                 }
                 PhoneTab.Favourites -> Favourites(contacts.filter { it.favourite && (query.isBlank() || it.name.contains(query, true)) }.sortedBy { ContactsFiles.sortKey(it, false) }, top, call = ::call)
@@ -181,7 +182,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     details?.let { g ->
         ModalBottomSheet(onDismissRequest = { details = null }, containerColor = SheetColor, contentColor = islandContentColor()) {
             CallDetails(g, calls.filter { PhoneLog.same(it.number, g.number) }, who(g.number), call = { call(it); details = null },
-                delete = { ids -> PhoneLog.delete(context, ids); details = null; version++ })
+                delete = { ids -> PhoneLog.delete(context, ids); details = null; version++ }, changed = { version++ })
         }
     }
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
@@ -189,7 +190,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
             Text("Phone", style = MaterialTheme.typography.titleLarge)
             PhoneSettings()
             SpeedDialSettings(contacts)
-            BlockedSettings()
+            SpamSettings { version++ }
         }
     }
 }
@@ -198,7 +199,7 @@ private enum class RecentsFilter { All, Missed, Unknown }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, dialer: Boolean, query: String, selected: Set<CallGroup>, select: (Set<CallGroup>) -> Unit,
+private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, isSpam: (String) -> Boolean, dialer: Boolean, query: String, selected: Set<CallGroup>, select: (Set<CallGroup>) -> Unit,
                     pad: PaddingValues, call: (String) -> Unit, open: (CallGroup) -> Unit, makeDialer: () -> Unit) {
     var filter by remember { mutableStateOf(RecentsFilter.All) }
     val zone = ZoneId.systemDefault()
@@ -244,6 +245,7 @@ private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, dial
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             CallTypeIcon(g.newest.type, 16.dp)
                             val where = c?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(g.number) }?.label?.ifBlank { null } ?: PhoneArea.of(g.number)
+                            if (g.number.isNotBlank() && isSpam(g.number)) Text("Spam ·", style = MaterialTheme.typography.bodySmall, color = CALL_RED, fontWeight = FontWeight.Bold)
                             Text(listOfNotNull(where, whenText(g.newest.at, zone, today)).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
@@ -356,7 +358,7 @@ internal fun CallAvatar(c: ContactInfo?, size: Dp) {
 
 /** A line of Recents opened: who, the ways to reach them, and every call with that number. */
 @Composable
-private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, call: (String) -> Unit, delete: (List<Long>) -> Unit) {
+private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, call: (String) -> Unit, delete: (List<Long>) -> Unit, changed: () -> Unit) {
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
     val notes = remember { PhoneNotes.all() } // shortcut: read on the main thread, a few KB; move off it if notes grow large
@@ -376,7 +378,7 @@ private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, ca
                         context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("Number", g.number))
                     }
                 }
-                if (g.number.isNotBlank()) NumberActions(g.number)
+                if (g.number.isNotBlank()) NumberActions(g.number, changed)
             }
         }
         items(all.take(50), key = { it.id }) { l ->
@@ -521,10 +523,11 @@ private fun SpeedDialSettings(contacts: List<ContactInfo>) {
 
 /** Block or unblock a number; a person's ringtone (when the phone's contacts know the number). */
 @Composable
-private fun NumberActions(number: String) {
+private fun NumberActions(number: String, changed: () -> Unit) {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
-    val blocked = remember(version) { PhoneBlocked.isBlocked(context, number) }
+    val spam = remember(version) { PhoneSpam.matches(PhoneSpam.read(), number) }
+    val tablet = remember { PhoneRelay.noCalls(context) }
     val known = remember { PhoneRingtone.known(context, number) }
     val tone = remember(version) { if (known) PhoneRingtone.get(context, number) else null }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
@@ -534,9 +537,21 @@ private fun NumberActions(number: String) {
         }
     }
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-        if (PhoneBlocked.can(context)) TextButton(onClick = { if (blocked) PhoneBlocked.unblock(context, number) else PhoneBlocked.block(context, number); version++ }) {
-            Icon(painterResource(R.drawable.ic_block), contentDescription = null, tint = if (blocked) islandContentColor() else CALL_RED, modifier = Modifier.size(18.dp))
-            Text(if (blocked) "  Unblock" else "  Block", color = if (blocked) islandContentColor() else CALL_RED)
+        // spam: Tetra's list (every device), and on the phone Android's own blocked list too (its SMS)
+        // caught by a range (69800*): that line is the one to change, in the Phone's sheet
+        if (spam?.number?.endsWith("*") == true) Text("Spam: ${spam.number}", color = CALL_RED, modifier = Modifier.padding(12.dp))
+        else TextButton(onClick = {
+            if (spam != null) { PhoneSpam.remove(context, number); if (!tablet) PhoneBlocked.unblock(context, number) }
+            else { PhoneSpam.add(context, number); if (!tablet) PhoneBlocked.block(context, number) }
+            version++; changed()
+        }) {
+            Icon(painterResource(R.drawable.ic_block), contentDescription = null, tint = if (spam != null) islandContentColor() else CALL_RED, modifier = Modifier.size(18.dp))
+            Text(if (spam != null) "  Not spam" else "  Spam", color = if (spam != null) islandContentColor() else CALL_RED)
+        }
+        PhoneSpam.lookUp(number)?.let { url ->
+            TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) {
+                Text("CallInsider", color = islandContentColor())
+            }
         }
         if (known) TextButton(onClick = {
             pick.launch(Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER).putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_RINGTONE)
@@ -548,18 +563,37 @@ private fun NumberActions(number: String) {
     }
 }
 
+/** The spam list (Tetra/Phone/spam.txt): each line with Remove, and a number or range (69800*) to add. */
 @Composable
-private fun BlockedSettings() {
+private fun SpamSettings(changed: () -> Unit) {
     val context = LocalContext.current
-    if (!PhoneBlocked.can(context)) return
     var version by remember { mutableIntStateOf(0) }
-    val list = remember(version) { PhoneBlocked.all(context) }
-    Text("Blocked numbers", style = MaterialTheme.typography.titleSmall)
-    if (list.isEmpty()) Text("None. Block a number from its line in Recents.", style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
-    list.forEach { (_, n) ->
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(n, Modifier.weight(1f))
-            TextButton(onClick = { PhoneBlocked.unblock(context, n); version++ }) { Text("Unblock") }
+    LaunchedEffect(Unit) { // Android's blocked numbers join the list once, so there is one list to look after
+        val p = context.getSharedPreferences("phone", Context.MODE_PRIVATE)
+        if (!p.getBoolean("spam_from_blocked", false) && PhoneBlocked.can(context)) {
+            withContext(Dispatchers.IO) { PhoneBlocked.all(context).forEach { (_, n) -> PhoneSpam.add(context, n, "blocked before") } }
+            p.edit().putBoolean("spam_from_blocked", true).apply(); version++
         }
+    }
+    val list = remember(version) { PhoneSpam.read() }
+    var adding by remember { mutableStateOf("") }
+    Text("Spam and unwanted", style = MaterialTheme.typography.titleSmall)
+    Text("Calls from these are declined before they ring, on this phone; the same list is on the tablet and the computer. A * at the end takes a whole range (69800*).",
+        style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+    list.forEach { e ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(e.number)
+                if (e.note.isNotBlank()) Text(e.note, style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+            }
+            TextButton(onClick = {
+                if (e.number.endsWith("*")) PhoneSpam.removeLine(context, e) else { PhoneSpam.remove(context, e.number); PhoneBlocked.unblock(context, e.number) }
+                version++; changed()
+            }) { Text("Remove", color = islandContentColor()) }
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(adding, { adding = it.filter { ch -> ch.isDigit() || ch in "+* " } }, singleLine = true, placeholder = { Text("A number, or 69800*") }, modifier = Modifier.weight(1f))
+        TextButton(onClick = { if (adding.any(Char::isDigit)) { PhoneSpam.add(context, adding.replace(" ", "")); adding = ""; version++; changed() } }) { Text("Add", color = islandContentColor()) }
     }
 }

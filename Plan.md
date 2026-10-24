@@ -2683,6 +2683,18 @@ small "Message" for a quick reply; over the lock screen. An ongoing-call notific
    user) into Opus in `Phone/Recordings/2026-10-24 15.36 <name>.ogg`, synced to the phone's Recordings tab; stops on Stop, at
    the end, on quit. Checked: the same ffmpeg line on two test sinks (a 2 s Opus file, stopped by q); the bubble rendered.
    No spoken notice to the other side (question 3).
+- [x] 10. Spam and unwanted (the user, 24 Oct: "a list Unwanted and spam: when they call and are in the list it closes and does not
+   ring at all"; "callinsider.gr is very good — can we use it to say if it is a scam?"): `Tetra/Phone/spam.txt`, plain text — one
+   number a line, a note after #, a * at the end for a range (69800*) — the same file on the phone, the tablet and the computer
+   (scope phone). The phone app's screening declines a match before it rings, with no notice (Recents keeps it, marked Spam).
+   Spam / Not spam on a call's details (on the phone also into Android's blocked list, so its SMS stop too), Spam on a ringing
+   unknown call (declines it and lists it), the list with Remove and Add in the Phone's sheet (Android's blocked numbers join
+   it once), and on the computer's Phone page (Spam filter, a button on unknown numbers). **CallInsider**: its terms forbid
+   bots and collecting its data (robots.txt also shuts /api/), and an automatic look-up would send every caller's number to
+   it — so no automatic check; a "CallInsider" button opens the number's page in the browser, as a person would. Their own
+   Android app can sit beside Tetra as the phone's caller-ID/spam app (Android lets one app hold that role while Tetra is the
+   phone app) — the user's choice. PhoneSpamTest. Emulator: a call in 69800* declined unrung (logged blocked); Spam on a
+   ringing call listed the number and declined it.
 - Checks at 540411b: unit 623 tests, 0 failing, 9 skipped (HomeLayoutTest counts the Phone's rows now); desktop `tsc` clean,
    `npm test` 135/135.
 - [ ] **On the real devices** (the user's OK to install with tools/phone-install.sh): Settings › Phone › Make it, a real call

@@ -122,8 +122,16 @@ private fun PhoneCallScreen(done: () -> Unit) {
             call.state == Call.STATE_RINGING -> {
                 // call waiting: the call already on, which answering puts on hold
                 PhoneCalls.calls.filter { it != call && it.state != Call.STATE_DISCONNECTED && it.parent == null }.forEach { OtherCall(it, call) }
-                if (call.details.can(Call.Details.CAPABILITY_RESPOND_VIA_TEXT)) TextButton(onClick = { replying = true }, modifier = Modifier.padding(bottom = 12.dp)) {
-                    Icon(painterResource(R.drawable.ic_chat), contentDescription = null, modifier = Modifier.size(18.dp)); Text("  Decline with a message")
+                Row(Modifier.padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (call.details.can(Call.Details.CAPABILITY_RESPOND_VIA_TEXT)) TextButton(onClick = { replying = true }) {
+                        Icon(painterResource(R.drawable.ic_chat), contentDescription = null, modifier = Modifier.size(18.dp)); Text("  With a message")
+                    }
+                    // the number onto the spam list, and the call declined: it never rings again
+                    PhoneCalls.number(call)?.takeIf { contact == null }?.let { n ->
+                        TextButton(onClick = { PhoneSpam.add(context, n); PhoneBlocked.block(context, n); PhoneCalls.hangUp(call) }) {
+                            Icon(painterResource(R.drawable.ic_block), contentDescription = null, tint = CALL_RED, modifier = Modifier.size(18.dp)); Text("  Spam", color = CALL_RED)
+                        }
+                    }
                 }
                 Row(Modifier.fillMaxWidth().padding(bottom = 32.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     RoundButton(R.drawable.ic_call_end, "Decline", CALL_RED, 76.dp) { PhoneCalls.hangUp(call) }

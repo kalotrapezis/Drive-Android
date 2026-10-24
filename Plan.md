@@ -275,7 +275,9 @@ How to write here:
       (FileKinds.kt; the desktop copies it in scripts/copy-skill.js). Files' list and grid show them where a file has no
       thumbnail; Words/Tables/Slides thumbnails carry the tile as their badge instead of the glyph; Home's Open Words /
       Tables / Slides show the tiles (PDFs keeps its red icon). Before/after shown to the user. Emulator and desktop
-      (hidden QA copy) checked. Waiting: the user's word on the badge and the Home tiles, where Files2.png goes, and the merge.
+      (hidden QA copy) checked. Waiting: the user's word on the badge and the Home tiles, and the merge.
+      Files2.png (the user: "Replace the first one on the phone"): the phone's Files icon now — Home's card, Settings ›
+      App icons (tools/applet-icons.py from it as Files.png; applet_files #177BFC); the desktop keeps its own.
 - [x] (maps-icon session, 23 Oct, branch claude/nifty-bouman-6f4a52) Maps' icon: the user's own (Assets/Icons/Applets/Maps.png,
       the same file as on claude/contacts-583397) made by tools/applet-icons.py into maps_art.png (Home's card) and
       applet_maps_fg.png (Settings › App icons and Android Auto, both @mipmap/applet_maps) — byte-identical to the contacts

@@ -2,7 +2,7 @@
 <!-- The applet icons' backgrounds: each art's own edge colour, so its tile's corners blend in (tools/applet-icons.py). -->
 <resources>
     <color name="applet_photos">#95DF6B</color>
-    <color name="applet_files">#012460</color>
+    <color name="applet_files">#177BFC</color>
     <color name="applet_notes">#FED00A</color>
     <color name="applet_scanner">#E3141F</color>
     <color name="applet_codes">#DF1F25</color>

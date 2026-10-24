@@ -215,13 +215,23 @@ private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, isSp
             Surface(color = PHONE_COLOR.copy(alpha = 0.18f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Make Tetra the phone app: its own call screen, Recents, and a buzz when they answer.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    TextButton(onClick = makeDialer) { Text("Make") }
+                    TextButton(onClick = makeDialer) { Text("Make", color = PHONE_COLOR) }
                 }
             }
         }
         item {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-                RecentsFilter.entries.forEach { f -> FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f.name) }) }
+                // Contacts' Details | History pill, in the Phone's teal (the user, 25 Oct: "rounded with the accent colour of the applet's icon")
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = CircleShape) {
+                    Row(Modifier.padding(4.dp)) {
+                        RecentsFilter.entries.forEach { f ->
+                            Surface(onClick = { filter = f }, shape = CircleShape, color = if (filter == f) PHONE_COLOR else Color.Transparent,
+                                contentColor = if (filter == f) Color.White else MaterialTheme.colorScheme.onSurface) {
+                                Text(f.name, Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
+                            }
+                        }
+                    }
+                }
             }
         }
         if (groups.isEmpty()) item { Hint(if (filter == RecentsFilter.Missed) "No missed calls" else if (query.isNotEmpty()) "No calls match \"$query\"" else "No calls yet") }

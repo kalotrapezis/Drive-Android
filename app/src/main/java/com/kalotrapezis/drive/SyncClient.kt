@@ -364,6 +364,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             jsonResult().also { disconnect() }
         }
 
+    /** A call's state for the computer's call bubble (PhoneCall.Watcher): ringing, active, ended. */
+    fun callState(state: JSONObject) { val p = reach(store.pairing() ?: return); postJson(p.hosts.first(), p, "/call/state", state) }
+
     /** First address that answers wins; a changed network may still reach one of the others. */
     private fun <T> anyHost(hosts: List<String>, call: (String) -> T): T {
         var last: Exception? = null

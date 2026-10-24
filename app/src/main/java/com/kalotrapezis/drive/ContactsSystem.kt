@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.RectF
 import android.provider.ContactsContract
 import java.io.ByteArrayOutputStream
+import android.content.Intent
+import androidx.core.content.ContextCompat
 
 /**
  * Contacts and Android (Plan.md § Contacts › Outside Tetra): the phone's own contacts read in (the Google account's ones
@@ -145,9 +147,74 @@ internal object PhoneCall {
     private const val NOTE = 4146
 
     fun allowed(c: Context) = c.checkSelfPermission(android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    /** Android's "Phone" permissions the computer's calls need, asked once together (Settings › Contacts). */
+    val PERMISSIONS = arrayOf(android.Manifest.permission.CALL_PHONE, android.Manifest.permission.READ_PHONE_STATE, android.Manifest.permission.ANSWER_PHONE_CALLS, android.Manifest.permission.READ_CALL_LOG)
+    fun allAllowed(c: Context) = PERMISSIONS.all { c.checkSelfPermission(it) == android.content.pm.PackageManager.PERMISSION_GRANTED }
+
+    /** The number the computer last asked to call, and when: its call is the one the bubble follows. */
+    @Volatile private var asked: Pair<String, Long>? = null
+
+    /** Answer, Decline or End, from the computer's call bubble (ANSWER_PHONE_CALLS). Holding a call is the phone app's alone. */
+    @Suppress("DEPRECATION", "MissingPermission")
+    fun act(c: Context, what: String): org.json.JSONObject {
+        if (c.checkSelfPermission(android.Manifest.permission.ANSWER_PHONE_CALLS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            return org.json.JSONObject().put("error", "Allow it once on the phone: Settings › Contacts › Calls on the computer.")
+        val tm = c.getSystemService(android.telecom.TelecomManager::class.java)
+        val ok = runCatching { when (what) { "answer" -> { tm.acceptRingingCall(); true }; "end", "decline" -> tm.endCall(); else -> false } }
+            .onFailure { WriterLog.e("Contacts: $what from the computer", it) }.getOrDefault(false)
+        WriterLog.i("Contacts: $what from the computer: $ok")
+        return if (ok) org.json.JSONObject().put("ok", true) else org.json.JSONObject().put("error", "The phone did not $what the call.")
+    }
+
+    /**
+     * The phone's calls told to the computer while Tetra listens (SyncListenService): ringing (with the number), active,
+     * ended — for its call bubble. An outgoing call is reported only when the computer asked for it; the phone's own
+     * calls stay its own. Needs READ_PHONE_STATE (and READ_CALL_LOG for the ringing number).
+     */
+    object Watcher : android.content.BroadcastReceiver() {
+        @Volatile private var on = false
+        private var last = android.telephony.TelephonyManager.EXTRA_STATE_IDLE
+        private var number: String? = null
+        private var outgoing = false
+        fun start(c: Context) {
+            if (on || c.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+            on = runCatching { ContextCompat.registerReceiver(c, this, android.content.IntentFilter(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED), ContextCompat.RECEIVER_EXPORTED); true }.getOrDefault(false)
+        }
+        fun stop(c: Context) { if (on) runCatching { c.unregisterReceiver(this) }; on = false }
+
+        @Suppress("DEPRECATION")
+        override fun onReceive(c: Context, i: Intent) {
+            val state = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE) ?: return
+            i.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER)?.takeIf { it.isNotBlank() }?.let { number = it }
+            val report = when (state) {
+                android.telephony.TelephonyManager.EXTRA_STATE_RINGING -> { outgoing = false; "ringing" }
+                android.telephony.TelephonyManager.EXTRA_STATE_OFFHOOK -> {
+                    if (last == android.telephony.TelephonyManager.EXTRA_STATE_IDLE) {
+                        // dialled: the computer's call when it asked for one in the last minute, else the phone's own
+                        val a = asked?.takeIf { System.currentTimeMillis() - it.second < 60_000 }
+                        outgoing = true; number = a?.first
+                        if (a == null) null else "active"
+                    } else "active"
+                }
+                else -> "ended"
+            }
+            val wasRinging = last == android.telephony.TelephonyManager.EXTRA_STATE_RINGING
+            if (state == last && number == null) return // the same state again, without the number it may bring next
+            last = state
+            if (report == null || (report == "ended" && outgoing && number == null)) return
+            val body = org.json.JSONObject().put("state", report).put("direction", if (outgoing) "out" else "in").put("number", number ?: "")
+                .put("missed", report == "ended" && wasRinging).put("at", System.currentTimeMillis())
+            if (report == "ended") { number = null; asked = null }
+            val app = c.applicationContext
+            Thread { runCatching { SyncClient(app, SyncStore(app)).callState(body) }.onFailure { WriterLog.w("Contacts: the call's state did not reach the computer (${it.message})") } }.start()
+        }
+    }
+
 
     fun fromComputer(c: Context, number: String, name: String): org.json.JSONObject {
         val uri = android.net.Uri.fromParts("tel", number, null)
+        asked = number to System.currentTimeMillis()
+        Watcher.start(c.applicationContext)
         if (allowed(c)) runCatching {
             c.getSystemService(android.telecom.TelecomManager::class.java).placeCall(uri, android.os.Bundle())
             WriterLog.i("Contacts: a call from the computer placed")

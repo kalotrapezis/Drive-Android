@@ -65,11 +65,13 @@ internal class SyncListenService : Service() {
         }
         withLocation = placed
         if (!listening) listening = runCatching { SyncServer.acquire(applicationContext, SyncStore(applicationContext)) }.isSuccess
+        PhoneCall.Watcher.start(applicationContext) // the phone's calls shown on the computer (its call bubble)
         return START_STICKY
     }
 
     override fun onDestroy() {
         if (listening) runCatching { SyncServer.release() }
+        PhoneCall.Watcher.stop(applicationContext)
         listening = false
         withLocation = false
         super.onDestroy()

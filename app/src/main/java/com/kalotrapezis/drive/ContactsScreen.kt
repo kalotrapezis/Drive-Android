@@ -247,8 +247,11 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     // on only when it can be: chosen (the default since the user's yes) and Tetra may write the phone's contacts
     var systemOn by remember { mutableStateOf(ContactsAccount.on(context) && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
     LaunchedEffect(version, systemOn) { ContactsAccount.soon(context) }
-    var callsOn by remember { mutableStateOf(PhoneCall.allowed(context)) }
-    val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> callsOn = ok; message = if (ok) "A call from the computer now rings at once" else "Calls from the computer come as a notification to tap" }
+    var callsOn by remember { mutableStateOf(PhoneCall.allAllowed(context)) }
+    val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        callsOn = PhoneCall.allAllowed(context); PhoneCall.Watcher.start(context.applicationContext)
+        message = if (callsOn) "Calls on the computer: allowed" else "Calls from the computer come as a notification to tap"
+    }
     val askWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) { ContactsAccount.set(context, true); systemOn = true; message = "Your contacts are in the phone's contacts too" }
         else message = "Tetra needs to write the phone's contacts for this."
@@ -485,8 +488,8 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     else -> askWrite.launch(Manifest.permission.WRITE_CONTACTS)
                 }
             }
-            DrawerButton(R.drawable.ic_call, if (callsOn) "Calls from the computer: at once" else "Calls from the computer: as a notification", callsOn, Modifier.fillMaxWidth()) {
-                if (!callsOn) askCalls.launch(Manifest.permission.CALL_PHONE) else message = "Turn it off in Android's settings › Apps › Tetra › Permissions › Phone"
+            DrawerButton(R.drawable.ic_call, if (callsOn) "Calls on the computer: allowed" else "Calls on the computer: allow", callsOn, Modifier.fillMaxWidth()) {
+                if (!callsOn) askCalls.launch(PhoneCall.PERMISSIONS) else message = "Turn it off in Android's settings › Apps › Tetra › Permissions › Phone"
             }
             Text("A read-only copy under the account Tetra, so the dialer, Viber, WhatsApp and the car show these names and photos. Edits are made here.",
                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
@@ -1023,11 +1026,11 @@ private fun callText(c: CallEntry): String {
         val o = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) version++ }
         lifecycle.lifecycle.addObserver(o); onDispose { lifecycle.lifecycle.removeObserver(o) }
     }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { version++ }
+    val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { version++; PhoneCall.Watcher.start(context.applicationContext) }
     val askWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) ContactsAccount.set(context, true); version++ }
     val appDetails = { runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
     @Suppress("UNUSED_EXPRESSION") version // read again on each change
-    val calls = PhoneCall.allowed(context)
+    val calls = PhoneCall.allAllowed(context)
     val writes = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED
     val copy = ContactsAccount.on(context) && writes
     @Composable fun row(title: String, state: String, action: String?, act: () -> Unit) =
@@ -1039,9 +1042,15 @@ private fun callText(c: CallEntry): String {
             if (action != null) TextButton(onClick = act) { Text(action) }
         }
     Text("Your contacts are files in Tetra/Contacts, one per person: they sync with the computer, where Contacts shows them too.", style = MaterialTheme.typography.bodySmall)
-    row("Calls from the computer", if (calls) "Allowed: Call on the computer rings the number here at once" else "Each call from the computer comes as a notification: tap it to call",
-        if (calls) "Settings" else "Allow") { if (calls) appDetails() else ask.launch(Manifest.permission.CALL_PHONE) }
-    if (calls) Text("Once for Tetra, not for each contact. To take it back: Settings › Apps › Tetra › Permissions › Phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    row("Calls on the computer", if (calls) "Allowed: Call on the computer rings here at once, and the computer shows this phone's calls — answer, decline, end"
+        else "Each call from the computer comes as a notification to tap, and the computer does not see this phone's calls", if (calls) "Settings" else "Allow") {
+        if (calls) appDetails() else askCalls.launch(PhoneCall.PERMISSIONS)
+    }
+    Text(if (calls) "Once for Tetra, not for each contact. To take it back: Settings › Apps › Tetra › Permissions › Phone and Call logs."
+        else "Allow asks once, for Tetra (not for each contact): to place a call, to see a call ringing and its number, and to answer or end it from the computer.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("The sound stays on the phone, unless the phone is connected to the computer by Bluetooth for calls (the computer's Settings › Calls).",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     row("In the phone's contacts", if (copy) "On: the dialer, Viber, WhatsApp and the car show these names and photos (a read-only copy, account Tetra)"
         else "Off: only Tetra shows your contacts", if (copy) "Turn off" else "Turn on") {
         when { copy -> { ContactsAccount.set(context, false); version++ }; writes -> { ContactsAccount.set(context, true); version++ }; else -> askWrite.launch(Manifest.permission.WRITE_CONTACTS) }

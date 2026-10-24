@@ -2065,6 +2065,13 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       layout with the font embedded (PdfText.kt; Poppler draws it the same), its words in it for other readers, its look in
       the annotation's own key so a tap types it in again. PdfTextDeviceTest. Not yet: a look per word (Slides' isn't
       either), moving a placed text, the real pair.
+      Then (the user on the tablet, 24 Oct: "how do I move the text box?", "look how Words, Slides and Tables work"): as a
+      Slides box — a tap chooses a text (frame and corner handle), a second tap or Edit text types in it, a finger drags it,
+      the handle sizes it (a text sized keeps that width); its tab: the look at once (one undo step each), Fill and
+      Border, Position (Word's Align: left, centre, right, top, middle, bottom, 2 cm from the edge), Delete; keys as
+      Slides' — Delete, arrows (Shift: 10 pt), Enter, Esc, Ctrl+S/Z/Y; the typed words' selection blue on the page (dark
+      theme: Ctrl+A's selection did not show). Emulator, tablet size. Not done: "under" the page's own text (a comment
+      always sits over it; behind needs writing into the page itself), rotation, copy/paste of a text, the phone size.
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

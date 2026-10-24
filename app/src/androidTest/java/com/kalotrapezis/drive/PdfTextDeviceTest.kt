@@ -61,4 +61,12 @@ class PdfTextDeviceTest {
         assertTrue("read back: $words", words.contains("Hello Γειά"))
         dir.deleteRecursively()
     }
+
+    @Test fun lookKeptInTheFile() {
+        val t = PdfText("x", PdfTextLook(fill = 0xFFFF00, line = 0x0070C0, highlight = 0x00FF00, align = DocAlign.End), framed = true)
+        assertEquals(t, PdfText.parse(t.json()))
+        // a box put on before fills and borders were chosen (24 Oct, first build): its black frame kept
+        assertEquals(0x000000, PdfText.parse("""{"words":"a","framed":true}""")?.look?.line)
+        assertNull(PdfText.parse("""{"words":"a","framed":false}""")?.look?.line)
+    }
 }

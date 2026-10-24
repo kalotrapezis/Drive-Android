@@ -619,7 +619,7 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
     var qr by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding()
-            .padding(top = 72.dp, bottom = 32.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            .padding(top = 72.dp, bottom = 96.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { // clear of Edit at the bottom
             Column(Modifier.widthIn(max = 640.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ContactAvatar(i, 120.dp)
                 Text(i.name, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
@@ -744,8 +744,15 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                         Icon(painterResource(if (i.favourite) R.drawable.ic_star else R.drawable.ic_star_border), contentDescription = if (i.favourite) "Remove from favourites" else "Add to favourites",
                             tint = if (i.favourite) CONTACTS_COLOR else islandContentColor())
                     }
-                    TextButton(onClick = edit) { Text("Edit", color = islandContentColor()) }
                 }
+            }
+        }
+        // Edit at the bottom right, within the thumb's reach (the user, 24 Oct), as the list's +
+        Surface(onClick = edit, color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp)) {
+            Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(painterResource(R.drawable.ic_edit), contentDescription = null)
+                Text("Edit")
             }
         }
     }

@@ -278,6 +278,15 @@ How to write here:
       (hidden QA copy) checked; the user said merge. Not yet on the tablet or phone.
       Files2.png (the user: "Replace the first one on the phone"): the phone's Files icon now — Home's card, Settings ›
       App icons (tools/applet-icons.py from it as Files.png; applet_files #177BFC); the desktop keeps its own.
+- [~] (file-thumbnails session, 24 Oct; branches claude/pdf-icon and Drive pdf-icon) The user's PDF tile (Assets/pdf.png):
+      "pdf" in file-kinds.json — its icon where it has no preview, and Home's Open PDFs. Then (the user: "When we have a
+      preview of the file have no icon"): no badge over any preview, phone or desktop. The user's video and music tiles
+      (Assets/video.png, music.png) as two more categories, and their new Office tile (Assets/Office.png, square like
+      the others) as Home's Office card and its launcher icon (tools/applet-icons.py now takes Office.png). Their picture
+      tile (Assets/images.png) where a picture's preview cannot be made. Then (the user: "dont show preview on office files
+      at all" … "PDFs as well. lets keep documents icon only"): only pictures and videos have a preview; every document
+      shows its tile — Words/Tables/Slides page drawing, the PDF renderer and the desktop's LibreOffice step removed.
+      Checked on the tablet (the user: "you use the tablet an other session uses the emulator") and the desktop.
 - [x] (maps-icon session, 23 Oct, branch claude/nifty-bouman-6f4a52) Maps' icon: the user's own (Assets/Icons/Applets/Maps.png,
       the same file as on claude/contacts-583397) made by tools/applet-icons.py into maps_art.png (Home's card) and
       applet_maps_fg.png (Settings › App icons and Android Auto, both @mipmap/applet_maps) — byte-identical to the contacts

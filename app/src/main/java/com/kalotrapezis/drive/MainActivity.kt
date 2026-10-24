@@ -2124,6 +2124,7 @@ private fun SettingsTab(
         }
         item { SettingsCard("Calendar", Category.Calendar) { CalendarSettings() } }
         item { SettingsCard("Contacts", Category.Contacts) { ContactsSettings() } }
+        item { SettingsCard("Phone", Category.Phone) { PhoneSettings() } }
         item { SettingsCard("Timer", Category.Timer) { ShareWithClaude("tetra-timer", "Timer", "Lets Claude start, pause and stop your timers by editing their files.") } }
         // Maps (21 Oct): what is installed, where updates come from, and the directions' language and voice
         item {
@@ -2381,6 +2382,7 @@ internal enum class Category(val color: Color, val icon: Int) {
     Timer(Color(0xFF00796B), R.drawable.ic_timer),
     Maps(Color(0xFF25C4FE), R.drawable.ic_map),
     Contacts(CONTACTS_COLOR, R.drawable.ic_contacts),
+    Phone(PHONE_COLOR, R.drawable.ic_call),
 }
 
 @Composable

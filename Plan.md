@@ -186,6 +186,9 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
+- [~] (phone session, 24 Oct, branch `phone` from main bc485fb; the user: "ok make a phone branch") Building § Phone in its step order;
+      answers taken from the plan's recommendations until the user says otherwise (colour: the icon's teal; vibration: two taps on
+      pickup, the end-of-call one off).
 - [x] (phone-plan session, 24 Oct, branch claude/phone-plan; not merged) § Phone planned: the dialer applet, vibration on
       pickup, call recording (not on the phone; possible on the PC), Play's call-log rule. Waits for the user's answers.
 - [x] (contacts-build session, 24 Oct, from main; branches claude/contacts-583397 and Drive contacts) Calls on the computer
@@ -2536,7 +2539,7 @@ binds Tetra's `InCallService` for every call, ringing and outgoing, and Xiaomi's
 ### What Android allows a non-system app (public APIs only)
 | API | What | Needs |
 |---|---|---|
-| `RoleManager.ROLE_DIALER` | become the Phone app | an activity for ACTION_DIAL (with and without `tel:`), an `InCallService` with BIND_INCALL_SERVICE and meta-data IN_CALL_SERVICE_UI + IN_CALL_SERVICE_RINGING |
+| `RoleManager.ROLE_DIALER` | become the Phone app | an activity for ACTION_DIAL (with and without `tel:`), an `InCallService` with BIND_INCALL_SERVICE and meta-data IN_CALL_SERVICE_UI (not IN_CALL_SERVICE_RINGING: then Telecom keeps playing the ringtone and the ring vibration) |
 | `InCallService` / `Call` | the in-call screen; answer, reject (with a message), hold, unhold, mute, DTMF, conference/merge/swap, route (API 34 `CallEndpoint`), the call's state for the vibration | the role |
 | `TelecomManager` | placeCall, the SIMs (PhoneAccounts), `isInCall`, voicemail number | CALL_PHONE, READ_PHONE_STATE (the role grants them) |
 | `CallLog.Calls` | Recents, delete entries | READ_CALL_LOG, WRITE_CALL_LOG |
@@ -2627,9 +2630,15 @@ small "Message" for a quick reply; over the lock screen. An ongoing-call notific
   real calls on the Xiaomi (the emulator fakes calls with `adb emu gsm call`, which helps for the screens).
 
 ### Steps (each a commit; the in-call ones checked with real calls on the phone before the next)
-1. The role and a minimal in-call screen: ringing (answer/decline, lock screen), outgoing, End, Mute, Speaker,
+- [~] (phone session, 24 Oct, branch `phone`) 1. The role and a minimal in-call screen: ringing (answer/decline, lock screen), outgoing, End, Mute, Speaker,
    proximity; Settings › Phone › "Tetra is the phone app" / give it back. **Vibration on pickup.** A day of real use
    with the system dialer one tap away before anything else.
+   Built: `PhoneInCall.kt` (PhoneInCallService, the calls' state, the buzz, proximity, the CallStyle notification with
+   Answer · Decline / Hang up), `PhoneScreens.kt` (PhoneCallActivity over the lock screen: face from Tetra's contact, state
+   and time, Mute, Speaker ↔ Bluetooth, Keypad with tones, End; the SIM choice when Telecom asks; volume keys quiet the
+   ringing; PhoneDialActivity = the keypad Android opens for ACTION_DIAL and tel: links, with Latin and Greek letters and
+   "Make Tetra the phone app"; Settings › Phone: the role, Vibrate when answered (on), Vibrate when a call ends (off),
+   Open the keypad). A keypad was needed already here: the role needs an ACTION_DIAL activity. Not yet on the phone.
 2. Keypad with T9 (Greek and Latin), Recents (grouped, filters, delete), call details, Favourites, speed dial; SIM
    choice.
 3. Hold, Add call, Merge, Swap, Keypad (DTMF), the route picker with "Computer"; a note on a call.
@@ -2643,12 +2652,12 @@ small "Message" for a quick reply; over the lock screen. An ongoing-call notific
 
 ### Questions for the user
 1. Make Tetra the phone's Phone app (with the risk that a Tetra bug can cost a call; the system dialer one tap away)?
-2. That turns off the phone's own call recording while Tetra is the Phone app. Is it used? (On the phone: which dialer is
-   it today — Xiaomi's or Google's — and does it record?)
+2. That turns off the phone's own call recording while Tetra is the Phone app. Is it used? (Seen 24 Oct: the phone's
+   Phone app today is Google Phone, com.google.android.dialer; whether it offers recording on this Xiaomi is to see in its ⋮ › Settings.)
 3. Recording on the computer when the call's sound is there (Bluetooth): wanted? With the "They agreed" step and a spoken
    notice to the other side, or the step alone?
 4. Vibration: two quick taps on pickup — and also one on hang-up?
-5. Two SIMs in the Xiaomi?
+5. Two SIMs in the Xiaomi? — seen on the phone 24 Oct: one active SIM (Nova); the SIM choice is built anyway (Telecom asks the Phone app when there are two).
 6. Colour: the icon's dark teal is near Timer's teal. Phone in the icon's teal anyway, or a green (calls' usual colour)?
 7. Home's Phone group: four favourites to call, or Keypad · Recents · Missed · Favourites?
 8. The tablet: the Phone view with calls through the phone (voice on the phone) — or leave the tablet to HyperOS's calls?

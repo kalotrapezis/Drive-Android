@@ -24,6 +24,8 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
@@ -61,6 +63,20 @@
             <meta-data android:name="android.content.SyncAdapter" android:resource="@xml/contacts_syncadapter" />
             <meta-data android:name="android.provider.CONTACTS_STRUCTURE" android:resource="@xml/contacts_structure" />
         </service>
+        <!-- Phone (Plan.md § Phone): Tetra as the phone's Phone app — the call screen Telecom binds while Tetra holds ROLE_DIALER,
+             the keypad Android opens for a number, and the notification's Decline / Hang up -->
+        <service android:name=".PhoneInCallService" android:permission="android.permission.BIND_INCALL_SERVICE" android:exported="true">
+            <meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true" />
+            <intent-filter><action android:name="android.telecom.InCallService" /></intent-filter>
+        </service>
+        <activity android:name=".PhoneCallActivity" android:exported="false" android:launchMode="singleTask" android:taskAffinity="com.kalotrapezis.drive.call"
+            android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" android:screenOrientation="portrait" />
+        <activity android:name=".PhoneDialActivity" android:exported="true" android:label="Tetra Phone" android:taskAffinity="com.kalotrapezis.drive.dial" android:windowSoftInputMode="stateAlwaysHidden">
+            <intent-filter><action android:name="android.intent.action.DIAL" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
+            <intent-filter><action android:name="android.intent.action.DIAL" /><category android:name="android.intent.category.DEFAULT" /><data android:scheme="tel" /></intent-filter>
+            <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="tel" /></intent-filter>
+        </activity>
+        <receiver android:name=".PhoneCallReceiver" android:exported="false" />
         <service android:name=".SyncJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
         <service android:name=".SyncService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name=".PhotoAnalysisService" android:exported="false" android:foregroundServiceType="dataSync" />

@@ -327,6 +327,11 @@ internal fun PhoneSettings() {
     }
     val askRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { version++ }
     @Suppress("UNUSED_EXPRESSION") version
+    if (PhoneRelay.noCalls(context)) {
+        Text("This device has no calls of its own: its Phone calls through your phone, by way of the computer, and shows the phone's calls as they ring. The voice stays on the phone.",
+            style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
+        return
+    }
     val dialer = PhonePrefs.isDialer(context)
     var answer by remember { mutableStateOf(PhonePrefs.buzzAnswer(context)) }
     var end by remember { mutableStateOf(PhonePrefs.buzzEnd(context)) }

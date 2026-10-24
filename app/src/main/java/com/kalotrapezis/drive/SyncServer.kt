@@ -221,6 +221,15 @@ internal class SyncServer(private val context: Context, private val store: SyncS
             val r = PhoneCall.fromComputer(context, number, url.getQueryParameter("name").orEmpty().take(80))
             return reply(output, if (r.has("error")) 409 else 200, r)
         }
+        // A tablet: the phone's call, passed on by the computer (PhoneRelay). Only a paired device.
+        if (method == "POST" && path.startsWith("/call/state?")) {
+            val known = bearer != null && store.peers().any { it.theirToken == bearer }
+            if (!known) return reply(output, 401, JSONObject().put("error", "Not paired."))
+            val s = runCatching { JSONObject(android.net.Uri.parse("https://x$path").getQueryParameter("s").orEmpty().take(4096)) }.getOrNull()
+                ?: return reply(output, 400, JSONObject().put("error", "No call."))
+            PhoneRelay.show(context, s)
+            return reply(output, 200, JSONObject().put("ok", true))
+        }
         // The computer's call bubble: Answer, Decline, End (PhoneCall.act). Only a paired device.
         if (method == "POST" && path.startsWith("/call/action?")) {
             val known = bearer != null && store.peers().any { it.theirToken == bearer }

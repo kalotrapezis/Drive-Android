@@ -364,6 +364,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             jsonResult().also { disconnect() }
         }
 
+    /** The tablet's Phone (PhoneRelay): a call placed, or a button pressed, by the phone through the computer. */
+    fun phoneViaComputer(path: String): JSONObject { val p = reach(store.pairing() ?: throw SyncException("Not paired with a computer.")); return postJson(p.hosts.first(), p, path, JSONObject()) }
+
     /** A call's state for the computer's call bubble (PhoneCall.Watcher): ringing, active, ended. */
     fun callState(state: JSONObject) { val p = reach(store.pairing() ?: return); postJson(p.hosts.first(), p, "/call/state", state) }
 

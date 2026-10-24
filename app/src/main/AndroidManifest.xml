@@ -79,6 +79,7 @@
             <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="tel" /></intent-filter>
         </activity>
         <receiver android:name=".PhoneCallReceiver" android:exported="false" />
+        <receiver android:name=".PhoneRelayReceiver" android:exported="false" />
         <service android:name=".PhoneScreening" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true">
             <intent-filter><action android:name="android.telecom.CallScreeningService" /></intent-filter>
         </service>

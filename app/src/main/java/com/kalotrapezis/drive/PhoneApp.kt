@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
@@ -99,19 +100,27 @@ private fun PhoneApp(keypad: MutableState<Boolean>, number: MutableState<String>
     var tab by remember { mutableStateOf(PhoneTab.Recents) }
     var query by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf(emptySet<CallGroup>()) }
-    val dialer = remember(version) { PhonePrefs.isDialer(context) }
+    val tablet = remember { PhoneRelay.noCalls(context) } // no calls of its own: the phone's, through the computer (PhoneRelay)
+    val dialer = remember(version) { tablet || PhonePrefs.isDialer(context) }
+    val scope = rememberCoroutineScope()
     val askRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { version++ }
     val contacts by produceState(ContactsPreload.all?.map { it.info } ?: emptyList(), version) {
         value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).also { ContactsPreload.all = it }.map { it.info } }.getOrDefault(value) }
     }
-    val calls by produceState(emptyList<LoggedCall>(), version) { value = withContext(Dispatchers.IO) { PhoneLog.read(context).also { PhoneHistory.write(context) } } }
+    val calls by produceState(emptyList<LoggedCall>(), version) {
+        value = withContext(Dispatchers.IO) { if (tablet) PhoneRelay.calls() else PhoneLog.read(context).also { PhoneHistory.write(context) } }
+    }
     val byKey = remember(contacts) { contacts.flatMap { c -> c.phones.map { ContactsWays.key(it.value) to c } }.filter { it.first.length >= 5 }.toMap() }
     fun who(n: String) = byKey[ContactsWays.key(n)]
-    LaunchedEffect(tab, dialer, calls.size) { if (tab == PhoneTab.Recents && dialer) withContext(Dispatchers.IO) { PhoneLog.seen(context) } }
+    LaunchedEffect(tab, dialer, calls.size) { if (tab == PhoneTab.Recents && dialer && !tablet) withContext(Dispatchers.IO) { PhoneLog.seen(context) } }
     var drawer by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf<CallGroup?>(null) }
     val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    fun call(n: String) { if (n.isNotBlank() && !placePhoneCall(context, n)) askCall.launch(Manifest.permission.CALL_PHONE) }
+    fun call(n: String) {
+        if (n.isBlank()) return
+        if (tablet) scope.launch { val said = withContext(Dispatchers.IO) { PhoneRelay.place(context, n, who(n)?.name.orEmpty()) }; android.widget.Toast.makeText(context, said, android.widget.Toast.LENGTH_SHORT).show() }
+        else if (!placePhoneCall(context, n)) askCall.launch(Manifest.permission.CALL_PHONE)
+    }
     BackHandler(keypad.value || selected.isNotEmpty() || query.isNotEmpty()) {
         when { keypad.value -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> query = "" }
     }
@@ -121,7 +130,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, number: MutableState<String>
         Box(Modifier.fillMaxHeight().widthIn(max = 560.dp).fillMaxWidth()) {
             if (keypad.value) Keypad(number, contacts, call = ::call)
             else when (tab) {
-                PhoneTab.Recents -> Recents(calls, ::who, dialer, query, selected, { selected = it }, top, call = ::call, open = { details = it }) {
+                PhoneTab.Recents -> Recents(calls, ::who, dialer, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
                     askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
                 }
                 PhoneTab.Favourites -> Favourites(contacts.filter { it.favourite && (query.isBlank() || it.name.contains(query, true)) }.sortedBy { ContactsFiles.sortKey(it, false) }, top, call = ::call)

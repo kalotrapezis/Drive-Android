@@ -1030,7 +1030,7 @@ private fun Home(
         "notes" -> {
             HomeGroup(Category.Notes.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeArtCard("Notes", R.drawable.notes_art, openNotes, Modifier.weight(1f))
+                    HomeArtCard("Notes", R.drawable.notes_art, openNotes, Modifier.weight(1f), artSize = 76) // the user's yellow tile (24 Oct), as the others
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HomeCompactCard("Checklist", R.drawable.ic_checklist) { newNote(true) }
                         HomeCompactCard("New note", R.drawable.ic_note_add) { newNote(false) }

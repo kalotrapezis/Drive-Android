@@ -303,6 +303,13 @@ How to write here:
       map's buttons at the top — seen in Tetra run from the branch at 1400, 700 and 520 px. Android: Maps is already one
       column at any width (the panel over the map, 560 dp at most; the window's own width, so split screen counts) —
       to see on the tablet in split screen. Not merged.
+- [x] (maps-icon session, 24 Oct, branch claude/nifty-bouman-6f4a52) Notes' icon: the user's new Assets/Notes.png (the yellow
+      rounded tile now in the picture: "in some places it had the yellow roundness and in some places it did not") made by
+      tools/applet-icons.py like the others into notes_art.png and applet_notes_fg.png; Notes lost its special case there (Home's
+      yellow behind a bare page, drawn smaller), so the launcher background is the tile's own edge yellow #FED00A and the
+      tile sits as large as the others'; Home's card draws it at 76 dp as the others (it was 100 for the bare page). Home's
+      Notes yellow (#F2B705) kept. Desktop: no Notes applet icon (public/notes.png is unused). Checked on the emulator, light,
+      dark and Edit Home. Not merged until the user says.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

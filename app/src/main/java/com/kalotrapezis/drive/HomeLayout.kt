@@ -3,15 +3,19 @@ package com.kalotrapezis.drive
 import android.content.Context
 
 /**
- * One part of Home: large (its group, as before), small (just its icon, like a launcher's) or hidden, at a cell of Home's
- * grid (col, row; -1 until it has one).
+ * One part of Home: large (its group, as before), medium (its icon alone, big, in four cells; the user, 24 Oct), small (just
+ * its icon, like a launcher's) or hidden, at a cell of Home's grid (col, row; -1 until it has one).
  */
-internal data class HomeItem(val id: String, val small: Boolean = false, val hidden: Boolean = false, val col: Int = -1, val row: Int = -1)
+internal enum class HomeSize { Large, Medium, Small }
+
+internal data class HomeItem(val id: String, val size: HomeSize = HomeSize.Large, val hidden: Boolean = false, val col: Int = -1, val row: Int = -1) {
+    val small get() = size == HomeSize.Small
+}
 
 /**
  * Home's layout on this device (the user, 24 Oct: "like a launcher … a grid that expands, to drag and drop where I want
  * them"): a grid of cells, 8 across on a tablet and 4 on a phone, growing down as far as the parts go. A small part takes
- * one cell; a group half a tablet's width (a phone's whole width) and two rows; Local Sync and Settings one row. A part
+ * one cell, a medium one four (2 by 2); a group half a tablet's width (a phone's whole width) and two rows; Local Sync and Settings one row. A part
  * dropped where others are moves them on to the next free cells. Hidden is only hidden (asked 24 Oct): reminders,
  * timers and sync go on. Kept in this device's preferences, one layout for each grid width, not synced; Settings can
  * never be hidden, or there would be no way back.
@@ -33,21 +37,22 @@ internal object HomeLayout {
     fun save(c: Context, wide: Boolean, items: List<HomeItem>) = prefs(c).edit().putString("grid${columns(wide)}", format(items)).apply()
     fun reset(c: Context, wide: Boolean) = prefs(c).edit().remove("grid${columns(wide)}").apply()
 
-    /** "id:flags:col:row" (flags s small, h hidden), comma-separated; unknown ids dropped, a new part added unplaced. */
+    /** "id:flags:col:row" (flags s small, m medium, h hidden), comma-separated; unknown ids dropped, a new part added unplaced. */
     fun parse(saved: String?, defaults: List<String>): List<HomeItem> {
         val items = saved.orEmpty().split(',').filter { it.isNotBlank() }.map { part ->
             val p = part.split(':')
             val id = p[0]; val flags = p.getOrElse(1) { "" }
-            HomeItem(id, small = 's' in flags, hidden = 'h' in flags && id != SETTINGS, col = p.getOrNull(2)?.toIntOrNull() ?: -1, row = p.getOrNull(3)?.toIntOrNull() ?: -1)
+            HomeItem(id, size = if ('s' in flags) HomeSize.Small else if ('m' in flags) HomeSize.Medium else HomeSize.Large, hidden = 'h' in flags && id != SETTINGS, col = p.getOrNull(2)?.toIntOrNull() ?: -1, row = p.getOrNull(3)?.toIntOrNull() ?: -1)
         }.filter { it.id in defaults }.distinctBy { it.id }
         return items + defaults.filter { id -> items.none { it.id == id } }.map { HomeItem(it) }
     }
 
-    fun format(items: List<HomeItem>) = items.joinToString(",") { "${it.id}:${if (it.small) "s" else ""}${if (it.hidden) "h" else ""}:${it.col}:${it.row}" }
+    fun format(items: List<HomeItem>) = items.joinToString(",") { "${it.id}:${when (it.size) { HomeSize.Small -> "s"; HomeSize.Medium -> "m"; else -> "" }}${if (it.hidden) "h" else ""}:${it.col}:${it.row}" }
 
     /** A part's width and height in cells. */
     fun size(item: HomeItem, cols: Int) = when {
         item.small -> (if (item.id == "scanner") 2 else 1) to 1 // Scanner & Codes: two apps, two icons
+        item.size == HomeSize.Medium -> (if (item.id == "scanner") 4 else 2) to 2
         else -> (if (cols >= 8) cols / 2 else cols) to (if (item.id in CARDS) 1 else 2)
     }
 

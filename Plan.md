@@ -276,6 +276,19 @@ How to write here:
       timer_art.png and applet_timer_fg.png; the launcher background its own edge turquoise #04D5CC (applet_colors.xml;
       timer_colors.xml, timer_art.xml, timer_launcher_fg.xml gone). Home's Timer teal (#00796B) kept: the same family as the
       icon. The desktop has no Timer applet icon. Checked on the emulator, light and dark.
+- [x] (home-edit session, 24 Oct, branch claude/home-edit; not merged) **Home: edit, hide, resize — a launcher's grid** (the user:
+      "Home page edit, hide, resize — like a launcher"; then "a grid that expands, to drag and drop where I want them"): Home is a
+      grid of cells, 8 across on a tablet and 4 on a phone, growing down as far as the parts go. Hold any part (no need for edit
+      mode) and drag it to any cell; gaps are allowed, parts in the way move on to the next free cells; the page scrolls at the
+      top/bottom edge. A part is Large (its group as before: half a tablet / a phone's width, two rows; Sync and Settings one row)
+      or Small (just its icon, one cell; Scanner & Codes two). The pencil (or the hold) shows each part's ⤢ (resize) and eye
+      (hide) and the empty cells; hidden parts wait in a tray under the grid (tap to put back) and in Settings › Home (Open / Show
+      on Home). Answers (24 Oct): hidden is only hidden — reminders, timers, sync go on; Local Sync and Settings move too
+      (Settings can't be hidden); nothing on the desktop. Saved per device in SharedPreferences "home" (grid8 / grid4, HomeLayout.kt),
+      not synced; Reset gives today's Home back. The user's Sync.png and Settings.png (~/Tetra/Files, 24 Oct) → Assets/Icons/Applets
+      → sync_art/settings_art, on both cards and icons. Checked: HomeLayoutTest 6/6; emulator at tablet size (light) and phone size
+      (dark): resize, hold-drag (in and out of edit mode; a hold opens nothing, a tap still opens), push aside, edge scroll, hide and
+      the tray. **Not on the tablet or the phone yet** (tablet not connected; waits for the user's OK).
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

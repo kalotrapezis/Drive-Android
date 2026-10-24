@@ -86,6 +86,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -137,6 +138,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -920,6 +927,21 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     forgetPairedDevice = { syncStore.forgetPairing(); pairedDevice = null; SyncListenService.stop(context) },
                     folders = photoFolders,
                     setFolderIncluded = { name, on -> photoMetadata.setFolderIncluded(name, on); loadPhotos() },
+                    // a part hidden from Home opens from Settings › Home, as Home's own card would
+                    openPart = { id -> when (id) {
+                        "sync" -> screen = Screen.Sync
+                        "gallery" -> { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() }
+                        "files" -> { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("") }
+                        "notes" -> { notesStart = null; screen = Screen.Notes }
+                        "scanner" -> { lockScannerPortrait(); clearScanPages(); scannerError = null; screen = Screen.Scanner }
+                        "codes" -> screen = Screen.Codes
+                        "office" -> screen = Screen.Office
+                        "text" -> { editorStart = null; screen = Screen.TextEditor }
+                        "calendar" -> { calendarNew = null; screen = Screen.Calendar }
+                        "timer" -> screen = Screen.Timer
+                        "maps" -> { mapsGo = null; mapsSearch = null; mapsBack = Screen.Settings; screen = Screen.Maps }
+                        "contacts" -> { contactsOpen = null; screen = Screen.Contacts }
+                    } },
                 )
             }
         }
@@ -973,8 +995,11 @@ private fun Home(
 ) {
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
-    val groups: List<@Composable () -> Unit> = listOf(
-        {
+    val context = LocalContext.current
+    val syncSummary = remember(context) { SyncStore(context.applicationContext).summary() }
+    // each part's group, as Home has always shown them
+    val large: @Composable (String) -> Unit = { id -> when (id) {
+        "gallery" -> {
             // Gallery's green, as the new Gallery picture in the Photos card (asked 16 Oct), the way Notes and Office have theirs
             HomeGroup(Category.Gallery.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -985,8 +1010,8 @@ private fun Home(
                     }
                 }
             }
-        },
-        {
+        }
+        "files" -> {
             HomeGroup(MaterialTheme.colorScheme.tertiaryContainer) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Files", R.drawable.files_art, openFiles, Modifier.weight(1f), artSize = 76) // the user's own tile (17 Oct), as Office's
@@ -996,8 +1021,8 @@ private fun Home(
                     }
                 }
             }
-        },
-        {
+        }
+        "notes" -> {
             HomeGroup(Category.Notes.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Notes", R.drawable.notes_art, openNotes, Modifier.weight(1f))
@@ -1007,10 +1032,10 @@ private fun Home(
                     }
                 }
             }
-        },
-        { HomePdfToolsCard(openScanner, openCodes) },
+        }
+        "scanner" -> { HomePdfToolsCard(openScanner, openCodes) }
         // Office (asked 2026-09-27): orange, Writer first; Excel and PowerPoint to come.
-        {
+        "office" -> {
             HomeGroup(Category.Office.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Office", R.drawable.office_art, openOffice, Modifier.weight(1f), artSize = 76)
@@ -1022,9 +1047,9 @@ private fun Home(
                     }
                 }
             }
-        },
+        }
         // The text editor: a group of its own, purple (asked 2026-09-27).
-        {
+        "text" -> {
             HomeGroup(Category.Text.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Text editor", R.drawable.text_editor_art, { openTextEditor(null) }, Modifier.weight(1f), artSize = 76) // a solid tile: kept clear of the title
@@ -1034,9 +1059,9 @@ private fun Home(
                     }
                 }
             }
-        },
+        }
         // The Calendar (18 Oct): pink, the user's icon; New, Schedule, Birthday, Reminder beside it.
-        {
+        "calendar" -> {
             HomeGroup(Category.Calendar.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Calendar", R.drawable.calendar_art, openCalendar, Modifier.weight(1f), artSize = 76)
@@ -1048,11 +1073,10 @@ private fun Home(
                     }
                 }
             }
-        },
+        }
         // The Timer (18 Oct): teal; four times beside it that start at a tap, Tetra staying on Home (the user: "add 6m 15m 20m
         // 30m options to imediatly start without even opening the UI") — the notification and the island show it running
-        {
-            val context = LocalContext.current
+        "timer" -> {
             HomeGroup(Category.Timer.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomeArtCard("Timer", R.drawable.timer_art, openTimer, Modifier.weight(1f), artSize = 76)
@@ -1070,48 +1094,209 @@ private fun Home(
                     }
                 }
             }
-        },
-    )
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                // the launcher icon before the name (asked 17 Oct); an adaptive icon, so drawn by Android, not painterResource
-                val context = LocalContext.current
-                val icon = remember(context) { context.getDrawable(R.mipmap.ic_launcher)?.toBitmap(144, 144)?.asImageBitmap() }
-                icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(36.dp)) }
-                Text(
-                    "Tetra",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
-                    ),
-                )
+        }
+        "sync" -> HomeWideCard("Local Sync", syncSummary, R.drawable.sync_art, openSync)
+        "settings" -> HomeWideCard("Settings", "Permissions and local storage", R.drawable.settings_art, openSettings)
+        // Contacts and Maps (23 Oct, the user: Maps one card with 4 slots, Contacts beside it)
+        "contacts" -> HomeContactsGroup(openContacts)
+        "maps" -> HomeMapsGroup(wide, openMaps)
+    } }
+    // each part small: just its icon, as a launcher's (Scanner and Codes are two apps, so two icons)
+    fun icons(id: String): List<HomeIcon> = when (id) {
+        "sync" -> listOf(HomeIcon("Local Sync", R.drawable.sync_art, openSync))
+        "settings" -> listOf(HomeIcon("Settings", R.drawable.settings_art, openSettings))
+        "gallery" -> listOf(HomeIcon("Photos", R.drawable.gallery_art, openPhotos))
+        "files" -> listOf(HomeIcon("Files", R.drawable.files_art, openFiles))
+        "notes" -> listOf(HomeIcon("Notes", R.drawable.notes_art, openNotes))
+        "scanner" -> listOf(HomeIcon("Scanner", R.drawable.scanner_art, openScanner), HomeIcon("Codes", R.drawable.codes_art, openCodes))
+        "office" -> listOf(HomeIcon("Office", R.drawable.office_art, openOffice))
+        "text" -> listOf(HomeIcon("Text editor", R.drawable.text_editor_art, { openTextEditor(null) }))
+        "calendar" -> listOf(HomeIcon("Calendar", R.drawable.calendar_art, openCalendar))
+        "timer" -> listOf(HomeIcon("Timer", R.drawable.timer_art, openTimer))
+        "contacts" -> listOf(HomeIcon("Contacts", R.drawable.contacts_art, { openContacts(null) }))
+        "maps" -> listOf(HomeIcon("Maps", R.drawable.maps_art, { openMaps(null) }))
+        else -> emptyList()
+    }
+    // Home's own layout on this device (the user, 24 Oct: "a grid that expands, to drag and drop where I want them"): hold
+    // any part to move it, as on a launcher; the pencil shows each part's resize and hide buttons
+    val cols = HomeLayout.columns(wide)
+    var layout by remember(wide) { mutableStateOf(HomeLayout.load(context, wide)) }
+    var editing by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    fun change(items: List<HomeItem>) { layout = items; HomeLayout.save(context, wide, items) }
+    BackHandler(editing) { editing = false }
+    val scroll = rememberScrollState()
+    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(scroll).padding(start = 10.dp, top = 16.dp, end = 10.dp, bottom = 22.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // the launcher icon before the name (asked 17 Oct); an adaptive icon, so drawn by Android, not painterResource
+            val icon = remember(context) { context.getDrawable(R.mipmap.ic_launcher)?.toBitmap(144, 144)?.asImageBitmap() }
+            icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(36.dp)) }
+            Text(
+                if (editing) "Edit Home" else "Tetra",
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            if (editing) {
+                TextButton(onClick = { HomeLayout.reset(context, wide); layout = HomeLayout.load(context, wide) }) { Text("Reset") }
+                Button(onClick = { editing = false }) { Text("Done") }
+            } else IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit Home") }
+        }
+        if (editing) Text("Hold a part and drag it to any cell; the others make room. ⤢ makes it large or small, the eye hides it.",
+            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 6.dp))
+        HomeGrid(layout, cols, editing, { editing = true }, ::change, scroll, large, ::icons)
+        if (editing) {
+            val hidden = layout.filter { it.hidden }
+            Text(if (hidden.isEmpty()) "Hidden parts wait here (and in Settings › Home)." else "Hidden — tap one to put it back",
+                style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp))
+            androidx.compose.foundation.layout.FlowRow {
+                hidden.forEach { item -> icons(item.id).first().let { HomeSmallIcon(HomeIcon(HomeLayout.NAMES[item.id] ?: it.label, it.art) { change(HomeLayout.change(layout, item.copy(hidden = false, col = -1, row = -1), cols)) }, Modifier.width(96.dp).height(88.dp).graphicsLayer { alpha = 0.55f }) } }
             }
         }
-        // a tablet: Local Sync and Settings side by side on one row (asked 17 Oct); a phone: Sync here, Settings at the end
-        item {
-            val context = LocalContext.current
-            val syncSummary = remember(context) { SyncStore(context.applicationContext).summary() }
-            if (wide) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync, Modifier.weight(1f))
-                HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings, Modifier.weight(1f))
-            } else HomeWideCard("Local Sync", syncSummary, R.drawable.ic_sync, openSync)
-        }
-        // Contacts and Maps (23 Oct, the user: Maps one card with 4 slots, Contacts beside it): a pair on a tablet; on a phone
-        // Maps as it was, Contacts under it
-        val more: List<@Composable () -> Unit> = listOf({ HomeContactsGroup(openContacts) }, { HomeMapsGroup(wide, openMaps) })
-        if (wide) items((groups + more).chunked(2)) { pair ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                pair.forEach { Box(Modifier.weight(1f)) { it() } }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
-            }
-        } else items(groups + more.reversed()) { it() }
-        if (!wide) item { HomeWideCard("Settings", "Permissions and local storage", R.drawable.ic_settings, openSettings) }
     }
 }
+
+/**
+ * Home's grid (24 Oct): each shown part at its cell, sized by HomeLayout; a part held is dragged over the grid, a frame
+ * showing where it will land, the page scrolling when it nears the top or the bottom. While editing, the parts' own
+ * buttons rest (a tap opens nothing) and the empty cells show, two spare rows under the last part to drop into.
+ */
+@Composable private fun HomeGrid(
+    layout: List<HomeItem>, cols: Int, editing: Boolean, edit: () -> Unit, set: (List<HomeItem>) -> Unit, scroll: androidx.compose.foundation.ScrollState,
+    large: @Composable (String) -> Unit, icons: (String) -> List<HomeIcon>,
+) = BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val density = LocalDensity.current
+    val cellW = maxWidth / cols; val cellH = 94.dp // a group's 176 dp and the 12 dp between parts, in two rows
+    val cw = with(density) { cellW.toPx() }; val ch = with(density) { cellH.toPx() }
+    val screenH = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+    val edge = with(density) { 96.dp.toPx() }
+    val current by rememberUpdatedState(layout)
+    val save by rememberUpdatedState(set)
+    val startEdit by rememberUpdatedState(edit)
+    var dragging by remember { mutableStateOf<String?>(null) }
+    var drag by remember { mutableStateOf(Offset.Zero) }
+    var finger by remember { mutableStateOf(0f) } // the finger's height in the window, for scrolling at the edges
+    var gridTop by remember { mutableStateOf(0f) }
+    fun target(item: HomeItem) = HomeLayout.size(item, cols).let { (w, _) ->
+        ((item.col * cw + drag.x) / cw).roundToInt().coerceIn(0, cols - w) to ((item.row * ch + drag.y) / ch).roundToInt().coerceAtLeast(0)
+    }
+    LaunchedEffect(dragging) {
+        while (dragging != null) {
+            val v = when { finger < edge -> -(edge - finger) / 4; finger > screenH - edge -> (finger - (screenH - edge)) / 4; else -> 0f }
+            if (v != 0f) drag += Offset(0f, scroll.scrollBy(v))
+            delay(16)
+        }
+    }
+    val rows = HomeLayout.height(layout, cols) + if (editing) 2 else 0
+    Box(Modifier.fillMaxWidth().height(cellH * rows).onGloballyPositioned { gridTop = it.positionInRoot().y }) {
+        if (editing) {
+            val cellColour = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f)
+            val frame = MaterialTheme.colorScheme.primary
+            val held = layout.firstOrNull { it.id == dragging }
+            Canvas(Modifier.matchParentSize()) {
+                val gap = 6.dp.toPx(); val r = CornerRadius(16.dp.toPx())
+                for (row in 0 until rows) for (col in 0 until cols) drawRoundRect(cellColour, Offset(col * cw + gap, row * ch + gap), Size(cw - 2 * gap, ch - 2 * gap), r)
+                held?.let { h ->
+                    val (c, rw) = target(h); val (w, hh) = HomeLayout.size(h, cols)
+                    drawRoundRect(frame.copy(alpha = 0.18f), Offset(c * cw + gap, rw * ch + gap), Size(w * cw - 2 * gap, hh * ch - 2 * gap), r)
+                }
+            }
+        }
+        layout.filter { !it.hidden }.forEach { item -> key(item.id) {
+            val (w, h) = HomeLayout.size(item, cols)
+            val moving = dragging == item.id
+            Box(
+                Modifier.offset(cellW * item.col, cellH * item.row).size(cellW * w, cellH * h).zIndex(if (moving) 1f else 0f)
+                    .graphicsLayer { if (moving) { translationX = drag.x; translationY = drag.y; scaleX = 1.03f; scaleY = 1.03f } }
+                    .holdToDrag(item.id,
+                        start = { at -> startEdit(); dragging = item.id; drag = Offset.Zero; finger = gridTop + (current.first { it.id == item.id }.row) * ch + at.y },
+                        move = { d -> drag += d; finger += d.y },
+                        end = { current.firstOrNull { it.id == item.id }?.let { now -> val (c, r) = target(now); save(HomeLayout.drop(current, now.id, c, r, cols)) }; dragging = null; drag = Offset.Zero })
+                    .padding(6.dp),
+            ) {
+                if (item.small) Row(Modifier.fillMaxSize()) { icons(item.id).forEach { HomeSmallIcon(it, Modifier.weight(1f).fillMaxHeight()) } }
+                else large(item.id)
+                if (editing) Box(Modifier.matchParentSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } }) {
+                    // on top of the part, so its own buttons get no tap; the frame says it can be moved
+                    Box(Modifier.matchParentSize().border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), MaterialTheme.shapes.large))
+                    // a small icon: the two in its top corners, smaller, so the icon still shows
+                    Row(if (item.small) Modifier.fillMaxWidth().padding(1.dp) else Modifier.align(Alignment.TopEnd).padding(2.dp),
+                        horizontalArrangement = if (item.small) Arrangement.SpaceBetween else Arrangement.spacedBy(4.dp)) {
+                        HomeEditButton(if (item.small) R.drawable.ic_fullscreen else R.drawable.ic_fullscreen_exit, if (item.small) "Make large" else "Make small", if (item.small) 24.dp else 30.dp) {
+                            save(HomeLayout.change(current, item.copy(small = !item.small), cols))
+                        }
+                        if (item.id != HomeLayout.SETTINGS) HomeEditButton(R.drawable.ic_visibility_off, "Hide from Home", if (item.small) 24.dp else 30.dp) { save(HomeLayout.change(current, item.copy(hidden = true), cols)) }
+                    }
+                }
+            }
+        } }
+    }
+}
+
+/**
+ * Held still for a long press, then dragged: Home's parts, as a launcher's icons. Watched before the part's own buttons
+ * see the touch, and taken once held, so a held part never also opens; moved before the long press, it is the page's scroll.
+ */
+private fun Modifier.holdToDrag(key: Any, start: (Offset) -> Unit, move: (Offset) -> Unit, end: () -> Unit) = pointerInput(key) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+        val letGo = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            while (true) {
+                val c = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                if (c == null || !c.pressed || c.isConsumed || (c.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+            }
+            true
+        }
+        if (letGo == true) return@awaitEachGesture
+        start(down.position)
+        while (true) {
+            val c = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+            if (!c.pressed) { c.consume(); break }
+            val d = c.position - c.previousPosition
+            c.consume()
+            if (d != Offset.Zero) move(d)
+        }
+        end()
+    }
+}
+
+@Composable private fun HomeEditButton(icon: Int, label: String, size: androidx.compose.ui.unit.Dp, click: () -> Unit) = Surface(
+    shape = CircleShape, color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
+    shadowElevation = 2.dp, modifier = Modifier.size(size).clickable(onClick = click),
+) { Box(contentAlignment = Alignment.Center) { Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(size * 0.6f)) } }
+
+/** Settings › Home: what is hidden from Home on this device, each still opened here or shown again. */
+@Composable private fun HomeSettings(open: (String) -> Unit) {
+    val context = LocalContext.current
+    val wide = LocalConfiguration.current.screenWidthDp >= 700
+    var layout by remember(wide) { mutableStateOf(HomeLayout.load(context, wide)) }
+    val hidden = layout.filter { it.hidden }
+    Text(if (hidden.isEmpty()) "Nothing is hidden. On Home, hold a part to move it; the pencil resizes and hides parts; this device only."
+        else "Hidden from Home on this device; they keep working (reminders, timers, sync).", style = MaterialTheme.typography.bodySmall)
+    hidden.forEach { item ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(HomeLayout.NAMES[item.id] ?: item.id, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            if (item.id == "scanner") { TextButton({ open("scanner") }) { Text("Scanner") }; TextButton({ open("codes") }) { Text("Codes") } }
+            else TextButton({ open(item.id) }) { Text("Open") }
+            TextButton({ layout = HomeLayout.change(layout, item.copy(hidden = false, col = -1, row = -1), HomeLayout.columns(wide)); HomeLayout.save(context, wide, layout) }) { Text("Show on Home") }
+        }
+    }
+}
+
+private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
+
+/** A part shown small on Home: its icon and name, as a launcher's. */
+@Composable private fun HomeSmallIcon(icon: HomeIcon, modifier: Modifier) = Column(
+    modifier.clip(MaterialTheme.shapes.large).clickable(onClick = icon.open).padding(vertical = 4.dp),
+    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+) {
+    HomeIconArt(icon, 52.dp)
+    Text(icon.label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp))
+}
+
+// the user's art is itself a tile, Sync's and Settings' too (24 Oct)
+@Composable private fun HomeIconArt(icon: HomeIcon, size: androidx.compose.ui.unit.Dp) =
+    Image(painterResource(icon.art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(size))
 
 /**
  * Maps (21 Oct): saved places beside the map, each one tap to directions there (the user, 21 Oct: "favorite locations
@@ -1280,11 +1465,12 @@ private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, 
     }
 }
 
-@Composable private fun HomeWideCard(label: String, detail: String, icon: Int, click: () -> Unit, modifier: Modifier = Modifier) = Surface(
+/** Local Sync's and Settings' card: the user's tile (24 Oct), the name and a line under it. */
+@Composable private fun HomeWideCard(label: String, detail: String, art: Int, click: () -> Unit, modifier: Modifier = Modifier) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant,
     modifier = modifier.fillMaxWidth().heightIn(min = 78.dp).clickable(onClick = click),
 ) { Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-    Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(28.dp))
+    Image(painterResource(art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(44.dp))
     Column {
         Text(label, style = MaterialTheme.typography.titleMedium)
         Text(detail, style = MaterialTheme.typography.bodySmall)
@@ -1741,6 +1927,7 @@ private fun SettingsTab(
     forgetPairedDevice: () -> Unit,
     folders: List<DeviceFolder>,
     setFolderIncluded: (String, Boolean) -> Unit,
+    openPart: (String) -> Unit,
 ) {
     var searchQuality by remember { mutableStateOf(metadataStore.searchQuality()) }
     Box(Modifier.fillMaxSize()) {
@@ -2083,6 +2270,7 @@ private fun SettingsTab(
                 }
             }
         }
+        item { SettingsCard("Home") { HomeSettings(openPart) } }
         item {
             SettingsCard("Appearance") {
                 val lookContext = LocalContext.current

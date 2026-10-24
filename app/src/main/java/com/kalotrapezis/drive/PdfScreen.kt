@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -78,6 +79,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -227,7 +229,11 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     val editable get() = pdf != null
     val canUndo get() = synchronized(this) { (pdf?.undoRedoPosition() ?: 0) > 0 }
     val canRedo get() = synchronized(this) { pdf?.let { it.undoRedoPosition() < it.undoRedoSteps() } == true }
-    val dirty get() = synchronized(this) { pdf?.hasUnsavedChanges() == true || rewrite != null }
+    val dirty get() = synchronized(this) { pdf?.hasUnsavedChanges() == true || rewrite != null || copied }
+    /** Saved only as a copy (File › Save a copy) since the last change: the file itself still is not. */
+    private var copied = false
+    /** The document's own details (Document.META_INFO_TITLE…), null when it has none. */
+    fun info(key: String): String? = synchronized(this) { runCatching { doc.getMetaData(key) }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() } }
 
     /** One change, one undo step named [what]; the pages drawn again. */
     fun edit(what: String, change: (com.artifex.mupdf.fitz.PDFDocument) -> Unit) = synchronized(this) {
@@ -252,6 +258,21 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     fun insertBlank(at: Int) = edit("Blank page") { p ->
         val s = sizes.getOrNull(at.coerceAtMost(sizes.lastIndex).coerceAtLeast(0)) ?: Size(595f, 842f)
         p.insertPage(at, p.addPage(com.artifex.mupdf.fitz.Rect(0f, 0f, s.width, s.height), 0, p.newDictionary(), ""))
+    }
+    /**
+     * Every page made [to] its size as shown (Layout › Size and Orientation, as Word's: the whole document), its top left
+     * where it was so what is on it stays put; its crop the same box (the old one would cut the new page).
+     */
+    fun resize(to: (Size) -> Size) = edit("Page size") { p ->
+        sizes.forEachIndexed { i, now ->
+            val want = to(now); if (want == now) return@forEachIndexed
+            val o = p.findPage(i); val mb = o.getInheritable("MediaBox")
+            val x0 = mb.get(0).asFloat(); val y1 = mb.get(3).asFloat()
+            val turned = Math.floorMod(o.getInheritable("Rotate").asInteger(), 180) == 90 // shown turned: the box the other way round
+            val (w, h) = if (turned) want.height to want.width else want.width to want.height
+            val box = com.artifex.mupdf.fitz.Rect(x0, y1 - h, x0 + w, y1)
+            o.put("MediaBox", box); o.put("CropBox", box); listOf("TrimBox", "BleedBox", "ArtBox").forEach { o.delete(it) }
+        }
     }
     /** Another PDF's pages at [at] (Combine): how many came. */
     fun insertFile(at: Int, other: File): Int {
@@ -921,17 +942,20 @@ internal class PdfDoc(private val file: File, password: String? = null) {
      * the file had stays, signatures too), through a copy beside it renamed over it; a file MuPDF had to repair is
      * written whole. [base]: the file as opened, kept outside it for the next save.
      */
-    fun save(base: File, to: File = file) = synchronized(this) {
+    fun save(base: File, to: File = file, copy: Boolean = false) = synchronized(this) {
         val p = pdf ?: error("This file cannot be edited.")
         if (!base.isFile) file.copyTo(base, overwrite = true)
+        val was = dirty
         val temp = File(to.parentFile, ".${to.name}.saving")
-        // redacted or (un)locked: written whole, the old objects dropped (an appended save would keep what was taken out)
+        // redacted or (un)locked: written whole, the old objects dropped (an appended save would keep what was taken out);
+        // a copy leaves that still to do for the file itself
         val whole = rewrite
-        if (whole != null) { p.save(temp.path, whole); rewrite = null; base.delete() }
+        if (whole != null) { p.save(temp.path, whole); if (!copy) { rewrite = null; base.delete() } }
         else if (p.canBeSavedIncrementally()) { base.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
         else p.save(temp.path, "compress")
         check(temp.renameTo(to)) { "Could not save the PDF." }
-        WriterLog.i("PDF: saved (${to.length() / 1024} KB)")
+        copied = copy && was
+        WriterLog.i("PDF: saved${if (copy) " a copy" else ""} (${to.length() / 1024} KB)")
     }
 
     private inline fun <T> page(i: Int, use: (com.artifex.mupdf.fitz.Page) -> T): T { val p = doc.loadPage(i); try { return use(p) } finally { p.destroy() } }
@@ -991,7 +1015,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     val context = LocalContext.current
     remember { OfficeFonts.assets = context.applicationContext.assets } // Words' fonts (Times' and Calibri's twins) for its texts, as Words' and Slides'
     val scope = rememberCoroutineScope()
-    val file = remember(open) { Uri.parse(open).path?.let(::File) }
+    var file by remember(open) { mutableStateOf(Uri.parse(open).path?.let(::File)) } // File › Save as and Rename go on with another
+    remember { WriterUnits.load(context) } // View's cm or inches, Words' own setting
     RememberOpened(file) // the Office home's Recents
     var doc by remember { mutableStateOf<PdfDoc?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
@@ -1026,18 +1051,26 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     DisposableEffect(doc) { val d = doc; onDispose { d?.close() } } // this one: reading doc when it goes would close the next one
     BackHandler { back() }
 
+    // View, as Words': pages two across, as wide as the screen, rulers (a tablet), the page list at the side
+    var across by remember { mutableIntStateOf(1) }
+    var fitWidth by remember { mutableStateOf(false) }
+    var rulers by remember { mutableStateOf(true) }
+    var navigation by remember { mutableStateOf(true) }
+    // Layout › Margins (Word's presets): where Position puts a text and a new one starts; the rulers show them
+    var margins by remember { mutableStateOf(PdfMargins.load(context)) }
     val list = rememberLazyListState()
     // the page in the middle of the screen, where a swipe leaves it; at either end the first or last (short pages, as beside a
     // phone's page list, never reach the middle there)
     val at by remember { derivedStateOf { list.layoutInfo.let { l -> val mid = (l.viewportStartOffset + l.viewportEndOffset) / 2
         if (!list.canScrollBackward) 0 else if (!list.canScrollForward) (l.totalItemsCount - 1).coerceAtLeast(0)
-        else l.visibleItemsInfo.minByOrNull { kotlin.math.abs(it.offset + it.size / 2 - mid) }?.index ?: 0 } } }
+        else l.visibleItemsInfo.minByOrNull { kotlin.math.abs(it.offset + it.size / 2 - mid) }?.index ?: 0 }
+        .let { row -> (row * across).coerceAtMost(((doc?.sizes?.size ?: 1) - 1).coerceAtLeast(0)) } } } // two across: a row's first page
     var zoom by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     // the zoom a pinch ended at: the page in the middle drawn again that sharp
     var settled by remember { mutableFloatStateOf(1f) }
     LaunchedEffect(zoom) { delay(250); settled = zoom }
-    fun goTo(page: Int) { zoom = 1f; pan = Offset.Zero; scope.launch { list.scrollToItem(page) } }
+    fun goTo(page: Int) { zoom = 1f; pan = Offset.Zero; scope.launch { list.scrollToItem(page / across) } }
 
     var finding by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -1106,7 +1139,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
 
     // —— editing (Plan.md § PDF): opened view only, Edit as Words' ——
     var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
-    var tab by remember { mutableStateOf("Pages") }
+    var tab by remember { mutableStateOf("Home") }
     var tool by remember { mutableStateOf<PdfTool?>(null) }
     var markColour by remember { mutableStateOf(0xFFEB3B) } // Review's colour (highlight, shapes, notes)
     var penColour by remember { mutableStateOf(0xE53935) } // Draw's
@@ -1120,7 +1153,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var chosen by remember { mutableStateOf<Triple<Int, android.graphics.RectF, PdfText>?>(null) } // a text put on, chosen (Slides' first tap): its page, place, words
     var clip by remember { mutableStateOf<Pair<android.graphics.RectF, PdfText>?>(null) } // Copy's text, for Paste
     var copiedLook by remember { mutableStateOf<PdfTextLook?>(null) } // Selection › Copy formatting, for Paste formatting (Slides')
-    var tabBefore by remember { mutableStateOf("Pages") } // the tab shown before a text was chosen, back when none is
+    var tabBefore by remember { mutableStateOf("Home") } // the tab shown before a text was chosen, back when none is
     // a text chosen: its own tab shown (as Words' Image tab when a picture is tapped); none chosen: the tab before
     LaunchedEffect(chosen != null) {
         if (chosen != null) { if (tab != "Selection" && tab != "Text box") { tabBefore = tab; tab = "Text box" } }
@@ -1150,19 +1183,24 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var organize by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
     var showVersions by remember { mutableStateOf(false) }
-    val base = remember(file) { file?.let { File(File(context.cacheDir, "pdf-base").apply { mkdirs() }, "${it.absolutePath.hashCode().toUInt()}.pdf") } }
+    val base = remember(open) { Uri.parse(open).path?.let(::File)?.let { File(File(context.cacheDir, "pdf-base").apply { mkdirs() }, "${it.absolutePath.hashCode().toUInt()}.pdf") } }
     fun change(what: () -> Unit) {
         runCatching(what).onFailure { WriterLog.e("PDF: change", it); Toast.makeText(context, it.message ?: "That could not be done.", Toast.LENGTH_LONG).show() }
         version++
     }
-    fun save(then: () -> Unit = {}) {
-        val d = doc ?: return; val f = file ?: return; val b = base ?: return
+    /** Saved over the file, or into [to] (File › Save as, Save a copy: [copy] leaves the file itself unsaved). */
+    fun save(to: File? = null, copy: Boolean = false, then: () -> Unit = {}) {
+        val d = doc ?: return; val f = file ?: return; val b = base ?: return; val t = to ?: f
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { keepPrevious(context, f); d.save(b) } }
+            val r = withContext(Dispatchers.IO) { runCatching { if (t == f) keepPrevious(context, f); d.save(b, t, copy) } }
             r.onFailure { WriterLog.e("PDF: save", it); Toast.makeText(context, "Could not save: ${it.message}", Toast.LENGTH_LONG).show() }
-                .onSuccess { version++; Toast.makeText(context, "Saved (${f.length() / 1024} KB)", Toast.LENGTH_SHORT).show(); then() }
+                .onSuccess { version++; Toast.makeText(context, "Saved${if (t != f) " as ${t.name}" else ""} (${t.length() / 1024} KB)", Toast.LENGTH_SHORT).show(); then() }
         }
     }
+    var autoSave by remember { mutableStateOf(TextEditorStore(context).autoSave) } // File › AutoSave: Words' own setting, one for all
+    var naming by remember { mutableStateOf<String?>(null) } // File › Save as ("as") or Rename ("rename")
+    var about by remember { mutableStateOf(false) } // File › About this file
+    var officeSettings by remember { mutableStateOf(false) }
     // Pages › Insert PDF (Combine): another PDF's pages after the one shown
     val pickPdf = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         val d = doc ?: return@rememberLauncherForActivityResult
@@ -1243,11 +1281,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         doc?.let { d -> change { d.putText(i, r.left, r.top, old.copy(words = ""), r.width(), 0f, Offset(r.centerX(), r.centerY())) } }
         WriterLog.i("PDF: text deleted")
     }
-    /** Word's Align on the page for the chosen text: 2 cm from the edge it is put by, or the middle. */
+    /** Word's Align on the page for the chosen text: at the margin it is put by (Layout › Margins), or the middle. */
     fun position(across: Char?, down: Char?) {
-        val (i, r, _) = chosen ?: return; val s = doc?.sizes?.getOrNull(i) ?: return; val m = 56.7f
-        rechange(x = when (across) { 'l' -> m; 'c' -> (s.width - r.width()) / 2; 'r' -> s.width - m - r.width(); else -> null },
-            y = when (down) { 't' -> m; 'm' -> (s.height - r.height()) / 2; 'b' -> s.height - m - r.height(); else -> null })
+        val (i, r, _) = chosen ?: return; val s = doc?.sizes?.getOrNull(i) ?: return; val m = margins
+        rechange(x = when (across) { 'l' -> m.left; 'c' -> (s.width - r.width()) / 2; 'r' -> s.width - m.right - r.width(); else -> null },
+            y = when (down) { 't' -> m.top; 'm' -> (s.height - r.height()) / 2; 'b' -> s.height - m.bottom - r.height(); else -> null })
         WriterLog.i("PDF: text positioned ${across ?: ""}${down ?: ""}")
     }
     /** Copy (Cut): the chosen text kept for Paste, as Slides' items; its words on the clipboard for other apps. */
@@ -1262,7 +1300,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
      * words copied in another app, a new text in the look last used, 2 cm in from the top left.
      */
     fun paste(i: Int, at: Offset? = null) {
-        val d = doc ?: return; val s = d.sizes.getOrNull(i) ?: return; val m = 56.7f
+        val d = doc ?: return; val s = d.sizes.getOrNull(i) ?: return; val m = margins.left; val mt = margins.top
         val t: PdfText; val x: Float; val y: Float; val room: Float; val minH: Float
         val c = clip
         if (c != null) {
@@ -1271,7 +1309,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         } else {
             val words = runCatching { context.getSystemService(ClipboardManager::class.java)?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() }.getOrNull()?.trim()
             if (words.isNullOrEmpty()) { Toast.makeText(context, "Nothing to paste", Toast.LENGTH_SHORT).show(); return }
-            t = PdfText(words, textLook.copy(fill = null, line = null, turn = 0), false); x = at?.x ?: m; y = at?.y ?: m; room = maxOf(72f, s.width - x - m); minH = 0f
+            t = PdfText(words, textLook.copy(fill = null, line = null, turn = 0), false); x = at?.x ?: m; y = at?.y ?: mt; room = maxOf(72f, s.width - x - margins.right); minH = 0f
         }
         val px = x.coerceAtMost(s.width - 12f); val py = y.coerceAtMost(s.height - 8f)
         change { d.putText(i, px, py, t, room, minH) }
@@ -1338,7 +1376,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             PdfTool.Erase -> change { if (!d.deleteAt(i, a)) Toast.makeText(context, "No comment there", Toast.LENGTH_SHORT).show() }
             // the words start where the finger was (its line through the tap), as far across as the page leaves room
             PdfTool.Text -> d.typedAt(i, a)?.let { (r, old) -> retype(i, r, old) }
-                ?: startTyping(PdfTyping(i, a.x, a.y - textLook.size * 0.8f, (d.sizes[i].width - a.x - 18f).coerceAtLeast(72f), 0f, false))
+                ?: startTyping(PdfTyping(i, a.x, a.y - textLook.size * 0.8f, (d.sizes[i].width - a.x - minOf(margins.right, d.sizes[i].width - a.x - 72f)).coerceAtLeast(72f), 0f, false))
             PdfTool.Tick -> change { d.mark(i, a, '✓', fillSize * 1.3f, 0x000000) }
             PdfTool.Cross -> change { d.mark(i, a, '✗', fillSize * 1.3f, 0x000000) }
             PdfTool.Dot -> change { d.mark(i, a, '•', fillSize * 1.3f, 0x000000) }
@@ -1484,6 +1522,47 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         androidx.compose.material3.AlertDialog(onDismissRequest = { reading = null }, title = { Text("Note") }, text = { Text(words) },
             confirmButton = { androidx.compose.material3.TextButton(onClick = { reading = null }) { Text("Close") } })
     }
+    // File › AutoSave (Words' own): a few seconds after the last change, saved
+    LaunchedEffect(version, autoSave, editing, typing == null) { if (autoSave && editing && typing == null && doc?.dirty == true) { delay(4000); save() } }
+    if (officeSettings) OfficeSettingsDialog { officeSettings = false }
+    // File › Save as and Rename (Words' and Slides'): beside it, a PDF; Save as goes on with the new one
+    naming?.let { how -> file?.let { f ->
+        var typedName by remember { mutableStateOf(if (how == "as") "${f.nameWithoutExtension} (2)" else f.nameWithoutExtension) }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { naming = null }, title = { Text(if (how == "as") "Save as" else "Rename") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.OutlinedTextField(typedName, { typedName = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".pdf") })
+                if (how == "as") Text("Beside ${f.name}. The PDF goes on with the new one.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = {
+                val t = typedName.trim().removeSuffix(".pdf").takeIf { it.isNotEmpty() && '/' !in it }?.let { File(f.parentFile, "$it.pdf") }
+                    ?: run { Toast.makeText(context, "That is not a file name.", Toast.LENGTH_SHORT).show(); return@TextButton }
+                if (t == f) { naming = null; return@TextButton }
+                if (t.exists()) { Toast.makeText(context, "${t.name} is already there. Choose another name.", Toast.LENGTH_LONG).show(); return@TextButton }
+                naming = null
+                if (how == "as") save(to = t) { file = t; WriterLog.i("PDF: saved as") }
+                else scope.launch {
+                    // the file and its versions under the new name (as Words and Slides rename)
+                    val ok = withContext(Dispatchers.IO) { runCatching { val v = versionsDir(context, f)
+                        check(f.renameTo(t)) { "Could not rename ${f.name}." }; if (v.isDirectory) v.renameTo(versionsDir(context, t)) }.onFailure { WriterLog.e("PDF: rename", it) }.isSuccess }
+                    if (ok) { file = t; Toast.makeText(context, "Renamed ${t.name}", Toast.LENGTH_SHORT).show() } else Toast.makeText(context, "Could not rename it.", Toast.LENGTH_LONG).show()
+                }
+            }) { Text(if (how == "as") "Save" else "Rename") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { naming = null }) { Text("Cancel") } })
+    } }
+    // File › About this file (as Words' and Slides'): its kind, size, date, pages and their size, its own details
+    if (about) androidx.compose.material3.AlertDialog(onDismissRequest = { about = false },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { about = false }) { Text("Close") } },
+        title = { Text(file?.name ?: "PDF") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val d = doc
+            Text("PDF document" + (d?.info("format")?.let { " ($it)" } ?: ""))
+            file?.let { Text("${"%.1f".format(it.length() / 1024.0 / 1024.0)} MB · " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it.lastModified()))) }
+            d?.sizes?.let { ss -> val s0 = ss.firstOrNull()
+                Text("${ss.size} page${if (ss.size == 1) "" else "s"}" + (s0?.let { " · " + PdfPaper.name(it) } ?: "") + if (ss.distinct().size > 1) " (not all the same size)" else "") }
+            listOf("Title" to com.artifex.mupdf.fitz.Document.META_INFO_TITLE, "Author" to com.artifex.mupdf.fitz.Document.META_INFO_AUTHOR,
+                "Made with" to com.artifex.mupdf.fitz.Document.META_INFO_CREATOR, "Written by" to com.artifex.mupdf.fitz.Document.META_INFO_PRODUCER)
+                .forEach { (label, key) -> d?.info(key)?.let { Text("$label: $it", style = MaterialTheme.typography.bodySmall) } }
+        } })
     if (showVersions) file?.let { f -> VersionsDialog(f, "", { showVersions = false }, about = "The file as it was before a save. Tapping one puts it back at once; the file as it is now goes into this list.") { v ->
         showVersions = false
         scope.launch {
@@ -1599,7 +1678,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     val density = LocalDensity.current
                     // a tablet: the pages small at the side, the one shown marked, tapped to go to it; a phone: the same, narrower, when asked for
                     if (pane != null && wide) PdfPane(d, pane!!, editing, version, Modifier.width(300.dp).fillMaxHeight(), { goTo(it) }, { pane = null }, { asking = "bookmark" }, { editing = true }) { act -> change(act) }
-                    else if (wide || pages) {
+                    else if ((wide && navigation) || (!wide && pages)) {
                         val side = if (wide) 150.dp else 110.dp
                         val thumbs = rememberLazyListState()
                         LaunchedEffect(at) { if (thumbs.layoutInfo.visibleItemsInfo.none { it.index == at && it.offset >= 0 }) thumbs.animateScrollToItem((at - 1).coerceAtLeast(0)) }
@@ -1643,18 +1722,31 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 override fun calculateApproachOffset(velocity: Float, decayOffset: Float) = 0f
                             }
                         }
-                        val roomW = maxWidth - 24.dp; val roomH = maxHeight - 24.dp
-                        LazyColumn(Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, state = list,
-                            userScrollEnabled = zoom == 1f && tool == null, flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(oneAtATime),
+                        // Words' rulers on a tablet (one page across, not zoomed in): along the top for the page in view, down each page's side
+                        val ruled = rulers && wide && editing && across == 1 && zoom == 1f
+                        val rulerW = 18.dp; val sideRuler = if (ruled) rulerW + 12.dp else 0.dp // the side ruler and the row's gap after it
+                        val roomW = maxWidth - 24.dp; val roomH = maxHeight - 24.dp - (if (ruled) 22.dp else 0.dp)
+                        // the page shown on the screen: as wide as there is room (Fit width: all of it), no taller than the screen
+                        fun widthOf(s: Size) = ((roomW - sideRuler - 12.dp * (across - 1)) / across).let { room -> if (fitWidth) room else minOf(room, roomH * (s.width / s.height)) }
+                        fun pageOf(s: Size) = DocPage(s.width, s.height, margins.top, margins.bottom, margins.left, margins.right)
+                        Column(Modifier.fillMaxSize()) {
+                        if (ruled) d.sizes.getOrNull(at)?.let { s -> val w = widthOf(s)
+                            HorizontalRuler(pageOf(s), w / s.width, 12.dp + (roomW - (sideRuler + w)) / 2 + sideRuler, Modifier.fillMaxWidth().height(22.dp)) }
+                        LazyColumn(Modifier.weight(1f).fillMaxWidth().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }, state = list,
+                            userScrollEnabled = zoom == 1f && tool == null,
+                            // a page at a time, as Slides' list; Fit width's pages are taller than the screen: they scroll freely
+                            flingBehavior = if (fitWidth) androidx.compose.foundation.gestures.ScrollableDefaults.flingBehavior() else androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(oneAtATime),
                             contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            items(d.sizes.size) { i ->
-                                // the whole page in view: as wide as there is room, no taller than the screen
+                            // View › Two pages: a row of two, as Words'
+                            items((d.sizes.size + across - 1) / across) { row -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
+                              for (i in row * across until minOf(d.sizes.size, row * across + across)) {
                                 val s = d.sizes[i]
-                                val w = minOf(roomW, roomH * (s.width / s.height))
+                                val w = widthOf(s)
                                 val px = with(density) { w.roundToPx() }
+                                if (ruled) VerticalRuler(pageOf(s), w / s.width, Modifier.width(rulerW).height(w * (s.height / s.width)))
                                 val marks = matches?.filter { it.page == i }.orEmpty()
                                 PdfPage(d, i, if (i == at) Pdf.renderWidth(px, settled, s.width / s.height) else px,
-                                    Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).width(w)
+                                    Modifier.width(w)
                                         // a mouse's right button (as Slides'): the text under it chosen, and its menu; before the taps see it
                                         .pointerInput(editing, i) {
                                             if (!editing) return@pointerInput
@@ -1693,14 +1785,16 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                             rechange(room = lw.coerceAtLeast(12f), minH = lh.coerceAtLeast(8f), t = t.copy(framed = true)) }
                                     }
                                 }
+                              } }
                             }
+                        }
                         }
                     }
                 } }
             }
             // on a phone the label is also the button for the list of pages; gone while editing, as Words' (the user, 24 Oct: it sat on the page)
             if (d != null && d.sizes.isNotEmpty() && !editing) Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = if (pages) PDF_RED else Color.White, shape = CircleShape,
-                modifier = Modifier.align(Alignment.BottomCenter).bottomBarPadding().padding(bottom = 16.dp).then(if (wide) Modifier else Modifier.clickable { val keep = at; pages = !pages; scope.launch { list.scrollToItem(keep) } })) {
+                modifier = Modifier.align(Alignment.BottomCenter).bottomBarPadding().padding(bottom = 16.dp).then(if (wide) Modifier else Modifier.clickable { val keep = at; pages = !pages; scope.launch { list.scrollToItem(keep / across) } })) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (!wide) Icon(painterResource(R.drawable.ic_view_grid), contentDescription = if (pages) "Hide the pages" else "Show the pages", modifier = Modifier.padding(end = 8.dp).size(18.dp))
                     Text("Page ${(at + 1).coerceAtMost(d.sizes.size)} of ${d.sizes.size}", style = MaterialTheme.typography.labelLarge)
@@ -1722,6 +1816,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             cancel = { if (ch0.third.look.font != before) rechange(t = ch0.third.copy(look = ch0.third.look.copy(font = before))); fontBefore = null },
             ok = { fontBefore = null }, pick = { c -> (c as? FontChoice)?.let { rechange(t = ch0.third.copy(look = ch0.third.look.copy(font = it.name))) } },
             fonts = STYLE_FONTS, now = ch0.third.look.font)
+        // Home with nothing chosen: the next text's font
+        else if (before != null && editing) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
+            ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
         else if (editing && d != null) {
             val w = Color.White
             Surface(color = Color.Black, contentColor = w, modifier = (if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth())
@@ -1730,11 +1827,92 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     // typing on the page: Words' Home tools for its look instead of the tabs, × and ✓ at the ends
                     if (typing != null) { PdfTextTools(w, textLook, { textLook = it }, { fontBefore = textLook.font }, { typing = null }, ::putTyped, typed); return@Column }
                     // a text chosen, as a Slides box: Selection first (Cut, Copy, Paste, formatting), the text's own tab last in the lighter colour
-                    OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "Pages", "Review", "Draw", "Fill & Sign", "Insert", "Protect", "Text box".takeIf { chosen != null }),
+                    // Words' tabs in Words' order (the user, 24 Oct: "take a look on what the other applets have"), the PDF's own among them
+                    OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
+                        "Text box".takeIf { chosen != null }),
                         tab, w, PDF_RED, { tab = it; tool = null }, contextual = "Text box")
                     @Composable fun ToolButton(t: PdfTool) = RibbonButton(t.label, w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
                     key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                         val c0 = chosen
+                        // Words', Tables' and Slides' File: the file's own actions
+                        if (tab == "File") {
+                            RibbonButton("Save", w, R.drawable.ic_save, enabled = d.dirty) { save() }
+                            RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = file != null) {
+                                file?.let { f -> save(to = generateSequence(1) { it + 1 }.map { File(f.parentFile, "${f.nameWithoutExtension} (copy${if (it == 1) "" else " $it"}).pdf") }.first { !it.exists() }, copy = true) } }
+                            RibbonButton("AutoSave", w, R.drawable.ic_history, on = autoSave) {
+                                autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
+                                Toast.makeText(context, if (autoSave) "AutoSave on" else "AutoSave off — Save when you want the file changed", Toast.LENGTH_SHORT).show() }
+                            FavouriteFileButton(file, w) // a phone: the Office home's favourite (a tablet: the heart in the top bar)
+                            RibbonButton("Save as", w, R.drawable.ic_save, enabled = file != null) { naming = "as" }
+                            RibbonButton("Rename", w, R.drawable.ic_edit, enabled = file != null) { naming = "rename" }
+                            RibbonDivider(w)
+                            RibbonButton("Versions", w, R.drawable.ic_history, enabled = file != null) { showVersions = true }
+                            RibbonButton("Edit in Words", w, R.drawable.ic_edit_note) { exportWords() }
+                            RibbonButton("Export text", w, R.drawable.ic_text_fields) { exportText() }
+                            RibbonButton("Print", w, R.drawable.ic_print) { if (d.dirty) save { print() } else print() }
+                            file?.let { f ->
+                                RibbonDivider(w)
+                                // a change saved first, so what goes is what shows (Slides')
+                                RibbonButton("Share", w, R.drawable.ic_share) { if (d.dirty) save { shareDriveFile(context, f) } else shareDriveFile(context, f) }
+                                RibbonButton("Open in another app", w, R.drawable.ic_open_with) { if (d.dirty) save { openElsewhere(context, f) } else openElsewhere(context, f) }
+                            }
+                            RibbonDivider(w)
+                            RibbonButton("About this file", w, R.drawable.ic_info) { about = true }
+                            RibbonButton("Send log", w, R.drawable.ic_share) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
+                            RibbonDivider(w)
+                            RibbonButton("Settings", w, R.drawable.ic_settings) { officeSettings = true }
+                            return@RibbonLine
+                        }
+                        // Home, as Slides': a new text's tools, then the look — of the chosen text, else the next one typed
+                        if (tab == "Home") {
+                            ToolButton(PdfTool.Text); ToolButton(PdfTool.TextBox)
+                            RibbonDivider(w)
+                            val look = c0?.third?.look ?: textLook
+                            PdfLookTools(w, look, { l -> if (c0 != null) rechange(t = c0.third.copy(look = l)) else textLook = l }, { fontBefore = look.font })
+                            Tool(R.drawable.ic_format_clear, "Clear formatting", w) {
+                                if (c0 != null) rechange(t = c0.third.copy(look = PdfTextLook(fill = look.fill, line = look.line, turn = look.turn), runs = emptyList())) else textLook = PdfTextLook() }
+                            return@RibbonLine
+                        }
+                        // Layout, as Words' and Tables': the pages' size and way round (all of them, as Word's without sections), the margins
+                        if (tab == "Layout") {
+                            val now = d.sizes.getOrNull(at)
+                            RibbonMenu("Size", w, R.drawable.ic_fit_page, preset = false, choices = PdfPaper.all.map { (name, p) ->
+                                MenuChoice("$name · ${WriterUnits.text(p.width)} × ${WriterUnits.text(p.height)} ${WriterUnits.name}", checked = now?.let { PdfPaper.name(it).startsWith("$name ") } == true) {
+                                    // the paper's size, each page kept the way round it was
+                                    change { d.resize { s -> if (s.width > s.height) Size(p.height, p.width) else p } }; WriterLog.i("PDF: page size $name") } })
+                            RibbonButton("Portrait", w, R.drawable.ic_crop_portrait, on = now != null && now.height >= now.width) {
+                                change { d.resize { s -> if (s.width > s.height) Size(s.height, s.width) else s } }; WriterLog.i("PDF: portrait") }
+                            RibbonButton("Landscape", w, R.drawable.ic_crop_landscape, on = now != null && now.width > now.height) {
+                                change { d.resize { s -> if (s.height > s.width) Size(s.height, s.width) else s } }; WriterLog.i("PDF: landscape") }
+                            RibbonMenu("Margins", w, R.drawable.ic_margin, preset = false, choices = PdfMargins.all.map { (name, v) ->
+                                MenuChoice("$name · ${WriterUnits.text(v.first)} / ${WriterUnits.text(v.second)} ${WriterUnits.name}", checked = PdfMargins.nameOf(margins) == name) {
+                                    margins = PdfMargins.page(name); PdfMargins.save(context, name) } })
+                            RibbonDivider(w)
+                            val page = at
+                            RibbonButton("Blank page", w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
+                            RibbonButton("Delete page", w, R.drawable.ic_delete, enabled = d.sizes.size > 1) { change { d.delete(listOf(page)) } }
+                            RibbonButton("Rotate left", w, R.drawable.ic_rotate_left) { change { d.rotate(listOf(page), -90) } }
+                            RibbonButton("Rotate right", w, R.drawable.ic_rotate_right) { change { d.rotate(listOf(page), 90) } }
+                            return@RibbonLine
+                        }
+                        // View, as Words': the page list, comments, bookmarks; the zoom; one or two pages, as wide as the screen; rulers; the unit
+                        if (tab == "View") {
+                            RibbonButton("Navigation", w, R.drawable.ic_navigation, on = if (wide) navigation else pages) { if (wide) navigation = !navigation else pages = !pages }
+                            RibbonButton("Comments", w, R.drawable.ic_comment, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
+                            RibbonButton("Bookmarks", w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
+                            RibbonDivider(w)
+                            Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 1f) { zoom = (zoom - 0.25f).coerceAtLeast(1f); pan = Offset.Zero; settled = zoom }
+                            Text("${Math.round(zoom * 100)}%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(44.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < Pdf.MAX_ZOOM) { zoom = (zoom + 0.25f).coerceAtMost(Pdf.MAX_ZOOM); pan = Offset.Zero; settled = zoom }
+                            RibbonDivider(w)
+                            RibbonButton("Fit width", w, R.drawable.ic_fit_page, on = fitWidth) { val keep = at; fitWidth = !fitWidth; goTo(keep) }
+                            RibbonButton("Two pages", w, R.drawable.ic_view_column, on = across == 2) { val keep = at; across = 3 - across; goTo(keep) }
+                            if (wide) RibbonButton("Ruler", w, R.drawable.ic_margin, on = rulers) { rulers = !rulers }
+                            RibbonDivider(w)
+                            RibbonButton("cm", w, on = !WriterUnits.inches) { WriterUnits.set(context, false) }
+                            RibbonButton("inches", w, on = WriterUnits.inches) { WriterUnits.set(context, true) }
+                            return@RibbonLine
+                        }
                         // Slides' Selection tab: what is chosen cut, copied, pasted; words pasted alone; its look copied and put on another
                         if (tab == "Selection" && c0 != null) {
                             val (ci, _, ct) = c0
@@ -1795,7 +1973,20 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             return@RibbonLine
                         }
                         if (tab == "Insert") {
+                            // as Words' Insert: pages, words, pictures and drawings, notes, page furniture
+                            val page = at
+                            RibbonButton("Blank page", w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
+                            RibbonButton("Insert PDF", w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
+                            RibbonDivider(w)
+                            ToolButton(PdfTool.Text); ToolButton(PdfTool.TextBox)
+                            RibbonDivider(w)
                             RibbonButton("Picture", w, R.drawable.ic_gallery) { pickImage.launch(arrayOf("image/*")) }
+                            RibbonButton("Signature", w, R.drawable.ic_draw, on = tool == PdfTool.Sign) { if (!signatureFile.isFile) signing = true else tool = if (tool == PdfTool.Sign) null else PdfTool.Sign }
+                            RibbonButton("Stamp", w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) { tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp }
+                            ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
+                            RibbonDivider(w)
+                            ToolButton(PdfTool.Note); ToolButton(PdfTool.Date)
+                            RibbonDivider(w)
                             RibbonButton("Page numbers", w, R.drawable.ic_format_list_numbered) { change { d.headerFooter("", "{n} / {N}", 10f) } }
                             RibbonButton("Header & footer", w, R.drawable.ic_text_fields) { asking = "header" }
                             RibbonButton("Watermark", w, R.drawable.ic_branding_watermark) { asking = "watermark" }

@@ -2095,6 +2095,16 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       look, Clear formatting, Position, Arrange, Rotate, Duplicate, Delete); the other tabs stay; choosing a text shows
       its tab, letting it go shows the tab before; the right button's menu as before. The Format painter became Copy /
       Paste formatting. Emulator, tablet size.
+      Then (the user: "its not even close, page layout and stuff — take a look on what the other applets have"): Words'
+      tabs in Words' order — File (Save, Save a copy, AutoSave, Save as, Rename, Versions, Edit in Words, Export text,
+      Print, Share, Open in another app, About this file, Send log, Settings), Home (Text, Text box, the look of the chosen
+      text or the next one), Insert (Blank page, Insert PDF, Text, Text box, Picture, Signature, Stamp, Rectangle, Oval,
+      Arrow, Note, Date, Page numbers, Header & footer, Watermark), Draw, Layout (Size: A4/A5/A3/Letter/Legal, Portrait,
+      Landscape — every page, its top left kept; Margins: Word's presets, used by Position and a new text; Blank/Delete
+      page, Rotate), Pages, Review, Fill & Sign, Protect, View (Navigation, Comments, Bookmarks, Zoom − % +, Fit width,
+      Two pages, Ruler on a tablet, cm/inches) — and Words' rulers along the top and down each page. Save a copy leaves
+      the file unsaved (a redaction still to do stays to do). PdfNewDeviceTest pageSizeAndWayRound. A second emulator
+      (books_tablet, read-only) while another session used the first. Not done: Design (page colour, borders).
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

@@ -31,4 +31,21 @@ class PdfNewDeviceTest {
         again.close()
         dir.deleteRecursively()
     }
+
+    @Test fun pageSizeAndWayRound() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-size-test").apply { deleteRecursively() }
+        val d = PdfDoc(Pdf.newBlank(dir))
+        d.insertBlank(1)
+        d.putText(0, 100f, 80f, PdfText("Top left", PdfTextLook(), false), 300f)
+        // Layout › Landscape: every page the other way round, what is on it where it was from the top left
+        d.resize { s -> if (s.height > s.width) Size(s.height, s.width) else s }
+        assertEquals(listOf(Size(842f, 595f), Size(842f, 595f)), d.sizes)
+        val (r, _) = d.typedAt(0, androidx.compose.ui.geometry.Offset(110f, 90f))!!
+        assertEquals(100f, r.left); assertEquals(80f, r.top)
+        // Layout › Size › Letter, each page kept the way round it is
+        d.resize { s -> val p = Size(612f, 792f); if (s.width > s.height) Size(p.height, p.width) else p }
+        assertEquals(Size(792f, 612f), d.sizes[0])
+        assertEquals("Letter landscape", PdfPaper.name(d.sizes[0]))
+        d.close(); dir.deleteRecursively()
+    }
 }

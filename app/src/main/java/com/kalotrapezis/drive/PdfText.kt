@@ -32,6 +32,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -301,3 +302,25 @@ internal fun BoxScope.PdfChosenFrame(page: androidx.compose.ui.geometry.Size, r:
                     onDragCancel = { spin = null }) { ch, d -> ch.consume(); at += d; spin = angle() }
             })
     }
+
+/** Layout › Size's papers (points), as Word's and Tables' Size. */
+internal object PdfPaper {
+    val all = listOf("A4" to Size(595f, 842f), "A5" to Size(420f, 595f), "A3" to Size(842f, 1191f), "Letter" to Size(612f, 792f), "Legal" to Size(612f, 1008f))
+    /** [s]'s paper and way round ("A4 portrait"), else its size in the chosen unit. */
+    fun name(s: Size): String {
+        val (w, h) = minOf(s.width, s.height) to maxOf(s.width, s.height)
+        val way = if (s.width > s.height) "landscape" else "portrait"
+        return all.firstOrNull { (_, p) -> kotlin.math.abs(p.width - w) < 3 && kotlin.math.abs(p.height - h) < 3 }?.let { "${it.first} $way" }
+            ?: "${WriterUnits.text(s.width)} × ${WriterUnits.text(s.height)} ${WriterUnits.name}"
+    }
+}
+
+/** Layout › Margins (Word's presets), the same for every PDF: where Position puts a text and where a new one starts. */
+internal object PdfMargins {
+    /** name → top/bottom, left/right (points) */
+    val all = listOf("Normal" to (72f to 72f), "Narrow" to (36f to 36f), "Moderate" to (72f to 54f), "Wide" to (72f to 144f))
+    fun page(name: String) = (all.firstOrNull { it.first == name } ?: all[0]).second.let { (tb, lr) -> DocPage(top = tb, bottom = tb, left = lr, right = lr) }
+    fun nameOf(m: DocPage) = all.firstOrNull { (_, v) -> v.first == m.top && v.second == m.left }?.first
+    fun load(context: android.content.Context) = page(context.getSharedPreferences("office_editor", android.content.Context.MODE_PRIVATE).getString("pdf_margins", "Normal") ?: "Normal")
+    fun save(context: android.content.Context, name: String) = context.getSharedPreferences("office_editor", android.content.Context.MODE_PRIVATE).edit().putString("pdf_margins", name).apply()
+}

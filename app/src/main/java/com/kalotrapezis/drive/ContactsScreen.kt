@@ -236,6 +236,8 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     // on only when it can be: chosen (the default since the user's yes) and Tetra may write the phone's contacts
     var systemOn by remember { mutableStateOf(ContactsAccount.on(context) && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
     LaunchedEffect(version, systemOn) { ContactsAccount.soon(context) }
+    var callsOn by remember { mutableStateOf(PhoneCall.allowed(context)) }
+    val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> callsOn = ok; message = if (ok) "A call from the computer now rings at once" else "Calls from the computer come as a notification to tap" }
     val askWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) { ContactsAccount.set(context, true); systemOn = true; message = "Your contacts are in the phone's contacts too" }
         else message = "Tetra needs to write the phone's contacts for this."
@@ -464,6 +466,9 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED -> { ContactsAccount.set(context, true); systemOn = true }
                     else -> askWrite.launch(Manifest.permission.WRITE_CONTACTS)
                 }
+            }
+            DrawerButton(R.drawable.ic_call, if (callsOn) "Calls from the computer: at once" else "Calls from the computer: as a notification", callsOn, Modifier.fillMaxWidth()) {
+                if (!callsOn) askCalls.launch(Manifest.permission.CALL_PHONE) else message = "Turn it off in Android's settings › Apps › Tetra › Permissions › Phone"
             }
             Text("A read-only copy under the account Tetra, so the dialer, Viber, WhatsApp and the car show these names and photos. Edits are made here.",
                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))

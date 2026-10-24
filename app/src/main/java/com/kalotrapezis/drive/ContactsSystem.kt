@@ -130,3 +130,36 @@ internal object ContactsWays {
         }.distinctBy { Triple(it.app, it.way, key(it.number)) }
     }
 }
+
+/**
+ * A call asked for by the computer's Contacts (the user, 24 Oct: "phone calls"): a PC cannot place one, so this phone does
+ * (SyncServer /call) — at once when Tetra may call (CALL_PHONE, Contacts › More › Calls from the computer), else a
+ * notification "Call Μαρία" that opens the dialer at a tap. The voice is the phone's, or a Bluetooth headset's.
+ */
+internal object PhoneCall {
+    private const val CHANNEL = "calls_from_computer"
+    private const val NOTE = 4146
+
+    fun allowed(c: Context) = c.checkSelfPermission(android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    fun fromComputer(c: Context, number: String, name: String): org.json.JSONObject {
+        val uri = android.net.Uri.fromParts("tel", number, null)
+        if (allowed(c)) runCatching {
+            c.getSystemService(android.telecom.TelecomManager::class.java).placeCall(uri, android.os.Bundle())
+            WriterLog.i("Contacts: a call from the computer placed")
+            return org.json.JSONObject().put("how", "calling")
+        }.onFailure { WriterLog.e("Contacts: a call from the computer could not be placed", it) }
+        if (!androidx.core.app.NotificationManagerCompat.from(c).areNotificationsEnabled())
+            return org.json.JSONObject().put("error", "Tetra's notifications are off on the phone, and it may not call by itself.")
+        val nm = c.getSystemService(android.app.NotificationManager::class.java)
+        if (nm.getNotificationChannel(CHANNEL) == null) nm.createNotificationChannel(android.app.NotificationChannel(CHANNEL, "Calls from the computer", android.app.NotificationManager.IMPORTANCE_HIGH))
+        val tap = android.app.PendingIntent.getActivity(c, 0, android.content.Intent(android.content.Intent.ACTION_DIAL, uri).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
+        nm.notify(NOTE, androidx.core.app.NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_call)
+            .setContentTitle("Call ${name.ifBlank { number }}").setContentText("From the computer: tap to call $number")
+            .setContentIntent(tap).setAutoCancel(true).setCategory(androidx.core.app.NotificationCompat.CATEGORY_CALL)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH).build())
+        return org.json.JSONObject().put("how", "notification")
+    }
+}
+

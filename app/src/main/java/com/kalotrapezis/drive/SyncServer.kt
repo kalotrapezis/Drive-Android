@@ -211,6 +211,16 @@ internal class SyncServer(private val context: Context, private val store: SyncS
             val (status, body) = PhoneLocation.answer(context)
             return reply(output, status, body)
         }
+        // A call from the computer's Contacts (PhoneCall): this phone places it, or shows it to tap. Only a paired device.
+        if (method == "POST" && path.startsWith("/call?")) {
+            val known = bearer != null && store.peers().any { it.theirToken == bearer }
+            if (!known) return reply(output, 401, JSONObject().put("error", "Not paired."))
+            val url = android.net.Uri.parse("https://x$path")
+            val number = url.getQueryParameter("number").orEmpty().filter { it.isDigit() || it in "+*#" }.take(32)
+            if (number.count(Char::isDigit) < 3) return reply(output, 400, JSONObject().put("error", "Not a phone number."))
+            val r = PhoneCall.fromComputer(context, number, url.getQueryParameter("name").orEmpty().take(80))
+            return reply(output, if (r.has("error")) 409 else 200, r)
+        }
         // Send to phone: a file from the computer, into Files › From computer (FromComputer). Only a paired device.
         if (method == "PUT" && path.startsWith("/send/")) {
             val peer = bearer?.let { b -> store.peers().firstOrNull { it.theirToken == b } } ?: return reply(output, 401, JSONObject().put("error", "Not paired."))

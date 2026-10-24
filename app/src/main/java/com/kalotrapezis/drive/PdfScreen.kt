@@ -103,6 +103,18 @@ internal object Pdf {
     const val MAX_ZOOM = 5f
     fun isPdf(name: String) = name.endsWith(".pdf", ignoreCase = true)
 
+    /** A new PDF in [dir] (asked 24 Oct: "a blank page so we can create a PDF"): one empty A4 portrait page, "New PDF (n).pdf". */
+    fun newBlank(dir: File): File {
+        dir.mkdirs()
+        val f = generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "New PDF.pdf" else "New PDF ($it).pdf") }.first { !it.exists() }
+        val out = com.artifex.mupdf.fitz.PDFDocument()
+        try {
+            out.insertPage(0, out.addPage(com.artifex.mupdf.fitz.Rect(0f, 0f, 595f, 842f), 0, out.newDictionary(), ""))
+            out.save(f.path, "compress")
+        } finally { out.destroy() }
+        return f
+    }
+
     /** Page text and search: MuPDF reads them on every Android (Android's own renderer only from 15). */
     const val hasText = true
 
@@ -1030,7 +1042,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     }
 
     // —— editing (Plan.md § PDF): opened view only, Edit as Words' ——
-    var editing by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
     var tab by remember { mutableStateOf("Pages") }
     var tool by remember { mutableStateOf<PdfTool?>(null) }
     var markColour by remember { mutableStateOf(0xFFEB3B) } // Review's colour (highlight, shapes, notes)
@@ -1466,8 +1478,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     }
                 } }
             }
-            // on a phone the label is also the button for the list of pages
-            if (d != null && d.sizes.isNotEmpty()) Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = if (pages) PDF_RED else Color.White, shape = CircleShape,
+            // on a phone the label is also the button for the list of pages; gone while editing, as Words' (the user, 24 Oct: it sat on the page)
+            if (d != null && d.sizes.isNotEmpty() && !editing) Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = if (pages) PDF_RED else Color.White, shape = CircleShape,
                 modifier = Modifier.align(Alignment.BottomCenter).bottomBarPadding().padding(bottom = 16.dp).then(if (wide) Modifier else Modifier.clickable { val keep = at; pages = !pages; scope.launch { list.scrollToItem(keep) } })) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (!wide) Icon(painterResource(R.drawable.ic_view_grid), contentDescription = if (pages) "Hide the pages" else "Show the pages", modifier = Modifier.padding(end = 8.dp).size(18.dp))

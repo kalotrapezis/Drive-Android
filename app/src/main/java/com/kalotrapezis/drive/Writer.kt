@@ -1089,6 +1089,12 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         }
     }
     val pick = rememberOfficePicker { f -> Uri.fromFile(f).toString().let { if (Pdf.isPdf(f.name)) openPdf(it) else if (Slides.isSlides(f.name)) openSlides(it) else if (Sheets.isSheet(f.name)) openSheet(it) else open(it) } }
+    var newPdfMenu by remember { mutableStateOf(false) }
+    /** A new PDF in Documents, a blank A4 page, opened editing. */
+    fun newPdf() {
+        runCatching { Pdf.newBlank(File(root, "Documents")).also { JustMade.mark(it); WriterLog.i("PDF: a new blank PDF"); openPdf(Uri.fromFile(it).toString()) } }
+            .onFailure { WriterLog.e("PDF: a new PDF could not be made", it); android.widget.Toast.makeText(context, "Could not make the PDF.", android.widget.Toast.LENGTH_LONG).show() }
+    }
     /** A new presentation in Documents, opened editing: the app's empty deck (a title slide), or one of [template]. */
     fun newPresentation(template: File?) {
         runCatching {
@@ -1188,8 +1194,14 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                     { m -> NewDocCard("Slides", "New presentation", POWERPOINT_ORANGE, m, {
                         if (SlidesTemplates.files().isNotEmpty()) choosingTemplate = true else newPresentation(null)
                     }) { pick(OfficePick.Slides) } },
-                    // a new PDF: photos chosen, a page each (the scanner's way of writing one), into Documents, opened
-                    { m -> NewDocCard("PDF", "New from photos", PDF_RED, m, { photosToPdf.launch(arrayOf("image/*")) }) { pick(OfficePick.Pdf) } },
+                    // a new PDF (asked 24 Oct: New opened the photo picker, taken for a broken Open): a blank A4 page, or photos a page each
+                    { m -> Box(m) {
+                        NewDocCard("PDF", "New PDF", PDF_RED, Modifier.fillMaxWidth(), { newPdfMenu = true }) { pick(OfficePick.Pdf) }
+                        DropdownMenu(newPdfMenu, { newPdfMenu = false }) {
+                            DropdownMenuItem(text = { Text("Blank page (A4)") }, leadingIcon = { Icon(painterResource(R.drawable.ic_note_add), null) }, onClick = { newPdfMenu = false; newPdf() })
+                            DropdownMenuItem(text = { Text("From photos") }, leadingIcon = { Icon(painterResource(R.drawable.ic_gallery), null) }, onClick = { newPdfMenu = false; photosToPdf.launch(arrayOf("image/*")) })
+                        }
+                    } },
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     cards.chunked(if (narrow) 2 else 4).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { it(Modifier.weight(1f)) } } }

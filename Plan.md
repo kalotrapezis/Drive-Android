@@ -2052,6 +2052,12 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
 - [ ] Left: cover-and-retype for a PDF's own text; digital (certificate) signatures (~6 MB of crypto); remove hidden
       information; document properties; a placed signature moved afterwards; Edit in Words sometimes misses a table's header
       row; the phone layout checked; all of it on the real pair (phone 208c8192, tablet 971f6b37).
+- [x] (pdf-new session, 24 Oct; branch claude/pdf-new) The user: "Open PDFs" showed only images — it was Office's PDF card, whose
+      New was "New from photos" (Android's photo picker); Home's Open PDFs tile already lists PDFs only. Now the card's New is
+      "New PDF" with a menu: Blank page (A4) — `Pdf.newBlank`, "New PDF (n).pdf" in Documents, opened editing (JustMade, as
+      Slides) — and From photos. PdfNewDeviceTest (blank, text, page, saved, reopened). Desktop: none, by scope (22 Oct).
+      The "Page X of Y" pill now only while viewing, as Words' (the user: it sat on the page while editing). Emulator, tablet
+      and phone sizes; not yet on the real pair.
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

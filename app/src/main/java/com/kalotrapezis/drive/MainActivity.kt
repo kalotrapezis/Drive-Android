@@ -3413,7 +3413,9 @@ private fun PhotoTab(
     val peopleNamesByPhoto = remember(allEntries, metadataRevision) { metadataStore.peopleNamesByPhoto(allEntries.map(Entry::photoKey)) }
     val locationsByPhoto = remember(allEntries, locationVersion) { metadataStore.locations(allEntries.map(Entry::photoKey)) }
     // Only people who still have a photo here: delete or move every photo of someone and they stop being listed.
-    val faceGroups = remember(allEntries, metadataRevision) { metadataStore.faceGroups(allEntries.mapTo(HashSet(), Entry::photoKey)) }
+    val faceGroups = remember(allEntries, metadataRevision) {
+        metadataStore.faceGroups(allEntries.mapTo(HashSet(), Entry::photoKey), onComputer = SyncStore(context.applicationContext).use { it.receiptKeys() })
+    }
     val reviewKeys = remember(metadataRevision) { metadataStore.reviewKeys() }
     val pendingReviews = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.pendingReviews() else emptyList() }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }
@@ -4169,22 +4171,30 @@ private fun PeopleGroups(
         }
         return
     }
+    // People whose photos all went to the computer are drawn by the computer's own crop of their face
+    val context = LocalContext.current
+    val away = remember(groups) { groups.filter { !it.here }.mapNotNull { it.coverUuid } }
+    val crops by produceState(emptyMap<String, File>(), away) {
+        if (away.isNotEmpty()) value = withContext(Dispatchers.IO) { SyncClient(context.applicationContext, SyncStore(context.applicationContext)).faceCrops(away) }
+    }
     LazyVerticalGrid(gridColumns(2), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         item(span = { GridItemSpan(maxLineSpan) }) { header() }
         items(groups, key = { it.id }) { group ->
-            FaceGroupCard(group, entries[group.photoKey], chooseFace = { chooseFace(group) }, rename = { rename(group) }, forget = { forget(group) }) { open(group) }
+            FaceGroupCard(group, entries[group.photoKey], crops[group.coverUuid], chooseFace = { chooseFace(group) }, rename = { rename(group) }, forget = { forget(group) }) { open(group) }
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FaceGroupCard(group: FaceGroup, entry: Entry?, chooseFace: () -> Unit, rename: () -> Unit, forget: () -> Unit, open: () -> Unit) = Surface(
+private fun FaceGroupCard(group: FaceGroup, entry: Entry?, crop: File?, chooseFace: () -> Unit, rename: () -> Unit, forget: () -> Unit, open: () -> Unit) = Surface(
     shape = MaterialTheme.shapes.extraLarge,
     color = MaterialTheme.colorScheme.surfaceVariant,
     modifier = Modifier.aspectRatio(1f).combinedClickable(onClick = open, onLongClick = chooseFace),
 ) { Box(Modifier.fillMaxSize()) {
-    FaceCrop(entry, group, Modifier.fillMaxSize())
+    val picture = remember(crop) { crop?.let { runCatching { BitmapFactory.decodeFile(it.path)?.asImageBitmap() }.getOrNull() } }
+    if (entry == null && picture != null) Image(picture, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+    else FaceCrop(entry, group, Modifier.fillMaxSize())
     var menu by remember { mutableStateOf(false) }
     Box(Modifier.align(Alignment.TopStart).padding(8.dp)) {
         Surface(color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White, shape = CircleShape) {
@@ -4201,7 +4211,7 @@ private fun FaceGroupCard(group: FaceGroup, entry: Entry?, chooseFace: () -> Uni
     Surface(color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White, modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
         Column(Modifier.padding(10.dp)) {
             Text(group.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(group.count.toString(), style = MaterialTheme.typography.labelSmall)
+            Text(if (group.here) group.count.toString() else "${group.count} · on the computer", style = MaterialTheme.typography.labelSmall)
         }
     }
 } }

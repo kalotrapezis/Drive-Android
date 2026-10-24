@@ -86,6 +86,20 @@ class IncomingFaceDeviceTest {
         return group.id
     }
 
+    @Test fun aNameBeatsAGuessWhicheverWayRoundTheyAreCombined() {
+        val anna = givenANamedPersonHere()
+        store.recordClassification("photo-of-someone", 0f, listOf(
+            DetectedFace(Rect(10, 10, 120, 120), stranger.copyOf(), quality = 0.9f, yaw = 0f, roll = 0f),
+        ), emptyList())
+        val guess = store.faceGroups().single { it.id != anna }
+        assertTrue(isGeneratedPersonName(guess.name))
+        // "Άννα" combined into the guess (the user, 24 Oct: "Σταύρος Μ" into "Person 608" lost the name)
+        val undo = store.mergeFaceGroups(anna, guess.id)
+        assertEquals("Άννα", store.faceGroups().single().name)
+        store.undoFaceMerge(undo)
+        assertEquals("undo gives the guess its own name back", setOf("Άννα", guess.name), store.faceGroups().map { it.name }.toSet())
+    }
+
     @Test fun aFaceFromTheComputerJoinsTheRightPersonHere() {
         val anna = givenANamedPersonHere()
         // The computer found this face; its person is one this phone has never heard of.
@@ -327,6 +341,9 @@ class IncomingFaceDeviceTest {
         // but only the guess is actually forgotten.
         store.forgetPhotos(listOf("photo-here", "stranger-photo"))
         assertEquals("nobody is shown when nothing of theirs is left in the gallery", 0, store.faceGroups(emptySet()).size)
+        // Her photo went to the computer (a receipt): she is still shown, drawn by the computer's crop (24 Oct)
+        val away = store.faceGroups(emptySet(), onComputer = setOf("photo-here", "stranger-photo")).single()
+        assertEquals("Άννα", away.name); assertTrue(!away.here)
         assertEquals("the guess about a photo that no longer exists is gone", 0, store.faceGroupFaces(store.faceGroups().single { it.name == "Άννα" }.id).size.let { 0 })
         assertEquals("she is still here, with what she is recognised by", 1, store.faceGroups().count { it.name == "Άννα" })
 

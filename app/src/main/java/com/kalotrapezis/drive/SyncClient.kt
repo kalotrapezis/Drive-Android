@@ -288,6 +288,11 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
         writableDatabase.delete("to_remove", "photo_key IN (${photoKeys.joinToString { "?" }})", photoKeys.toTypedArray())
     }
 
+    /** The gallery keys of every photo given to the computer: People still shows their named people (24 Oct). */
+    fun receiptKeys(): Set<String> = readableDatabase.rawQuery("SELECT photo_key FROM receipts", null).use { c ->
+        buildSet { while (c.moveToNext()) add(c.getString(0)) }
+    }
+
     fun receiptCount(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM receipts", null).use { it.moveToFirst(); it.getInt(0) }
 
     /** Every photo this phone has given the computer — the proof that a copy coming back would be one it deleted. */
@@ -901,6 +906,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         pulled.each("reviews") { d ->
             metadataStore.applyIncomingReview(d.getString("face"), d.getString("person"), d.optString("state"), d.getLong("updatedAt"))
         }
+        metadataStore.forgetEmptyGuesses() // a guess left with no face after the faces moved is nobody (24 Oct)
         pulled.each("files") { d ->
             val tags = d.optJSONArray("tags") ?: JSONArray()
             driveMetadata.applyIncoming(DriveMetaRecord(
@@ -1067,6 +1073,30 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         } finally {
             part.delete()
         }
+    }
+
+    /**
+     * The computer's 160-px crops of these faces, kept in files/faces: People's covers for people whose photos all
+     * went to the computer (24 Oct). The computer is reached once, only for crops not kept yet; one it is away for or
+     * does not have is simply missing, and asked for again next time.
+     */
+    fun faceCrops(uuids: Collection<String>): Map<String, File> {
+        val dir = File(context.filesDir, "faces")
+        val missing = uuids.filter { Regex("[0-9a-f-]{36}").matches(it) && !File(dir, "$it.webp").isFile }.distinct()
+        if (missing.isNotEmpty()) runCatching {
+            val p = reach(store.pairing() ?: return@runCatching)
+            dir.mkdirs()
+            for (uuid in missing) runCatching {
+                val c = open(p.hosts.first(), p.port, p.fingerprint, "/face/$uuid", "GET", p.token)
+                try {
+                    if (c.responseCode != 200) return@runCatching
+                    val part = File(dir, ".$uuid.part")
+                    c.inputStream.use { input -> part.outputStream().use { input.copyTo(it) } }
+                    check(part.renameTo(File(dir, "$uuid.webp")))
+                } finally { c.disconnect() }
+            }
+        }
+        return uuids.mapNotNull { u -> File(dir, "$u.webp").takeIf { it.isFile }?.let { u to it } }.toMap()
     }
 
     private suspend fun sha256(f: File): String = SyncRules.hex(MessageDigest.getInstance("SHA-256").also { d -> f.inputStream().use { pump(it, java.io.OutputStream.nullOutputStream(), d) } }.digest())

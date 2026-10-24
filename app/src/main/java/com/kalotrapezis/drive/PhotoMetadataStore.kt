@@ -24,10 +24,11 @@ internal enum class PhotoSearchQuality { Fast, Advanced }
 /** `here` of its photos are on this device and `elsewhere` are not — kept by the computer after a Move (25 September). */
 internal data class PhotoCollection(val id: Long, val name: String, val storedCount: Int, val uuid: String? = null, val here: Int = storedCount, val elsewhere: Int = 0)
 internal data class FaceSample(val photoKey: String, val bounds: android.graphics.Rect)
-internal data class FaceMergeUndo(val sourceName: String, val sampleIds: List<Long>, val sourceUuid: String? = null)
+/** [targetName]: the name the kept person had before it took the combined one's (a "Person 41" given way to a name). */
+internal data class FaceMergeUndo(val sourceName: String, val sampleIds: List<Long>, val sourceUuid: String? = null, val targetId: Long? = null, val targetName: String? = null)
 /** The head a combined group was shown by, so History can draw it after the group itself is gone. */
 internal data class FaceHead(val photoKey: String, val left: Int, val top: Int, val right: Int, val bottom: Int)
-internal data class FaceMerge(val id: Long, val sourceName: String, val sourceUuid: String?, val sampleIds: List<Long>, val mergedAt: Long, val head: FaceHead?)
+internal data class FaceMerge(val id: Long, val sourceName: String, val sourceUuid: String?, val sampleIds: List<Long>, val mergedAt: Long, val head: FaceHead?, val targetId: Long? = null, val targetName: String? = null)
 internal data class PendingReview(
     val photoKey: String,
     val question: String,
@@ -35,7 +36,8 @@ internal data class PendingReview(
     val faceSampleId: Long? = null,
     val faceSample: FaceSample? = null,
 )
-internal data class FaceGroup(val id: Long, val name: String, val count: Int, val photoKey: String, val left: Int, val top: Int, val right: Int, val bottom: Int)
+/** [here]: false when every photo of this person has left this phone (a Move): the cover is then the computer's crop of [coverUuid]. */
+internal data class FaceGroup(val id: Long, val name: String, val count: Int, val photoKey: String, val left: Int, val top: Int, val right: Int, val bottom: Int, val coverUuid: String? = null, val here: Boolean = true)
 internal data class FavoriteRecord(val photoKey: String, val favorite: Boolean, val updatedAt: Long)
 internal data class CollectionRecord(val uuid: String, val name: String, val deleted: Boolean, val updatedAt: Long, val hiddenFromGallery: Boolean = false)
 internal data class CollectionItemRecord(val collectionUuid: String, val photoKey: String, val deleted: Boolean, val updatedAt: Long)
@@ -55,7 +57,7 @@ internal data class DocumentRecord(val photoKey: String, val type: String?, val 
 internal fun FaceGroup.bounds(): android.graphics.Rect = android.graphics.Rect(left, top, right, bottom)
 
 /** Private metadata only. It never changes the MediaStore item or its bytes. */
-internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 22) {
+internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, "photo_metadata.db", null, 23) {
     private val appContext = context.applicationContext
 
     private companion object {
@@ -74,7 +76,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         /** Your answer per folder of this phone (FolderRules). A folder's files are this device's, so it does not sync; its album does. */
         const val DEVICE_FOLDERS = "CREATE TABLE IF NOT EXISTS device_folders (name TEXT PRIMARY KEY COLLATE NOCASE, included INTEGER NOT NULL, updated_at INTEGER NOT NULL)"
         const val MERGE_HISTORY = "CREATE TABLE IF NOT EXISTS face_merges (id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-            "target_id INTEGER NOT NULL, source_name TEXT NOT NULL, source_uuid TEXT, sample_ids TEXT NOT NULL, merged_at INTEGER NOT NULL)"
+            "target_id INTEGER NOT NULL, source_name TEXT NOT NULL, source_uuid TEXT, sample_ids TEXT NOT NULL, merged_at INTEGER NOT NULL, target_name TEXT)"
     }
     private val context = context.applicationContext
     private val galleryPreferences = this.context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE)
@@ -167,6 +169,8 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         // does not come back as a new person — just never shown, searched or asked about.
         if (oldVersion < 21) db.execSQL("ALTER TABLE face_groups ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
         if (oldVersion < 22) db.execSQL(DEVICE_FOLDERS)
+        // The kept person's own name before a combine gave it the other's, so undo can give it back (24 Oct).
+        if (oldVersion in 17..22) db.execSQL("ALTER TABLE face_merges ADD COLUMN target_name TEXT")
         if (oldVersion < 16) db.inTransaction {
             execSQL("ALTER TABLE collections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
             val hidden = context.getSharedPreferences("photo_gallery", Context.MODE_PRIVATE).getStringSet("hidden_albums", emptySet()).orEmpty()
@@ -427,45 +431,56 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         }, "face_sample_id = ? AND candidate_group_id = ?", arrayOf(review.faceSampleId.toString(), review.candidateGroupId.toString()))
     }
 
+    /** A guess ("Person 41") with no face left: gone, with what pointed at it. Names stay (FORGET_EMPTY_GUESSES). */
+    fun forgetEmptyGuesses() = writableDatabase.inTransaction {
+        execSQL(FORGET_EMPTY_GUESSES)
+        execSQL("DELETE FROM face_reviews WHERE candidate_group_id NOT IN (SELECT id FROM face_groups)")
+        execSQL("DELETE FROM face_merges WHERE target_id NOT IN (SELECT id FROM face_groups)")
+    }
+
     fun peopleKeys(): Set<String> = keysFor("SELECT DISTINCT photo_key FROM face_samples", emptyArray())
 
     /**
      * The people to show, and the face to show them by.
      *
-     * A group is only as alive as its photos: when every photo of a person has been deleted or moved away there
-     * is nothing left to show, so the group does not appear (the rows stay, because Android's own Trash holds a
-     * deleted photo for thirty days and restoring it should bring the person back, name and all).
+     * A group is only as alive as its photos: when every photo of a person has been deleted there is nothing left
+     * to show, so the group does not appear (the rows stay, because Android's own Trash holds a deleted photo for
+     * thirty days and restoring it should bring the person back, name and all). A **named** person whose photos all
+     * went to the computer ([onComputer]: the receipts' keys) stays (the user, 24 Oct: after the Move the phone
+     * showed 39 of its 92 people); a guess ("Person 41") with nothing here does not.
      *
      * The cover is the **best face**, not the first one found. Since the computer's faces now arrive with their
      * quality score, measured by the same formula, the better portrait wins wherever it was found — which is
      * usually the computer, because it detects at a larger size.
      */
-    fun faceGroups(livePhotoKeys: Set<String>? = null, forgotten: Boolean = false): List<FaceGroup> = groupsFrom(livePhotoKeys, null, forgotten)
+    fun faceGroups(livePhotoKeys: Set<String>? = null, forgotten: Boolean = false, onComputer: Set<String> = emptySet()): List<FaceGroup> =
+        groupsFrom(livePhotoKeys, null, forgotten, onComputer)
         .sortedWith(compareBy<FaceGroup> { isGeneratedPersonName(it.name) }.thenBy { it.name.lowercase(Locale.ROOT) })
 
     fun faceGroup(groupId: Long, livePhotoKeys: Set<String>? = null): FaceGroup? = groupsFrom(livePhotoKeys, groupId).firstOrNull()
 
-    private fun groupsFrom(livePhotoKeys: Set<String>?, onlyGroup: Long?, forgotten: Boolean = false): List<FaceGroup> = readableDatabase.rawQuery(
+    private fun groupsFrom(livePhotoKeys: Set<String>?, onlyGroup: Long?, forgotten: Boolean = false, onComputer: Set<String> = emptySet()): List<FaceGroup> = readableDatabase.rawQuery(
         "SELECT g.id, g.name, s.photo_key, s.left_edge, s.top_edge, s.right_edge, s.bottom_edge, s.quality, " +
-            "CASE WHEN g.cover_uuid IS NOT NULL AND g.cover_uuid = s.uuid THEN 1 ELSE 0 END " +
+            "CASE WHEN g.cover_uuid IS NOT NULL AND g.cover_uuid = s.uuid THEN 1 ELSE 0 END, s.uuid " +
             "FROM face_groups g JOIN face_samples s ON s.group_id = g.id" + if (onlyGroup != null) " WHERE g.id = ?" else " WHERE g.hidden = ?",
         arrayOf(onlyGroup?.toString() ?: if (forgotten) "1" else "0"),
     ).use { cursor ->
-        class Sample(val key: String, val left: Int, val top: Int, val right: Int, val bottom: Int, val quality: Float, val chosen: Boolean = false)
+        class Sample(val key: String, val left: Int, val top: Int, val right: Int, val bottom: Int, val quality: Float, val chosen: Boolean, val uuid: String?)
         val names = HashMap<Long, String>()
         val samples = HashMap<Long, MutableList<Sample>>()
         while (cursor.moveToNext()) {
             val id = cursor.getLong(0)
-            val key = cursor.getString(2)
-            if (livePhotoKeys != null && key !in livePhotoKeys) continue
             names[id] = cursor.getString(1)
-            samples.getOrPut(id) { mutableListOf() }
-                .add(Sample(key, cursor.getInt(3), cursor.getInt(4), cursor.getInt(5), cursor.getInt(6), cursor.getFloat(7), cursor.getInt(8) == 1))
+            samples.getOrPut(id) { mutableListOf() }.add(Sample(cursor.getString(2), cursor.getInt(3), cursor.getInt(4), cursor.getInt(5),
+                cursor.getInt(6), cursor.getFloat(7), cursor.getInt(8) == 1, cursor.getString(9)))
         }
-        samples.mapNotNull { (id, list) ->
+        samples.mapNotNull { (id, all) ->
+            val name = names.getValue(id)
+            val live = if (livePhotoKeys == null) all else all.filter { it.key in livePhotoKeys }
+            val list = live.ifEmpty { if (isGeneratedPersonName(name)) return@mapNotNull null else all.filter { it.key in onComputer } }
             // A face somebody chose is the face, whatever the scores say. Otherwise the best one wins.
             val cover = list.firstOrNull { it.chosen } ?: list.maxByOrNull { it.quality } ?: return@mapNotNull null
-            FaceGroup(id, names.getValue(id), list.distinctBy { it.key }.size, cover.key, cover.left, cover.top, cover.right, cover.bottom)
+            FaceGroup(id, name, list.distinctBy { it.key }.size, cover.key, cover.left, cover.top, cover.right, cover.bottom, cover.uuid, here = live.isNotEmpty())
         }
     }
 
@@ -523,6 +538,11 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) }
             }
             val sourceUuid = rawQuery("SELECT uuid FROM face_groups WHERE id = ?", arrayOf(sourceGroupId.toString())).use { if (it.moveToFirst()) it.getString(0) else null }
+            // A name beats a guess whichever way round the two were combined (the user, 24 Oct: "Σταύρος Μ" put into
+            // "Person 608" left 43 faces nameless): the kept person takes the combined one's name.
+            val targetName = rawQuery("SELECT name FROM face_groups WHERE id = ?", arrayOf(targetGroupId.toString())).use { if (it.moveToFirst()) it.getString(0) else null }
+            val renamed = targetName != null && isGeneratedPersonName(targetName) && !isGeneratedPersonName(sourceName)
+            if (renamed) update("face_groups", ContentValues().apply { put("name", sourceName); put("updated_at", System.currentTimeMillis()) }, "id = ?", arrayOf(targetGroupId.toString()))
             update("face_reviews", ContentValues().apply { put("state", "resolved") }, "face_sample_id IN (SELECT id FROM face_samples WHERE group_id = ?)", arrayOf(sourceGroupId.toString()))
             update("face_reviews", ContentValues().apply { put("candidate_group_id", targetGroupId) }, "candidate_group_id = ?", arrayOf(sourceGroupId.toString()))
             update("face_samples", ContentValues().apply { put("group_id", targetGroupId); put("updated_at", System.currentTimeMillis()) }, "group_id = ?", arrayOf(sourceGroupId.toString()))
@@ -535,8 +555,9 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 put("target_id", targetGroupId)
                 put("sample_ids", sampleIds.joinToString(","))
                 put("merged_at", System.currentTimeMillis())
+                if (renamed) put("target_name", targetName)
             }, SQLiteDatabase.CONFLICT_REPLACE)
-            FaceMergeUndo(sourceName, sampleIds, sourceUuid)
+            FaceMergeUndo(sourceName, sampleIds, sourceUuid, targetGroupId, targetName.takeIf { renamed })
         }
     }
 
@@ -550,6 +571,8 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
         })
         update("face_samples", ContentValues().apply { put("group_id", restoredGroupId); put("updated_at", System.currentTimeMillis()) }, "id IN (${undo.sampleIds.joinToString { "?" }})", undo.sampleIds.map(Long::toString).toTypedArray())
         delete("face_merges", "sample_ids = ?", arrayOf(undo.sampleIds.joinToString(",")))
+        if (undo.targetId != null && undo.targetName != null) update("face_groups", ContentValues().apply { put("name", undo.targetName); put("updated_at", System.currentTimeMillis()) },
+            "id = ? AND name = ?", arrayOf(undo.targetId.toString(), undo.sourceName))
     }
 
     /**
@@ -559,7 +582,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
      */
     /** What was combined into this person — or, with no person, everything combined anywhere. */
     fun mergeHistory(groupId: Long? = null): List<FaceMerge> = readableDatabase.rawQuery(
-        "SELECT id, source_name, source_uuid, sample_ids, merged_at FROM face_merges" + (if (groupId != null) " WHERE target_id = ?" else "") + " ORDER BY merged_at DESC",
+        "SELECT id, source_name, source_uuid, sample_ids, merged_at, target_id, target_name FROM face_merges" + (if (groupId != null) " WHERE target_id = ?" else "") + " ORDER BY merged_at DESC",
         groupId?.let { arrayOf(it.toString()) },
     ).use { cursor ->
         buildList {
@@ -570,12 +593,12 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                     "SELECT photo_key, left_edge, top_edge, right_edge, bottom_edge FROM face_samples WHERE id IN (${ids.joinToString { "?" }}) ORDER BY quality DESC LIMIT 1",
                     ids.map(Long::toString).toTypedArray(),
                 ).use { h -> if (h.moveToFirst()) FaceHead(h.getString(0), h.getInt(1), h.getInt(2), h.getInt(3), h.getInt(4)) else null }
-                add(FaceMerge(cursor.getLong(0), cursor.getString(1), cursor.getString(2), ids, cursor.getLong(4), head))
+                add(FaceMerge(cursor.getLong(0), cursor.getString(1), cursor.getString(2), ids, cursor.getLong(4), head, cursor.getLong(5), cursor.getString(6)))
             }
         }
     }
 
-    fun restoreMerge(merge: FaceMerge) = undoFaceMerge(FaceMergeUndo(merge.sourceName, merge.sampleIds, merge.sourceUuid))
+    fun restoreMerge(merge: FaceMerge) = undoFaceMerge(FaceMergeUndo(merge.sourceName, merge.sampleIds, merge.sourceUuid, merge.targetId, merge.targetName))
 
     /**
      * Take these photos' faces out of this person and give them a person of their own.

@@ -186,6 +186,8 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
+- [x] (phone-plan session, 24 Oct, branch claude/phone-plan; not merged) § Phone planned: the dialer applet, vibration on
+      pickup, call recording (not on the phone; possible on the PC), Play's call-log rule. Waits for the user's answers.
 - [x] (contacts-build session, 24 Oct, from main; branches claude/contacts-583397 and Drive contacts) Calls on the computer
       (the user: "a bubble with the face and name, answer or end"; "how do I know they are connected by Bluetooth?"): the
       phone reports its calls (ringing + number, active, ended) to the computer; the desktop's call bubble (always on
@@ -356,6 +358,7 @@ How to write here:
   Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
   (1), (5). Change it in the morning if you like; each is a commit of its own, ticked here as it is done.
 - (23 Oct) **Contacts**: the plan's nine questions (§ Contacts › Questions for the user); nothing is built before the yes.
+- (24 Oct) **Phone (the dialer)**: the plan's eight questions (§ Phone › Questions for the user); nothing is built before the yes.
 - (none else now — the .odp's sources: answered 17 Oct, see B › References)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)
@@ -2455,6 +2458,200 @@ I press Call on the PC and it starts on the phone?") — no dialer app needed fo
 7. Home's Contacts tiles: four favourite faces, or New · Search · Favourites · Import?
 8. Maps on Home: four places on the tablet's card? And its colour sky blue to match the new icon?
 9. Desktop: a Contacts view; calls through the PC (§ Calls through the PC) as step 9 — wanted?
+
+## Phone — the dialer applet (planned 24 Oct by the phone-plan session; nothing built until the user agrees)
+
+**The user, 24 Oct (in Greek, relayed):** "make a plan for the dialer; take a look at what Google has; add vibration on
+pickup of the call. Can we add call recording?" The icon: `Assets/phone.png` (a dark teal tile, a white handset with mint
+ends). Tetra is going to Google Play (internal test first), so everything here keeps to Play's rules. Google's Phone app is
+a feature list only (free software forever).
+
+### The one big decision: Tetra becomes the phone's Phone app
+A real dialer (its own in-call screen, Recents, blocking, vibration on pickup) is possible **only** as the phone's default
+Phone app: `RoleManager.ROLE_DIALER`, asked with Android's own "Set Tetra as your default phone app?" dialog. Then Telecom
+binds Tetra's `InCallService` for every call, ringing and outgoing, and Xiaomi's/Google's in-call screen is not shown.
+- What it gives: everything below; the call log and phone permissions allowed by Play (the default handler is their
+  main permitted use); hold, mute, keypad and merge from the computer's call bubble (today "Hold: not possible").
+- What it costs: **every call depends on Tetra**. A crash in the ringing screen = a call not seen. Android itself
+  keeps emergency calls working through the system dialer, and the role can be given back at any time (Settings › Apps ›
+  Default apps › Phone app, or Tetra's own "Stop being the phone app"), but the bar is higher than any other applet.
+- **The phone's own recording goes away while Tetra is the Phone app** (below): the record button lives in the
+  system dialer's in-call screen, which is no longer shown.
+- Without the role the applet still opens: Recents and the keypad hand the number to the system dialer (ACTION_DIAL),
+  and a card offers "Make Tetra your phone app".
+
+### What Google's Phone app has (checked 24 Oct) → what Tetra's has
+| Google Phone | Tetra |
+|---|---|
+| Keypad with search as you type (T9) over contacts | the same, Latin **and Greek** letters on the keys (2 ΑΒΓ, 3 ΔΕΖ, 4 ΗΘΙ, 5 ΚΛΜ, 6 ΝΞΟ, 7 ΠΡΣ, 8 ΤΥΦ, 9 ΧΨΩ, accents ignored), over Tetra's own vCards; paste a number; `*#06#` and other codes passed to the system |
+| Favourites (starred), speed dial | Favourites = Contacts' ★ (the same CATEGORIES); speed dial: hold 2–9 → a contact's number (Settings › Phone), hold 1 → voicemail |
+| Recents: all / missed / contacts / non-spam, grouped by person and day, "call back", "add to contacts", delete | the same from `CallLog`: grouped (three in a row from Μαρία → one line "Μαρία (3)"), filters All · Missed · Unknown, delete one or many, a number not in Contacts → "New contact" / "Add to a contact" |
+| Call details: each call's time, length, direction | the same; the contact page's History (already built) and the Phone's are the same list |
+| Visual voicemail (carrier) | **no** in practice: Greek carriers do not offer visual voicemail; hold 1 calls the voicemail number (`TelephonyManager.voiceMailNumber`) |
+| Call Screen (Google Assistant answers), Hold for Me, Direct My Call, Call Notes (AI transcript), Scam detection | **no**: Google's servers and Pixel-only models. Tetra's offline screening instead (below) |
+| Caller ID & spam (Google's online database) | Tetra's contacts only (no online lookup); an unknown number shows its country/area ("Mobile · Greece", "Θεσσαλονίκη" from the 2310 prefix — a small table, offline) |
+| Block numbers, block unknown/hidden callers | the same: `BlockedNumberContract` (the system's list, used by every app) + Settings › Phone › "Silence calls from numbers not in Contacts" / "Block hidden numbers" (`CallScreeningService`) |
+| In-call: mute, speaker, keypad, hold, add call, merge, swap, Bluetooth/route picker, video, RTT | mute, speaker, keypad (DTMF), hold, add call, merge, swap, the route picker (Phone · Speaker · each Bluetooth device · **"Computer"** when the PC is the hands-free kit); video and RTT: no (Greek carriers barely offer them; WhatsApp/Viber video stay on the contact page) |
+| Ringtone, per-contact ringtone, vibrate while ringing, "flip to silence" | the ringtone is Telecom's (system sound settings); a per-contact ringtone written into the provider copy Contacts already makes (CUSTOM_RINGTONE), so Android plays it; flip to silence (accelerometer, while ringing) — later |
+| Dual SIM: ask each time / a default / per contact | the same: `TelecomManager.callCapablePhoneAccounts`; "Call with SIM 1 / SIM 2" when there are two, remembered per contact |
+| Call recording (Pixel 6+, with a spoken notice; worldwide since Feb 2026) | **no** (below) |
+| Quick replies on decline ("Can't talk now…") | the same: Decline ▸ a message (SMS opened with the text, as the system does — Tetra sends no SMS itself) |
+| Proximity: screen off at the ear | the same (`PROXIMITY_SCREEN_OFF_WAKE_LOCK`) — must have |
+| Android Auto calling | unchanged: the car uses its own in-call screen whoever the Phone app is |
+| **Vibrate when answered** (not in Google's; some older dialers had it) | **yes** — the user's ask (below) |
+| — | Tetra's own: a typed note on a call (kept in the call's history line, shown on the contact's History); the call on the computer and the tablet (below) |
+
+### Vibration when the other side picks up (the user's ask)
+- In Tetra's `InCallService`, each outgoing call's `Call.Callback.onStateChanged`: DIALING/CONNECTING → **ACTIVE**
+  (`details.callDirection == DIRECTION_OUTGOING`, and only the first time — not after Hold → Resume) → one short buzz:
+  `VibrationEffect.createWaveform([0, 60, 80, 60])` (two quick taps) through `VibratorManager`, `USAGE_COMMUNICATION_REQUEST`
+  so Do Not Disturb's rules apply as for calls. VIBRATE is a normal permission.
+- Why only as the Phone app: without the role Android tells an app only OFFHOOK at dialling, never "answered" (that is
+  READ_PRECISE_PHONE_STATE, system apps only).
+- On VoLTE and GSM the network says "answered" exactly when they pick up; a voicemail answering also counts as picked up
+  (nothing can tell them apart).
+- Settings › Phone › "Vibrate when answered" (on), and also "Vibrate when the call ends" (off) — the same one line.
+- Also from the computer: a call placed from the PC buzzes the phone in the pocket and the bubble says "Answered".
+
+### Call recording — said plainly
+- **Tetra on the phone cannot record calls, not even as the default Phone app.** Since Android 10, during a call an
+  ordinary app gets silence from the microphone and nothing from the call (`VOICE_CALL`, `VOICE_UPLINK/DOWNLINK`): only
+  pre-installed apps with CAPTURE_AUDIO_OUTPUT (Xiaomi's and Google's own dialers) or an accessibility service may. Being
+  the default dialer does not add it. So "the microphone on speaker" does not work either on Android 10+.
+- The **accessibility-service workaround** (what Cube ACR and others do) is forbidden by Google Play (accessibility only
+  for disability needs) and would also get Tetra rejected. Not doing it.
+- **What the phone itself does**: the Xiaomi's own dialer, or Google Phone where it ships, records natively. That stays
+  available as long as Tetra is *not* the Phone app — a real trade-off for question 2.
+- **What Tetra can do: record on the computer.** When the call's sound is on the PC (Bluetooth hands-free, already built),
+  the PC has both sides in good quality: the phone's HFP source (them) and the PC's microphone after the echo canceller
+  (the user). Desktop Tetra can mix the two into an Opus/OGG file, e.g. `Tetra/Phone/Recordings/2026-10-24 15.36
+  Μαρία Παπαδοπούλου.ogg`, and it syncs back to the phone and shows in the call's history line. A button "Record" on the
+  call bubble.
+- **The law (Greece, EU)**: Greek Penal Code art. 370A §1 (as changed by law 5002/2022) punishes recording **one's own**
+  call without the other person's **explicit** consent (a felony); GDPR is light for purely personal use but not absent.
+  So Tetra never records silently: "Record" first shows "Ask them first: recording without their explicit yes is a crime
+  in Greece" with "They agreed — record" (Google's own recording plays a spoken notice to the other side; a PC recording
+  can play one too into the call: "This call is being recorded"). Not legal advice; the user decides.
+
+### What Android allows a non-system app (public APIs only)
+| API | What | Needs |
+|---|---|---|
+| `RoleManager.ROLE_DIALER` | become the Phone app | an activity for ACTION_DIAL (with and without `tel:`), an `InCallService` with BIND_INCALL_SERVICE and meta-data IN_CALL_SERVICE_UI + IN_CALL_SERVICE_RINGING |
+| `InCallService` / `Call` | the in-call screen; answer, reject (with a message), hold, unhold, mute, DTMF, conference/merge/swap, route (API 34 `CallEndpoint`), the call's state for the vibration | the role |
+| `TelecomManager` | placeCall, the SIMs (PhoneAccounts), `isInCall`, voicemail number | CALL_PHONE, READ_PHONE_STATE (the role grants them) |
+| `CallLog.Calls` | Recents, delete entries | READ_CALL_LOG, WRITE_CALL_LOG |
+| `BlockedNumberContract` | the system's blocked list | only the default dialer/SMS app (no permission otherwise) |
+| `CallScreeningService` | silence/block unknown or hidden numbers before they ring | the role (or ROLE_CALL_SCREENING) |
+| full-screen ringing over the lock screen | the incoming call's screen | USE_FULL_SCREEN_INTENT (Play allows it for calling apps; a declaration) |
+| `ContactsContract` CUSTOM_RINGTONE | a contact's ringtone | WRITE_CONTACTS (already asked) |
+| capture of call audio | **not possible** | CAPTURE_AUDIO_OUTPUT is for system apps only |
+
+### Google Play's rules (checked 24 Oct on Play's "SMS and Call Log permissions" policy)
+- READ_CALL_LOG, WRITE_CALL_LOG, PROCESS_OUTGOING_CALLS: an app may ask for them **only while it is the default
+  Phone (or SMS, or Assistant) app**, must ask for the role *before* asking for them, and must stop using them when it
+  is no longer the default. A Permissions Declaration Form in Play Console says which use it is.
+- **Today's Tetra already asks for READ_CALL_LOG without being the dialer** (Contacts' History, the ringing number for
+  the PC's call bubble). Play has an exception that fits: "Cross-device sync or transfer (e.g. phone to laptop)" —
+  READ_CALL_LOG only. So the Play build either (a) declares that exception, or (b) asks for the call log only after
+  Tetra is the Phone app. With the Phone applet, (b) is the clean one: one declaration, "default Phone handler".
+- CALL_PHONE, READ_PHONE_STATE, ANSWER_PHONE_CALLS are ordinary dangerous permissions (no form).
+- Not about calls, but the same submission: MANAGE_EXTERNAL_STORAGE ("All files access") is in the manifest; Play allows it
+  for file managers and backup/sync apps with its own declaration — Tetra's Files and sync are that, to be declared too.
+- Accessibility for recording: forbidden (above).
+
+### How it fits Tetra
+- **Contacts** (built): names and photos come from Tetra's own vCards (`Tetra/Contacts`), read directly, so the in-call
+  screen shows the contact's face from Photos. The contact page's Call button places the call through Tetra's Phone
+  when it is the Phone app; its History reads the same call log (already built).
+- **Calls on the computer** (built: the bubble, Answer/Decline/End, sound over Bluetooth, the echo canceller): with the
+  role, the phone's reports come from the `InCallService` instead of guessing from `ACTION_PHONE_STATE_CHANGED` (no more
+  "an outgoing call is reported only when the computer asked"), and the bubble gains Hold, Mute, Keypad and "Answered"
+  (the vibration's moment). The `Watcher` stays for when Tetra is not the Phone app.
+- **The call history on the computer**: the phone writes its calls as plain files, Calendar's way, so any AI can read
+  them: `Tetra/Phone/calls-2026-10.jsonl`, one line per call
+  `{"at":"2026-10-24T15:36:02+03:00","number":"+3069…","dir":"in|out|missed|declined|blocked","secs":124,"sim":1,"contact":"<UID>","note":"…"}`;
+  a scope `phone` (DriveScope + desktop `files.js SCOPES`, as `contacts`), hidden in Files like Calendar's. The desktop's
+  Phone view: Recents with the same filters, Call → the phone dials (`/call`, built). Written by the phone only (the PC
+  never edits the log), deletions included. The phone's `CallLog` stays Android's; the files are a copy.
+- **The tablet** (no SIM): the same Phone view as the desktop's — Recents from the synced files, the keypad and Call →
+  the phone dials (the tablet asks the phone as the PC does), the call bubble with Answer/Decline/End. **The voice cannot
+  go to the tablet**: Android tablets have no Bluetooth hands-free role for an app to use (Xiaomi's cross-device calling
+  is HyperOS's own system code). So on the tablet you see, answer and end; you speak on the phone or its headset —
+  or keep using HyperOS's calls for that.
+- **Home**: Phone a group of its own (its art and four favourites to call with one tap, as Contacts' four faces; or
+  Keypad · Recents · Missed (2) · Favourites), next to Contacts; on the tablet it shows only when a phone is paired.
+  The icon by `tools/applet-icons.py` (Assets/phone.png → Assets/Icons/Applets/Phone.png → `phone_art` and
+  `applet_phone_fg`, the launcher background the tile's own edge teal ≈ #0D6B73). **Its teal is close to Timer's**
+  (#04D5CC launcher, #00796B on Home) — question 6.
+- The applet is also what Android opens for every `tel:` link and the dialer shortcut.
+
+### Screens (the classic Tetra island)
+**Phone — Recents (opens here)**
+```
+ ( Search contacts and numbers ……… )      ← top pill
+ Today
+  (●) Μαρία Παπαδοπούλου (2)   ↙ 15:36  (📞)  ← ↙ in · ↗ out · red ↙ missed; tap = details, 📞 = call back
+  (?) +30 2310 …  Θεσσαλονίκη  ↗ 12:02  (📞)
+ Yesterday …
+ [ Recents · Favourites · Keypad ]   (⋯)  ← bottom island; ⋯ = Missed / Unknown filter, Blocked, Settings
+```
+**Phone — Keypad**: the number at the top (large, grows smaller as it fills, ⌫), matching contacts under it as you type
+(name with the matched letters bold), the 4×3 keys with Latin and Greek letters, the green round Call (SIM 1 / SIM 2 split
+when two).
+
+**In a call** (the user's dark look; the contact's own colour behind the face):
+```
+            ╭─────────╮
+            │  photo  │                  ← 120 dp circle, or the initial
+            ╰─────────╯
+          Μαρία Παπαδοπούλου
+          Mobile · +30 69…  ·  02:14     ← "Calling…" until ACTIVE (then the buzz)
+   (🔇 Mute)  (⌨ Keypad)  (🔊 Speaker ▾)   ← Speaker ▾ = Phone · Speaker · Buds · Computer
+   (⏸ Hold)   (＋ Add)    (📝 Note)        ← Merge / Swap appear with a second call
+                  ( ⛔ End )               ← red, round, the thumb's place
+```
+**Ringing**: the face, name, "Mobile · Θεσσαλονίκη" for unknown numbers, swipe up = Answer, swipe down = Decline, a
+small "Message" for a quick reply; over the lock screen. An ongoing-call notification with End and Mute (the system's
+`Notification.CallStyle`).
+**Tablet / wide**: Recents left (≈ 360 dp), the keypad or a call's details right; the call itself full screen.
+**Desktop**: Recents + a keypad in the window; the call stays the bubble.
+
+### Code (smallest that holds)
+- Android: `PhoneScreen.kt` (Recents, Favourites, Keypad, settings), `PhoneCall.kt` (the `InCallService`, the in-call and
+  ringing activity, vibration, proximity, CallStyle notification, reports to the PC), `PhoneScreening.kt` (the
+  `CallScreeningService`), `PhoneLog.kt` (CallLog → `Tetra/Phone/*.jsonl`). Reuse: Contacts' reading, faces and
+  `ContactsSystem` (the PC's call path, the calls' permissions), the island, the Office strip for choosers, `ScopedSync`.
+- Desktop: `Phone.tsx` (Recents from the files, keypad → `/call`), the bubble's new buttons in `calls.js`; recording in
+  `calls.js` (PipeWire's HFP source + mic → `pw-record` + ffmpeg, both on the PC) if wanted.
+- Tests: the T9 matcher (Greek and Latin, accents), Recents' grouping, the jsonl writer; the in-call screen by hand with
+  real calls on the Xiaomi (the emulator fakes calls with `adb emu gsm call`, which helps for the screens).
+
+### Steps (each a commit; the in-call ones checked with real calls on the phone before the next)
+1. The role and a minimal in-call screen: ringing (answer/decline, lock screen), outgoing, End, Mute, Speaker,
+   proximity; Settings › Phone › "Tetra is the phone app" / give it back. **Vibration on pickup.** A day of real use
+   with the system dialer one tap away before anything else.
+2. Keypad with T9 (Greek and Latin), Recents (grouped, filters, delete), call details, Favourites, speed dial; SIM
+   choice.
+3. Hold, Add call, Merge, Swap, Keypad (DTMF), the route picker with "Computer"; a note on a call.
+4. Blocking and screening (BlockedNumberContract, unknown/hidden numbers), quick replies, per-contact ringtone.
+5. The PC: the bubble from the `InCallService` (Hold, Mute, Keypad, "Answered"); the call history files and scope
+   `phone`; the desktop's Phone view.
+6. The tablet: the same Phone view, calls through the phone.
+7. Home: the Phone group and the icon.
+8. Play: the call log asked only with the role (or the cross-device declaration), the declarations written.
+9. (If wanted) recording on the PC, with the consent screen.
+
+### Questions for the user
+1. Make Tetra the phone's Phone app (with the risk that a Tetra bug can cost a call; the system dialer one tap away)?
+2. That turns off the phone's own call recording while Tetra is the Phone app. Is it used? (On the phone: which dialer is
+   it today — Xiaomi's or Google's — and does it record?)
+3. Recording on the computer when the call's sound is there (Bluetooth): wanted? With the "They agreed" step and a spoken
+   notice to the other side, or the step alone?
+4. Vibration: two quick taps on pickup — and also one on hang-up?
+5. Two SIMs in the Xiaomi?
+6. Colour: the icon's dark teal is near Timer's teal. Phone in the icon's teal anyway, or a green (calls' usual colour)?
+7. Home's Phone group: four favourites to call, or Keypad · Recents · Missed · Favourites?
+8. The tablet: the Phone view with calls through the phone (voice on the phone) — or leave the tablet to HyperOS's calls?
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

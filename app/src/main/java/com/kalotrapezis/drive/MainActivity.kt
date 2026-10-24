@@ -1414,11 +1414,11 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
 /** One of Home's Office Open tiles: the app's name over its icon in its colour; "Open …" where there is room. */
 @Composable private fun HomeOpenTile(kind: OfficePick, wide: Boolean, modifier: Modifier, click: () -> Unit) {
     val (name, icon, tint) = when (kind) {
-        OfficePick.Words -> Triple("Words", R.drawable.ic_file_text, Color(0xFF4F86E8))
-        OfficePick.Tables -> Triple("Tables", R.drawable.ic_table, Color(0xFF55A96B))
-        OfficePick.Slides -> Triple("Slides", R.drawable.ic_play, Color(0xFFE0784F))
+        OfficePick.Words -> Triple("Words", R.drawable.kind_docs_word, Color.Unspecified)
+        OfficePick.Tables -> Triple("Tables", R.drawable.kind_excel, Color.Unspecified)
+        OfficePick.Slides -> Triple("Slides", R.drawable.kind_slides, Color.Unspecified)
         OfficePick.Pdf -> Triple("PDFs", R.drawable.ic_file, PDF_RED)
-    } // the list's lighter colours of the four kinds (driveExtensionColor), for the dark card
+    } // Words, Tables, Slides: the user's tiles in their own colours (24 Oct); PDFs the list's red
     HomeTile(if (wide) "Open $name" else name, icon, tint, modifier, click)
 }
 
@@ -1426,7 +1426,9 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
 @Composable private fun HomeTile(label: String, icon: Int, tint: Color, modifier: Modifier, click: () -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = modifier.height(73.dp).clickable(onClick = click)) {
         Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+            // a tile in its own colours (tint Unspecified) a little bigger than a plain icon, so its picture reads
+            if (tint == Color.Unspecified) Image(painterResource(icon), contentDescription = null, modifier = Modifier.size(28.dp))
+            else Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
             Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
         }
     }
@@ -3053,7 +3055,7 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
 ) {
     Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (item.isDirectory || selected) DriveItemIcon(item, folderColor, selected, 32.dp)
-        else FileThumb(item.file, 14.dp, Modifier.size(36.dp).clip(MaterialTheme.shapes.small), crop = true) { DriveItemIcon(item, folderColor, false, 32.dp) }
+        else FileThumb(item.file, 20.dp, Modifier.size(36.dp).clip(MaterialTheme.shapes.small), crop = true) { DriveItemIcon(item, folderColor, false, 32.dp) }
         Column(Modifier.weight(1f)) {
             Text(item.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
             Text(driveItemTypeLabel(item) + if (tags.isEmpty()) "" else " · ${tags.joinToString(" ") { "#$it" }}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -3080,7 +3082,7 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
             // a file's own picture fills the tile above its name (a document its first page, Office's glyph on it)
             val thumb = !item.isDirectory && !selected && FileThumbs.kind(item.file.name) != null
             if (!thumb) DriveItemIcon(item, folderColor, selected, 64.dp)
-            else FileThumb(item.file, 28.dp, Modifier.matchParentSize().clip(MaterialTheme.shapes.medium), crop = true) { DriveItemIcon(item, folderColor, false, 64.dp) }
+            else FileThumb(item.file, 44.dp, Modifier.matchParentSize().clip(MaterialTheme.shapes.medium), crop = true) { DriveItemIcon(item, folderColor, false, 64.dp) }
             Surface(color = if (thumb) islandColor().copy(alpha = 0.7f) else Color.Transparent, contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.align(Alignment.TopEnd)) {
                 IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
             }
@@ -3092,7 +3094,14 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
     }
 }
 
-@Composable private fun DriveItemIcon(item: DriveItem, folderColor: DriveFolderColor?, selected: Boolean, size: androidx.compose.ui.unit.Dp) = Icon(
+@Composable private fun DriveItemIcon(item: DriveItem, folderColor: DriveFolderColor?, selected: Boolean, size: androidx.compose.ui.unit.Dp) {
+    // a file of a known category: its icon in its own colours (file-kinds.json, the user's tiles of 24 Oct)
+    val kind = if (selected || item.isDirectory) null else FileKinds.icon(item.file.name)
+    if (kind != null) Image(painterResource(kind), contentDescription = driveItemIconDescription(item), modifier = Modifier.size(size))
+    else DriveItemGlyph(item, folderColor, selected, size)
+}
+
+@Composable private fun DriveItemGlyph(item: DriveItem, folderColor: DriveFolderColor?, selected: Boolean, size: androidx.compose.ui.unit.Dp) = Icon(
     painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
     contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
     tint = if (selected) driveSelectionContentColor() else driveItemIconColor(item, folderColor),

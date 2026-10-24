@@ -95,3 +95,55 @@ internal object PhoneArea {
         return AREAS.filter { national.startsWith(it.first) }.maxByOrNull { it.first.length }?.second ?: if (national.startsWith("2")) "Landline" else null
     }
 }
+
+/**
+ * The call history for the computer and any AI (Plan.md § Phone step 5): Android's call log copied, a month a file, as
+ * Tetra/Phone/calls-2026-10.jsonl — one line per call, oldest first:
+ * {"at":"2026-10-24T15:36:02+03:00","number":"+3069…","dir":"in|out|missed|declined|blocked|voicemail","secs":124,"contact":"<UID>","name":"Μαρία","note":"…"}.
+ * Written by the phone only, while Tetra is the phone app (Google Play allows the call log to the phone app); the call log
+ * stays Android's. A month whose calls were all deleted becomes an empty file (nothing is deleted, so nothing goes to Trash).
+ */
+internal object PhoneHistory {
+    const val FOLDER = "Phone"
+    private val MONTH = Regex("""calls-(\d{4}-\d{2})\.jsonl""")
+
+    /** One call as a line, its fields always in this order (written by hand: a JSONObject's order is not promised). */
+    fun line(call: LoggedCall, contact: ContactInfo?, note: String?, zone: ZoneId): String {
+        val q = org.json.JSONObject::quote
+        val dir = when (call.type) {
+            CallLog.Calls.OUTGOING_TYPE -> "out"; CallLog.Calls.MISSED_TYPE -> "missed"; CallLog.Calls.REJECTED_TYPE -> "declined"
+            CallLog.Calls.BLOCKED_TYPE -> "blocked"; CallLog.Calls.VOICEMAIL_TYPE -> "voicemail"; else -> "in"
+        }
+        val fields = mutableListOf("at" to q(Instant.ofEpochMilli(call.at).atZone(zone).toOffsetDateTime().withNano(0).toString()), "number" to q(call.number),
+            "dir" to q(dir), "secs" to "${call.seconds}")
+        contact?.let { c -> c.uid.ifBlank { null }?.let { fields += "contact" to q(it) }; fields += "name" to q(c.name) }
+        note?.let { fields += "note" to q(it) }
+        return fields.joinToString(",", "{", "}") { (k, v) -> "\"$k\":$v" }
+    }
+
+    /** The month files' text from the calls: "2026-10" → its lines. */
+    fun months(calls: List<LoggedCall>, who: (String) -> ContactInfo?, note: (LoggedCall) -> String?, zone: ZoneId): Map<String, String> =
+        calls.groupBy { Instant.ofEpochMilli(it.at).atZone(zone).let { t -> "%04d-%02d".format(t.year, t.monthValue) } }
+            .mapValues { (_, l) -> l.sortedBy { it.at }.joinToString("") { line(it, who(it.number), note(it), zone) + "\n" } }
+
+    fun write(c: Context) {
+        if (!PhonePrefs.isDialer(c)) return
+        runCatching {
+            val zone = ZoneId.systemDefault()
+            val calls = PhoneLog.read(c, limit = 50_000)
+            val contacts = ContactsPreload.all?.map { it.info } ?: runCatching { ContactsFiles.all(contactsRoot()).map { it.info } }.getOrDefault(emptyList())
+            val byKey = contacts.flatMap { p -> p.phones.map { ContactsWays.key(it.value) to p } }.filter { it.first.length >= 5 }.toMap()
+            val notes = PhoneNotes.all()
+            val want = months(calls, { byKey[ContactsWays.key(it)] }, { PhoneNotes.of(c, it.number, it.at, notes) }, zone)
+            val dir = phoneRoot().apply { mkdirs() }
+            val old = dir.listFiles().orEmpty().mapNotNull { f -> MONTH.matchEntire(f.name)?.groupValues?.get(1) }
+            var changed = false
+            (want.keys + old).forEach { m ->
+                val f = java.io.File(dir, "calls-$m.jsonl")
+                val text = want[m].orEmpty()
+                if (!f.exists() || f.readText() != text) { f.writeText(text); changed = true }
+            }
+            if (changed) { WriterLog.i("Phone: the call history for the computer written (${calls.size} calls)"); ScopedSync.soon(c, "phone") }
+        }.onFailure { WriterLog.w("Phone: the call history was not written (${it.message})") }
+    }
+}

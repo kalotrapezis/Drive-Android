@@ -128,6 +128,7 @@ internal object ScopedSync {
     const val CALENDAR_LOOK = 4141
     private const val TIMER_WAITING = 4142
     private const val CONTACTS_WAITING = 4145 // 4143 is Send to computer's outbox job (SendToComputer.WAITING)
+    private const val PHONE_WAITING = 4148
     private val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pending = java.util.concurrent.ConcurrentHashMap<String, Job>() // a timer's push never cancels an event's
 
@@ -156,7 +157,7 @@ internal object ScopedSync {
     /** Run by Android as soon as there is a network, and again until the computer has it. */
     private fun wait(context: Context, scope: String) {
         val jobs = context.getSystemService(JobScheduler::class.java) ?: return
-        jobs.schedule(JobInfo.Builder(when (scope) { "timer" -> TIMER_WAITING; "contacts" -> CONTACTS_WAITING; else -> CALENDAR_WAITING }, ComponentName(context, SyncJob::class.java))
+        jobs.schedule(JobInfo.Builder(when (scope) { "timer" -> TIMER_WAITING; "contacts" -> CONTACTS_WAITING; "phone" -> PHONE_WAITING; else -> CALENDAR_WAITING }, ComponentName(context, SyncJob::class.java))
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setBackoffCriteria(60_000, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
             .setExtras(android.os.PersistableBundle().apply { putString(SCOPE, scope) })

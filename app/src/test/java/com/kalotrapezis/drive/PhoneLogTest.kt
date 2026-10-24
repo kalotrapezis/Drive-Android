@@ -48,4 +48,16 @@ class PhoneLogTest {
         assertEquals("Abroad", PhoneArea.of("+44 20 7946 0000"))
         assertEquals(null, PhoneArea.of("112"))
     }
+
+    @Test fun `the history for the computer is a month a file, oldest first`() {
+        val maria = ContactInfo(uid = "m-1", formatted = "Μαρία", phones = listOf(VField("Mobile", "+30 697 000 0002")))
+        val m = PhoneHistory.months(listOf(call(2, "6970000002", 24, 15, CallLog.Calls.MISSED_TYPE), call(1, "2310000000", 24, 9), LoggedCall(3, "6970000002", ZonedDateTime.of(2026, 9, 30, 23, 0, 0, 0, zone).toInstant().toEpochMilli(), 61, CallLog.Calls.OUTGOING_TYPE)),
+            { n -> maria.takeIf { PhoneLog.same(n, "+30 697 000 0002") } }, { c -> if (c.id == 1L) "about the books" else null }, zone)
+        assertEquals(setOf("2026-10", "2026-09"), m.keys)
+        assertEquals(listOf(
+            """{"at":"2026-10-24T09:00+03:00","number":"2310000000","dir":"in","secs":30,"note":"about the books"}""",
+            """{"at":"2026-10-24T15:00+03:00","number":"6970000002","dir":"missed","secs":30,"contact":"m-1","name":"Μαρία"}""",
+        ), m.getValue("2026-10").trimEnd().lines())
+        assertEquals("""{"at":"2026-09-30T23:00+03:00","number":"6970000002","dir":"out","secs":61,"contact":"m-1","name":"Μαρία"}""" + "\n", m.getValue("2026-09"))
+    }
 }

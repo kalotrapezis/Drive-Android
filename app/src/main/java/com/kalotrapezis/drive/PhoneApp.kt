@@ -81,7 +81,7 @@ internal fun openInContacts(c: Context, uid: String? = null, newNumber: String? 
     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
 
 /** The Phone's own folder, Tetra/Phone: the recordings made on the computer land in Recordings (Plan.md § Phone). */
-internal fun phoneRoot() = java.io.File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), "Phone")
+internal fun phoneRoot() = java.io.File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), PhoneHistory.FOLDER)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,7 +104,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, number: MutableState<String>
     val contacts by produceState(ContactsPreload.all?.map { it.info } ?: emptyList(), version) {
         value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).also { ContactsPreload.all = it }.map { it.info } }.getOrDefault(value) }
     }
-    val calls by produceState(emptyList<LoggedCall>(), version) { value = withContext(Dispatchers.IO) { PhoneLog.read(context) } }
+    val calls by produceState(emptyList<LoggedCall>(), version) { value = withContext(Dispatchers.IO) { PhoneLog.read(context).also { PhoneHistory.write(context) } } }
     val byKey = remember(contacts) { contacts.flatMap { c -> c.phones.map { ContactsWays.key(it.value) to c } }.filter { it.first.length >= 5 }.toMap() }
     fun who(n: String) = byKey[ContactsWays.key(n)]
     LaunchedEffect(tab, dialer, calls.size) { if (tab == PhoneTab.Recents && dialer) withContext(Dispatchers.IO) { PhoneLog.seen(context) } }

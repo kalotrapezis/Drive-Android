@@ -154,9 +154,17 @@ internal object PhoneCall {
     /** The number the computer last asked to call, and when: its call is the one the bubble follows. */
     @Volatile private var asked: Pair<String, Long>? = null
 
-    /** Answer, Decline or End, from the computer's call bubble (ANSWER_PHONE_CALLS). Holding a call is the phone app's alone. */
+    /** The number the computer asked to call in the last minute, if any: that call is the one its bubble follows. */
+    fun computerAsked(number: String?): Boolean = asked?.takeIf { System.currentTimeMillis() - it.second < 60_000 }?.let { a -> number == null || PhoneLog.same(a.first, number) } == true
+
+    /**
+     * Answer, Decline or End, from the computer's call bubble (ANSWER_PHONE_CALLS). Holding, muting and the keypad's tones
+     * only while Tetra is the phone app (PhoneCalls, Plan.md § Phone step 5).
+     */
     @Suppress("DEPRECATION", "MissingPermission")
     fun act(c: Context, what: String): org.json.JSONObject {
+        PhoneCalls.act(what)?.let { ok -> WriterLog.i("Phone: $what from the computer: $ok")
+            return if (ok) org.json.JSONObject().put("ok", true) else org.json.JSONObject().put("error", "The phone did not $what the call.") }
         if (c.checkSelfPermission(android.Manifest.permission.ANSWER_PHONE_CALLS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             return org.json.JSONObject().put("error", "Allow it once on the phone: Settings › Contacts › Calls on the computer.")
         val tm = c.getSystemService(android.telecom.TelecomManager::class.java)
@@ -184,6 +192,7 @@ internal object PhoneCall {
 
         @Suppress("DEPRECATION")
         override fun onReceive(c: Context, i: Intent) {
+            if (PhoneCalls.service != null) return // Tetra is the phone app: its call screen tells the computer (PhoneCalls.report)
             val state = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE) ?: return
             i.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER)?.takeIf { it.isNotBlank() }?.let { number = it }
             val report = when (state) {

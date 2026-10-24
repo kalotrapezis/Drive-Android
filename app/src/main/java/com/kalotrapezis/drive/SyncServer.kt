@@ -225,7 +225,7 @@ internal class SyncServer(private val context: Context, private val store: SyncS
         if (method == "POST" && path.startsWith("/call/action?")) {
             val known = bearer != null && store.peers().any { it.theirToken == bearer }
             if (!known) return reply(output, 401, JSONObject().put("error", "Not paired."))
-            val r = PhoneCall.act(context, android.net.Uri.parse("https://x$path").getQueryParameter("do").orEmpty())
+            val r = PhoneCall.act(context, android.net.Uri.parse("https://x$path").getQueryParameter("do").orEmpty().take(8))
             return reply(output, if (r.has("error")) 409 else 200, r)
         }
         // Send to phone: a file from the computer, into Files › From computer (FromComputer). Only a paired device.

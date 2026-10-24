@@ -34,7 +34,11 @@ class PhoneInCallService : InCallService() {
     override fun onCallAdded(call: Call) = PhoneCalls.added(this, call)
     override fun onCallRemoved(call: Call) = PhoneCalls.removed(this, call)
     @Deprecated("CallAudioState: still what Telecom sends on every Android Tetra runs on")
-    override fun onCallAudioStateChanged(audioState: CallAudioState?) { PhoneCalls.audio = audioState; PhoneCalls.changed(this) }
+    override fun onCallAudioStateChanged(audioState: CallAudioState?) {
+        val muteChanged = PhoneCalls.audio?.isMuted != audioState?.isMuted
+        PhoneCalls.audio = audioState; PhoneCalls.changed(this)
+        if (muteChanged) PhoneCalls.top()?.let { PhoneCalls.report(this, it) }
+    }
 }
 
 /** The calls Telecom gave Tetra, for the call screen (read in Compose: [tick] changes on every change). */
@@ -61,6 +65,7 @@ internal object PhoneCalls {
             if (state == Call.STATE_ACTIVE && outgoing && answered.add(call) && PhonePrefs.buzzAnswer(s)) buzz(s, longArrayOf(0, 60, 80, 60))
             if (state == Call.STATE_DISCONNECTED && call.details.connectTimeMillis > 0 && PhonePrefs.buzzEnd(s)) buzz(s, longArrayOf(0, 120))
             changed(s)
+            report(s, call)
         }
         override fun onDetailsChanged(call: Call, details: Call.Details) { service?.let { changed(it) } }
     }
@@ -69,6 +74,7 @@ internal object PhoneCalls {
         call.registerCallback(callback)
         calls = calls + call
         WriterLog.i("Phone: a call ${if (call.state == Call.STATE_RINGING) "ringing" else "placed"} (${calls.size} now)")
+        report(s, call)
         number(call)?.let { n -> if (n !in names) Thread { val c = contactFor(n); synchronized(names) { names[n] = c }; android.os.Handler(s.mainLooper).post { changed(s) } }.start() }
         changed(s)
         // a ringing call over the lock screen or a dark screen at once; on a phone in use, its heads-up (the full-screen intent)
@@ -84,6 +90,48 @@ internal object PhoneCalls {
         answered.remove(call)
         WriterLog.i("Phone: a call ended (${calls.size} left)")
         changed(s)
+        report(s, call)
+        val app = s.applicationContext // the call log has the call a moment later: then its copy for the computer
+        android.os.Handler(s.mainLooper).postDelayed({ Thread { PhoneHistory.write(app) }.start() }, 3000)
+    }
+
+    // The computer's call bubble (Plan.md § Phone step 5): every incoming call, and the outgoing ones the computer asked for
+    // (the phone's own calls stay its own, as before Tetra was the phone app).
+    private val toComputer = mutableSetOf<Call>()
+    fun report(c: Context, call: Call) {
+        if (call.parent != null) return // a merged call's people: the merged call speaks for them
+        val incoming = call.details.callDirection == Call.Details.DIRECTION_INCOMING
+        if (call !in toComputer) { if (call.state == Call.STATE_DISCONNECTED || !(incoming || PhoneCall.computerAsked(number(call)))) return; toComputer.add(call) }
+        val state = when (call.state) {
+            Call.STATE_RINGING -> "ringing"; Call.STATE_ACTIVE -> "active"; Call.STATE_HOLDING -> "held"; Call.STATE_DISCONNECTED -> "ended"
+            else -> "calling"
+        }
+        val body = org.json.JSONObject().put("state", state).put("direction", if (incoming) "in" else "out").put("number", number(call).orEmpty())
+            .put("missed", state == "ended" && call.details.disconnectCause?.code == android.telecom.DisconnectCause.MISSED)
+            .put("muted", audio?.isMuted == true).put("phoneApp", true).put("at", System.currentTimeMillis())
+        if (state == "ended") toComputer.remove(call)
+        val app = c.applicationContext
+        Thread { runCatching { SyncClient(app, SyncStore(app)).callState(body) }.onFailure { WriterLog.w("Phone: the call's state did not reach the computer (${it.message})") } }.start()
+    }
+
+    /** The computer's bubble pressed: answer, decline, end, hold, unhold, mute, unmute, dtmf<digit>. Null while Tetra is not the phone app. */
+    fun act(what: String): Boolean? {
+        val s = service ?: return null
+        val ringing = calls.firstOrNull { it.state == Call.STATE_RINGING }
+        val call = top() ?: return false
+        when {
+            what == "answer" -> answer(ringing ?: return false)
+            what == "decline" -> (ringing ?: return false).reject(false, null)
+            what == "end" -> hangUp(call)
+            what == "hold" -> call.hold()
+            what == "unhold" -> call.unhold()
+            what == "mute" || what == "unmute" -> s.setMuted(what == "mute")
+            what.startsWith("dtmf") && what.length == 5 && what[4] in "0123456789*#" -> {
+                call.playDtmfTone(what[4]); android.os.Handler(s.mainLooper).postDelayed({ call.stopDtmfTone() }, 180)
+            }
+            else -> return false
+        }
+        return true
     }
 
     fun changed(c: Context) { tick++; notify(c); proximity(c, wantsProximity()) }
@@ -173,6 +221,7 @@ internal object PhoneNotes {
         notes.lastOrNull { near(it.first, at) && PhoneLog.same(it.second, number) }?.third?.ifBlank { null }
     fun save(c: Context, number: String, at: Long, note: String) = runCatching {
         file().apply { parentFile?.mkdirs() }.appendText(org.json.JSONObject().put("at", at).put("number", number).put("note", note).toString() + "\n")
+        c.applicationContext.let { app -> Thread { PhoneHistory.write(app) }.start() } // the note into the computer's copy too
     }.onFailure { WriterLog.w("Phone: the note was not saved (${it.message})") }
 }
 

@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
@@ -177,6 +178,8 @@ internal enum class PdfTool(val label: String, val icon: Int) {
 
 /** PDF's standard stamps, as every reader names and draws them. */
 internal const val PICTURE_STAMP = "Picture"
+/** Tetra's key on a text it put on ([PdfDoc.putText]): its words and look, to be typed in again. */
+private const val TYPED_KEY = "TetraText"
 internal val STAMPS = listOf("Approved", "Draft", "Final", "Confidential", "Experimental", "Expired", "NotApproved", "ForComment", "AsIs", "Sold",
     "Departmental", "NotForPublicRelease", "TopSecret", "ForPublicRelease")
 
@@ -832,12 +835,41 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     }
 
     /** A text box from [a] to [b]: [words] inside a frame of [color], as a comment others' readers show and let you edit. */
-    fun textBox(i: Int, a: Offset, b: Offset, words: String, color: Int) = annotate(i, "Text box") { p, x0, y0 ->
-        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT).apply {
-            setRect(com.artifex.mupdf.fitz.Rect(minOf(a.x, b.x) + x0, minOf(a.y, b.y) + y0, maxOf(a.x, b.x) + x0, maxOf(a.y, b.y) + y0))
-            setDefaultAppearance("Helv", 11f, rgb(0x000000)); setContents(words.replace('—', '-').replace('–', '-'))
-            setBorderWidth(1f); update() // its colour would fill it (a text box's colour is its background): a clear box, a thin frame
-        }; true
+    /**
+     * Words with their look ([PdfText]) on page [i], their top left at [x], [y] (page points), [room] across (a text box:
+     * its width; a text: as far as its longest line), at least [minHeight] tall: a text annotation whose look is the
+     * words laid out by Android with their font embedded (MuPDF's own text boxes know only its few fonts), its words kept
+     * in it for other readers and the look in Tetra's own key. [replacing]: a point on the one it was, taken out in the same step.
+     */
+    fun putText(i: Int, x: Float, y: Float, t: PdfText, room: Float, minHeight: Float = 0f, replacing: Offset? = null) = annotate(i, "Text") { p, x0, y0 ->
+        replacing?.let { at -> typedAt(p, at.x + x0, at.y + y0)?.let { p.deleteAnnotation(it.first) } }
+        if (t.words.isBlank()) return@annotate true // emptied: only taken out
+        val (w, h) = PdfText.size(t, room, minHeight)
+        val src = com.artifex.mupdf.fitz.Document.openDocument(PdfText.pdf(t, w, h), "application/pdf")
+        try {
+            val sp = (src.asPDF() ?: error("No PDF")).findPage(0)
+            val c = sp.get("Contents")
+            val contents = if (c.isArray) (0 until c.size()).fold(ByteArray(0)) { all, k -> all + c.get(k).readStream() + '\n'.code.toByte() } else c.readStream()
+            val res = pdf!!.graftObject(sp.get("Resources"))
+            p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT).apply {
+                setRect(com.artifex.mupdf.fitz.Rect(x + x0, y + y0, x + x0 + w, y + y0 + h))
+                setDefaultAppearance("Helv", t.look.size, rgb(t.look.color)); setContents(t.words); setBorderWidth(0f)
+                setAppearance(com.artifex.mupdf.fitz.Rect(0f, 0f, w, h), res, com.artifex.mupdf.fitz.Buffer().apply { writeBytes(contents) })
+                getObject().put(TYPED_KEY, pdf!!.newString(t.json()))
+            }
+        } finally { src.destroy() }
+        true
+    }
+    /** Words put on with [putText] under [at] on page [i]: where they are (page points) and how they were typed. */
+    fun typedAt(i: Int, at: Offset): Pair<android.graphics.RectF, PdfText>? = synchronized(this) { page(i) { p ->
+        val o = p.bounds
+        typedAt(p as? com.artifex.mupdf.fitz.PDFPage ?: return@page null, at.x + o.x0, at.y + o.y0)?.let { (a, t) ->
+            val r = a.rect; android.graphics.RectF(r.x0 - o.x0, r.y0 - o.y0, r.x1 - o.x0, r.y1 - o.y0) to t }
+    } }
+    private fun typedAt(p: com.artifex.mupdf.fitz.PDFPage, x: Float, y: Float) = p.annotations.orEmpty().reversed().firstNotNullOfOrNull { a ->
+        if (a.type != com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT) return@firstNotNullOfOrNull null
+        val r = a.rect; if (x < r.x0 - 4 || x > r.x1 + 4 || y < r.y0 - 4 || y > r.y1 + 4) return@firstNotNullOfOrNull null
+        a.getObject().get(TYPED_KEY).takeIf { !it.isNull }?.asString()?.let(PdfText::parse)?.let { a to it }
     }
 
     /** The comment under [at] (the topmost, a few points round it), deleted: false when there is none. */
@@ -927,6 +959,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
 @Composable
 internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Unit = {}) {
     val context = LocalContext.current
+    remember { OfficeFonts.assets = context.applicationContext.assets } // Words' fonts (Times' and Calibri's twins) for its texts, as Words' and Slides'
     val scope = rememberCoroutineScope()
     val file = remember(open) { Uri.parse(open).path?.let(::File) }
     RememberOpened(file) // the Office home's Recents
@@ -1050,13 +1083,15 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var penWidth by remember { mutableStateOf(2f) }
     var writing by remember { mutableStateOf<Pair<Int, Offset>?>(null) } // a note being written: its page and place
     var reading by remember { mutableStateOf<String?>(null) } // a note tapped: its words
-    var typing by remember { mutableStateOf<Pair<Int, Offset>?>(null) } // Fill & Sign › Text: where the words go
+    var typing by remember { mutableStateOf<PdfTyping?>(null) } // Fill & Sign › Text or Review › Text box being typed on the page
+    var typed by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
+    var textLook by remember { mutableStateOf(PdfTextLook()) } // the last look used: the next text starts with it
+    var fontBefore by remember { mutableStateOf<String?>(null) } // Font's strip open: the font before it (Cancel puts it back)
     var filling by remember { mutableStateOf<Triple<Int, Offset, PdfField>?>(null) } // a form's text or choice field tapped
     var fillSize by remember { mutableStateOf(11f) }
     val signatureFile = remember { File(context.filesDir, "pdf-signature.png") }
     var signing by remember { mutableStateOf(false) } // drawing the signature
     var asking by remember { mutableStateOf<String?>(null) } // Insert's and Protect's windows: "header", "watermark", "password", "bookmark"
-    var boxing by remember { mutableStateOf<Triple<Int, Offset, Offset>?>(null) } // a text box drawn: its words asked for
     var stampName by remember { mutableStateOf("Approved") }
     var stampPicture by remember { mutableStateOf<Pair<ByteArray, Float>?>(null) } // your own stamp: a picture and its height / width
     val pickStamp = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
@@ -1119,11 +1154,30 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             r.onSuccess { version++ }.onFailure { WriterLog.e("PDF: image", it); Toast.makeText(context, it.message ?: "Could not put the picture in.", Toast.LENGTH_LONG).show() }
         }
     }
-    BackHandler(enabled = editing || organize) { if (organize) organize = false else if (tool != null) tool = null else if (doc?.dirty == true) leaving = true else editing = false }
+    /** Typing on the page starts at [t]; [old]: a text put on before, typed in again with its look. */
+    fun startTyping(t: PdfTyping, old: PdfText? = null) {
+        old?.let { textLook = it.look }
+        typed = androidx.compose.ui.text.input.TextFieldValue(old?.words.orEmpty(), androidx.compose.ui.text.TextRange(old?.words?.length ?: 0)); typing = t
+    }
+    /** A text put on before ([r] where it is), tapped: typed in again in its place. */
+    fun retype(i: Int, r: android.graphics.RectF, old: PdfText) = startTyping(PdfTyping(i, r.left, r.top,
+        if (old.framed) r.width() else maxOf(r.width(), (doc?.sizes?.getOrNull(i)?.width ?: 595f) - r.left - 18f), if (old.framed) r.height() else 0f, old.framed, Offset(r.centerX(), r.centerY())), old)
+    /** The words typed put on the page, one undo step (emptied: the old one only taken out). */
+    fun putTyped() {
+        val t = typing ?: return; typing = null; fontBefore = null
+        val d = doc ?: return
+        if (typed.text.isBlank() && t.replacing == null) return
+        change { d.putText(t.page, t.x, t.y, PdfText(typed.text.trimEnd(), textLook, t.framed), t.room, t.minHeight, t.replacing) }
+        WriterLog.i("PDF: text ${if (t.replacing != null) "changed" else "put on"} (${textLook.font}, ${textLook.size} pt)")
+    }
+    BackHandler(enabled = editing || organize) { if (organize) organize = false else if (typing != null) putTyped() else if (tool != null) tool = null else if (doc?.dirty == true) leaving = true else editing = false }
     /** What a finger did on page [i] with the tool on: [pts] its path in page points (a tap: one point). */
     fun onPage(i: Int, pts: List<Offset>) {
+        if (typing != null) { putTyped(); return } // a tap off the words being typed puts them on, as Words' click outside a box
         val d = doc ?: return; val t = tool ?: run {
             if (pts.size != 1) return
+            // a text put on before, tapped while editing: typed in again
+            if (editing) d.typedAt(i, pts[0])?.let { (r, old) -> retype(i, r, old); return }
             // no tool: a form's field is filled in (a box ticked at once), a note tapped shows its words
             d.fieldAt(i, pts[0])?.let { f ->
                 if (f.readOnly) { Toast.makeText(context, "That field cannot be changed", Toast.LENGTH_SHORT).show(); return }
@@ -1150,7 +1204,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             }
             PdfTool.Note -> writing = i to a
             PdfTool.Redact -> if ((b - a).getDistance() > 4f) change { d.markRedaction(i, a, b) }
-            PdfTool.TextBox -> if ((b - a).getDistance() > 10f) boxing = Triple(i, a, b)
+            PdfTool.TextBox -> if ((b - a).getDistance() > 10f) startTyping(PdfTyping(i, minOf(a.x, b.x), minOf(a.y, b.y), kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y), true))
             PdfTool.TextField -> if ((b - a).getDistance() > 10f) change { d.addField(i, a, b, checkbox = false) }
             PdfTool.CheckBox -> change { d.addField(i, a - Offset(7f, 7f), a + Offset(7f, 7f), checkbox = true) }
             PdfTool.Stamp -> change {
@@ -1164,7 +1218,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             PdfTool.Pen -> if (pts.size > 1) change { d.ink(i, listOf(pts), penColour, penWidth) }
             PdfTool.Marker -> if (pts.size > 1) change { d.ink(i, listOf(pts), 0xFFEB3B, 12f) }
             PdfTool.Erase -> change { if (!d.deleteAt(i, a)) Toast.makeText(context, "No comment there", Toast.LENGTH_SHORT).show() }
-            PdfTool.Text -> typing = i to a
+            // the words start where the finger was (its line through the tap), as far across as the page leaves room
+            PdfTool.Text -> d.typedAt(i, a)?.let { (r, old) -> retype(i, r, old) }
+                ?: startTyping(PdfTyping(i, a.x, a.y - textLook.size * 0.8f, (d.sizes[i].width - a.x - 18f).coerceAtLeast(72f), 0f, false))
             PdfTool.Tick -> change { d.mark(i, a, '✓', fillSize * 1.3f, 0x000000) }
             PdfTool.Cross -> change { d.mark(i, a, '✗', fillSize * 1.3f, 0x000000) }
             PdfTool.Dot -> change { d.mark(i, a, '•', fillSize * 1.3f, 0x000000) }
@@ -1213,26 +1269,10 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             confirmButton = { androidx.compose.material3.TextButton(onClick = { writing = null; doc?.let { d -> change { d.note(i, at0, words.trim(), markColour) } } }) { Text("Add") } },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { writing = null }) { Text("Cancel") } })
     }
-    typing?.let { (i, at0) ->
-        var words by remember { mutableStateOf("") }
-        androidx.compose.material3.AlertDialog(onDismissRequest = { typing = null }, title = { Text("Text") },
-            text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), placeholder = { Text("What goes there") }) },
-            confirmButton = { androidx.compose.material3.TextButton(enabled = words.isNotBlank(), onClick = { typing = null
-                doc?.let { d -> change { d.text(i, at0 - Offset(0f, fillSize * 0.6f), words.trim(), fillSize, 0x000000) } } }) { Text("Put in") } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { typing = null }) { Text("Cancel") } })
-    }
     // the signature: drawn once in Words' drawing box, kept in the app (never in a file), put where Sign is tapped
     if (signing) DrawDialog(200f, { signing = false }, boxAspect = 0.4f) { png, _, _, _, _ ->
         signing = false
         runCatching { signatureFile.writeBytes(png) }.onSuccess { tool = PdfTool.Sign; Toast.makeText(context, "Signature kept: tap where it goes", Toast.LENGTH_LONG).show() }
-    }
-    boxing?.let { (i, a0, b0) ->
-        var words by remember { mutableStateOf("") }
-        androidx.compose.material3.AlertDialog(onDismissRequest = { boxing = null }, title = { Text("Text box") },
-            text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 2, placeholder = { Text("What it says") }) },
-            confirmButton = { androidx.compose.material3.TextButton(enabled = words.isNotBlank(), onClick = { boxing = null
-                doc?.let { d -> change { d.textBox(i, a0, b0, words.trim(), if (markColour == 0xFFEB3B) 0xE53935 else markColour) } } }) { Text("Put in") } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { boxing = null }) { Text("Cancel") } })
     }
     filling?.let { (i, at0, f) ->
         var value by remember { mutableStateOf(f.value) }
@@ -1346,11 +1386,12 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     val d0 = doc
                     if (editing && d0 != null) {
                         key(version) {
-                            Tool(R.drawable.ic_undo, "Undo", islandContentColor(), enabled = d0.canUndo) { change { d0.undo() } }
-                            Tool(R.drawable.ic_redo, "Redo", islandContentColor(), enabled = d0.canRedo) { change { d0.redo() } }
-                            Tool(R.drawable.ic_save, "Save", islandContentColor(), enabled = d0.dirty) { save() }
+                            // words being typed on the page: put on first (Undo then takes them off, as any change)
+                            Tool(R.drawable.ic_undo, "Undo", islandContentColor(), enabled = d0.canUndo || typing != null) { putTyped(); change { d0.undo() } }
+                            Tool(R.drawable.ic_redo, "Redo", islandContentColor(), enabled = d0.canRedo) { putTyped(); change { d0.redo() } }
+                            Tool(R.drawable.ic_save, "Save", islandContentColor(), enabled = d0.dirty || typing != null) { putTyped(); save() }
                         }
-                        Tool(R.drawable.ic_check, "Done", islandContentColor()) { if (d0.dirty) leaving = true else editing = false }
+                        Tool(R.drawable.ic_check, "Done", islandContentColor()) { putTyped(); if (d0.dirty) leaving = true else editing = false }
                     } else {
                     if (d0?.editable == true) RibbonButton("Edit", islandContentColor(), R.drawable.ic_edit) { editing = true; WriterLog.i("PDF: edit") }
                     if (Pdf.hasText && doc != null) IconButton(onClick = { finding = !finding; if (!finding) matches = null }) {
@@ -1472,6 +1513,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 PdfPage(d, i, if (i == at) Pdf.renderWidth(px, settled, s.width / s.height) else px,
                                     Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).width(w), marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
                                     if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
+                                    typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook) { typed = it } }
                                 }
                             }
                         }
@@ -1492,10 +1534,17 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         }
         // the ribbon while editing, at the bottom as Slides' (a tablet: the floating island; a phone: across the bottom)
         val d = doc
-        if (editing && d != null) {
+        // typing on the page: Font's strip in the ribbon's place, as Words' and Slides'; a card tapped shows on the words at once
+        val before = fontBefore
+        if (typing != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
+            ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
+        else if (editing && d != null) {
             val w = Color.White
-            Surface(color = Color.Black, contentColor = w, modifier = if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth()) {
+            Surface(color = Color.Black, contentColor = w, modifier = (if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth())
+                .then(if (typing != null) Modifier.imePadding() else Modifier)) {
                 OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) { Column {
+                    // typing on the page: Words' Home tools for its look instead of the tabs, × and ✓ at the ends
+                    if (typing != null) { PdfTextTools(w, textLook, { textLook = it }, { fontBefore = textLook.font }, { typing = null }, ::putTyped); return@Column }
                     OfficeTabRow(listOf("Pages", "Review", "Draw", "Fill & Sign", "Insert", "Protect"), tab, w, PDF_RED, { tab = it; tool = null })
                     @Composable fun ToolButton(t: PdfTool) = RibbonButton(t.label, w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
                     key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {

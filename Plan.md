@@ -2058,6 +2058,13 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       Slides) — and From photos. PdfNewDeviceTest (blank, text, page, saved, reopened). Desktop: none, by scope (22 Oct).
       The "Page X of Y" pill now only while viewing, as Words' (the user: it sat on the page while editing). Emulator, tablet
       and phone sizes; not yet on the real pair.
+- [x] (pdf-new session, 24 Oct; branch claude/pdf-new) The user: "text input fonts format like in Words, Slides and Tables?" —
+      Fill & Sign › Text and Review › Text box are typed on the page itself, with Words' Home tools in the ribbon's place (as a
+      Slides box: one look for the whole text): Font (Words' strip, phone fonts too), size, B/I/U, colour, highlight,
+      alignment, × and ✓; a tap off the words or Back puts them on. Written as a text annotation whose look is Android's
+      layout with the font embedded (PdfText.kt; Poppler draws it the same), its words in it for other readers, its look in
+      the annotation's own key so a tap types it in again. PdfTextDeviceTest. Not yet: a look per word (Slides' isn't
+      either), moving a placed text, the real pair.
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

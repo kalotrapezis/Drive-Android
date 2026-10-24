@@ -139,6 +139,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -1112,45 +1117,153 @@ private fun Home(
         "maps" -> listOf(HomeIcon("Maps", R.drawable.maps_art, { openMaps(null) }))
         else -> emptyList()
     }
-    // Home's own layout on this device (the user, 24 Oct: "like a launcher"); the pencil or a long press on an icon edits it
+    // Home's own layout on this device (the user, 24 Oct: "a grid that expands, to drag and drop where I want them"): hold
+    // any part to move it, as on a launcher; the pencil shows each part's resize and hide buttons
+    val cols = HomeLayout.columns(wide)
     var layout by remember(wide) { mutableStateOf(HomeLayout.load(context, wide)) }
     var editing by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    fun change(items: List<HomeItem>) { layout = items; HomeLayout.save(context, items) }
+    fun change(items: List<HomeItem>) { layout = items; HomeLayout.save(context, wide, items) }
     BackHandler(editing) { editing = false }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                // the launcher icon before the name (asked 17 Oct); an adaptive icon, so drawn by Android, not painterResource
-                val icon = remember(context) { context.getDrawable(R.mipmap.ic_launcher)?.toBitmap(144, 144)?.asImageBitmap() }
-                icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(36.dp)) }
-                Text(
-                    if (editing) "Edit Home" else "Tetra",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
-                    ),
-                    modifier = Modifier.weight(1f),
-                )
-                if (editing) {
-                    TextButton(onClick = { HomeLayout.reset(context); layout = HomeLayout.load(context, wide) }) { Text("Reset") }
-                    Button(onClick = { editing = false }) { Text("Done") }
-                } else IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit Home") }
-            }
+    val scroll = rememberScrollState()
+    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(scroll).padding(start = 10.dp, top = 16.dp, end = 10.dp, bottom = 22.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // the launcher icon before the name (asked 17 Oct); an adaptive icon, so drawn by Android, not painterResource
+            val icon = remember(context) { context.getDrawable(R.mipmap.ic_launcher)?.toBitmap(144, 144)?.asImageBitmap() }
+            icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(36.dp)) }
+            Text(
+                if (editing) "Edit Home" else "Tetra",
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            if (editing) {
+                TextButton(onClick = { HomeLayout.reset(context, wide); layout = HomeLayout.load(context, wide) }) { Text("Reset") }
+                Button(onClick = { editing = false }) { Text("Done") }
+            } else IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit Home") }
         }
-        if (editing) item { HomeEditList(layout, ::change, ::icons) }
-        else items(HomeLayout.rows(layout, if (wide) 2 else 1)) { row ->
-            if (row[0].small) androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                row.forEach { part -> icons(part.id).forEach { HomeSmallIcon(it) { editing = true } } }
-            } else if (wide) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                row.forEach { Box(Modifier.weight(1f)) { large(it.id) } }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
-            } else large(row[0].id)
+        if (editing) Text("Hold a part and drag it to any cell; the others make room. ⤢ makes it large or small, the eye hides it.",
+            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 6.dp))
+        HomeGrid(layout, cols, editing, { editing = true }, ::change, scroll, large, ::icons)
+        if (editing) {
+            val hidden = layout.filter { it.hidden }
+            Text(if (hidden.isEmpty()) "Hidden parts wait here (and in Settings › Home)." else "Hidden — tap one to put it back",
+                style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp))
+            androidx.compose.foundation.layout.FlowRow {
+                hidden.forEach { item -> icons(item.id).first().let { HomeSmallIcon(HomeIcon(HomeLayout.NAMES[item.id] ?: it.label, it.art) { change(HomeLayout.change(layout, item.copy(hidden = false, col = -1, row = -1), cols)) }, Modifier.width(96.dp).height(88.dp).graphicsLayer { alpha = 0.55f }) } }
+            }
         }
     }
 }
+
+/**
+ * Home's grid (24 Oct): each shown part at its cell, sized by HomeLayout; a part held is dragged over the grid, a frame
+ * showing where it will land, the page scrolling when it nears the top or the bottom. While editing, the parts' own
+ * buttons rest (a tap opens nothing) and the empty cells show, two spare rows under the last part to drop into.
+ */
+@Composable private fun HomeGrid(
+    layout: List<HomeItem>, cols: Int, editing: Boolean, edit: () -> Unit, set: (List<HomeItem>) -> Unit, scroll: androidx.compose.foundation.ScrollState,
+    large: @Composable (String) -> Unit, icons: (String) -> List<HomeIcon>,
+) = BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val density = LocalDensity.current
+    val cellW = maxWidth / cols; val cellH = 94.dp // a group's 176 dp and the 12 dp between parts, in two rows
+    val cw = with(density) { cellW.toPx() }; val ch = with(density) { cellH.toPx() }
+    val screenH = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+    val edge = with(density) { 96.dp.toPx() }
+    val current by rememberUpdatedState(layout)
+    val save by rememberUpdatedState(set)
+    val startEdit by rememberUpdatedState(edit)
+    var dragging by remember { mutableStateOf<String?>(null) }
+    var drag by remember { mutableStateOf(Offset.Zero) }
+    var finger by remember { mutableStateOf(0f) } // the finger's height in the window, for scrolling at the edges
+    var gridTop by remember { mutableStateOf(0f) }
+    fun target(item: HomeItem) = HomeLayout.size(item, cols).let { (w, _) ->
+        ((item.col * cw + drag.x) / cw).roundToInt().coerceIn(0, cols - w) to ((item.row * ch + drag.y) / ch).roundToInt().coerceAtLeast(0)
+    }
+    LaunchedEffect(dragging) {
+        while (dragging != null) {
+            val v = when { finger < edge -> -(edge - finger) / 4; finger > screenH - edge -> (finger - (screenH - edge)) / 4; else -> 0f }
+            if (v != 0f) drag += Offset(0f, scroll.scrollBy(v))
+            delay(16)
+        }
+    }
+    val rows = HomeLayout.height(layout, cols) + if (editing) 2 else 0
+    Box(Modifier.fillMaxWidth().height(cellH * rows).onGloballyPositioned { gridTop = it.positionInRoot().y }) {
+        if (editing) {
+            val cellColour = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f)
+            val frame = MaterialTheme.colorScheme.primary
+            val held = layout.firstOrNull { it.id == dragging }
+            Canvas(Modifier.matchParentSize()) {
+                val gap = 6.dp.toPx(); val r = CornerRadius(16.dp.toPx())
+                for (row in 0 until rows) for (col in 0 until cols) drawRoundRect(cellColour, Offset(col * cw + gap, row * ch + gap), Size(cw - 2 * gap, ch - 2 * gap), r)
+                held?.let { h ->
+                    val (c, rw) = target(h); val (w, hh) = HomeLayout.size(h, cols)
+                    drawRoundRect(frame.copy(alpha = 0.18f), Offset(c * cw + gap, rw * ch + gap), Size(w * cw - 2 * gap, hh * ch - 2 * gap), r)
+                }
+            }
+        }
+        layout.filter { !it.hidden }.forEach { item -> key(item.id) {
+            val (w, h) = HomeLayout.size(item, cols)
+            val moving = dragging == item.id
+            Box(
+                Modifier.offset(cellW * item.col, cellH * item.row).size(cellW * w, cellH * h).zIndex(if (moving) 1f else 0f)
+                    .graphicsLayer { if (moving) { translationX = drag.x; translationY = drag.y; scaleX = 1.03f; scaleY = 1.03f } }
+                    .holdToDrag(item.id,
+                        start = { at -> startEdit(); dragging = item.id; drag = Offset.Zero; finger = gridTop + (current.first { it.id == item.id }.row) * ch + at.y },
+                        move = { d -> drag += d; finger += d.y },
+                        end = { current.firstOrNull { it.id == item.id }?.let { now -> val (c, r) = target(now); save(HomeLayout.drop(current, now.id, c, r, cols)) }; dragging = null; drag = Offset.Zero })
+                    .padding(6.dp),
+            ) {
+                if (item.small) Row(Modifier.fillMaxSize()) { icons(item.id).forEach { HomeSmallIcon(it, Modifier.weight(1f).fillMaxHeight()) } }
+                else large(item.id)
+                if (editing) Box(Modifier.matchParentSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } }) {
+                    // on top of the part, so its own buttons get no tap; the frame says it can be moved
+                    Box(Modifier.matchParentSize().border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), MaterialTheme.shapes.large))
+                    // a small icon: the two in its top corners, smaller, so the icon still shows
+                    Row(if (item.small) Modifier.fillMaxWidth().padding(1.dp) else Modifier.align(Alignment.TopEnd).padding(2.dp),
+                        horizontalArrangement = if (item.small) Arrangement.SpaceBetween else Arrangement.spacedBy(4.dp)) {
+                        HomeEditButton(if (item.small) R.drawable.ic_fullscreen else R.drawable.ic_fullscreen_exit, if (item.small) "Make large" else "Make small", if (item.small) 24.dp else 30.dp) {
+                            save(HomeLayout.change(current, item.copy(small = !item.small), cols))
+                        }
+                        if (item.id != HomeLayout.SETTINGS) HomeEditButton(R.drawable.ic_visibility_off, "Hide from Home", if (item.small) 24.dp else 30.dp) { save(HomeLayout.change(current, item.copy(hidden = true), cols)) }
+                    }
+                }
+            }
+        } }
+    }
+}
+
+/**
+ * Held still for a long press, then dragged: Home's parts, as a launcher's icons. Watched before the part's own buttons
+ * see the touch, and taken once held, so a held part never also opens; moved before the long press, it is the page's scroll.
+ */
+private fun Modifier.holdToDrag(key: Any, start: (Offset) -> Unit, move: (Offset) -> Unit, end: () -> Unit) = pointerInput(key) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+        val letGo = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            while (true) {
+                val c = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                if (c == null || !c.pressed || c.isConsumed || (c.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+            }
+            true
+        }
+        if (letGo == true) return@awaitEachGesture
+        start(down.position)
+        while (true) {
+            val c = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+            if (!c.pressed) { c.consume(); break }
+            val d = c.position - c.previousPosition
+            c.consume()
+            if (d != Offset.Zero) move(d)
+        }
+        end()
+    }
+}
+
+@Composable private fun HomeEditButton(icon: Int, label: String, size: androidx.compose.ui.unit.Dp, click: () -> Unit) = Surface(
+    shape = CircleShape, color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
+    shadowElevation = 2.dp, modifier = Modifier.size(size).clickable(onClick = click),
+) { Box(contentAlignment = Alignment.Center) { Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(size * 0.6f)) } }
 
 /** Settings › Home: what is hidden from Home on this device, each still opened here or shown again. */
 @Composable private fun HomeSettings(open: (String) -> Unit) {
@@ -1158,88 +1271,32 @@ private fun Home(
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     var layout by remember(wide) { mutableStateOf(HomeLayout.load(context, wide)) }
     val hidden = layout.filter { it.hidden }
-    Text(if (hidden.isEmpty()) "Nothing is hidden. On Home, the pencil (or holding a small icon) moves, resizes and hides its parts; this device only."
+    Text(if (hidden.isEmpty()) "Nothing is hidden. On Home, hold a part to move it; the pencil resizes and hides parts; this device only."
         else "Hidden from Home on this device; they keep working (reminders, timers, sync).", style = MaterialTheme.typography.bodySmall)
     hidden.forEach { item ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(HomeLayout.NAMES[item.id] ?: item.id, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             if (item.id == "scanner") { TextButton({ open("scanner") }) { Text("Scanner") }; TextButton({ open("codes") }) { Text("Codes") } }
             else TextButton({ open(item.id) }) { Text("Open") }
-            TextButton({ layout = layout.map { if (it.id == item.id) it.copy(hidden = false) else it }; HomeLayout.save(context, layout) }) { Text("Show on Home") }
+            TextButton({ layout = HomeLayout.change(layout, item.copy(hidden = false, col = -1, row = -1), HomeLayout.columns(wide)); HomeLayout.save(context, wide, layout) }) { Text("Show on Home") }
         }
     }
 }
 
 private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
 
-/** A part shown small on Home: its icon and name, as a launcher's; a long press opens Home's editor. */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable private fun HomeSmallIcon(icon: HomeIcon, edit: () -> Unit) = Column(
-    Modifier.width(88.dp).clip(MaterialTheme.shapes.large).combinedClickable(onLongClick = edit, onClick = icon.open).padding(vertical = 8.dp),
-    horizontalAlignment = Alignment.CenterHorizontally,
+/** A part shown small on Home: its icon and name, as a launcher's. */
+@Composable private fun HomeSmallIcon(icon: HomeIcon, modifier: Modifier) = Column(
+    modifier.clip(MaterialTheme.shapes.large).clickable(onClick = icon.open).padding(vertical = 4.dp),
+    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
 ) {
-    HomeIconArt(icon, 60.dp)
-    Text(icon.label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp, start = 4.dp, end = 4.dp))
+    HomeIconArt(icon, 52.dp)
+    Text(icon.label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp))
 }
 
 // the user's art is itself a tile, Sync's and Settings' too (24 Oct)
 @Composable private fun HomeIconArt(icon: HomeIcon, size: androidx.compose.ui.unit.Dp) =
     Image(painterResource(icon.art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(size))
-
-/**
- * Home › Edit: every part in its order. Dragged to move (the handle at once, the rest of the row after a long press, so
- * the list still scrolls); Small or Large; shown or hidden. Each change is saved as it is made.
- */
-@Composable private fun HomeEditList(layout: List<HomeItem>, set: (List<HomeItem>) -> Unit, icons: (String) -> List<HomeIcon>) {
-    var dragging by remember { mutableStateOf<String?>(null) }
-    var dragY by remember { mutableStateOf(0f) }
-    val step = with(LocalDensity.current) { 72.dp.toPx() } // a row and the gap under it
-    val current by rememberUpdatedState(layout)
-    val save by rememberUpdatedState(set)
-    fun update(item: HomeItem) = save(current.map { if (it.id == item.id) item else it })
-    Column(Modifier.widthIn(max = 760.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) { // a tablet: not the whole width
-        Text("Drag ☰ (or hold a row) to move. Large shows the whole group, Small just its icon. A hidden part stays in Settings › Home.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 4.dp))
-        layout.forEach { item -> key(item.id) {
-            val start = { _: Offset -> dragging = item.id; dragY = 0f }
-            val stop = { dragging = null; dragY = 0f }
-            val move = { change: androidx.compose.ui.input.pointer.PointerInputChange, d: Offset ->
-                change.consume(); dragY += d.y
-                val i = current.indexOfFirst { it.id == item.id }
-                if (dragY > step / 2 && i < current.lastIndex) { save(HomeLayout.move(current, i, i + 1)); dragY -= step }
-                else if (dragY < -step / 2 && i > 0) { save(HomeLayout.move(current, i, i - 1)); dragY += step }
-            }
-            val parts = icons(item.id)
-            Surface(
-                shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant,
-                shadowElevation = if (dragging == item.id) 8.dp else 0.dp,
-                modifier = Modifier.fillMaxWidth().height(64.dp).zIndex(if (dragging == item.id) 1f else 0f)
-                    .graphicsLayer { translationY = if (dragging == item.id) dragY else 0f },
-            ) {
-                Row(Modifier.fillMaxSize().padding(end = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        Modifier.weight(1f).fillMaxHeight().pointerInput(item.id) { detectDragGesturesAfterLongPress(start, stop, stop, move) }
-                            .graphicsLayer { alpha = if (item.hidden) 0.45f else 1f },
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Box(Modifier.fillMaxHeight().width(44.dp).pointerInput(item.id) { detectDragGestures(start, stop, stop, move) }, contentAlignment = Alignment.Center) {
-                            Icon(painterResource(R.drawable.ic_drag_handle), contentDescription = "Move")
-                        }
-                        HomeIconArt(parts.first(), 40.dp)
-                        Text(parts.joinToString(" & ") { it.label }, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    // one button that flips the size: it reads what the part is now
-                    androidx.compose.material3.FilterChip(
-                        selected = item.small, onClick = { update(item.copy(small = !item.small)) }, enabled = !item.hidden,
-                        label = { Text(if (item.small) "Small" else "Large") },
-                    )
-                    IconButton(onClick = { update(item.copy(hidden = !item.hidden)) }, enabled = item.id != HomeLayout.SETTINGS) {
-                        Icon(painterResource(if (item.hidden) R.drawable.ic_visibility_off else R.drawable.ic_visibility), contentDescription = if (item.hidden) "Show on Home" else "Hide from Home")
-                    }
-                }
-            }
-        } }
-    }
-}
 
 /**
  * Maps (21 Oct): saved places beside the map, each one tap to directions there (the user, 21 Oct: "favorite locations

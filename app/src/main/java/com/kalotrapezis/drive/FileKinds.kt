@@ -22,6 +22,7 @@ internal object FileKinds {
         "excel" -> R.drawable.kind_excel
         "slides" -> R.drawable.kind_slides
         "pdf" -> R.drawable.kind_pdf
+        "images" -> R.drawable.kind_images
         "video" -> R.drawable.kind_video
         "music" -> R.drawable.kind_music
         "docs-txt" -> R.drawable.kind_docs_txt

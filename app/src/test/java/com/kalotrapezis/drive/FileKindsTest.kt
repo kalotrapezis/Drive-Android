@@ -28,7 +28,7 @@ class FileKindsTest {
         assertEquals(R.drawable.kind_pdf, FileKinds.icon("paper.PDF"))
         assertEquals(R.drawable.kind_video, FileKinds.icon("clip.MKV"))
         assertEquals(R.drawable.kind_music, FileKinds.icon("song.flac"))
-        assertNull(FileKinds.icon("photo.jpg"))
+        assertEquals(R.drawable.kind_images, FileKinds.icon("photo.jpg"))
         assertNull(FileKinds.icon("README"))
     }
 }

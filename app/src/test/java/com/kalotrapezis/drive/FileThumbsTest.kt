@@ -16,13 +16,13 @@ class FileThumbsTest {
         assertEquals(40, key.length)
     }
 
-    @Test fun theKindsFollowOfficesApps() {
-        assertEquals(FileThumbs.Kind.Words, FileThumbs.kind("Essay.DOCX"))
-        assertEquals(FileThumbs.Kind.Tables, FileThumbs.kind("marks.ods"))
-        assertEquals(FileThumbs.Kind.Slides, FileThumbs.kind("talk.pptx"))
+    @Test fun picturesAndVideosHaveAPreviewDocumentsNone() {
+        assertNull(FileThumbs.kind("Essay.DOCX")) // their tile instead (the user, 24 Oct)
+        assertNull(FileThumbs.kind("marks.ods"))
+        assertNull(FileThumbs.kind("talk.pptx"))
         assertEquals(FileThumbs.Kind.Picture, FileThumbs.kind("IMG_1.heic"))
         assertEquals(FileThumbs.Kind.Video, FileThumbs.kind("clip.mp4"))
-        assertEquals(FileThumbs.Kind.Pdf, FileThumbs.kind("paper.pdf"))
+        assertNull(FileThumbs.kind("paper.pdf"))
         assertNull(FileThumbs.kind("notes.txt"))
         assertNull(FileThumbs.kind("README"))
     }

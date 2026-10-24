@@ -186,6 +186,11 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
+- [x] (contacts-build session, 24 Oct, from main c16ca05 / Drive f83bdcf; branches claude/contacts-583397 and Drive contacts)
+      Contacts in a narrow window (the user): one column as the phone's — the list, then a contact over it with ‹ — on the
+      desktop and on Android when the window narrows (split screen, a folded tablet; seen on the emulator resized
+      1280→560 dp); the first contact opens by itself only in two columns. Phone: contacts read ahead when Tetra opens
+      (ContactsPreload) and a spinner until the first read, never "No contacts" while loading. Not yet on the phone.
 - [x] (contacts-build session, 24 Oct; branches claude/contacts-583397 and Drive contacts, not merged) Contacts after the
       user's look at the desktop: read ahead and a spinner (not "No contacts yet" while loading); the contact's island in
       the middle with Call · Mail · WhatsApp · Viber, ♥ and Edit in an island beside it, icons on the cards; From Photos

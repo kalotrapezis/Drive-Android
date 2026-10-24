@@ -2087,6 +2087,59 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
 - [ ] Left: cover-and-retype for a PDF's own text; digital (certificate) signatures (~6 MB of crypto); remove hidden
       information; document properties; a placed signature moved afterwards; Edit in Words sometimes misses a table's header
       row; the phone layout checked; all of it on the real pair (phone 208c8192, tablet 971f6b37).
+- [x] (pdf-new session, 24 Oct; branch claude/pdf-new) The user: "Open PDFs" showed only images — it was Office's PDF card, whose
+      New was "New from photos" (Android's photo picker); Home's Open PDFs tile already lists PDFs only. Now the card's New is
+      "New PDF" with a menu: Blank page (A4) — `Pdf.newBlank`, "New PDF (n).pdf" in Documents, opened editing (JustMade, as
+      Slides) — and From photos. PdfNewDeviceTest (blank, text, page, saved, reopened). Desktop: none, by scope (22 Oct).
+      The "Page X of Y" pill now only while viewing, as Words' (the user: it sat on the page while editing). Emulator, tablet
+      and phone sizes; not yet on the real pair.
+- [x] (pdf-new session, 24 Oct; branch claude/pdf-new) The user: "text input fonts format like in Words, Slides and Tables?" —
+      Fill & Sign › Text and Review › Text box are typed on the page itself, with Words' Home tools in the ribbon's place (as a
+      Slides box: one look for the whole text): Font (Words' strip, phone fonts too), size, B/I/U, colour, highlight,
+      alignment, × and ✓; a tap off the words or Back puts them on. Written as a text annotation whose look is Android's
+      layout with the font embedded (PdfText.kt; Poppler draws it the same), its words in it for other readers, its look in
+      the annotation's own key so a tap types it in again. PdfTextDeviceTest. Not yet: a look per word (Slides' isn't
+      either), moving a placed text, the real pair.
+      Then (the user on the tablet, 24 Oct: "how do I move the text box?", "look how Words, Slides and Tables work"): as a
+      Slides box — a tap chooses a text (frame and corner handle), a second tap or Edit text types in it, a finger drags it,
+      the handle sizes it (a text sized keeps that width); its tab: the look at once (one undo step each), Fill and
+      Border, Position (Word's Align: left, centre, right, top, middle, bottom, 2 cm from the edge), Delete; keys as
+      Slides' — Delete, arrows (Shift: 10 pt), Enter, Esc, Ctrl+S/Z/Y; the typed words' selection blue on the page (dark
+      theme: Ctrl+A's selection did not show). Emulator, tablet size.
+      Then ("dont stop, is anything else missing?"): Slides' item tools for a chosen text — Cut, Copy, Paste (Copy's text
+      a little lower and right; else words copied in another app, a new text), Duplicate (Ctrl+D), Arrange (bring
+      forward/to front, send backward/to back among the page's comments, pictures and drawings: the /Annots order),
+      Rotate (90° steps, the look turned in the file), Format painter, Clear formatting; a mouse's right button: Edit
+      text, Cut, Copy, Paste (where clicked), Bring to front, Send to back, Delete; Ctrl+C/X/V. PdfTextDeviceTest
+      turnedAndRestacked. Emulator: tablet and phone sizes. Not done: "behind" the page's own text (a comment always
+      sits over it; behind needs writing into the page itself, and it could no longer be chosen), a look per word,
+      the right button tried with a real mouse.
+      Then ("ok go on"): any angle — a handle over the chosen frame turns it about its middle (near a quarter turn it
+      snaps to it), as Slides'; the file keeps its own size before turning (laidW/laidH), its place the box round it.
+      A slanted text keeps its size (Rotate › Upright to size it). Emulator, tablet size; PdfTextDeviceTest at 30°.
+      Then ("go on finish and then will test"): words with their own look — typed in Words' editor (RichTextState);
+      with words selected, B I U, text colour and highlight go on those words only (nothing selected: the whole text);
+      kept as runs beside the words and look, drawn with the font's own faces; font and size stay the whole text's (as a
+      Slides box). The turning handle goes under the frame at the page's top; a turn counts from where the finger took
+      hold. PdfTextDeviceTest wordsWithTheirOwnLook (a red bold word drawn red, the other line black). Emulator, tablet.
+      Left for the user's test: the right button with the tablet's mouse (adb cannot send one). Left out: behind the
+      page's own text; a size or font for some words only.
+      Then (the user: "the right click … is in a selection tab for phone and tablet and in a menu for a desktop view — do
+      you have the same layout?"): now as Slides' — a text chosen adds Selection first (Cut, Copy, Paste, Paste text
+      only, Copy formatting, Paste formatting) and its own tab last, "Text box", in the lighter colour (Edit text, the
+      look, Clear formatting, Position, Arrange, Rotate, Duplicate, Delete); the other tabs stay; choosing a text shows
+      its tab, letting it go shows the tab before; the right button's menu as before. The Format painter became Copy /
+      Paste formatting. Emulator, tablet size.
+      Then (the user: "its not even close, page layout and stuff — take a look on what the other applets have"): Words'
+      tabs in Words' order — File (Save, Save a copy, AutoSave, Save as, Rename, Versions, Edit in Words, Export text,
+      Print, Share, Open in another app, About this file, Send log, Settings), Home (Text, Text box, the look of the chosen
+      text or the next one), Insert (Blank page, Insert PDF, Text, Text box, Picture, Signature, Stamp, Rectangle, Oval,
+      Arrow, Note, Date, Page numbers, Header & footer, Watermark), Draw, Layout (Size: A4/A5/A3/Letter/Legal, Portrait,
+      Landscape — every page, its top left kept; Margins: Word's presets, used by Position and a new text; Blank/Delete
+      page, Rotate), Pages, Review, Fill & Sign, Protect, View (Navigation, Comments, Bookmarks, Zoom − % +, Fit width,
+      Two pages, Ruler on a tablet, cm/inches) — and Words' rulers along the top and down each page. Save a copy leaves
+      the file unsaved (a redaction still to do stays to do). PdfNewDeviceTest pageSizeAndWayRound. A second emulator
+      (books_tablet, read-only) while another session used the first. Not done: Design (page colour, borders).
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

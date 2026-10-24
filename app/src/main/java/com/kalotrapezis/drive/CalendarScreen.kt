@@ -220,11 +220,13 @@ internal fun alarmText(a: CalAlarm, allDay: Boolean, start: ZonedDateTime): Stri
     val base = when {
         a.at != null -> "At " + a.at.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.ENGLISH))
         a.fromEnd -> if (t == 0L) "At the end" else spanText(t) + if (t < 0) " before the end" else " after the end"
-        t <= 0 && (allDay || t <= -86400) -> {
-            val fires = start.plusDays(a.days).plusSeconds(a.seconds)
+        // all day starts at midnight, so "on the day at 09:00" is PT9H, after the start: still said by its day
+        allDay || t <= -86400 -> {
+            val fires = a.times(start, start, allDay)[0]
             val before = ChronoUnit.DAYS.between(fires.toLocalDate(), start.toLocalDate())
             val clock = fires.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
-            when (before) { 0L -> "On the day at $clock"; 1L -> "The day before at $clock"; 7L -> "A week before at $clock"; else -> "$before days before at $clock" }
+            when (before) { 0L -> "On the day at $clock"; 1L -> "The day before at $clock"; 7L -> "A week before at $clock"; -1L -> "The day after at $clock"
+                else -> if (before > 0) "$before days before at $clock" else "${-before} days after at $clock" }
         }
         t == 0L -> "At the time"
         else -> spanText(t) + if (t < 0) " before" else " after"

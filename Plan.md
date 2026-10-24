@@ -1507,6 +1507,9 @@ Tetra/Calendar/                      (~/Tetra/Files/Calendar on the PC, /sdcard/
   ("for 3 days at 9:00 before") = one VALARM with `TRIGGER` at the first one (3 days before, 9:00), `REPEAT:2` and
   `DURATION:P1D` — RFC 5545's own repeat, so other apps read it too (Google drops the repeats on import, keeps the first).
   Moving a timed event in Tetra keeps such a reminder at 9:00.
+  All day starts at midnight, so "on the day at 9:00" is `TRIGGER:PT9H` (Google: `P0DT9H0M0S`), after the start: it is
+  labelled by its day, never "9 hours after", and its hours are the clock's, so it is 09:00 on the days the clocks
+  change too (both engines, 24 Oct).
 - **New event defaults**: 30 min before (timed), the day before at 9:00 (all-day); a setting.
 
 ### Notifications

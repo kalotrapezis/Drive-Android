@@ -46,7 +46,7 @@ internal object CalendarAlarms {
     fun reminders(cals: List<CalendarInfo>, from: Instant, to: Instant): List<DueReminder> =
         CalendarFiles.occurrences(cals, from.minus(MISSED), to.plus(LEAD)).flatMap { o ->
             o.event.alarms.flatMapIndexed { i, a ->
-                a.times(o.start, o.end).mapIndexedNotNull { n, t ->
+                a.times(o.start, o.end, o.allDay).mapIndexedNotNull { n, t ->
                     val at = t.toInstant()
                     if (at < from || at >= to) null else DueReminder(at, o, "${o.file.uid}|${o.start.toInstant()}|$i|$n")
                 }

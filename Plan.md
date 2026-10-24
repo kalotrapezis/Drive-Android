@@ -193,7 +193,9 @@ How to write here:
       asked once in Settings › Contacts with the reason). Sound: on the phone, or on the PC when the phone is paired by
       the system's Bluetooth and connected as a hands-free kit (the PC offers HFP "Handsfree"; WirePlumber 0.5) —
       desktop Settings › Calls shows it, Connect, Open Bluetooth settings; a notification on connect/drop. Hold: not
-      possible (only the phone app). Desktop 0.6.0-beta.12 built; not yet tried with a real call.
+      possible (only the phone app). Tried with a real call on the Xiaomi 15 over Bluetooth: the other side heard
+      their voice twice (the PC's mic picks up its speakers) → PipeWire's webrtc echo canceller loaded for the call's
+      length (calls.js `echo`; Drive bfc589c, 0.6.0-beta.13). The user: done; come back if more problems.
 - [x] (contacts-build session, 24 Oct, from main c16ca05 / Drive f83bdcf; branches claude/contacts-583397 and Drive contacts)
       Contacts in a narrow window (the user): one column as the phone's — the list, then a contact over it with ‹ — on the
       desktop and on Android when the window narrows (split screen, a folded tablet; seen on the emulator resized

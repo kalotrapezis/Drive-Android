@@ -322,7 +322,8 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                             } else ContactAvatar(c.info, 40.dp)
                             Column(Modifier.weight(1f)) {
                                 Text(c.info.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (query.isNotEmpty()) (c.info.phones.firstOrNull()?.value ?: c.info.emails.firstOrNull()?.value)?.let {
+                                // the first number (or e-mail, company) under the name, small and grey, as on the computer (the user, 24 Oct)
+                                (c.info.phones.firstOrNull()?.value ?: c.info.emails.firstOrNull()?.value ?: c.info.org.ifBlank { null })?.let {
                                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
@@ -728,36 +729,36 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
             if (!wide) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                 IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Contacts") }
             }
-            Spacer(Modifier.weight(1f))
-            Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Share: as a .vcf (Viber, WhatsApp, mail take it) or as a QR code another phone scans
-                    IconButton(onClick = { strip = "Share ${i.name}" to listOf(
-                        "Send as a contact file (.vcf)" to {
-                            runCatching {
-                                val f = File(File(context.cacheDir, "share").apply { mkdirs() }, ContactsFiles.fileName(i.name, i.uid))
-                                f.writeText(ContactsMerge.export(listOf(c)))
-                                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
-                                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/x-vcard").putExtra(Intent.EXTRA_STREAM, uri)
-                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share ${i.name}").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                            }.onFailure { WriterLog.e("Contacts: share", it) }
-                            Unit
-                        },
-                        "Show as a QR code" to { qr = true },
-                    ) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
-                    IconButton(onClick = star) {
-                        Icon(painterResource(if (i.favourite) R.drawable.ic_star else R.drawable.ic_star_border), contentDescription = if (i.favourite) "Remove from favourites" else "Add to favourites",
-                            tint = if (i.favourite) CONTACTS_COLOR else islandContentColor())
+        }
+        // the contact's own buttons in one island at the bottom right, within the thumb's reach (the user, 24 Oct: Edit
+        // there, then "bring the star, maybe share too"): Share · ☆ · Edit
+        Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp)) {
+            Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Share: as a .vcf (Viber, WhatsApp, mail take it) or as a QR code another phone scans
+                IconButton(onClick = { strip = "Share ${i.name}" to listOf(
+                    "Send as a contact file (.vcf)" to {
+                        runCatching {
+                            val f = File(File(context.cacheDir, "share").apply { mkdirs() }, ContactsFiles.fileName(i.name, i.uid))
+                            f.writeText(ContactsMerge.export(listOf(c)))
+                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
+                            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/x-vcard").putExtra(Intent.EXTRA_STREAM, uri)
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share ${i.name}").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }.onFailure { WriterLog.e("Contacts: share", it) }
+                        Unit
+                    },
+                    "Show as a QR code" to { qr = true },
+                ) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
+                IconButton(onClick = star) {
+                    Icon(painterResource(if (i.favourite) R.drawable.ic_star else R.drawable.ic_star_border), contentDescription = if (i.favourite) "Remove from favourites" else "Add to favourites",
+                        tint = if (i.favourite) CONTACTS_COLOR else islandContentColor())
+                }
+                Surface(onClick = edit, color = Color.White.copy(alpha = 0.12f), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.padding(4.dp)) {
+                    Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(painterResource(R.drawable.ic_edit), contentDescription = null)
+                        Text("Edit")
                     }
                 }
-            }
-        }
-        // Edit at the bottom right, within the thumb's reach (the user, 24 Oct), as the list's +
-        Surface(onClick = edit, color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
-            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp)) {
-            Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(painterResource(R.drawable.ic_edit), contentDescription = null)
-                Text("Edit")
             }
         }
     }
@@ -989,4 +990,53 @@ private fun callText(c: CallEntry): String {
             }
         }
     }
+}
+
+/**
+ * Settings › Contacts (the user, 24 Oct: "a Contacts card in Settings, permission once"): calls from the computer — one
+ * permission for Tetra (Android's "Phone"), not one per contact; without it each call comes as a notification to tap —,
+ * the copy in the phone's own contacts, and the calendar birthdays go into.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable internal fun ContactsSettings() {
+    val context = LocalContext.current
+    var version by remember { mutableIntStateOf(0) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycle) { // back from Android's settings: read the states again
+        val o = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) version++ }
+        lifecycle.lifecycle.addObserver(o); onDispose { lifecycle.lifecycle.removeObserver(o) }
+    }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { version++ }
+    val askWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) ContactsAccount.set(context, true); version++ }
+    val appDetails = { runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+    @Suppress("UNUSED_EXPRESSION") version // read again on each change
+    val calls = PhoneCall.allowed(context)
+    val writes = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED
+    val copy = ContactsAccount.on(context) && writes
+    @Composable fun row(title: String, state: String, action: String?, act: () -> Unit) =
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(state, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (action != null) TextButton(onClick = act) { Text(action) }
+        }
+    Text("Your contacts are files in Tetra/Contacts, one per person: they sync with the computer, where Contacts shows them too.", style = MaterialTheme.typography.bodySmall)
+    row("Calls from the computer", if (calls) "Allowed: Call on the computer rings the number here at once" else "Each call from the computer comes as a notification: tap it to call",
+        if (calls) "Settings" else "Allow") { if (calls) appDetails() else ask.launch(Manifest.permission.CALL_PHONE) }
+    if (calls) Text("Once for Tetra, not for each contact. To take it back: Settings › Apps › Tetra › Permissions › Phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    row("In the phone's contacts", if (copy) "On: the dialer, Viber, WhatsApp and the car show these names and photos (a read-only copy, account Tetra)"
+        else "Off: only Tetra shows your contacts", if (copy) "Turn off" else "Turn on") {
+        when { copy -> { ContactsAccount.set(context, false); version++ }; writes -> { ContactsAccount.set(context, true); version++ }; else -> askWrite.launch(Manifest.permission.WRITE_CONTACTS) }
+    }
+    val cals = remember(version) { runCatching { CalendarFiles.calendars(calendarRoot()) }.getOrDefault(emptyList()) }
+    val chosen = cals.firstOrNull { it.dir.name == ContactsPrefs.birthdays(context) } ?: ContactsBirthdays.existing(cals)
+    Text("Birthdays go into", style = MaterialTheme.typography.titleSmall)
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        cals.forEach { c ->
+            androidx.compose.material3.FilterChip(c == chosen, { ContactsPrefs.setBirthdays(context, c.dir.name); version++ }, label = { Text(c.name) },
+                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = CONTACTS_COLOR, selectedLabelColor = Color.White))
+        }
+    }
+    Text("Each birthday and date is a yearly event there, reminded at 9:00 on the day and the day before.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

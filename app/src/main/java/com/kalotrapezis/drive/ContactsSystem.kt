@@ -161,6 +161,8 @@ internal object PhoneCall {
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
         nm.notify(NOTE, androidx.core.app.NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_call)
             .setContentTitle("Call ${name.ifBlank { number }}").setContentText("From the computer: tap to call $number")
+            // the way to skip the tap next time, said where it is asked for (the user, 24 Oct)
+            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText("From the computer: tap to call $number.\nTo have Tetra call by itself: Settings › Contacts › Calls from the computer › Allow (once)."))
             .setContentIntent(tap).setAutoCancel(true).setCategory(androidx.core.app.NotificationCompat.CATEGORY_CALL)
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH).build())
         return org.json.JSONObject().put("how", "notification")

@@ -186,6 +186,14 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
+- [x] (contacts-build session, 24 Oct, from main; branches claude/contacts-583397 and Drive contacts) Calls on the computer
+      (the user: "a bubble with the face and name, answer or end"; "how do I know they are connected by Bluetooth?"): the
+      phone reports its calls (ringing + number, active, ended) to the computer; the desktop's call bubble (always on
+      top) with face, name, number, state and time, End call / Decline · Answer, done by the phone (ANSWER_PHONE_CALLS;
+      asked once in Settings › Contacts with the reason). Sound: on the phone, or on the PC when the phone is paired by
+      the system's Bluetooth and connected as a hands-free kit (the PC offers HFP "Handsfree"; WirePlumber 0.5) —
+      desktop Settings › Calls shows it, Connect, Open Bluetooth settings; a notification on connect/drop. Hold: not
+      possible (only the phone app). Desktop 0.6.0-beta.12 built; not yet tried with a real call.
 - [x] (contacts-build session, 24 Oct, from main c16ca05 / Drive f83bdcf; branches claude/contacts-583397 and Drive contacts)
       Contacts in a narrow window (the user): one column as the phone's — the list, then a contact over it with ‹ — on the
       desktop and on Android when the window narrows (split screen, a folded tablet; seen on the emulator resized

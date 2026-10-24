@@ -12,20 +12,19 @@ import android.util.Size
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -34,7 +33,7 @@ import java.security.MessageDigest
 /**
  * Files' thumbnails (the user, 23 Oct: "thumbnails in Files … for documents the SVGs you have at the homescreen as
  * overlay at the center"): a picture or a video its own; a document its first page, drawn by Tetra's own Words, Tables
- * and Slides, with Office's glyph for it in the middle. Made once and kept in the app's cache (never in Tetra's synced
+ * and Slides, with its category's tile (Words', Tables', Slides': the user's icons, 24 Oct) in the middle. Made once and kept in the app's cache (never in Tetra's synced
  * folder), named by the file's path, size and time, so a changed file gets a new one.
  */
 internal object FileThumbs {
@@ -54,13 +53,8 @@ internal object FileThumbs {
         else -> null
     }
 
-    /** Office's glyph for a document (the Office home's rows: Words' lines, Tables' table, Slides' play) and its colour. */
-    fun glyph(kind: Kind): Pair<Int, Color>? = when (kind) {
-        Kind.Words -> R.drawable.ic_file_text to WORD_BLUE
-        Kind.Tables -> R.drawable.ic_table to EXCEL_GREEN
-        Kind.Slides -> R.drawable.ic_play to POWERPOINT_ORANGE
-        else -> null
-    }
+    /** The tile in the middle of a document's thumbnail: its category's icon (file-kinds.json). */
+    fun badge(kind: Kind, name: String): Int? = if (kind == Kind.Words || kind == Kind.Tables || kind == Kind.Slides) FileKinds.icon(name) else null
 
     /** The cache's name for a file as it is now: another path, size or time is another thumbnail. */
     fun key(path: String, length: Long, modified: Long): String =
@@ -138,23 +132,18 @@ internal object FileThumbs {
 }
 
 /**
- * A file's thumbnail in Files' list and grid, with Office's glyph over a document; [fallback] (its icon) for a file with
- * none, and while a picture's is being made. A document that cannot be drawn shows its glyph on a blank page.
+ * A file's thumbnail in Files' list and grid, a document's with its category's tile in the middle; [fallback] (its icon)
+ * for a file with none, and while one is being made.
  */
 @Composable
-internal fun FileThumb(file: File, glyphSize: Dp, modifier: Modifier, crop: Boolean, fallback: @Composable () -> Unit) {
+internal fun FileThumb(file: File, badgeSize: Dp, modifier: Modifier, crop: Boolean, fallback: @Composable () -> Unit) {
     val kind = FileThumbs.kind(file.name) ?: return fallback()
     val context = LocalContext.current
     val modified = file.lastModified()
-    val bitmap = produceState(FileThumbs.remembered(file, modified), file, modified) { value = FileThumbs.load(context, file, kind) }.value
-    val glyph = FileThumbs.glyph(kind)
-    if (bitmap == null && glyph == null) return fallback()
-    Box(modifier.background(if (glyph != null) Color.White else Color.Transparent), contentAlignment = Alignment.Center) {
-        bitmap?.let { Image(it.asImageBitmap(), contentDescription = null, contentScale = if (crop && glyph == null) ContentScale.Crop else ContentScale.Fit, modifier = Modifier.matchParentSize()) }
-        glyph?.let { (icon, tint) ->
-            Box(Modifier.background(Color.White.copy(alpha = 0.9f), CircleShape).padding(glyphSize / 5)) {
-                Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(glyphSize))
-            }
-        }
+    val bitmap = produceState(FileThumbs.remembered(file, modified), file, modified) { value = FileThumbs.load(context, file, kind) }.value ?: return fallback()
+    val badge = FileThumbs.badge(kind, file.name)
+    Box(modifier.background(if (badge != null) Color.White else Color.Transparent), contentAlignment = Alignment.Center) {
+        Image(bitmap.asImageBitmap(), contentDescription = null, contentScale = if (crop && badge == null) ContentScale.Crop else ContentScale.Fit, modifier = Modifier.matchParentSize())
+        badge?.let { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(badgeSize).shadow(3.dp, androidx.compose.foundation.shape.RoundedCornerShape(badgeSize * 0.23f))) }
     }
 }

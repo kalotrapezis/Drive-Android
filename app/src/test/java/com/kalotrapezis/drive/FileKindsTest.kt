@@ -25,6 +25,7 @@ class FileKindsTest {
         assertEquals(R.drawable.kind_archives, FileKinds.icon("backup.tar.gz"))
         assertEquals(R.drawable.kind_programs_executables, FileKinds.icon("Tetra.AppImage"))
         assertEquals(R.drawable.kind_docs_txt, FileKinds.icon("notes.md"))
+        assertEquals(R.drawable.kind_pdf, FileKinds.icon("paper.PDF"))
         assertNull(FileKinds.icon("photo.jpg"))
         assertNull(FileKinds.icon("README"))
     }

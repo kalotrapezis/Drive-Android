@@ -21,6 +21,7 @@ internal object FileKinds {
         "docs-word" -> R.drawable.kind_docs_word
         "excel" -> R.drawable.kind_excel
         "slides" -> R.drawable.kind_slides
+        "pdf" -> R.drawable.kind_pdf
         "docs-txt" -> R.drawable.kind_docs_txt
         "Archives" -> R.drawable.kind_archives
         "bash-scripts" -> R.drawable.kind_bash_scripts

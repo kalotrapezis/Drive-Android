@@ -1417,8 +1417,8 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
         OfficePick.Words -> Triple("Words", R.drawable.kind_docs_word, Color.Unspecified)
         OfficePick.Tables -> Triple("Tables", R.drawable.kind_excel, Color.Unspecified)
         OfficePick.Slides -> Triple("Slides", R.drawable.kind_slides, Color.Unspecified)
-        OfficePick.Pdf -> Triple("PDFs", R.drawable.ic_file, PDF_RED)
-    } // Words, Tables, Slides: the user's tiles in their own colours (24 Oct); PDFs the list's red
+        OfficePick.Pdf -> Triple("PDFs", R.drawable.kind_pdf, Color.Unspecified)
+    } // the user's tiles in their own colours (24 Oct)
     HomeTile(if (wide) "Open $name" else name, icon, tint, modifier, click)
 }
 

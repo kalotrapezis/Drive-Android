@@ -33,7 +33,7 @@ import java.security.MessageDigest
 /**
  * Files' thumbnails (the user, 23 Oct: "thumbnails in Files … for documents the SVGs you have at the homescreen as
  * overlay at the center"): a picture or a video its own; a document its first page, drawn by Tetra's own Words, Tables
- * and Slides, with its category's tile (Words', Tables', Slides': the user's icons, 24 Oct) in the middle. Made once and kept in the app's cache (never in Tetra's synced
+ * and Slides, with its category's tile (Words', Tables', Slides', PDFs': the user's icons, 24 Oct) in the middle. Made once and kept in the app's cache (never in Tetra's synced
  * folder), named by the file's path, size and time, so a changed file gets a new one.
  */
 internal object FileThumbs {
@@ -54,7 +54,7 @@ internal object FileThumbs {
     }
 
     /** The tile in the middle of a document's thumbnail: its category's icon (file-kinds.json). */
-    fun badge(kind: Kind, name: String): Int? = if (kind == Kind.Words || kind == Kind.Tables || kind == Kind.Slides) FileKinds.icon(name) else null
+    fun badge(kind: Kind, name: String): Int? = if (kind == Kind.Words || kind == Kind.Tables || kind == Kind.Slides || kind == Kind.Pdf) FileKinds.icon(name) else null
 
     /** The cache's name for a file as it is now: another path, size or time is another thumbnail. */
     fun key(path: String, length: Long, modified: Long): String =

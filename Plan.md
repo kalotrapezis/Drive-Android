@@ -2089,6 +2089,12 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       hold. PdfTextDeviceTest wordsWithTheirOwnLook (a red bold word drawn red, the other line black). Emulator, tablet.
       Left for the user's test: the right button with the tablet's mouse (adb cannot send one). Left out: behind the
       page's own text; a size or font for some words only.
+      Then (the user: "the right click … is in a selection tab for phone and tablet and in a menu for a desktop view — do
+      you have the same layout?"): now as Slides' — a text chosen adds Selection first (Cut, Copy, Paste, Paste text
+      only, Copy formatting, Paste formatting) and its own tab last, "Text box", in the lighter colour (Edit text, the
+      look, Clear formatting, Position, Arrange, Rotate, Duplicate, Delete); the other tabs stay; choosing a text shows
+      its tab, letting it go shows the tab before; the right button's menu as before. The Format painter became Copy /
+      Paste formatting. Emulator, tablet size.
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

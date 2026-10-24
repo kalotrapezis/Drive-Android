@@ -1119,7 +1119,13 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var fontBefore by remember { mutableStateOf<String?>(null) } // Font's strip open: the font before it (Cancel puts it back)
     var chosen by remember { mutableStateOf<Triple<Int, android.graphics.RectF, PdfText>?>(null) } // a text put on, chosen (Slides' first tap): its page, place, words
     var clip by remember { mutableStateOf<Pair<android.graphics.RectF, PdfText>?>(null) } // Copy's text, for Paste
-    var painter by remember { mutableStateOf<PdfTextLook?>(null) } // Format painter: the look taken, put on the next text chosen
+    var copiedLook by remember { mutableStateOf<PdfTextLook?>(null) } // Selection › Copy formatting, for Paste formatting (Slides')
+    var tabBefore by remember { mutableStateOf("Pages") } // the tab shown before a text was chosen, back when none is
+    // a text chosen: its own tab shown (as Words' Image tab when a picture is tapped); none chosen: the tab before
+    LaunchedEffect(chosen != null) {
+        if (chosen != null) { if (tab != "Selection" && tab != "Text box") { tabBefore = tab; tab = "Text box" } }
+        else if (tab == "Selection" || tab == "Text box") tab = tabBefore
+    }
     var pageMenu by remember { mutableStateOf<Triple<Int, Offset, Offset>?>(null) } // a right-click's menu: its page, where (px on the page), where (page points)
     var filling by remember { mutableStateOf<Triple<Int, Offset, PdfField>?>(null) } // a form's text or choice field tapped
     var fillSize by remember { mutableStateOf(11f) }
@@ -1289,10 +1295,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         val d = doc ?: return; val t = tool ?: run {
             if (pts.size != 1) return
             // a text put on before, tapped while editing: chosen, as a Slides box (a second tap types in it)
-            if (editing) d.typedAt(i, pts[0])?.let { (r, old) -> chosen = Triple(i, r, old)
-                // the Format painter's look on the text tapped (its turn, fill and border its own, as Slides')
-                painter?.let { l -> painter = null; rechange(t = old.copy(look = l.copy(turn = old.look.turn, fill = old.look.fill, line = old.look.line))); WriterLog.i("PDF: format painted") }
-                return }
+            if (editing) d.typedAt(i, pts[0])?.let { (r, old) -> chosen = Triple(i, r, old); return }
             // no tool: a form's field is filled in (a box ticked at once), a note tapped shows its words
             d.fieldAt(i, pts[0])?.let { f ->
                 if (f.readOnly) { Toast.makeText(context, "That field cannot be changed", Toast.LENGTH_SHORT).show(); return }
@@ -1726,12 +1729,34 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) { Column {
                     // typing on the page: Words' Home tools for its look instead of the tabs, × and ✓ at the ends
                     if (typing != null) { PdfTextTools(w, textLook, { textLook = it }, { fontBefore = textLook.font }, { typing = null }, ::putTyped, typed); return@Column }
-                    // a text chosen: its own tools, as Slides' for a chosen box — its look at once, where it stands, Edit text, Delete
-                    chosen?.let { (ci, cr, ct) ->
-                        RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                    // a text chosen, as a Slides box: Selection first (Cut, Copy, Paste, formatting), the text's own tab last in the lighter colour
+                    OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "Pages", "Review", "Draw", "Fill & Sign", "Insert", "Protect", "Text box".takeIf { chosen != null }),
+                        tab, w, PDF_RED, { tab = it; tool = null }, contextual = "Text box")
+                    @Composable fun ToolButton(t: PdfTool) = RibbonButton(t.label, w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
+                    key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                        val c0 = chosen
+                        // Slides' Selection tab: what is chosen cut, copied, pasted; words pasted alone; its look copied and put on another
+                        if (tab == "Selection" && c0 != null) {
+                            val (ci, _, ct) = c0
+                            RibbonButton("Cut", w, R.drawable.ic_content_cut) { if (copyChosen()) deleteChosen() }
+                            RibbonButton("Copy", w, R.drawable.ic_copy) { copyChosen() }
+                            RibbonButton("Paste", w, R.drawable.ic_content_paste, enabled = clip != null) { paste(ci) }
+                            RibbonDivider(w)
+                            RibbonButton("Paste text only", w, R.drawable.ic_content_paste) { val keep = clip; clip = null; paste(ci); clip = keep }
+                            RibbonDivider(w)
+                            RibbonButton("Copy formatting", w, R.drawable.ic_format_paint) { copiedLook = ct.look; Toast.makeText(context, "Formatting copied: choose another text, then Paste formatting", Toast.LENGTH_SHORT).show() }
+                            // its turn, fill and border its own, as Slides' (the words' look only)
+                            RibbonButton("Paste formatting", w, R.drawable.ic_format_paint, enabled = copiedLook != null) { copiedLook?.let { l ->
+                                rechange(t = ct.copy(look = l.copy(turn = ct.look.turn, fill = ct.look.fill, line = ct.look.line))); WriterLog.i("PDF: formatting pasted") } }
+                            return@RibbonLine
+                        }
+                        // the text's own tab (Slides' item tab): its look at once, where it stands, Edit text, Delete
+                        if (tab == "Text box" && c0 != null) {
+                            val (ci, cr, ct) = c0
                             RibbonButton("Edit text", w, R.drawable.ic_edit) { retype(ci, cr, ct) }
                             RibbonDivider(w)
                             PdfLookTools(w, ct.look, { l -> rechange(t = ct.copy(look = l)) }, { fontBefore = ct.look.font })
+                            Tool(R.drawable.ic_format_clear, "Clear formatting", w) { rechange(t = ct.copy(look = PdfTextLook(fill = ct.look.fill, line = ct.look.line, turn = ct.look.turn), runs = emptyList())) }
                             RibbonDivider(w)
                             RibbonMenu("Position", w, R.drawable.ic_align_horizontal_center, preset = false, choices = listOf(
                                 MenuChoice("Left", icon = R.drawable.ic_align_left) { position('l', null) }, MenuChoice("Centre", icon = R.drawable.ic_align_center) { position('c', null) },
@@ -1745,23 +1770,10 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 MenuChoice("Rotate left 90°", icon = R.drawable.ic_rotate_left) { turnChosen(ct.look.turn - 90) },
                                 MenuChoice("Upright", enabled = ct.look.turn != 0) { turnChosen(0) }))
                             RibbonDivider(w)
-                            Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) {
-                                painter = if (painter != null) null else ct.look; if (painter != null) Toast.makeText(context, "Tap the text to paint", Toast.LENGTH_SHORT).show() }
-                            Tool(R.drawable.ic_format_clear, "Clear formatting", w) { rechange(t = ct.copy(look = PdfTextLook(fill = ct.look.fill, line = ct.look.line, turn = ct.look.turn), runs = emptyList())) }
-                            RibbonDivider(w)
-                            RibbonButton("Cut", w, R.drawable.ic_content_cut) { if (copyChosen()) deleteChosen() }
-                            RibbonButton("Copy", w, R.drawable.ic_copy) { copyChosen() }
-                            RibbonButton("Paste", w, R.drawable.ic_content_paste) { paste(ci) }
                             RibbonButton("Duplicate", w, R.drawable.ic_add_to_collection) { duplicateChosen() }
                             RibbonButton("Delete", w, R.drawable.ic_delete) { deleteChosen() }
-                            RibbonDivider(w)
-                            RibbonButton("Done", w, R.drawable.ic_check) { chosen = null }
+                            return@RibbonLine
                         }
-                        return@Column
-                    }
-                    OfficeTabRow(listOf("Pages", "Review", "Draw", "Fill & Sign", "Insert", "Protect"), tab, w, PDF_RED, { tab = it; tool = null })
-                    @Composable fun ToolButton(t: PdfTool) = RibbonButton(t.label, w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
-                    key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                         if (tab == "Review") {
                             ToolButton(PdfTool.Highlight); ToolButton(PdfTool.Underline); ToolButton(PdfTool.Strike)
                             RibbonDivider(w)

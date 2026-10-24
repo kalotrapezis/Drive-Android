@@ -89,6 +89,12 @@ internal val CONTACTS_COLOR = Color(0xFFBE7E4D)
 
 internal fun contactsRoot() = ContactsFiles.root(TetraFolder.root(Environment.getExternalStorageDirectory()))
 
+/** Contacts read ahead when Tetra opens (the user, 24 Oct: "no contacts" showed for a second before the list). */
+internal object ContactsPreload {
+    @Volatile var all: List<Contact>? = null
+    fun warm() = Thread { runCatching { all = ContactsFiles.all(contactsRoot()) } }.start()
+}
+
 internal object ContactsPrefs {
     private fun p(c: Context) = c.getSharedPreferences("contacts", Context.MODE_PRIVATE)
     fun byLast(c: Context) = p(c).getBoolean("byLast", false)
@@ -164,12 +170,17 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         val watcher = DriveWatcher(root) { version++ }
         onDispose { watcher.stop() }
     }
-    val all by produceState(emptyList<Contact>(), version, byLast) {
-        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.sorted(ContactsFiles.all(root), byLast) }.getOrDefault(emptyList()) }
+    // read ahead when Tetra opens (ContactsPreload): the list shows at once; until the first read, a spinner, never "No contacts"
+    val loaded by produceState(ContactsPreload.all?.let { ContactsFiles.sorted(it, byLast) }, version, byLast) {
+        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(root).also { ContactsPreload.all = it }.let { ContactsFiles.sorted(it, byLast) } }.getOrDefault(emptyList()) }
     }
+    val all = loaded.orEmpty()
     val open = all.firstOrNull { it.info.uid == openUid }
-    // on a wide screen a contact is always open beside the list
-    LaunchedEffect(wide, all) { if (wide && open == null) openUid = all.firstOrNull()?.info?.uid }
+    // two columns always show a contact; one column (a phone, split screen, a folded tablet) opens one only when it is
+    // chosen, so a contact the two columns opened by themselves closes when the screen narrows (the user, 24 Oct)
+    var autoOpened by remember { mutableStateOf(false) }
+    LaunchedEffect(wide, all) { if (wide && open == null && all.isNotEmpty()) { openUid = all.first().info.uid; autoOpened = true } }
+    LaunchedEffect(wide) { if (!wide && autoOpened) { openUid = null; autoOpened = false } }
 
     /** A change made here goes to the other devices at once (Contacts' part, SYNC_PLAN 6ap), its birthdays' events with it. */
     fun pushed() { ScopedSync.soon(context, "contacts", 0, orWhole = true); ScopedSync.soon(context, "calendar", 0, orWhole = true) }
@@ -290,14 +301,20 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 if (tab == ContactsTab.All && query.isEmpty() && label == null && favs.isNotEmpty()) item(key = "favs") {
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(favs, key = { "f" + it.info.uid }) { c ->
-                            Column(Modifier.width(64.dp).clickable { openUid = c.info.uid }, horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(Modifier.width(64.dp).clickable { openUid = c.info.uid; autoOpened = false }, horizontalAlignment = Alignment.CenterHorizontally) {
                                 ContactAvatar(c.info, 56.dp)
                                 Text(c.info.given.ifBlank { c.info.name }, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
                 }
-                if (shown.isEmpty() && busy == null) item {
+                if (loaded == null) item {
+                    Row(Modifier.fillMaxWidth().padding(32.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = CONTACTS_COLOR)
+                        Text("  Reading your contacts…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (loaded != null && shown.isEmpty() && busy == null) item {
                     Hint(when {
                         all.isEmpty() -> "No contacts yet. Pull up the island for Import: this phone's contacts, or a file from Google Contacts (vCard, CSV or Takeout's zip)."
                         query.isNotEmpty() -> "No one matches \"$query\"."
@@ -315,7 +332,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                         fun toggle() { selected = if (picked) selected - c.info.uid else selected + c.info.uid }
                         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp).clip(MaterialTheme.shapes.large)
                             .background(if (picked) CONTACTS_COLOR.copy(alpha = 0.4f) else if (chosen) CONTACTS_COLOR.copy(alpha = 0.22f) else Color.Transparent)
-                            .combinedClickable(onLongClick = ::toggle) { if (selected.isNotEmpty()) toggle() else openUid = c.info.uid }.padding(horizontal = 12.dp, vertical = 8.dp),
+                            .combinedClickable(onLongClick = ::toggle) { if (selected.isNotEmpty()) toggle() else { openUid = c.info.uid; autoOpened = false } }.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                             if (picked) Box(Modifier.size(40.dp).clip(CircleShape).background(CONTACTS_COLOR), contentAlignment = Alignment.Center) {
                                 Icon(painterResource(R.drawable.ic_check), contentDescription = "Selected", tint = Color.White)

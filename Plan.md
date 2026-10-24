@@ -190,7 +190,9 @@ How to write here:
       user's look at the desktop: read ahead and a spinner (not "No contacts yet" while loading); the contact's island in
       the middle with Call · Mail · WhatsApp · Viber, ♥ and Edit in an island beside it, icons on the cards; From Photos
       (Photos' people and faces, a "Person 12" takes the contact's name) and Faces from Photos for many; Call = the paired
-      phone places it (SyncServer /call: at once with CALL_PHONE, else a notification to tap). Phone: Edit at the bottom
+      phone places it (SyncServer /call: at once with CALL_PHONE, else a notification to tap; Settings › Contacts asks once,
+      for Tetra, not per contact). Phone: Share · ☆ · Edit in one island at the bottom right, the first number under each
+      name in the list (the user). Phone: Edit at the bottom
       right (the user). Desktop 0.6.0-beta.7 .deb built, not installed; the phone build not installed (the user: not yet),
       so a call from the PC is not tried on the real pair.
 - [x] (contacts-build session, 23 Oct; merged into main in both repos at the user's word, with the thumbnails work committed first; desktop 0.6.0-beta.6 .deb built from Drive main, not installed) **Contacts** on Android, § Contacts steps 1–8

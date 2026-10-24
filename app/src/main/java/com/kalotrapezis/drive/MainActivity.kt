@@ -1925,6 +1925,7 @@ private fun SettingsTab(
             }
         }
         item { SettingsCard("Calendar", Category.Calendar) { CalendarSettings() } }
+        item { SettingsCard("Contacts", Category.Contacts) { ContactsSettings() } }
         item { SettingsCard("Timer", Category.Timer) { ShareWithClaude("tetra-timer", "Timer", "Lets Claude start, pause and stop your timers by editing their files.") } }
         // Maps (21 Oct): what is installed, where updates come from, and the directions' language and voice
         item {

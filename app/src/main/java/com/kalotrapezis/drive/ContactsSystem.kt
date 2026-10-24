@@ -148,7 +148,8 @@ internal object PhoneCall {
 
     fun allowed(c: Context) = c.checkSelfPermission(android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED
     /** Android's "Phone" permissions the computer's calls need, asked once together (Settings › Contacts). */
-    val PERMISSIONS = arrayOf(android.Manifest.permission.CALL_PHONE, android.Manifest.permission.READ_PHONE_STATE, android.Manifest.permission.ANSWER_PHONE_CALLS, android.Manifest.permission.READ_CALL_LOG)
+    // not READ_CALL_LOG: Google Play allows it only to the phone app, which is granted it with the role (Plan.md § Phone)
+    val PERMISSIONS = arrayOf(android.Manifest.permission.CALL_PHONE, android.Manifest.permission.READ_PHONE_STATE, android.Manifest.permission.ANSWER_PHONE_CALLS)
     fun allAllowed(c: Context) = PERMISSIONS.all { c.checkSelfPermission(it) == android.content.pm.PackageManager.PERMISSION_GRANTED }
 
     /** The number the computer last asked to call, and when: its call is the one the bubble follows. */

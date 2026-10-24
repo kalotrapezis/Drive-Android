@@ -654,7 +654,8 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                 var permits by remember { mutableIntStateOf(0) }
                 val ways by produceState(emptyList<AppWay>(), i.phones, permits) { value = withContext(Dispatchers.IO) { runCatching { ContactsSystem.appWays(context, i.phones.map { it.value }) }.getOrDefault(emptyList()) } }
                 val calls by produceState(emptyList<CallEntry>(), i.phones, permits) { value = withContext(Dispatchers.IO) { runCatching { ContactsSystem.calls(context, i.phones.map { it.value }) }.getOrDefault(emptyList()) } }
-                val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permits++ }
+                // Google Play: the call log only for the phone's phone app, so History asks for that role, not the permission (Plan.md § Phone)
+                val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { permits++ }
                 fun open(w: AppWay) { runCatching {
                     val i = Intent(Intent.ACTION_VIEW).setDataAndType(android.content.ContentUris.withAppendedId(android.provider.ContactsContract.Data.CONTENT_URI, w.id), w.mime).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     try { context.startActivity(Intent(i).setPackage(ContactsWays.packageOf(w.mime))) } catch (_: android.content.ActivityNotFoundException) { context.startActivity(i) }
@@ -696,8 +697,10 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                 if (history) {
                     if (!canCalls) DetailCard {
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Calls with ${i.given.ifBlank { i.name }} come from the phone's call log.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            TextButton(onClick = { askCalls.launch(Manifest.permission.READ_CALL_LOG) }) { Text("Allow", color = CONTACTS_COLOR) }
+                            Text("Calls with ${i.given.ifBlank { i.name }} come from the phone's call log, which Tetra reads as the phone app.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = {
+                                askCalls.launch(context.getSystemService(android.app.role.RoleManager::class.java).createRequestRoleIntent(android.app.role.RoleManager.ROLE_DIALER))
+                            }) { Text("Make it", color = CONTACTS_COLOR) }
                         }
                     } else if (calls.isEmpty()) Hint("No calls with ${i.given.ifBlank { i.name }} in the phone's call log.")
                     else DetailCard { calls.forEach { call -> CallRow(call, i.phones.size > 1) { dial(call.number) } } }
@@ -1057,7 +1060,7 @@ private fun callText(c: CallEntry): String {
         if (calls) appDetails() else askCalls.launch(PhoneCall.PERMISSIONS)
     }
     Text(if (calls) "Once for Tetra, not for each contact. To take it back: Settings › Apps › Tetra › Permissions › Phone and Call logs."
-        else "Allow asks once, for Tetra (not for each contact): to place a call, to see a call ringing and its number, and to answer or end it from the computer.",
+        else "Allow asks once, for Tetra (not for each contact): to place a call, to see a call ringing, and to answer or end it from the computer. The caller's number and the rest come with Tetra as the phone app (Settings › Phone).",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Text("The sound stays on the phone, unless the phone is connected to the computer by Bluetooth for calls (the computer's Settings › Calls).",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

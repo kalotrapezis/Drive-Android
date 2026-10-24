@@ -290,8 +290,8 @@ How to write here:
       (dark): resize, hold-drag (in and out of edit mode; a hold opens nothing, a tap still opens), push aside, edge scroll, hide and
       the tray. **Not on the tablet or the phone yet** (tablet not connected; waits for the user's OK).
 - [~] (maps-slots session, 24 Oct; branches claude/maps-narrow + Drive maps-narrow) Maps in a narrow window (the user: "one
-      column … like the phone"). Desktop 78cd61f: under 760 px the panel is a bottom sheet (45%, scrolls), the map's
-      buttons at the top — seen on a stand-in page with the built CSS, not yet in Tetra. Android: Maps is already one
+      column … like the phone"). Desktop 78cd61f, a819b87: under 760 px the panel is a bottom sheet (45%, scrolls), the
+      map's buttons at the top — seen in Tetra run from the branch at 1400, 700 and 520 px. Android: Maps is already one
       column at any width (the panel over the map, 560 dp at most; the window's own width, so split screen counts) —
       to see on the tablet in split screen. Not merged.
 

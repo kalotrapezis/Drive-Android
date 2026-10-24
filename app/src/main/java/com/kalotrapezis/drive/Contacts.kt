@@ -68,6 +68,8 @@ data class ContactInfo(
     val department: String = "",
     val title: String = "",
     val phones: List<VField> = emptyList(),
+    /** The number starred as the default (TYPE=PREF on its TEL line, as Google and Android write it): Call and the apps go to it. */
+    val defaultPhone: String? = null,
     val emails: List<VField> = emptyList(),
     val addresses: List<VAddress> = emptyList(),
     val urls: List<VField> = emptyList(),
@@ -272,6 +274,7 @@ object VCard {
             org = org.getOrElse(0) { "" }.trim(), department = org.drop(1).joinToString(", ") { it.trim() }.trim(',', ' '),
             title = text("TITLE"),
             phones = lines.filter { it.key() == "TEL" }.map { VField(label(it, lines), ICal.unescape(it.value).trim()) }.filter { it.value.isNotEmpty() },
+            defaultPhone = lines.firstOrNull { it.key() == "TEL" && "PREF" in it.types() }?.let { ICal.unescape(it.value).trim() }?.ifEmpty { null },
             emails = lines.filter { it.key() == "EMAIL" }.map { VField(label(it, lines), ICal.unescape(it.value).trim()) }.filter { it.value.isNotEmpty() },
             addresses = lines.filter { it.key() == "ADR" }.map { p -> VAddress(label(p, lines), parts(p.value).map { it.trim() }.let { it + List((7 - it.size).coerceAtLeast(0)) { "" } }) }
                 .filter { a -> a.parts.any { it.isNotBlank() } },
@@ -338,7 +341,12 @@ object VCard {
         if (was.org != now.org || was.department != now.department)
             replace(setOf("ORG"), if (now.org.isBlank() && now.department.isBlank()) emptyList() else listOf(ICalProp("ORG", "", esc(now.org) + if (now.department.isBlank()) "" else ";" + esc(now.department))))
         if (was.title != now.title) replace(setOf("TITLE"), single("TITLE", now.title))
-        if (was.phones != now.phones) replace(setOf("TEL"), now.phones.flatMap { labelled("TEL", it, types = phoneTypes) })
+        if (was.phones != now.phones || was.defaultPhone != now.defaultPhone) replace(setOf("TEL"), now.phones.flatMap { f ->
+            labelled("TEL", f, types = phoneTypes).map { p -> // the default number: PREF added to its TYPE
+                if (f.value != now.defaultPhone || p.name.endsWith("X-ABLabel")) p
+                else ICalProp(p.name, if (p.params.startsWith(";TYPE=")) p.params + ",PREF" else ";TYPE=PREF", p.value)
+            }
+        })
         if (was.emails != now.emails) replace(setOf("EMAIL"), now.emails.flatMap { f ->
             labelled("EMAIL", f, types = placeTypes).map { if (it.params.isEmpty() && !it.name.contains('.')) ICalProp(it.name, ";TYPE=INTERNET", it.value) else if (it.params.startsWith(";TYPE=")) ICalProp(it.name, ";TYPE=INTERNET," + it.params.removePrefix(";TYPE="), it.value) else it }
         })
@@ -666,7 +674,7 @@ object ContactsMerge {
         return a.copy(
             prefix = s(a.prefix, b.prefix), given = s(a.given, b.given), middle = s(a.middle, b.middle), family = s(a.family, b.family), suffix = s(a.suffix, b.suffix),
             formatted = s(a.formatted, b.formatted), nickname = s(a.nickname, b.nickname), org = s(a.org, b.org), department = s(a.department, b.department), title = s(a.title, b.title),
-            phones = (a.phones + b.phones).distinctBy { ContactsWaysKey.key(it.value) },
+            phones = (a.phones + b.phones).distinctBy { ContactsWaysKey.key(it.value) }, defaultPhone = a.defaultPhone ?: b.defaultPhone,
             emails = (a.emails + b.emails).distinctBy { it.value.lowercase().trim() },
             addresses = (a.addresses + b.addresses).distinctBy { ContactsFiles.plain(it.text()) },
             urls = (a.urls + b.urls).distinctBy { it.value.trim().lowercase() },

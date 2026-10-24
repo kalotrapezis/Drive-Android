@@ -254,4 +254,17 @@ class ContactsTest {
         assertEquals(face, ContactsFiles.read(c.file).info.face)
         assertEquals(face, ContactsFaces.faceValue("a".repeat(64), listOf(0.2f, 0.1f, 0.6f, 0.6f)))
     }
+
+    /** A default number (TYPE=PREF): the computer's file read and written again by the phone, the same bytes. */
+    @Test fun theDefaultNumberIsTypePref() {
+        val desktop = String(fixture("desktop-default.vcf"))
+        val i = VCard.info(VCard.cards(desktop).single())
+        assertEquals("2310000021", i.defaultPhone)
+        assertEquals(listOf("Mobile", "Home", "Κουμπάρος"), i.phones.map { it.label }) // PREF is not a label
+        assertEquals(desktop, VCard.write(VCard.build(i.copy(rev = ""), Instant.parse("2026-10-24T09:00:00Z"))))
+        // starring another: only the TEL lines change
+        val lines = VCard.apply(VCard.cards(desktop).single(), i, i.copy(defaultPhone = "6900000022"), Instant.parse("2026-10-24T09:00:00Z"))
+        assertEquals("6900000022", VCard.info(lines).defaultPhone)
+        assertTrue(Regex("item\\d+\\.TEL;TYPE=PREF:6900000022\r\n").containsMatchIn(VCard.write(lines))) // a custom label keeps its group form
+    }
 }

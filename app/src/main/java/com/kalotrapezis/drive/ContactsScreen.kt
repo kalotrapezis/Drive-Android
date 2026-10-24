@@ -665,15 +665,18 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                 /** One way: at once; several (a number's apps, two numbers): a strip from the bottom to choose. */
                 fun choose(title: String, options: List<Pair<String, () -> Unit>>) { if (options.size == 1) options.single().second() else if (options.isNotEmpty()) strip = title to options }
                 fun numberText(n: String) = i.phones.firstOrNull { it.value == n }?.label?.ifEmpty { null }?.let { "$it $n" } ?: n
+                // a number starred as the default (on the computer, TYPE=PREF): Message, Call and Video go to it alone
+                val nums = i.defaultPhone?.let { d -> i.phones.filter { it.value == d } }?.ifEmpty { null } ?: i.phones
+                val numWays = ways.filter { w -> nums.any { it.value == w.number } }
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     RoundAction(R.drawable.ic_chat, "Message", i.phones.isNotEmpty()) {
-                        choose("Message", i.phones.map { f -> "SMS · ${numberText(f.value)}" to { sms(f.value) } } + ways.filter { it.way == Way.Message }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
+                        choose("Message", nums.map { f -> "SMS · ${numberText(f.value)}" to { sms(f.value) } } + numWays.filter { it.way == Way.Message }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
                     }
                     RoundAction(R.drawable.ic_call, "Call", i.phones.isNotEmpty()) {
-                        choose("Call", i.phones.map { f -> "Phone · ${numberText(f.value)}" to { dial(f.value) } } + ways.filter { it.way == Way.Call }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
+                        choose("Call", nums.map { f -> "Phone · ${numberText(f.value)}" to { dial(f.value) } } + numWays.filter { it.way == Way.Call }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
                     }
-                    RoundAction(R.drawable.ic_videocam, "Video", ways.any { it.way == Way.Video }) {
-                        choose("Video", ways.filter { it.way == Way.Video }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
+                    RoundAction(R.drawable.ic_videocam, "Video", numWays.any { it.way == Way.Video }) {
+                        choose("Video", numWays.filter { it.way == Way.Video }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
                     }
                     RoundAction(R.drawable.ic_mail, "Mail", i.emails.isNotEmpty()) { choose("Mail", i.emails.map { e -> e.value to { mail(e.value) } }) }
                 }
@@ -719,10 +722,16 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                 if (i.phones.isNotEmpty()) DetailCard { i.phones.forEach { f ->
                     // each number's apps as small chips: a tap writes to them there
                     val apps = ways.filter { it.number == f.value }.groupBy { it.app }
-                    DetailRow(f.label.ifEmpty { "Phone" }, f.value, onClick = { dial(f.value) }) {
-                        apps.forEach { (app, ws) -> Surface(onClick = { open(ws.firstOrNull { it.way == Way.Message } ?: ws.first()) }, shape = CircleShape, color = CONTACTS_COLOR.copy(alpha = 0.2f)) {
-                            Text(app, Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
-                        } }
+                    DetailRow(f.label.ifEmpty { "Phone" } + if (i.phones.size > 1 && f.value == i.defaultPhone) " · ★ default" else "", f.value, onClick = { dial(f.value) }) {
+                        // WhatsApp and Viber as their marks (the user, 24 Oct: "SVGs so it fits on the phone"); the others by name
+                        apps.forEach { (app, ws) ->
+                            val mark = when { app.startsWith("WhatsApp") -> R.drawable.ic_whatsapp; app == "Viber" -> R.drawable.ic_viber; else -> null }
+                            if (mark != null) IconButton(onClick = { open(ws.firstOrNull { it.way == Way.Message } ?: ws.first()) }, modifier = Modifier.size(40.dp)) {
+                                Icon(painterResource(mark), contentDescription = app, tint = Color.Unspecified, modifier = Modifier.size(28.dp))
+                            } else Surface(onClick = { open(ws.firstOrNull { it.way == Way.Message } ?: ws.first()) }, shape = CircleShape, color = CONTACTS_COLOR.copy(alpha = 0.2f)) {
+                                Text(app, Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
                     }
                 } }
                 if (i.emails.isNotEmpty()) DetailCard { i.emails.forEach { f -> DetailRow(f.label.ifEmpty { "Email" }, f.value, onClick = { mail(f.value) }) } }

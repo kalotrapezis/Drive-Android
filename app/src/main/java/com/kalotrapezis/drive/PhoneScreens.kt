@@ -43,8 +43,8 @@ import kotlinx.coroutines.withContext
 
 /** The Phone's colour: the icon's teal (Plan.md § Phone, question 6 — the plan's recommendation until the user says). */
 internal val PHONE_COLOR = Color(0xFF168C93)
-private val GREEN = Color(0xFF2E9E5B)
-private val RED = Color(0xFFD93A3A)
+internal val CALL_GREEN = Color(0xFF2E9E5B)
+internal val CALL_RED = Color(0xFFD93A3A)
 
 /** A call's own screen, over the lock screen too: ringing, dialling, talking (Plan.md § Phone › Screens). */
 class PhoneCallActivity : ComponentActivity() {
@@ -54,6 +54,7 @@ class PhoneCallActivity : ComponentActivity() {
         setShowWhenLocked(true); setTurnScreenOn(true)
         TetraLook.load(this)
         answerIfAsked(intent)
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = TetraLook.light
         setContent { TetraTheme { PhoneCallScreen(done = { finish() }) } }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); answerIfAsked(intent) }
@@ -69,19 +70,6 @@ class PhoneCallActivity : ComponentActivity() {
         }
         return super.onKeyDown(keyCode, event)
     }
-}
-
-/** The keypad: what Android opens for a phone number (ACTION_DIAL, tel: links) — the Phone app's first part. */
-class PhoneDialActivity : ComponentActivity() {
-    private val number = mutableStateOf("")
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        WriterLog.init(this)
-        TetraLook.load(this)
-        number.value = intent.data?.schemeSpecificPart.orEmpty()
-        setContent { TetraTheme { PhoneKeypad(number, back = { finish() }) } }
-    }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); intent.data?.schemeSpecificPart?.let { number.value = it } }
 }
 
 /** Places a call (CALL_PHONE, which the Phone app role grants); false without the permission. */
@@ -127,15 +115,15 @@ private fun PhoneCallScreen(done: () -> Unit) {
             ended -> Unit
             call.state == Call.STATE_SELECT_PHONE_ACCOUNT -> SimChoice(call)
             call.state == Call.STATE_RINGING -> Row(Modifier.fillMaxWidth().padding(bottom = 32.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                RoundButton(R.drawable.ic_call_end, "Decline", RED, 76.dp) { PhoneCalls.hangUp(call) }
-                RoundButton(R.drawable.ic_call, "Answer", GREEN, 76.dp) { PhoneCalls.answer(call) }
+                RoundButton(R.drawable.ic_call_end, "Decline", CALL_RED, 76.dp) { PhoneCalls.hangUp(call) }
+                RoundButton(R.drawable.ic_call, "Answer", CALL_GREEN, 76.dp) { PhoneCalls.answer(call) }
             }
             keys -> DialKeys(Modifier.padding(bottom = 16.dp), press = { ch -> call.playDtmfTone(ch); typed += ch }, release = { call.stopDtmfTone() })
             else -> InCallControls(context)
         }
         if (!ended && call.state != Call.STATE_RINGING) Row(Modifier.fillMaxWidth().padding(bottom = 24.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             Spacer(Modifier.size(56.dp))
-            RoundButton(R.drawable.ic_call_end, "End", RED, 76.dp) { PhoneCalls.hangUp(call) }
+            RoundButton(R.drawable.ic_call_end, "End", CALL_RED, 76.dp) { PhoneCalls.hangUp(call) }
             if (call.state != Call.STATE_SELECT_PHONE_ACCOUNT) RoundButton(if (keys) R.drawable.ic_close else R.drawable.ic_dialpad, if (keys) "Hide" else "Keypad", null, 56.dp) { keys = !keys }
             else Spacer(Modifier.size(56.dp))
         }
@@ -195,7 +183,7 @@ private fun SimChoice(call: Call) {
 }
 
 @Composable
-private fun RoundButton(icon: Int, label: String, fill: Color?, size: Dp, dark: Boolean = false, click: () -> Unit) {
+internal fun RoundButton(icon: Int, label: String, fill: Color?, size: Dp, dark: Boolean = false, click: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(size).clip(CircleShape).background(fill ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)).clickable(onClickLabel = label, onClick = click),
             contentAlignment = Alignment.Center) {
@@ -210,7 +198,7 @@ internal val KEY_LETTERS = mapOf('2' to "ABC ΑΒΓ", '3' to "DEF ΔΕΖ", '4' t
 
 /** The 4×3 keys; [press] when a key goes down, [release] when it comes up (a call's tones last as long as the finger). */
 @Composable
-private fun DialKeys(modifier: Modifier = Modifier, press: (Char) -> Unit, release: () -> Unit = {}, hold: ((Char) -> Unit)? = null) {
+internal fun DialKeys(modifier: Modifier = Modifier, press: (Char) -> Unit, release: () -> Unit = {}, hold: ((Char) -> Unit)? = null) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf("123", "456", "789", "*0#").forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -224,46 +212,6 @@ private fun DialKeys(modifier: Modifier = Modifier, press: (Char) -> Unit, relea
                 }
             }
         }
-    }
-}
-
-/** The Phone app's keypad (step 1: a number and Call; search as you type and Recents come in step 2). */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun PhoneKeypad(number: MutableState<String>, back: () -> Unit) {
-    val context = LocalContext.current
-    var dialer by remember { mutableStateOf(PhonePrefs.isDialer(context)) }
-    val askRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { dialer = PhonePrefs.isDialer(context) }
-    val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok && placePhoneCall(context, number.value)) back() }
-    val match by produceState<ContactInfo?>(null, number.value) { value = if (number.value.length < 5) null else withContext(Dispatchers.IO) { PhoneCalls.contactFor(number.value) } }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-    Column(Modifier.fillMaxHeight().widthIn(max = 460.dp).systemBarsPadding().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (!dialer) Surface(color = PHONE_COLOR.copy(alpha = 0.18f), shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Make Tetra the phone app: its own call screen, and a buzz when they answer.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER)) }) { Text("Make") }
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Text(number.value.ifEmpty { " " }, fontSize = if (number.value.length > 13) 28.sp else 36.sp, maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-        Text(match?.name ?: " ", style = MaterialTheme.typography.titleMedium, color = PHONE_COLOR)
-        Spacer(Modifier.height(16.dp))
-        DialKeys(press = { ch -> number.value += ch }, hold = { ch -> if (ch == '0') number.value = number.value.dropLast(1) + "+" })
-        Spacer(Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.size(56.dp))
-            RoundButton(R.drawable.ic_call, "Call", GREEN, 72.dp) {
-                val n = number.value.trim()
-                if (n.isEmpty()) return@RoundButton
-                if (placePhoneCall(context, n)) back() else askCall.launch(Manifest.permission.CALL_PHONE)
-            }
-            Box(Modifier.size(56.dp).clip(CircleShape).combinedClickable(onClickLabel = "Delete", onLongClick = { number.value = "" }) { number.value = number.value.dropLast(1) },
-                contentAlignment = Alignment.Center) {
-                Icon(painterResource(R.drawable.ic_backspace), contentDescription = "Delete", modifier = Modifier.size(26.dp))
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-    }
     }
 }
 
@@ -304,5 +252,5 @@ internal fun PhoneSettings() {
         }
     toggle("Vibrate when answered", "Two short taps when the other side picks up a call you made.", answer) { answer = it; PhonePrefs.setBuzzAnswer(context, it) }
     toggle("Vibrate when a call ends", "One tap when a call that was answered ends.", end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
-    TextButton(onClick = { context.startActivity(Intent(context, PhoneDialActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text("Open the keypad") }
+    TextButton(onClick = { context.startActivity(Intent(context, PhoneActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text("Open the keypad") }
 }

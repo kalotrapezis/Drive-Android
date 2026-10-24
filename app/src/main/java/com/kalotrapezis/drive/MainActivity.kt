@@ -371,6 +371,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
     var mapsGo by remember { mutableStateOf<Place?>(null) } // a place on Home's Maps card: directions to it start at once
     var contactsOpen by remember { mutableStateOf<String?>(null) }
+    var contactsNew by remember { mutableStateOf<String?>(null) } // a number from the Phone: Contacts opens a new contact with it
     var mapsSearch by remember { mutableStateOf<String?>(null) } // a contact's address, looked for in Tetra Maps
     var mapsBack by remember { mutableStateOf(Screen.Home) } // Home's faces: Contacts opens on that person
     var calendarNew by remember { mutableStateOf<NewKind?>(null) } // Home's tiles: the Calendar opens on a new one of that kind
@@ -678,6 +679,12 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         if (applet.value == FromComputer.SCREEN && screen != Screen.PhotoSetup) {
             applet.value = null; screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = FromComputer.FOLDER; loadDrive(FromComputer.FOLDER); return@LaunchedEffect
         }
+        // the Phone's "Contact" and "Add" (PhoneApp.kt): Contacts on that person, or a new one with the number
+        applet.value?.takeIf { (it.startsWith("contact:") || it.startsWith("contact-new:")) && screen != Screen.PhotoSetup }?.let { v ->
+            applet.value = null
+            if (v.startsWith("contact:")) { contactsOpen = v.removePrefix("contact:"); contactsNew = null } else { contactsOpen = null; contactsNew = v.removePrefix("contact-new:") }
+            screen = Screen.Contacts; return@LaunchedEffect
+        }
         val a = Applet.of(applet.value) ?: return@LaunchedEffect
         applet.value = null
         if (screen == Screen.PhotoSetup) return@LaunchedEffect
@@ -864,9 +871,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 }, startKind = calendarNew, openContact = { uid -> contactsOpen = uid; screen = Screen.Contacts })
                 Screen.Maps -> MapsScreen(MapsFiles.root(driveRoot()), mapsGo, back = { mapsGo = null; mapsSearch = null; screen = mapsBack }, search = mapsSearch)
-                Screen.Contacts -> ContactsScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
+                Screen.Contacts -> androidx.compose.runtime.key(contactsOpen, contactsNew) { ContactsScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
-                }, start = contactsOpen, openMaps = { q -> mapsGo = null; mapsSearch = q; mapsBack = Screen.Contacts; screen = Screen.Maps })
+                }, start = contactsOpen, newNumber = contactsNew, openMaps = { q -> mapsGo = null; mapsSearch = q; mapsBack = Screen.Contacts; screen = Screen.Maps }) }
                 Screen.Timer -> TimerScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })

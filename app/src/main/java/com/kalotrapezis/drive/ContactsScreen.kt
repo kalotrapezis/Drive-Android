@@ -128,7 +128,7 @@ private enum class ContactsTab(val label: String, val icon: Int) { All("All", R.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, start: String? = null, openMaps: (String) -> Unit = {}) {
+internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit, start: String? = null, newNumber: String? = null, openMaps: (String) -> Unit = {}) {
     val context = LocalContext.current
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val scope = rememberCoroutineScope()
@@ -153,7 +153,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var selected by remember { mutableStateOf(emptySet<String>()) } // long press: many at once (the user, 23 Oct: "how do I multi select?")
     var labelling by remember { mutableStateOf(false) }
     var deletingMany by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<Pair<Contact?, ContactInfo>?>(null) } // the contact (null: a new one) and where its editor starts
+    var editing by remember { mutableStateOf<Pair<Contact?, ContactInfo>?>(newNumber?.let { null to ContactInfo(phones = listOf(VField("Mobile", it))) }) } // the contact (null: a new one) and where its editor starts
     LaunchedEffect(message) { if (message != null) { delay(3500); message = null } }
     val root = remember { contactsRoot() }
 
@@ -660,7 +660,8 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                     try { context.startActivity(Intent(i).setPackage(ContactsWays.packageOf(w.mime))) } catch (_: android.content.ActivityNotFoundException) { context.startActivity(i) }
                 }.onFailure { android.widget.Toast.makeText(context, "${w.app} did not open", android.widget.Toast.LENGTH_SHORT).show() } }
                 fun sms(n: String) = go("smsto:${Uri.encode(n)}", Intent.ACTION_SENDTO)
-                fun dial(n: String) = go("tel:${Uri.encode(n)}", Intent.ACTION_DIAL)
+                // Tetra the phone app: the call at once (its own call screen); else the phone app opens with the number
+                fun dial(n: String) { if (!(PhonePrefs.isDialer(context) && placePhoneCall(context, n))) go("tel:${Uri.encode(n)}", Intent.ACTION_DIAL) }
                 fun mail(m: String) = go("mailto:$m", Intent.ACTION_SENDTO)
                 /** One way: at once; several (a number's apps, two numbers): a strip from the bottom to choose. */
                 fun choose(title: String, options: List<Pair<String, () -> Unit>>) { if (options.size == 1) options.single().second() else if (options.isNotEmpty()) strip = title to options }

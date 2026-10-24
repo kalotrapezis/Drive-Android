@@ -855,7 +855,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         replacing?.let { at -> typedAt(p, at.x + x0, at.y + y0)?.let { p.deleteAnnotation(it.first) } }
         if (t.words.isBlank()) return@annotate true // emptied: only taken out
         val (lw, lh) = PdfText.size(t, room, minHeight)
-        val (w, h) = if (t.sideways) lh to lw else lw to lh // its place on the page, turned
+        val (w, h) = PdfText.bounds(t, lw, lh) // its place on the page, turned
         val src = com.artifex.mupdf.fitz.Document.openDocument(PdfText.pdf(t, lw, lh), "application/pdf")
         try {
             val sp = (src.asPDF() ?: error("No PDF")).findPage(0)
@@ -866,7 +866,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
                 setRect(com.artifex.mupdf.fitz.Rect(x + x0, y + y0, x + x0 + w, y + y0 + h))
                 setDefaultAppearance("Helv", t.look.size, rgb(t.look.color)); setContents(t.words); setBorderWidth(0f)
                 setAppearance(com.artifex.mupdf.fitz.Rect(0f, 0f, w, h), res, com.artifex.mupdf.fitz.Buffer().apply { writeBytes(contents) })
-                getObject().put(TYPED_KEY, pdf!!.newString(t.json()))
+                getObject().put(TYPED_KEY, pdf!!.newString(t.json(lw to lh)))
             }
         } finally { src.destroy() }
         true
@@ -1197,7 +1197,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     }
     /** A text put on before ([r] where it is), tapped: typed in again in its place. */
     fun retype(i: Int, r: android.graphics.RectF, old: PdfText) { val (uw, uh) = old.unturned(r)
-        startTyping(PdfTyping(i, r.left, r.top, if (old.framed || old.sideways) uw else maxOf(uw, (doc?.sizes?.getOrNull(i)?.width ?: 595f) - r.left - 18f),
+        startTyping(PdfTyping(i, r.left, r.top, if (old.framed || old.turned) uw else maxOf(uw, (doc?.sizes?.getOrNull(i)?.width ?: 595f) - r.left - 18f),
             if (old.framed) uh else 0f, old.framed, Offset(r.centerX(), r.centerY())), old) }
     /** The words typed put on the page, one undo step (emptied: the old one only taken out). */
     fun putTyped() {
@@ -1218,8 +1218,15 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         val s = d.sizes.getOrNull(i) ?: return; val nt = t ?: old
         val (uw, uh) = old.unturned(r) // as laid out before turning
         val nx = (x ?: r.left).coerceIn(0f, maxOf(0f, s.width - 12f)); val ny = (y ?: r.top).coerceIn(0f, maxOf(0f, s.height - 8f))
-        change { d.putText(i, nx, ny, nt, room ?: if (nt.framed || nt.sideways) uw else maxOf(uw, s.width - nx - 18f), minH ?: if (nt.framed) uh else 0f, Offset(r.centerX(), r.centerY())) }
+        change { d.putText(i, nx, ny, nt, room ?: if (nt.framed || nt.turned) uw else maxOf(uw, s.width - nx - 18f), minH ?: if (nt.framed) uh else 0f, Offset(r.centerX(), r.centerY())) }
         chosen = d.typedAt(i, Offset(nx + 1f, ny + 1f))?.let { (nr, pt) -> Triple(i, nr, pt) }
+    }
+    /** The chosen text turned to [to] degrees clockwise about its middle (one undo step). */
+    fun turnChosen(to: Int) {
+        val (_, r, old) = chosen ?: return; val (lw, lh) = old.unturned(r)
+        val nt = old.copy(look = old.look.copy(turn = Math.floorMod(to, 360))); val (bw, bh) = PdfText.bounds(nt, lw, lh)
+        rechange(x = r.centerX() - bw / 2, y = r.centerY() - bh / 2, t = nt)
+        WriterLog.i("PDF: text turned ${nt.look.turn}°")
     }
     /** The chosen text taken off the page (one undo step). */
     fun deleteChosen() {
@@ -1251,7 +1258,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         val c = clip
         if (c != null) {
             val (r, ct) = c; val (uw, uh) = ct.unturned(r)
-            t = ct; x = at?.x ?: (r.left + 12f); y = at?.y ?: (r.top + 12f); room = if (ct.framed || ct.sideways) uw else maxOf(uw, s.width - x - 18f); minH = if (ct.framed) uh else 0f
+            t = ct; x = at?.x ?: (r.left + 12f); y = at?.y ?: (r.top + 12f); room = if (ct.framed || ct.turned) uw else maxOf(uw, s.width - x - 18f); minH = if (ct.framed) uh else 0f
         } else {
             val words = runCatching { context.getSystemService(ClipboardManager::class.java)?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() }.getOrNull()?.trim()
             if (words.isNullOrEmpty()) { Toast.makeText(context, "Nothing to paste", Toast.LENGTH_SHORT).show(); return }
@@ -1673,9 +1680,10 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                         }
                                     } }
                                     chosen?.takeIf { it.first == i && typing == null }?.let { (_, r, t) ->
-                                        PdfChosenFrame(s, r, { retype(i, r, t) }, { dx, dy -> rechange(x = r.left + dx, y = r.top + dy) }) { w, h ->
+                                        PdfChosenFrame(s, r, t.unturned(r), t.look.turn, { retype(i, r, t) }, { dx, dy -> rechange(x = r.left + dx, y = r.top + dy) }, ::turnChosen) { w, h ->
+                                            if (t.look.turn % 90 != 0) { Toast.makeText(context, "Turned at a slant it keeps its size: Rotate › Upright to size it", Toast.LENGTH_SHORT).show(); return@PdfChosenFrame }
                                             // sized: a fixed width from then on (a text becomes a box without a border), as tall as drawn or its words
-                                            val (lw, lh) = if (t.sideways) h to w else w to h
+                                            val (lw, lh) = if (t.look.turn % 180 == 90) h to w else w to h
                                             rechange(room = lw.coerceAtLeast(12f), minH = lh.coerceAtLeast(8f), t = t.copy(framed = true)) }
                                     }
                                 }
@@ -1730,9 +1738,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 MenuChoice("Bring to front", icon = R.drawable.ic_flip_to_front) { restackChosen(2) }, MenuChoice("Bring forward", icon = R.drawable.ic_flip_to_front) { restackChosen(1) },
                                 MenuChoice("Send backward", icon = R.drawable.ic_flip_to_back) { restackChosen(-1) }, MenuChoice("Send to back", icon = R.drawable.ic_flip_to_back) { restackChosen(-2) }))
                             RibbonMenu("Rotate", w, R.drawable.ic_rotate_right, preset = false, choices = listOf(
-                                MenuChoice("Rotate right 90°", icon = R.drawable.ic_rotate_right) { rechange(t = ct.copy(look = ct.look.copy(turn = (ct.look.turn + 90) % 360))) },
-                                MenuChoice("Rotate left 90°", icon = R.drawable.ic_rotate_left) { rechange(t = ct.copy(look = ct.look.copy(turn = (ct.look.turn + 270) % 360))) },
-                                MenuChoice("Upright", enabled = ct.look.turn != 0) { rechange(t = ct.copy(look = ct.look.copy(turn = 0))) }))
+                                MenuChoice("Rotate right 90°", icon = R.drawable.ic_rotate_right) { turnChosen(ct.look.turn + 90) },
+                                MenuChoice("Rotate left 90°", icon = R.drawable.ic_rotate_left) { turnChosen(ct.look.turn - 90) },
+                                MenuChoice("Upright", enabled = ct.look.turn != 0) { turnChosen(0) }))
                             RibbonDivider(w)
                             Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) {
                                 painter = if (painter != null) null else ct.look; if (painter != null) Toast.makeText(context, "Tap the text to paint", Toast.LENGTH_SHORT).show() }

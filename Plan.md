@@ -2077,8 +2077,11 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       Rotate (90° steps, the look turned in the file), Format painter, Clear formatting; a mouse's right button: Edit
       text, Cut, Copy, Paste (where clicked), Bring to front, Send to back, Delete; Ctrl+C/X/V. PdfTextDeviceTest
       turnedAndRestacked. Emulator: tablet and phone sizes. Not done: "behind" the page's own text (a comment always
-      sits over it; behind needs writing into the page itself, and it could no longer be chosen), any angle of
-      rotation (a handle, as Slides'), a look per word, the right button tried with a real mouse.
+      sits over it; behind needs writing into the page itself, and it could no longer be chosen), a look per word,
+      the right button tried with a real mouse.
+      Then ("ok go on"): any angle — a handle over the chosen frame turns it about its middle (near a quarter turn it
+      snaps to it), as Slides'; the file keeps its own size before turning (laidW/laidH), its place the box round it.
+      A slanted text keeps its size (Rotate › Upright to size it). Emulator, tablet size; PdfTextDeviceTest at 30°.
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

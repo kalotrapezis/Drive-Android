@@ -74,6 +74,12 @@ class PdfTextDeviceTest {
         assertEquals(90, back.look.turn)
         assertEquals(40f, r.width()); assertEquals(200f, r.height())
         assertEquals(200f to 40f, back.unturned(r))
+        // at a slant (the handle over it, any angle): its place the box round it, its own size read back from the file
+        d.putText(0, 100f, 400f, PdfText("Slant", PdfTextLook(size = 20f, turn = 30), framed = true), 200f, 40f)
+        val (sr, slant) = d.typedAt(0, Offset(197f, 467f))!!
+        assertEquals(30, slant.look.turn)
+        assertEquals(194f, sr.width()); assertEquals(135f, sr.height()) // 200 cos 30 + 40 sin 30, 200 sin 30 + 40 cos 30, up
+        assertEquals(200f to 40f, slant.unturned(sr))
         // two filled boxes over each other: the later on top; sent to the back, the other shows
         d.putText(0, 300f, 300f, PdfText("A", PdfTextLook(fill = 0xFF0000), true), 100f, 100f)
         d.putText(0, 320f, 320f, PdfText("B", PdfTextLook(fill = 0x0000FF), true), 100f, 100f)

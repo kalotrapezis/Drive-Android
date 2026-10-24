@@ -6,10 +6,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -52,21 +54,24 @@ import kotlin.math.ceil
 internal data class PdfTextLook(val font: String = "Times New Roman", val size: Float = 12f, val bold: Boolean = false, val italic: Boolean = false,
     val underline: Boolean = false, /** 0xRRGGBB */ val color: Int = 0x000000, /** 0xRRGGBB or none */ val highlight: Int? = null, val align: DocAlign = DocAlign.Start,
     /** the box's fill and its border's colour (0xRRGGBB), as a Slides box's; none: clear, no border */ val fill: Int? = null, val line: Int? = null,
-    /** turned clockwise: 0, 90, 180 or 270 degrees */ val turn: Int = 0)
+    /** turned clockwise, degrees (0–359) */ val turn: Int = 0)
 
 /** A text put on a page: its words, their look, and whether it is a text box (a thin frame, as wide as it was drawn). */
 internal data class PdfText(val words: String, val look: PdfTextLook, val framed: Boolean) {
-    /** Kept in the file with it (the annotation's own key), so a tap opens it again as it was typed. */
-    fun json(): String = JSONObject().put("words", words).put("font", look.font).put("size", look.size.toDouble()).put("bold", look.bold).put("italic", look.italic)
+    /** Its size as laid out before turning (points), as the file keeps it; null: from its place on the page ([unturned]). */
+    var laid: Pair<Float, Float>? = null
+    /** Kept in the file with it (the annotation's own key), so a tap opens it again as it was typed; [laid] its size before turning. */
+    fun json(laid: Pair<Float, Float>? = null): String = JSONObject().put("words", words).put("font", look.font).put("size", look.size.toDouble()).put("bold", look.bold).put("italic", look.italic)
         .put("underline", look.underline).put("color", look.color).put("highlight", look.highlight ?: -1).put("align", look.align.name).put("framed", framed)
-        .put("fill", look.fill ?: -1).put("line", look.line ?: -1).put("turn", look.turn).toString()
+        .put("fill", look.fill ?: -1).put("line", look.line ?: -1).put("turn", look.turn)
+        .apply { laid?.let { (w, h) -> put("laidW", w.toDouble()).put("laidH", h.toDouble()) } }.toString()
 
     /** Inside its frame, in points: a text box's words off its frame, a text's hugging them. */
     val pad get() = if (framed) 4f else 1f
-    /** Turned a quarter or three: its width and height on the page swapped. */
-    val sideways get() = look.turn % 180 == 90
+    /** Turned at all: it keeps the width it was laid out in (the page's edge means nothing to it). */
+    val turned get() = look.turn != 0
     /** [r] (where it is on the page) as it is laid out before turning: across, down. */
-    fun unturned(r: android.graphics.RectF) = if (sideways) r.height() to r.width() else r.width() to r.height()
+    fun unturned(r: android.graphics.RectF) = laid ?: if (look.turn % 180 == 90) r.height() to r.width() else r.width() to r.height()
 
     companion object {
         fun parse(s: String): PdfText? = runCatching {
@@ -75,8 +80,15 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
                 o.optBoolean("underline"), o.optInt("color", 0), o.optInt("highlight", -1).takeIf { it >= 0 }, runCatching { DocAlign.valueOf(o.optString("align")) }.getOrDefault(DocAlign.Start),
                 o.optInt("fill", -1).takeIf { it >= 0 }, o.optInt("line", if (o.optBoolean("framed")) 0 else -1).takeIf { it >= 0 }, // a box put on before borders were chosen: its black frame
                 Math.floorMod(o.optInt("turn"), 360)),
-                o.optBoolean("framed"))
+                o.optBoolean("framed")).also { t ->
+                if (o.has("laidW")) t.laid = o.getDouble("laidW").toFloat() to o.getDouble("laidH").toFloat() }
         }.getOrNull()
+
+        /** Its place on the page for [w] × [h] laid out, turned: the box round the turned one. */
+        fun bounds(t: PdfText, w: Float, h: Float): Pair<Float, Float> {
+            val a = Math.toRadians(t.look.turn.toDouble()); val c = kotlin.math.abs(kotlin.math.cos(a)).toFloat(); val s = kotlin.math.abs(kotlin.math.sin(a)).toFloat()
+            return ceil(w * c + h * s - 0.01f) to ceil(w * s + h * c - 0.01f) // a hair off: a quarter turn's cos is 6e-17, not 0
+        }
 
         private fun layout(t: PdfText, width: Float): StaticLayout {
             val l = t.look
@@ -111,9 +123,10 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
         fun pdf(t: PdfText, w: Float, h: Float): ByteArray {
             val doc = android.graphics.pdf.PdfDocument()
             try {
-                val (pw, ph) = if (t.sideways) h to w else w to h
+                val (pw, ph) = bounds(t, w, h)
                 val page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(ceil(pw).toInt(), ceil(ph).toInt(), 1).create())
-                page.canvas.apply { when (t.look.turn) { 90 -> { translate(pw, 0f); rotate(90f) }; 180 -> { translate(pw, ph); rotate(180f) }; 270 -> { translate(0f, ph); rotate(270f) } } }
+                // turned about its middle, in the middle of the box round it
+                if (t.turned) page.canvas.apply { translate(pw / 2, ph / 2); rotate(t.look.turn.toFloat()); translate(-w / 2, -h / 2) }
                 draw(page.canvas, t, w, h)
                 doc.finishPage(page)
                 return java.io.ByteArrayOutputStream().also { doc.writeTo(it) }.toByteArray()
@@ -191,25 +204,44 @@ internal fun PdfLookTools(w: Color, look: PdfTextLook, set: (PdfTextLook) -> Uni
 }
 
 /**
- * A chosen text ([r], page points, on a page [page] points big): its frame, moved by a finger dragging it, sized by its
- * corner's handle (as a Slides box's); a tap on it types in it. [moved] and [sized] get where it went when the finger lifts.
+ * A chosen text ([r], page points, on a page [page] points big; [laid] its size before turning, [turn] its turn): its
+ * frame, moved by a finger dragging it, sized by its corner's handle, turned by the handle over it (as a Slides box's);
+ * a tap on it types in it. [moved], [turned] (to degrees, near a quarter turn: on it) and [sized] when the finger lifts.
  */
 @Composable
-internal fun BoxScope.PdfChosenFrame(page: androidx.compose.ui.geometry.Size, r: android.graphics.RectF, type: () -> Unit, moved: (Float, Float) -> Unit, sized: (Float, Float) -> Unit) =
+internal fun BoxScope.PdfChosenFrame(page: androidx.compose.ui.geometry.Size, r: android.graphics.RectF, laid: Pair<Float, Float>, turn: Int, type: () -> Unit,
+    moved: (Float, Float) -> Unit, turned: (Int) -> Unit, sized: (Float, Float) -> Unit) =
     BoxWithConstraints(Modifier.matchParentSize()) {
         val k = maxWidth / page.width
-        val px = with(LocalDensity.current) { k.toPx() } // screen pixels a page point
+        val density = LocalDensity.current
+        val px = with(density) { k.toPx() } // screen pixels a page point
         var shift by remember(r) { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
         var grow by remember(r) { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+        var spin by remember(r) { androidx.compose.runtime.mutableStateOf<Float?>(null) } // the turn while the handle is dragged
         val blue = Color(0xFF1A73E8)
-        androidx.compose.foundation.layout.Box(Modifier.offset(k * (r.left + shift.x / px), k * (r.top + shift.y / px))
-            .width(k * maxOf(12f, r.width() + grow.x / px)).heightIn(min = k * maxOf(8f, r.height() + grow.y / px))
-            .border(2.dp, blue)
+        // while turning: the words' own box at the new angle, round the same middle
+        spin?.let { a -> androidx.compose.foundation.layout.Box(Modifier.offset(k * (r.centerX() - laid.first / 2), k * (r.centerY() - laid.second / 2))
+            .width(k * laid.first).heightIn(min = k * laid.second).graphicsLayer { rotationZ = a }.border(1.dp, blue.copy(alpha = 0.7f))) }
+        val w = k * maxOf(12f, r.width() + grow.x / px); val h = k * maxOf(8f, r.height() + grow.y / px)
+        val left = k * (r.left + shift.x / px); val top = k * (r.top + shift.y / px)
+        androidx.compose.foundation.layout.Box(Modifier.offset(left, top).width(w).height(h).border(2.dp, blue)
             .pointerInput(r) { detectTapGestures { type() } }
-            .pointerInput(r) { detectDragGestures(onDragEnd = { if (shift != androidx.compose.ui.geometry.Offset.Zero) moved(shift.x / px, shift.y / px) }) { ch, d -> ch.consume(); shift += d } }) {
-            // the corner's handle: the size
-            androidx.compose.foundation.layout.Box(Modifier.align(androidx.compose.ui.Alignment.BottomEnd).offset(10.dp, 10.dp).size(20.dp)
-                .background(Color.White, androidx.compose.foundation.shape.CircleShape).border(2.dp, blue, androidx.compose.foundation.shape.CircleShape)
-                .pointerInput(r) { detectDragGestures(onDragEnd = { if (grow != androidx.compose.ui.geometry.Offset.Zero) sized(r.width() + grow.x / px, r.height() + grow.y / px) }) { ch, d -> ch.consume(); grow += d } })
-        }
+            .pointerInput(r) { detectDragGestures(onDragEnd = { if (shift != androidx.compose.ui.geometry.Offset.Zero) moved(shift.x / px, shift.y / px) }) { ch, d -> ch.consume(); shift += d } })
+        // the handles beside it, not in it (a child past its parent's edge gets no touches)
+        @Composable fun handle(m: Modifier) = androidx.compose.foundation.layout.Box(m.size(22.dp)
+            .background(Color.White, androidx.compose.foundation.shape.CircleShape).border(2.dp, blue, androidx.compose.foundation.shape.CircleShape))
+        // the corner's: the size
+        handle(Modifier.offset(left + w - 11.dp, top + h - 11.dp)
+            .pointerInput(r) { detectDragGestures(onDragEnd = { if (grow != androidx.compose.ui.geometry.Offset.Zero) sized(r.width() + grow.x / px, r.height() + grow.y / px) }) { ch, d -> ch.consume(); grow += d } })
+        // the one over it: the turn, the angle from the box's middle to the finger (straight up: as it is)
+        val lift = 30.dp
+        handle(Modifier.offset(left + w / 2 - 11.dp, top - lift - 11.dp)
+            .pointerInput(r, turn) {
+                val half = size.width / 2f; val middle = androidx.compose.ui.geometry.Offset(half, half + lift.toPx() + r.height() * px / 2)
+                var at = androidx.compose.ui.geometry.Offset(half, half)
+                fun angle() = turn + Math.toDegrees(kotlin.math.atan2((at.x - middle.x).toDouble(), (middle.y - at.y).toDouble())).toFloat()
+                detectDragGestures(onDragStart = { at = it; spin = angle() },
+                    onDragEnd = { val a = Math.round(angle()); val q = Math.round(a / 90f) * 90; spin = null; turned(if (kotlin.math.abs(a - q) <= 4) q else a) },
+                    onDragCancel = { spin = null }) { ch, d -> ch.consume(); at += d; spin = angle() }
+            })
     }

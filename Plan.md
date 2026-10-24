@@ -289,6 +289,10 @@ How to write here:
       → sync_art/settings_art, on both cards and icons. Checked: HomeLayoutTest 6/6; emulator at tablet size (light) and phone size
       (dark): resize, hold-drag (in and out of edit mode; a hold opens nothing, a tap still opens), push aside, edge scroll, hide and
       the tray. **Not on the tablet or the phone yet** (tablet not connected; waits for the user's OK).
+- [x] (home-edit session, 24 Oct, branch claude/home-medium; not merged) **Home: a Medium size** (the user: "add a medium size —
+      just the icon, but make it take 4 cells"): Small (icon, 1 cell) · Medium (the icon alone, big, a 2×2 block; Scanner & Codes
+      4×2) · Large (the group). ⤢ goes Large → Medium → Small → Large; saved as flag m. Edit mode draws only the empty cells.
+      HomeLayoutTest 7/7; emulator tablet size (light) and phone size (dark). Not on the tablet (no OK at 24 Oct 08:55).
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

@@ -18,7 +18,7 @@ class HomeLayoutTest {
     }
 
     @Test fun aSavedLayoutComesBackAsItWas() {
-        val items = listOf(HomeItem("maps", small = true, col = 3, row = 5), HomeItem("notes", hidden = true), HomeItem("settings", col = 0, row = 0))
+        val items = listOf(HomeItem("maps", size = HomeSize.Small, col = 3, row = 5), HomeItem("notes", hidden = true), HomeItem("settings", col = 0, row = 0))
         assertEquals("maps:s:3:5,notes:h:-1:-1,settings::0:0", HomeLayout.format(items))
         assertEquals(items, HomeLayout.parse(HomeLayout.format(items), listOf("maps", "notes", "settings")))
     }
@@ -32,7 +32,7 @@ class HomeLayoutTest {
     @Test fun settingsIsNeverHidden() = assertFalse(HomeLayout.parse("settings:h:0:0", listOf("settings")).single().hidden)
 
     @Test fun droppedWhereAnotherIsTheOtherMovesOn() {
-        val items = listOf(HomeItem("a", small = true, col = 0, row = 0), HomeItem("b", small = true, col = 1, row = 0), HomeItem("c", small = true, col = 3, row = 2))
+        val items = listOf(HomeItem("a", size = HomeSize.Small, col = 0, row = 0), HomeItem("b", size = HomeSize.Small, col = 1, row = 0), HomeItem("c", size = HomeSize.Small, col = 3, row = 2))
         // c onto b's cell: b moves to the next free one; a gap left where c was
         assertEquals(mapOf("a" to (0 to 0), "c" to (1 to 0), "b" to (2 to 0)), at(HomeLayout.drop(items, "c", 1, 0, 4)))
         // anywhere, even far below: the grid grows
@@ -45,10 +45,20 @@ class HomeLayoutTest {
     }
 
     @Test fun madeLargeItPushesItsNeighbours() {
-        val items = listOf(HomeItem("a", small = true, col = 0, row = 0), HomeItem("b", small = true, col = 1, row = 0))
-        assertEquals(mapOf("a" to (0 to 0), "b" to (0 to 2)), at(HomeLayout.change(items, items[0].copy(small = false), 4)))
+        val items = listOf(HomeItem("a", size = HomeSize.Small, col = 0, row = 0), HomeItem("b", size = HomeSize.Small, col = 1, row = 0))
+        assertEquals(mapOf("a" to (0 to 0), "b" to (0 to 2)), at(HomeLayout.change(items, items[0].copy(size = HomeSize.Large), 4)))
         // hidden and shown again: back at the first free cell
         val hidden = HomeLayout.change(items, items[0].copy(hidden = true), 4)
         assertEquals(0 to 0, at(HomeLayout.change(hidden, hidden[0].copy(hidden = false, col = -1, row = -1), 4))["a"])
+    }
+
+    @Test fun aMediumPartIsItsIconInFourCells() {
+        val items = listOf(HomeItem("a", size = HomeSize.Small, col = 0, row = 0), HomeItem("b", size = HomeSize.Small, col = 1, row = 1), HomeItem("c", size = HomeSize.Small, col = 2, row = 0))
+        assertEquals(2 to 2, HomeLayout.size(HomeItem("maps", size = HomeSize.Medium), 8))
+        assertEquals(2 to 2, HomeLayout.size(HomeItem("maps", size = HomeSize.Medium), 4)) // half a phone's width
+        // a made medium: its 2 by 2 block, b (inside it) moves on; c beside it stays
+        assertEquals(mapOf("a" to (0 to 0), "b" to (2 to 1), "c" to (2 to 0)), at(HomeLayout.change(items, items[0].copy(size = HomeSize.Medium), 4)))
+        assertEquals("maps:m:2:4", HomeLayout.format(listOf(HomeItem("maps", size = HomeSize.Medium, col = 2, row = 4))))
+        assertEquals(HomeSize.Medium, HomeLayout.parse("maps:m:2:4", listOf("maps")).single().size)
     }
 }

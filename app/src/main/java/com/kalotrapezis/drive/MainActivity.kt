@@ -1142,7 +1142,7 @@ private fun Home(
                 Button(onClick = { editing = false }) { Text("Done") }
             } else IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit Home") }
         }
-        if (editing) Text("Hold a part and drag it to any cell; the others make room. ⤢ makes it large or small, the eye hides it.",
+        if (editing) Text("Hold a part and drag it to any cell; the others make room. ⤢ makes it large, medium or small, the eye hides it.",
             style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 6.dp))
         HomeGrid(layout, cols, editing, { editing = true }, ::change, scroll, large, ::icons)
         if (editing) {
@@ -1195,7 +1195,9 @@ private fun Home(
             val held = layout.firstOrNull { it.id == dragging }
             Canvas(Modifier.matchParentSize()) {
                 val gap = 6.dp.toPx(); val r = CornerRadius(16.dp.toPx())
-                for (row in 0 until rows) for (col in 0 until cols) drawRoundRect(cellColour, Offset(col * cw + gap, row * ch + gap), Size(cw - 2 * gap, ch - 2 * gap), r)
+                // only the empty cells: a small or medium part has no card of its own to hide them
+                val covered = layout.filter { !it.hidden }.flatMap { p -> HomeLayout.size(p, cols).let { (w, h) -> (0 until w).flatMap { dx -> (0 until h).map { dy -> p.col + dx to p.row + dy } } } }.toSet()
+                for (row in 0 until rows) for (col in 0 until cols) if ((col to row) !in covered) drawRoundRect(cellColour, Offset(col * cw + gap, row * ch + gap), Size(cw - 2 * gap, ch - 2 * gap), r)
                 held?.let { h ->
                     val (c, rw) = target(h); val (w, hh) = HomeLayout.size(h, cols)
                     drawRoundRect(frame.copy(alpha = 0.18f), Offset(c * cw + gap, rw * ch + gap), Size(w * cw - 2 * gap, hh * ch - 2 * gap), r)
@@ -1214,16 +1216,18 @@ private fun Home(
                         end = { current.firstOrNull { it.id == item.id }?.let { now -> val (c, r) = target(now); save(HomeLayout.drop(current, now.id, c, r, cols)) }; dragging = null; drag = Offset.Zero })
                     .padding(6.dp),
             ) {
-                if (item.small) Row(Modifier.fillMaxSize()) { icons(item.id).forEach { HomeSmallIcon(it, Modifier.weight(1f).fillMaxHeight()) } }
-                else large(item.id)
+                if (item.size == HomeSize.Large) large(item.id)
+                else Row(Modifier.fillMaxSize()) { icons(item.id).forEach { HomeSmallIcon(it, Modifier.weight(1f).fillMaxHeight(), if (item.small) 52.dp else 112.dp) } }
                 if (editing) Box(Modifier.matchParentSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } }) {
                     // on top of the part, so its own buttons get no tap; the frame says it can be moved
                     Box(Modifier.matchParentSize().border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), MaterialTheme.shapes.large))
                     // a small icon: the two in its top corners, smaller, so the icon still shows
                     Row(if (item.small) Modifier.fillMaxWidth().padding(1.dp) else Modifier.align(Alignment.TopEnd).padding(2.dp),
                         horizontalArrangement = if (item.small) Arrangement.SpaceBetween else Arrangement.spacedBy(4.dp)) {
-                        HomeEditButton(if (item.small) R.drawable.ic_fullscreen else R.drawable.ic_fullscreen_exit, if (item.small) "Make large" else "Make small", if (item.small) 24.dp else 30.dp) {
-                            save(HomeLayout.change(current, item.copy(small = !item.small), cols))
+                        // one button through the three sizes: large, medium, small, large again
+                        val next = when (item.size) { HomeSize.Large -> HomeSize.Medium; HomeSize.Medium -> HomeSize.Small; HomeSize.Small -> HomeSize.Large }
+                        HomeEditButton(if (item.small) R.drawable.ic_fullscreen else R.drawable.ic_fullscreen_exit, "Make ${next.name.lowercase()}", if (item.small) 24.dp else 30.dp) {
+                            save(HomeLayout.change(current, item.copy(size = next), cols))
                         }
                         if (item.id != HomeLayout.SETTINGS) HomeEditButton(R.drawable.ic_visibility_off, "Hide from Home", if (item.small) 24.dp else 30.dp) { save(HomeLayout.change(current, item.copy(hidden = true), cols)) }
                     }
@@ -1285,13 +1289,13 @@ private fun Modifier.holdToDrag(key: Any, start: (Offset) -> Unit, move: (Offset
 
 private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
 
-/** A part shown small on Home: its icon and name, as a launcher's. */
-@Composable private fun HomeSmallIcon(icon: HomeIcon, modifier: Modifier) = Column(
+/** A part shown small or medium on Home: its icon and name, as a launcher's; medium's icon big, in four cells. */
+@Composable private fun HomeSmallIcon(icon: HomeIcon, modifier: Modifier, art: androidx.compose.ui.unit.Dp = 52.dp) = Column(
     modifier.clip(MaterialTheme.shapes.large).clickable(onClick = icon.open).padding(vertical = 4.dp),
     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
 ) {
-    HomeIconArt(icon, 52.dp)
-    Text(icon.label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp))
+    HomeIconArt(icon, art)
+    Text(icon.label, style = if (art > 52.dp) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp))
 }
 
 // the user's art is itself a tile, Sync's and Settings' too (24 Oct)

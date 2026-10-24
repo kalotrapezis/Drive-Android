@@ -78,6 +78,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -853,8 +854,9 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     fun putText(i: Int, x: Float, y: Float, t: PdfText, room: Float, minHeight: Float = 0f, replacing: Offset? = null) = annotate(i, "Text") { p, x0, y0 ->
         replacing?.let { at -> typedAt(p, at.x + x0, at.y + y0)?.let { p.deleteAnnotation(it.first) } }
         if (t.words.isBlank()) return@annotate true // emptied: only taken out
-        val (w, h) = PdfText.size(t, room, minHeight)
-        val src = com.artifex.mupdf.fitz.Document.openDocument(PdfText.pdf(t, w, h), "application/pdf")
+        val (lw, lh) = PdfText.size(t, room, minHeight)
+        val (w, h) = if (t.sideways) lh to lw else lw to lh // its place on the page, turned
+        val src = com.artifex.mupdf.fitz.Document.openDocument(PdfText.pdf(t, lw, lh), "application/pdf")
         try {
             val sp = (src.asPDF() ?: error("No PDF")).findPage(0)
             val c = sp.get("Contents")
@@ -868,6 +870,25 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             }
         } finally { src.destroy() }
         true
+    }
+    /**
+     * Words put on with [putText] under [at] on page [i] moved among the page's comments, pictures and drawings (Word's
+     * Arrange): [to] 1 forward, -1 backward, 2 to the front, -2 to the back. False when there was nowhere to go.
+     */
+    fun restack(i: Int, at: Offset, to: Int): Boolean {
+        var moved = false
+        annotate(i, if (to > 0) "Bring forward" else "Send backward") { p, x0, y0 ->
+            val me = typedAt(p, at.x + x0, at.y + y0)?.first?.getObject() ?: return@annotate false
+            val annots = p.getObject().get("Annots").takeIf { it.isArray } ?: return@annotate false
+            val list = (0 until annots.size()).map { annots.get(it) }.toMutableList()
+            val k = list.indexOfFirst { runCatching { it.asIndirect() == me.asIndirect() }.getOrDefault(false) }.takeIf { it >= 0 } ?: return@annotate false
+            val n = when (to) { 2 -> list.size - 1; -2 -> 0; else -> (k + to).coerceIn(0, list.size - 1) }
+            if (n == k) return@annotate false
+            list.add(n, list.removeAt(k)) // drawn in this order: the last on top
+            val again = pdf!!.newArray(); list.forEach { again.push(it) }; p.getObject().put("Annots", again)
+            moved = true; true
+        }
+        return moved
     }
     /** Words put on with [putText] under [at] on page [i]: where they are (page points) and how they were typed. */
     fun typedAt(i: Int, at: Offset): Pair<android.graphics.RectF, PdfText>? = synchronized(this) { page(i) { p ->
@@ -1097,6 +1118,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var textLook by remember { mutableStateOf(PdfTextLook()) } // the last look used: the next text starts with it
     var fontBefore by remember { mutableStateOf<String?>(null) } // Font's strip open: the font before it (Cancel puts it back)
     var chosen by remember { mutableStateOf<Triple<Int, android.graphics.RectF, PdfText>?>(null) } // a text put on, chosen (Slides' first tap): its page, place, words
+    var clip by remember { mutableStateOf<Pair<android.graphics.RectF, PdfText>?>(null) } // Copy's text, for Paste
+    var painter by remember { mutableStateOf<PdfTextLook?>(null) } // Format painter: the look taken, put on the next text chosen
+    var pageMenu by remember { mutableStateOf<Triple<Int, Offset, Offset>?>(null) } // a right-click's menu: its page, where (px on the page), where (page points)
     var filling by remember { mutableStateOf<Triple<Int, Offset, PdfField>?>(null) } // a form's text or choice field tapped
     var fillSize by remember { mutableStateOf(11f) }
     val signatureFile = remember { File(context.filesDir, "pdf-signature.png") }
@@ -1172,8 +1196,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         typed = androidx.compose.ui.text.input.TextFieldValue(old?.words.orEmpty(), androidx.compose.ui.text.TextRange(old?.words?.length ?: 0)); typing = t
     }
     /** A text put on before ([r] where it is), tapped: typed in again in its place. */
-    fun retype(i: Int, r: android.graphics.RectF, old: PdfText) = startTyping(PdfTyping(i, r.left, r.top,
-        if (old.framed) r.width() else maxOf(r.width(), (doc?.sizes?.getOrNull(i)?.width ?: 595f) - r.left - 18f), if (old.framed) r.height() else 0f, old.framed, Offset(r.centerX(), r.centerY())), old)
+    fun retype(i: Int, r: android.graphics.RectF, old: PdfText) { val (uw, uh) = old.unturned(r)
+        startTyping(PdfTyping(i, r.left, r.top, if (old.framed || old.sideways) uw else maxOf(uw, (doc?.sizes?.getOrNull(i)?.width ?: 595f) - r.left - 18f),
+            if (old.framed) uh else 0f, old.framed, Offset(r.centerX(), r.centerY())), old) }
     /** The words typed put on the page, one undo step (emptied: the old one only taken out). */
     fun putTyped() {
         val t = typing ?: return; typing = null; fontBefore = null
@@ -1191,8 +1216,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     fun rechange(x: Float? = null, y: Float? = null, room: Float? = null, minH: Float? = null, t: PdfText? = null) {
         val (i, r, old) = chosen ?: return; val d = doc ?: return
         val s = d.sizes.getOrNull(i) ?: return; val nt = t ?: old
+        val (uw, uh) = old.unturned(r) // as laid out before turning
         val nx = (x ?: r.left).coerceIn(0f, maxOf(0f, s.width - 12f)); val ny = (y ?: r.top).coerceIn(0f, maxOf(0f, s.height - 8f))
-        change { d.putText(i, nx, ny, nt, room ?: if (nt.framed) r.width() else maxOf(r.width(), s.width - nx - 18f), minH ?: if (nt.framed) r.height() else 0f, Offset(r.centerX(), r.centerY())) }
+        change { d.putText(i, nx, ny, nt, room ?: if (nt.framed || nt.sideways) uw else maxOf(uw, s.width - nx - 18f), minH ?: if (nt.framed) uh else 0f, Offset(r.centerX(), r.centerY())) }
         chosen = d.typedAt(i, Offset(nx + 1f, ny + 1f))?.let { (nr, pt) -> Triple(i, nr, pt) }
     }
     /** The chosen text taken off the page (one undo step). */
@@ -1205,8 +1231,45 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     fun position(across: Char?, down: Char?) {
         val (i, r, _) = chosen ?: return; val s = doc?.sizes?.getOrNull(i) ?: return; val m = 56.7f
         rechange(x = when (across) { 'l' -> m; 'c' -> (s.width - r.width()) / 2; 'r' -> s.width - m - r.width(); else -> null },
-            y = when (down) { 't' -> m; 'm' -> (s.height - r.height()) / 2; 'b' -> s.height - m - r.height(); else -> null }, room = r.width())
+            y = when (down) { 't' -> m; 'm' -> (s.height - r.height()) / 2; 'b' -> s.height - m - r.height(); else -> null })
         WriterLog.i("PDF: text positioned ${across ?: ""}${down ?: ""}")
+    }
+    /** Copy (Cut): the chosen text kept for Paste, as Slides' items; its words on the clipboard for other apps. */
+    fun copyChosen(): Boolean {
+        val (_, r, t) = chosen ?: return false
+        clip = android.graphics.RectF(r) to t
+        runCatching { context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("PDF text", t.words)) }
+        WriterLog.i("PDF: text copied"); return true
+    }
+    /**
+     * Paste on page [i]: what was copied here, a little lower and to the right of where it stood (Slides' way); else
+     * words copied in another app, a new text in the look last used, 2 cm in from the top left.
+     */
+    fun paste(i: Int, at: Offset? = null) {
+        val d = doc ?: return; val s = d.sizes.getOrNull(i) ?: return; val m = 56.7f
+        val t: PdfText; val x: Float; val y: Float; val room: Float; val minH: Float
+        val c = clip
+        if (c != null) {
+            val (r, ct) = c; val (uw, uh) = ct.unturned(r)
+            t = ct; x = at?.x ?: (r.left + 12f); y = at?.y ?: (r.top + 12f); room = if (ct.framed || ct.sideways) uw else maxOf(uw, s.width - x - 18f); minH = if (ct.framed) uh else 0f
+        } else {
+            val words = runCatching { context.getSystemService(ClipboardManager::class.java)?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() }.getOrNull()?.trim()
+            if (words.isNullOrEmpty()) { Toast.makeText(context, "Nothing to paste", Toast.LENGTH_SHORT).show(); return }
+            t = PdfText(words, textLook.copy(fill = null, line = null, turn = 0), false); x = at?.x ?: m; y = at?.y ?: m; room = maxOf(72f, s.width - x - m); minH = 0f
+        }
+        val px = x.coerceAtMost(s.width - 12f); val py = y.coerceAtMost(s.height - 8f)
+        change { d.putText(i, px, py, t, room, minH) }
+        chosen = d.typedAt(i, Offset(px + 1f, py + 1f))?.let { (nr, pt) -> Triple(i, nr, pt) }
+        WriterLog.i("PDF: text pasted")
+    }
+    /** Duplicate (Ctrl+D): a copy of the chosen text beside it, Copy's text and the clipboard left as they were. */
+    fun duplicateChosen() { val (i, r, t) = chosen ?: return; val keep = clip; clip = android.graphics.RectF(r) to t; paste(i); clip = keep }
+    /** The chosen text one step forward or backward among the page's comments, pictures and drawings ([to] as [PdfDoc.restack]). */
+    fun restackChosen(to: Int) {
+        val (i, r, _) = chosen ?: return; val d = doc ?: return
+        var moved = false
+        change { moved = d.restack(i, Offset(r.centerX(), r.centerY()), to) }
+        if (!moved) Toast.makeText(context, if (to > 0) "It is in front already" else "It is at the back already", Toast.LENGTH_SHORT).show()
     }
     BackHandler(enabled = editing || organize) { if (organize) organize = false else if (typing != null) putTyped() else if (chosen != null) chosen = null else if (tool != null) tool = null else if (doc?.dirty == true) leaving = true else editing = false }
     /** What a finger did on page [i] with the tool on: [pts] its path in page points (a tap: one point). */
@@ -1216,7 +1279,10 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         val d = doc ?: return; val t = tool ?: run {
             if (pts.size != 1) return
             // a text put on before, tapped while editing: chosen, as a Slides box (a second tap types in it)
-            if (editing) d.typedAt(i, pts[0])?.let { (r, old) -> chosen = Triple(i, r, old); return }
+            if (editing) d.typedAt(i, pts[0])?.let { (r, old) -> chosen = Triple(i, r, old)
+                // the Format painter's look on the text tapped (its turn, fill and border its own, as Slides')
+                painter?.let { l -> painter = null; rechange(t = old.copy(look = l.copy(turn = old.look.turn, fill = old.look.fill, line = old.look.line))); WriterLog.i("PDF: format painted") }
+                return }
             // no tool: a form's field is filled in (a box ticked at once), a note tapped shows its words
             d.fieldAt(i, pts[0])?.let { f ->
                 if (f.readOnly) { Toast.makeText(context, "That field cannot be changed", Toast.LENGTH_SHORT).show(); return }
@@ -1424,7 +1490,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             k.isCtrlPressed && k.key == Key.S -> { if (d.dirty) save(); true }
             k.isCtrlPressed && (k.key == Key.Y || (k.key == Key.Z && k.isShiftPressed)) -> { chosen = null; change { d.redo() }; true }
             k.isCtrlPressed && k.key == Key.Z -> { chosen = null; change { d.undo() }; true }
+            k.isCtrlPressed && k.key == Key.V -> { paste(c?.first ?: at); true }
             c == null -> false
+            k.isCtrlPressed && k.key == Key.C -> { copyChosen(); true }
+            k.isCtrlPressed && k.key == Key.X -> { if (copyChosen()) deleteChosen(); true }
+            k.isCtrlPressed && k.key == Key.D -> { duplicateChosen(); true }
             k.key == Key.Delete || k.key == Key.Backspace -> { deleteChosen(); true }
             k.key == Key.Enter -> { retype(c.first, c.second, c.third); true }
             k.key == Key.Escape -> { chosen = null; true }
@@ -1571,13 +1641,42 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 val px = with(density) { w.roundToPx() }
                                 val marks = matches?.filter { it.page == i }.orEmpty()
                                 PdfPage(d, i, if (i == at) Pdf.renderWidth(px, settled, s.width / s.height) else px,
-                                    Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).width(w), marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
+                                    Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).width(w)
+                                        // a mouse's right button (as Slides'): the text under it chosen, and its menu; before the taps see it
+                                        .pointerInput(editing, i) {
+                                            if (!editing) return@pointerInput
+                                            awaitEachGesture {
+                                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                                if (!currentEvent.buttons.isSecondaryPressed) return@awaitEachGesture
+                                                down.consume()
+                                                if (typing != null) putTyped()
+                                                val pt = down.position / (size.width / s.width)
+                                                chosen = doc?.typedAt(i, pt)?.let { (r, t) -> Triple(i, r, t) }
+                                                pageMenu = Triple(i, down.position, pt)
+                                            }
+                                        }, marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
                                     if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
                                     typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook) { typed = it } }
+                                    pageMenu?.takeIf { it.first == i }?.let { (_, spot, pt) -> OfficeMenu(spot, { pageMenu = null }) {
+                                        @Composable fun entry(label: String, icon: Int, act: () -> Unit) = OfficeMenuItem(label, icon) { pageMenu = null; WriterLog.i("PDF: menu › $label"); act() }
+                                        val c = chosen
+                                        if (c != null) {
+                                            entry("Edit text", R.drawable.ic_edit) { retype(c.first, c.second, c.third) }
+                                            entry("Cut", R.drawable.ic_content_cut) { if (copyChosen()) deleteChosen() }
+                                            entry("Copy", R.drawable.ic_copy) { copyChosen() }
+                                        }
+                                        entry("Paste", R.drawable.ic_content_paste) { paste(i, if (c == null) pt else null) }
+                                        if (c != null) {
+                                            entry("Bring to front", R.drawable.ic_flip_to_front) { restackChosen(2) }
+                                            entry("Send to back", R.drawable.ic_flip_to_back) { restackChosen(-2) }
+                                            entry("Delete", R.drawable.ic_delete) { deleteChosen() }
+                                        }
+                                    } }
                                     chosen?.takeIf { it.first == i && typing == null }?.let { (_, r, t) ->
                                         PdfChosenFrame(s, r, { retype(i, r, t) }, { dx, dy -> rechange(x = r.left + dx, y = r.top + dy) }) { w, h ->
                                             // sized: a fixed width from then on (a text becomes a box without a border), as tall as drawn or its words
-                                            rechange(room = w.coerceAtLeast(12f), minH = h.coerceAtLeast(8f), t = t.copy(framed = true)) }
+                                            val (lw, lh) = if (t.sideways) h to w else w to h
+                                            rechange(room = lw.coerceAtLeast(12f), minH = lh.coerceAtLeast(8f), t = t.copy(framed = true)) }
                                     }
                                 }
                             }
@@ -1627,6 +1726,22 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 MenuChoice("Left", icon = R.drawable.ic_align_left) { position('l', null) }, MenuChoice("Centre", icon = R.drawable.ic_align_center) { position('c', null) },
                                 MenuChoice("Right", icon = R.drawable.ic_align_right) { position('r', null) }, MenuChoice("Top", icon = R.drawable.ic_vertical_align_top) { position(null, 't') },
                                 MenuChoice("Middle", icon = R.drawable.ic_vertical_align_center) { position(null, 'm') }, MenuChoice("Bottom", icon = R.drawable.ic_vertical_align_bottom) { position(null, 'b') }))
+                            RibbonMenu("Arrange", w, R.drawable.ic_flip_to_front, preset = false, choices = listOf(
+                                MenuChoice("Bring to front", icon = R.drawable.ic_flip_to_front) { restackChosen(2) }, MenuChoice("Bring forward", icon = R.drawable.ic_flip_to_front) { restackChosen(1) },
+                                MenuChoice("Send backward", icon = R.drawable.ic_flip_to_back) { restackChosen(-1) }, MenuChoice("Send to back", icon = R.drawable.ic_flip_to_back) { restackChosen(-2) }))
+                            RibbonMenu("Rotate", w, R.drawable.ic_rotate_right, preset = false, choices = listOf(
+                                MenuChoice("Rotate right 90°", icon = R.drawable.ic_rotate_right) { rechange(t = ct.copy(look = ct.look.copy(turn = (ct.look.turn + 90) % 360))) },
+                                MenuChoice("Rotate left 90°", icon = R.drawable.ic_rotate_left) { rechange(t = ct.copy(look = ct.look.copy(turn = (ct.look.turn + 270) % 360))) },
+                                MenuChoice("Upright", enabled = ct.look.turn != 0) { rechange(t = ct.copy(look = ct.look.copy(turn = 0))) }))
+                            RibbonDivider(w)
+                            Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) {
+                                painter = if (painter != null) null else ct.look; if (painter != null) Toast.makeText(context, "Tap the text to paint", Toast.LENGTH_SHORT).show() }
+                            Tool(R.drawable.ic_format_clear, "Clear formatting", w) { rechange(t = ct.copy(look = PdfTextLook(fill = ct.look.fill, line = ct.look.line, turn = ct.look.turn))) }
+                            RibbonDivider(w)
+                            RibbonButton("Cut", w, R.drawable.ic_content_cut) { if (copyChosen()) deleteChosen() }
+                            RibbonButton("Copy", w, R.drawable.ic_copy) { copyChosen() }
+                            RibbonButton("Paste", w, R.drawable.ic_content_paste) { paste(ci) }
+                            RibbonButton("Duplicate", w, R.drawable.ic_add_to_collection) { duplicateChosen() }
                             RibbonButton("Delete", w, R.drawable.ic_delete) { deleteChosen() }
                             RibbonDivider(w)
                             RibbonButton("Done", w, R.drawable.ic_check) { chosen = null }

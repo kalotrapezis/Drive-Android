@@ -62,8 +62,31 @@ class PdfTextDeviceTest {
         dir.deleteRecursively()
     }
 
+    @Test fun turnedAndRestacked() {
+        val target = InstrumentationRegistry.getInstrumentation().targetContext
+        OfficeFonts.assets = target.assets
+        val dir = java.io.File(target.cacheDir, "pdf-text-test2").apply { deleteRecursively() }
+        val d = PdfDoc(Pdf.newBlank(dir))
+        // turned a quarter: its place on the page the other way round, the look keeps its turn
+        val turned = PdfText("Sideways", PdfTextLook(size = 20f, turn = 90), framed = true)
+        d.putText(0, 100f, 100f, turned, 200f, 40f)
+        val (r, back) = d.typedAt(0, Offset(110f, 110f))!!
+        assertEquals(90, back.look.turn)
+        assertEquals(40f, r.width()); assertEquals(200f, r.height())
+        assertEquals(200f to 40f, back.unturned(r))
+        // two filled boxes over each other: the later on top; sent to the back, the other shows
+        d.putText(0, 300f, 300f, PdfText("A", PdfTextLook(fill = 0xFF0000), true), 100f, 100f)
+        d.putText(0, 320f, 320f, PdfText("B", PdfTextLook(fill = 0x0000FF), true), 100f, 100f)
+        fun middle() = kotlinx.coroutines.runBlocking { d.page(0, 595) }!!.getPixel(360, 360)
+        assertTrue(android.graphics.Color.blue(middle()) > 200)
+        assertTrue(d.restack(0, Offset(415f, 415f), -2))
+        assertTrue("red on top after B went to the back", android.graphics.Color.red(middle()) > 200)
+        assertTrue(!d.restack(0, Offset(415f, 415f), -1)) // at the back already
+        d.close(); dir.deleteRecursively()
+    }
+
     @Test fun lookKeptInTheFile() {
-        val t = PdfText("x", PdfTextLook(fill = 0xFFFF00, line = 0x0070C0, highlight = 0x00FF00, align = DocAlign.End), framed = true)
+        val t = PdfText("x", PdfTextLook(fill = 0xFFFF00, line = 0x0070C0, highlight = 0x00FF00, align = DocAlign.End, turn = 270), framed = true)
         assertEquals(t, PdfText.parse(t.json()))
         // a box put on before fills and borders were chosen (24 Oct, first build): its black frame kept
         assertEquals(0x000000, PdfText.parse("""{"words":"a","framed":true}""")?.look?.line)

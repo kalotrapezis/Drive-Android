@@ -51,24 +51,30 @@ import kotlin.math.ceil
  */
 internal data class PdfTextLook(val font: String = "Times New Roman", val size: Float = 12f, val bold: Boolean = false, val italic: Boolean = false,
     val underline: Boolean = false, /** 0xRRGGBB */ val color: Int = 0x000000, /** 0xRRGGBB or none */ val highlight: Int? = null, val align: DocAlign = DocAlign.Start,
-    /** the box's fill and its border's colour (0xRRGGBB), as a Slides box's; none: clear, no border */ val fill: Int? = null, val line: Int? = null)
+    /** the box's fill and its border's colour (0xRRGGBB), as a Slides box's; none: clear, no border */ val fill: Int? = null, val line: Int? = null,
+    /** turned clockwise: 0, 90, 180 or 270 degrees */ val turn: Int = 0)
 
 /** A text put on a page: its words, their look, and whether it is a text box (a thin frame, as wide as it was drawn). */
 internal data class PdfText(val words: String, val look: PdfTextLook, val framed: Boolean) {
     /** Kept in the file with it (the annotation's own key), so a tap opens it again as it was typed. */
     fun json(): String = JSONObject().put("words", words).put("font", look.font).put("size", look.size.toDouble()).put("bold", look.bold).put("italic", look.italic)
         .put("underline", look.underline).put("color", look.color).put("highlight", look.highlight ?: -1).put("align", look.align.name).put("framed", framed)
-        .put("fill", look.fill ?: -1).put("line", look.line ?: -1).toString()
+        .put("fill", look.fill ?: -1).put("line", look.line ?: -1).put("turn", look.turn).toString()
 
     /** Inside its frame, in points: a text box's words off its frame, a text's hugging them. */
     val pad get() = if (framed) 4f else 1f
+    /** Turned a quarter or three: its width and height on the page swapped. */
+    val sideways get() = look.turn % 180 == 90
+    /** [r] (where it is on the page) as it is laid out before turning: across, down. */
+    fun unturned(r: android.graphics.RectF) = if (sideways) r.height() to r.width() else r.width() to r.height()
 
     companion object {
         fun parse(s: String): PdfText? = runCatching {
             val o = JSONObject(s)
             PdfText(o.getString("words"), PdfTextLook(o.optString("font", "Times New Roman"), o.optDouble("size", 12.0).toFloat(), o.optBoolean("bold"), o.optBoolean("italic"),
                 o.optBoolean("underline"), o.optInt("color", 0), o.optInt("highlight", -1).takeIf { it >= 0 }, runCatching { DocAlign.valueOf(o.optString("align")) }.getOrDefault(DocAlign.Start),
-                o.optInt("fill", -1).takeIf { it >= 0 }, o.optInt("line", if (o.optBoolean("framed")) 0 else -1).takeIf { it >= 0 }), // a box put on before borders were chosen: its black frame
+                o.optInt("fill", -1).takeIf { it >= 0 }, o.optInt("line", if (o.optBoolean("framed")) 0 else -1).takeIf { it >= 0 }, // a box put on before borders were chosen: its black frame
+                Math.floorMod(o.optInt("turn"), 360)),
                 o.optBoolean("framed"))
         }.getOrNull()
 
@@ -98,11 +104,16 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
             return ceil(w) to ceil(maxOf(minHeight, l.height + 2 * t.pad))
         }
 
-        /** The words drawn [w] × [h] points: a one-page PDF of their own (Android's, its fonts embedded), to be the annotation's look. */
+        /**
+         * The words drawn [w] × [h] points (as laid out, before turning): a one-page PDF of their own (Android's, its fonts
+         * embedded), to be the annotation's look — turned, its page the other way round.
+         */
         fun pdf(t: PdfText, w: Float, h: Float): ByteArray {
             val doc = android.graphics.pdf.PdfDocument()
             try {
-                val page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(ceil(w).toInt(), ceil(h).toInt(), 1).create())
+                val (pw, ph) = if (t.sideways) h to w else w to h
+                val page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(ceil(pw).toInt(), ceil(ph).toInt(), 1).create())
+                page.canvas.apply { when (t.look.turn) { 90 -> { translate(pw, 0f); rotate(90f) }; 180 -> { translate(pw, ph); rotate(180f) }; 270 -> { translate(0f, ph); rotate(270f) } } }
                 draw(page.canvas, t, w, h)
                 doc.finishPage(page)
                 return java.io.ByteArrayOutputStream().also { doc.writeTo(it) }.toByteArray()

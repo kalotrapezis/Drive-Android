@@ -2070,8 +2070,15 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       the handle sizes it (a text sized keeps that width); its tab: the look at once (one undo step each), Fill and
       Border, Position (Word's Align: left, centre, right, top, middle, bottom, 2 cm from the edge), Delete; keys as
       Slides' — Delete, arrows (Shift: 10 pt), Enter, Esc, Ctrl+S/Z/Y; the typed words' selection blue on the page (dark
-      theme: Ctrl+A's selection did not show). Emulator, tablet size. Not done: "under" the page's own text (a comment
-      always sits over it; behind needs writing into the page itself), rotation, copy/paste of a text, the phone size.
+      theme: Ctrl+A's selection did not show). Emulator, tablet size.
+      Then ("dont stop, is anything else missing?"): Slides' item tools for a chosen text — Cut, Copy, Paste (Copy's text
+      a little lower and right; else words copied in another app, a new text), Duplicate (Ctrl+D), Arrange (bring
+      forward/to front, send backward/to back among the page's comments, pictures and drawings: the /Annots order),
+      Rotate (90° steps, the look turned in the file), Format painter, Clear formatting; a mouse's right button: Edit
+      text, Cut, Copy, Paste (where clicked), Bring to front, Send to back, Delete; Ctrl+C/X/V. PdfTextDeviceTest
+      turnedAndRestacked. Emulator: tablet and phone sizes. Not done: "behind" the page's own text (a comment always
+      sits over it; behind needs writing into the page itself, and it could no longer be chosen), any angle of
+      rotation (a handle, as Slides'), a look per word, the right button tried with a real mouse.
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

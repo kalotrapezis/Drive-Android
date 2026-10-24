@@ -186,9 +186,14 @@ How to write here:
       tessdata_fast models through tesseract.js, eyes from YuNet; and Maps (§ Maps). Checked in the packaged app (text, eyes,
       a route). The .deb is built, not installed (the user installs it: sudo dpkg -i …0.6.0-beta.3_amd64.deb).
 - Other sessions: add your line here when you start.
-- [~] (phone session, 24 Oct, branch `phone` from main bc485fb; the user: "ok make a phone branch") Building § Phone in its step order;
-      answers taken from the plan's recommendations until the user says otherwise (colour: the icon's teal; vibration: two taps on
-      pickup, the end-of-call one off).
+- [x] (phone session, 24 Oct; branches `phone` in Drive-Android (worktree Drive-Android-worktrees/phone, from main bc485fb) and
+      Drive (worktree Drive-worktrees/phone, from main bfc589c); **not merged, not on the phone**) **Phone**, § Phone steps 1–9 (the
+      user: "ok make a phone branch"; "No dont stop for every step use the emulator"; "use an island for recents, favorites and
+      contacts, recordings, everything centered … see the apps UI UX follow along"). Each step checked on the emulator
+      (emulator-5556, tetra_check; fake calls with `adb emu gsm`), the desktop pages rendered off-screen; see § Phone › Steps for
+      what each did and what only the real phone, tablet and computer can show. Answers taken from the plan's recommendations
+      until the user says otherwise (colour the icon's teal; two taps on pickup, none at the end; Home: favourites to call;
+      recording on the PC after "They agreed").
 - [x] (phone-plan session, 24 Oct, branch claude/phone-plan; not merged) § Phone planned: the dialer applet, vibration on
       pickup, call recording (not on the phone; possible on the PC), Play's call-log rule. Waits for the user's answers.
 - [x] (contacts-build session, 24 Oct, from main; branches claude/contacts-583397 and Drive contacts) Calls on the computer
@@ -361,7 +366,8 @@ How to write here:
   Overnight (05:10) the main session chose an order so the work goes on — smallest and least risky first: (4), (7), (6), (2), (3),
   (1), (5). Change it in the morning if you like; each is a commit of its own, ticked here as it is done.
 - (23 Oct) **Contacts**: the plan's nine questions (§ Contacts › Questions for the user); nothing is built before the yes.
-- (24 Oct) **Phone (the dialer)**: the plan's eight questions (§ Phone › Questions for the user); nothing is built before the yes.
+- (24 Oct) **Phone (the dialer)**: built on branches `phone` (§ Phone); waiting: the OK to install on the phone, question 2
+  (the phone's own recording) and 6 (the colour), then the merge.
 - (none else now — the .odp's sources: answered 17 Oct, see B › References)
 
 ## Office: Slides and Tables as full as Words, then a UI/UX pass over all three (planned 17 Oct; moved here from OFFICE_FEATURES.md)
@@ -2629,38 +2635,86 @@ small "Message" for a quick reply; over the lock screen. An ongoing-call notific
 - Tests: the T9 matcher (Greek and Latin, accents), Recents' grouping, the jsonl writer; the in-call screen by hand with
   real calls on the Xiaomi (the emulator fakes calls with `adb emu gsm call`, which helps for the screens).
 
-### Steps (each a commit; the in-call ones checked with real calls on the phone before the next)
-- [~] (phone session, 24 Oct, branch `phone`) 1. The role and a minimal in-call screen: ringing (answer/decline, lock screen), outgoing, End, Mute, Speaker,
-   proximity; Settings › Phone › "Tetra is the phone app" / give it back. **Vibration on pickup.** A day of real use
-   with the system dialer one tap away before anything else.
-   Built: `PhoneInCall.kt` (PhoneInCallService, the calls' state, the buzz, proximity, the CallStyle notification with
-   Answer · Decline / Hang up), `PhoneScreens.kt` (PhoneCallActivity over the lock screen: face from Tetra's contact, state
-   and time, Mute, Speaker ↔ Bluetooth, Keypad with tones, End; the SIM choice when Telecom asks; volume keys quiet the
-   ringing; PhoneDialActivity = the keypad Android opens for ACTION_DIAL and tel: links, with Latin and Greek letters and
-   "Make Tetra the phone app"; Settings › Phone: the role, Vibrate when answered (on), Vibrate when a call ends (off),
-   Open the keypad). A keypad was needed already here: the role needs an ACTION_DIAL activity. Not yet on the phone.
-2. Keypad with T9 (Greek and Latin), Recents (grouped, filters, delete), call details, Favourites, speed dial; SIM
-   choice.
-3. Hold, Add call, Merge, Swap, Keypad (DTMF), the route picker with "Computer"; a note on a call.
-4. Blocking and screening (BlockedNumberContract, unknown/hidden numbers), quick replies, per-contact ringtone.
-5. The PC: the bubble from the `InCallService` (Hold, Mute, Keypad, "Answered"); the call history files and scope
-   `phone`; the desktop's Phone view.
-6. The tablet: the same Phone view, calls through the phone.
-7. Home: the Phone group and the icon.
-8. Play: the call log asked only with the role (or the cross-device declaration), the declarations written.
-9. (If wanted) recording on the PC, with the consent screen.
+### Steps (each a commit; checked on the emulator as built — the user, 24 Oct: "use the emulator"; the real phone at the end)
+- [x] (cf7305a, 657645c) 1. The role and the call screen: `PhoneInCall.kt` (PhoneInCallService, the calls' state, the buzz,
+   proximity, Android's CallStyle notification with Answer · Decline / Hang up), `PhoneScreens.kt` (PhoneCallActivity over the
+   lock screen: the contact's face, state and time, Mute, Speaker, Keypad with tones, End; the SIM choice when Telecom asks;
+   the volume keys quiet the ringing); Settings › Phone (the role, Vibrate when answered on, Vibrate when a call ends off).
+   Telecom keeps playing the ringtone (no IN_CALL_SERVICE_RINGING). Emulator: an incoming call (heads-up with the contact's
+   name, Answer, the screen), an outgoing one answered by `gsm accept` — **the buzz played** (vibrator log: 60 ms, 80 ms gap,
+   60 ms, usage COMMUNICATION_REQUEST), ringing over a sleeping screen, the screen closing after the call.
+- [x] (7655505) 2. The Phone applet (`PhoneApp.kt`, `PhoneLog.kt`): Tetra's look — the search pill over the list, the island in
+   the middle (Recents · Favourites · Contacts · Recordings) and the keypad a round button beside it (the user's ask). Recents
+   grouped (calls in a row from one number on one day), All · Missed · Unknown, details with every call to that number,
+   delete one or many, Android's missed-call notice cleared on looking; unknown Greek numbers say Mobile / Athens /
+   Thessaloniki… (a small table); Favourites one tap to call (hold opens the contact); Contacts with a number; the keypad
+   with search as you type in Latin **and Greek** (5-2-7 finds Μαρία), hold 0 for +, 1 voicemail, 2–9 speed dial (set in the
+   sheet); Contacts' Call places the call at once when Tetra is the phone app; Contacts opens a new contact with a number
+   from the Phone. PhoneLogTest.
+- [x] (bea0880) 3. Hold, Add call, Swap, Merge (the other call a card on the screen), the sound's ways when there is more
+   than earpiece and speaker (Phone · Headset · Speaker · each Bluetooth device, "Computer · <name>" for Tetra's paired
+   computer, BLUETOOTH_CONNECT asked for the names), a note on a call (Tetra/Phone/notes.jsonl, shown under the call in
+   Recents; a merged call's note goes to each person). Emulator: call waiting → hold → Swap/Merge → a merged call naming both.
+- [x] (7df4e14) 4. Block / Unblock (Android's list) from a call's details and the sheet; `PhoneScreening` (the phone app's
+   CallScreeningService): Silence numbers not in Contacts, Decline hidden numbers (Settings › Phone, both off); Decline with a
+   message (four usual ones or one written; Telecom sends the SMS); a person's ringtone (CUSTOM_RINGTONE on the phone's
+   contact for that number). Emulator: a blocked number logged as blocked; an unknown number silenced.
+- [x] (e2722f2; Drive 869d707) 5. The computer: while Tetra is the phone app the call screen tells the computer (calling until
+   answered, active, held, ended, muted; the old phone-state guess only otherwise); the bubble's Mute, Hold/Resume and Keys
+   (tones) done by the phone. Android's call log copied to `Tetra/Phone/calls-YYYY-MM.jsonl` (one line per call: at, number,
+   dir, secs, contact, name, note — PhoneHistory, tested), scope `phone` (DriveScope, files.js SCOPES), Phone kept out of
+   Files' lists on both. Desktop: a Phone page (Recents from those files, Favourites, Contacts, Recordings, a keypad whose
+   Call has the phone place it), Contacts' layout with the island centred. Also fixed on the way: **a new computer's first
+   start never opened the window** (Contacts read a setting before the settings table was made). Emulator: the files written
+   with notes, blocked and missed calls; the desktop page rendered with a sample file (scripts/shot.js, separate profile).
+- [x] (5d822ee; Drive 5fabdc6) 6. The tablet: no calls of its own (no telephony), so its Phone shows the phone's Recents from
+   the synced files and Call has the phone place it through the computer (`/call/place`); the computer passes each call's
+   state on to the tablets (`/call/state?s=`), shown as a notification with Answer · Decline or Mute · Hold · End (done by the
+   phone through `/call/act`); a call a tablet placed does not also open the computer's bubble. The voice stays on the phone.
+   **Not tried: needs the tablet, the computer and the phone together.**
+- [x] (56e2332) 7. Home: the Phone group in the icon's teal beside Contacts — the art, four favourites to call with one tap, the
+   spare slots Keypad · Recents · Contacts; the icon by tools/applet-icons.py (Assets/Icons/Applets/Phone.png → phone_art,
+   applet_phone, edge #02505B); Settings › App icons: Tetra Phone. Emulator: seen.
+- [x] (540411b) 8. Play: Settings › Contacts no longer asks READ_CALL_LOG; a contact's History asks Android to make Tetra the
+   phone app instead (the role grants the call log). A phone where it was granted keeps it. Declarations below.
+- [x] (Drive 15240b0) 9. Recording on the computer: when the call's sound is there (Bluetooth, the echo canceller on), the bubble's
+   Record first says "Ask them first: recording a call without the other person's explicit yes is a crime in Greece" and
+   records only on "They agreed — record"; ffmpeg mixes the call speaker's monitor (them) and the echo-cancelled mic (the
+   user) into Opus in `Phone/Recordings/2026-10-24 15.36 <name>.ogg`, synced to the phone's Recordings tab; stops on Stop, at
+   the end, on quit. Checked: the same ffmpeg line on two test sinks (a 2 s Opus file, stopped by q); the bubble rendered.
+   No spoken notice to the other side (question 3).
+- Checks at 540411b: unit 623 tests, 0 failing, 9 skipped (HomeLayoutTest counts the Phone's rows now); desktop `tsc` clean,
+   `npm test` 135/135.
+- [ ] **On the real devices** (the user's OK to install with tools/phone-install.sh): Settings › Phone › Make it, a real call
+   each way (the buzz, the screen at the ear, the speaker, Bluetooth to the PC), the PC's bubble (Hold, Mute, Keys, Record),
+   the tablet's notification and Call, a block. Merging both branches waits for the user.
+
+### Google Play: the declarations (Play Console › App content), written 24 Oct
+- **SMS and Call Log permissions** (READ_CALL_LOG, WRITE_CALL_LOG): core functionality "Default Phone handler"; Tetra asks for
+  the role first (RoleManager), uses the call log only while it holds it (Recents, the copy for the user's own computer).
+  The video Play asks for: Settings › Phone › Make it → Android's dialog → Recents.
+- **Full-screen intent** (USE_FULL_SCREEN_INTENT): "Calling" — the incoming call's screen over the lock screen.
+- **All files access** (MANAGE_EXTERNAL_STORAGE): file manager and sync of the user's own files between their devices.
+- **Foreground services**: dataSync (sync, photo analysis), specialUse (the Timer's countdown; listening for the paired
+  computer), location (the phone's place for the computer's Maps) — each with the text already in the manifest.
+- **Accessibility**: none used (recording through it is forbidden; Tetra records only on the computer).
+- Not needed: SMS permissions (quick replies are sent by Telecom), PROCESS_OUTGOING_CALLS.
 
 ### Questions for the user
-1. Make Tetra the phone's Phone app (with the risk that a Tetra bug can cost a call; the system dialer one tap away)?
+1. Make Tetra the phone's Phone app (with the risk that a Tetra bug can cost a call; the system dialer one tap away)? —
+   the user, 24 Oct: "ok make a phone branch" (built; switched on in Settings › Phone after the install).
 2. That turns off the phone's own call recording while Tetra is the Phone app. Is it used? (Seen 24 Oct: the phone's
    Phone app today is Google Phone, com.google.android.dialer; whether it offers recording on this Xiaomi is to see in its ⋮ › Settings.)
 3. Recording on the computer when the call's sound is there (Bluetooth): wanted? With the "They agreed" step and a spoken
-   notice to the other side, or the step alone?
-4. Vibration: two quick taps on pickup — and also one on hang-up?
+   notice to the other side, or the step alone? — the user asked for a Recordings tab (24 Oct): built with the step alone; a
+   spoken notice on request.
+4. Vibration: two quick taps on pickup — and also one on hang-up? — built: pickup on, hang-up a setting (off).
 5. Two SIMs in the Xiaomi? — seen on the phone 24 Oct: one active SIM (Nova); the SIM choice is built anyway (Telecom asks the Phone app when there are two).
 6. Colour: the icon's dark teal is near Timer's teal. Phone in the icon's teal anyway, or a green (calls' usual colour)?
-7. Home's Phone group: four favourites to call, or Keypad · Recents · Missed · Favourites?
-8. The tablet: the Phone view with calls through the phone (voice on the phone) — or leave the tablet to HyperOS's calls?
+7. Home's Phone group: four favourites to call, or Keypad · Recents · Missed · Favourites? — built: the favourites, and
+   Keypad · Recents · Contacts in the slots left.
+8. The tablet: the Phone view with calls through the phone (voice on the phone) — or leave the tablet to HyperOS's calls? —
+   built (step 6); HyperOS's own calls still work beside it.
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

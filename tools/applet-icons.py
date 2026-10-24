@@ -1,11 +1,11 @@
-# Usage: python3 tools/applet-icons.py app/src/main/res <folder with DocScan.png, QRScan.png, Files.png, Calendar.png, Maps.png, Timer.png — any of them> (Assets/Icons/Applets)
+# Usage: python3 tools/applet-icons.py app/src/main/res <folder with DocScan.png, QRScan.png, Files.png, Calendar.png, Maps.png, Timer.png, Sync.png, Settings.png — any of them> (Assets/Icons/Applets)
 # The applets' launcher icons from Home's own art, each on its own colour (asked 17 Oct: the corners in the applet's colour).
 import sys, os, glob
 from PIL import Image, ImageDraw
 res, dl = sys.argv[1], sys.argv[2]
 nodpi = f"{res}/drawable-nodpi"
 # the user's new tiles (17 Oct): their solid corners cut away (flood from each corner), at the other arts' size
-for src, out in [("DocScan", "scanner_art"), ("QRScan", "codes_art"), ("Files", "files_art"), ("Calendar", "calendar_art"), ("Contacts", "contacts_art"), ("Maps", "maps_art"), ("Timer", "timer_art")]:
+for src, out in [("DocScan", "scanner_art"), ("QRScan", "codes_art"), ("Files", "files_art"), ("Calendar", "calendar_art"), ("Contacts", "contacts_art"), ("Maps", "maps_art"), ("Timer", "timer_art"), ("Sync", "sync_art"), ("Settings", "settings_art")]:
     if not os.path.exists(f"{dl}/{src}.png"): continue  # only the tiles given are made again
     a = Image.open(f"{dl}/{src}.png").convert("RGBA")
     for c in [(0, 0), (a.width - 1, 0), (0, a.height - 1), (a.width - 1, a.height - 1)]:

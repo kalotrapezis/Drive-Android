@@ -44,6 +44,8 @@ internal object PhoneCalls {
     var calls by mutableStateOf<List<Call>>(emptyList()); private set
     var audio by mutableStateOf<CallAudioState?>(null)
     var tick by mutableIntStateOf(0); private set
+    /** The call screen in front: the ringing notification then stays quiet (no heads-up over the screen itself). */
+    var screenShown = false
     /** Outgoing calls already answered: the buzz once, not again after Hold → Resume. */
     private val answered = mutableSetOf<Call>()
     private val names = HashMap<String, ContactInfo?>()
@@ -132,7 +134,7 @@ internal object PhoneCalls {
         val answer = PendingIntent.getActivity(c, 1, Intent(screen).setAction(ANSWER), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         fun act(what: String, code: Int) = PendingIntent.getBroadcast(c, code, Intent(c, PhoneCallReceiver::class.java).setAction(what), PendingIntent.FLAG_IMMUTABLE)
         val person = Person.Builder().setName(title(call)).setImportant(true).build()
-        val b = NotificationCompat.Builder(c, if (ringing) RINGING else ONGOING).setSmallIcon(R.drawable.ic_call)
+        val b = NotificationCompat.Builder(c, if (ringing && !screenShown) RINGING else ONGOING).setSmallIcon(R.drawable.ic_call)
             .setStyle(if (ringing) NotificationCompat.CallStyle.forIncomingCall(person, act("decline", 2), answer) else NotificationCompat.CallStyle.forOngoingCall(person, act("end", 3)))
             .setCategory(NotificationCompat.CATEGORY_CALL).setOngoing(true).setOnlyAlertOnce(true)
             .setContentIntent(open).setFullScreenIntent(open, true)

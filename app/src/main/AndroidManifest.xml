@@ -70,7 +70,7 @@
             <intent-filter><action android:name="android.telecom.InCallService" /></intent-filter>
         </service>
         <activity android:name=".PhoneCallActivity" android:exported="false" android:launchMode="singleTask" android:taskAffinity="com.kalotrapezis.drive.call"
-            android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" android:screenOrientation="portrait" />
+            android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" />
         <activity android:name=".PhoneDialActivity" android:exported="true" android:label="Tetra Phone" android:taskAffinity="com.kalotrapezis.drive.dial" android:windowSoftInputMode="stateAlwaysHidden">
             <intent-filter><action android:name="android.intent.action.DIAL" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
             <intent-filter><action android:name="android.intent.action.DIAL" /><category android:name="android.intent.category.DEFAULT" /><data android:scheme="tel" /></intent-filter>

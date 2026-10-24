@@ -57,6 +57,8 @@ class PhoneCallActivity : ComponentActivity() {
         setContent { TetraTheme { PhoneCallScreen(done = { finish() }) } }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); answerIfAsked(intent) }
+    override fun onResume() { super.onResume(); PhoneCalls.screenShown = true; PhoneCalls.changed(this) }
+    override fun onPause() { PhoneCalls.screenShown = false; PhoneCalls.changed(this); super.onPause() }
     private fun answerIfAsked(i: Intent) { if (i.action == PhoneCalls.ANSWER) PhoneCalls.calls.firstOrNull { it.state == Call.STATE_RINGING }?.let(PhoneCalls::answer) }
 
     /** The volume keys quiet the ringing, as on every phone. */
@@ -106,7 +108,8 @@ private fun PhoneCallScreen(done: () -> Unit) {
     val contact = PhoneCalls.contact(call)
     var keys by remember { mutableStateOf(false) }
     var typed by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().background(callWash(PHONE_COLOR)).systemBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Box(Modifier.fillMaxSize().background(callWash(PHONE_COLOR)), contentAlignment = Alignment.TopCenter) {
+    Column(Modifier.fillMaxHeight().widthIn(max = 460.dp).systemBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(40.dp))
         if (contact != null) ContactAvatar(contact, 120.dp)
         else Box(Modifier.size(120.dp).clip(CircleShape).background(PHONE_COLOR), contentAlignment = Alignment.Center) {
@@ -136,6 +139,7 @@ private fun PhoneCallScreen(done: () -> Unit) {
             if (call.state != Call.STATE_SELECT_PHONE_ACCOUNT) RoundButton(if (keys) R.drawable.ic_close else R.drawable.ic_dialpad, if (keys) "Hide" else "Keypad", null, 56.dp) { keys = !keys }
             else Spacer(Modifier.size(56.dp))
         }
+    }
     }
 }
 
@@ -232,7 +236,8 @@ private fun PhoneKeypad(number: MutableState<String>, back: () -> Unit) {
     val askRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { dialer = PhonePrefs.isDialer(context) }
     val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok && placePhoneCall(context, number.value)) back() }
     val match by produceState<ContactInfo?>(null, number.value) { value = if (number.value.length < 5) null else withContext(Dispatchers.IO) { PhoneCalls.contactFor(number.value) } }
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    Column(Modifier.fillMaxHeight().widthIn(max = 460.dp).systemBarsPadding().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (!dialer) Surface(color = PHONE_COLOR.copy(alpha = 0.18f), shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Make Tetra the phone app: its own call screen, and a buzz when they answer.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -258,6 +263,7 @@ private fun PhoneKeypad(number: MutableState<String>, back: () -> Unit) {
             }
         }
         Spacer(Modifier.height(8.dp))
+    }
     }
 }
 

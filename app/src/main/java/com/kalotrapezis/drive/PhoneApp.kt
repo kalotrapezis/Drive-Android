@@ -346,6 +346,7 @@ internal fun CallAvatar(c: ContactInfo?, size: Dp) {
 private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, call: (String) -> Unit, delete: (List<Long>) -> Unit) {
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
+    val notes = remember { PhoneNotes.all() } // shortcut: read on the main thread, a few KB; move off it if notes grow large
     LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 20.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -365,12 +366,15 @@ private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, ca
             }
         }
         items(all.take(50), key = { it.id }) { l ->
+            Column {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CallTypeIcon(l.type, 18.dp)
                 val t = Instant.ofEpochMilli(l.at).atZone(zone)
                 Text(t.format(DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)), Modifier.weight(1f))
                 Text(listOfNotNull(typeText(l.type), l.seconds.takeIf { it > 0 }?.let { PhoneCalls.elapsed(it * 1000) }).joinToString(" · "), color = islandContentColor().copy(alpha = 0.7f),
                     style = MaterialTheme.typography.bodySmall)
+            }
+            PhoneNotes.of(context, l.number, l.at, notes)?.let { Text(it, Modifier.padding(start = 28.dp, bottom = 4.dp), style = MaterialTheme.typography.bodyMedium, color = islandContentColor().copy(alpha = 0.85f)) }
             }
         }
         item {

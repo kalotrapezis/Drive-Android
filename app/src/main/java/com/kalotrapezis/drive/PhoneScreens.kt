@@ -12,6 +12,7 @@ import android.telecom.CallAudioState
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.view.KeyEvent
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -108,6 +109,8 @@ private fun PhoneCallScreen(done: () -> Unit) {
         val number = PhoneCalls.number(call)
         val label = contact?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(number.orEmpty()) }?.label
         if (contact != null && number != null) Text(listOfNotNull(label?.ifBlank { null }, number).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else if (number != null) PhoneArea.of(number)?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        else if (call.details.hasProperty(Call.Details.PROPERTY_CONFERENCE)) Text("Conference · ${call.children.size} people", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(if (ended) "Call ended" else PhoneCalls.stateText(call, now), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         if (keys) Text(typed, style = MaterialTheme.typography.headlineSmall, maxLines = 1, modifier = Modifier.padding(top = 8.dp))
         Spacer(Modifier.weight(1f))
@@ -118,15 +121,15 @@ private fun PhoneCallScreen(done: () -> Unit) {
                 RoundButton(R.drawable.ic_call_end, "Decline", CALL_RED, 76.dp) { PhoneCalls.hangUp(call) }
                 RoundButton(R.drawable.ic_call, "Answer", CALL_GREEN, 76.dp) { PhoneCalls.answer(call) }
             }
-            keys -> DialKeys(Modifier.padding(bottom = 16.dp), press = { ch -> call.playDtmfTone(ch); typed += ch }, release = { call.stopDtmfTone() })
-            else -> InCallControls(context)
+            else -> {
+                PhoneCalls.calls.filter { it != call && it.state != Call.STATE_DISCONNECTED && it.parent == null }.forEach { OtherCall(it, call) }
+                if (keys) DialKeys(Modifier.padding(bottom = 16.dp), press = { ch -> call.playDtmfTone(ch); typed += ch }, release = { call.stopDtmfTone() })
+                InCallControls(call, keys, toggleKeys = { keys = !keys }, addCall = {
+                    context.startActivity(Intent(context, PhoneActivity::class.java).setAction(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                })
+            }
         }
-        if (!ended && call.state != Call.STATE_RINGING) Row(Modifier.fillMaxWidth().padding(bottom = 24.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.size(56.dp))
-            RoundButton(R.drawable.ic_call_end, "End", CALL_RED, 76.dp) { PhoneCalls.hangUp(call) }
-            if (call.state != Call.STATE_SELECT_PHONE_ACCOUNT) RoundButton(if (keys) R.drawable.ic_close else R.drawable.ic_dialpad, if (keys) "Hide" else "Keypad", null, 56.dp) { keys = !keys }
-            else Spacer(Modifier.size(56.dp))
-        }
+        if (!ended && call.state != Call.STATE_RINGING) RoundButton(R.drawable.ic_call_end, "End", CALL_RED, 76.dp, modifier = Modifier.padding(bottom = 24.dp)) { PhoneCalls.hangUp(call) }
     }
     }
 }
@@ -135,33 +138,106 @@ private fun PhoneCallScreen(done: () -> Unit) {
 private fun callWash(c: Color) = androidx.compose.ui.graphics.Brush.verticalGradient(listOf(c.copy(alpha = 0.45f), Color.Transparent))
 
 @Suppress("DEPRECATION")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InCallControls(context: Context) {
+private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, addCall: () -> Unit) {
+    val context = LocalContext.current
     val audio = PhoneCalls.audio
     val muted = audio?.isMuted == true
     val route = audio?.route ?: CallAudioState.ROUTE_EARPIECE
-    val routes = audio?.supportedRouteMask ?: 0
-    val bluetooth = routes and CallAudioState.ROUTE_BLUETOOTH != 0
-    // shortcut: Speaker cycles earpiece → speaker → Bluetooth; the route picker (Phone · Speaker · each device · Computer) is step 3
-    val next = when (route) {
-        CallAudioState.ROUTE_SPEAKER -> if (bluetooth) CallAudioState.ROUTE_BLUETOOTH else CallAudioState.ROUTE_WIRED_OR_EARPIECE
-        CallAudioState.ROUTE_BLUETOOTH -> CallAudioState.ROUTE_WIRED_OR_EARPIECE
-        else -> CallAudioState.ROUTE_SPEAKER
-    }
+    val mask = audio?.supportedRouteMask ?: 0
+    val devices = audio?.supportedBluetoothDevices.orEmpty()
+    var picking by remember { mutableStateOf(false) }
+    var noting by remember { mutableStateOf(false) }
+    val askNames = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { picking = true }
+    val held = call.state == Call.STATE_HOLDING
+    val canHold = call.details.can(Call.Details.CAPABILITY_HOLD) || call.details.can(Call.Details.CAPABILITY_SUPPORT_HOLD) || held
     val (routeIcon, routeName) = when (route) {
         CallAudioState.ROUTE_SPEAKER -> R.drawable.ic_volume_up to "Speaker"
-        CallAudioState.ROUTE_BLUETOOTH -> R.drawable.ic_bluetooth_audio to (audio?.activeBluetoothDevice?.let { d -> runCatching { d.name }.getOrNull() } ?: "Bluetooth")
+        CallAudioState.ROUTE_BLUETOOTH -> R.drawable.ic_bluetooth_audio to (audio?.activeBluetoothDevice?.let { PhoneRoutes.name(context, it) } ?: "Bluetooth")
         CallAudioState.ROUTE_WIRED_HEADSET -> R.drawable.ic_volume_up to "Headset"
         else -> R.drawable.ic_volume_up to "Speaker"
     }
-    Row(Modifier.fillMaxWidth().padding(bottom = 32.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-        RoundButton(if (muted) R.drawable.ic_mic_off else R.drawable.ic_mic, if (muted) "Muted" else "Mute", if (muted) Color.White else null, 64.dp, dark = muted) {
-            PhoneCalls.service?.setMuted(!muted)
+    val loud = route == CallAudioState.ROUTE_SPEAKER || route == CallAudioState.ROUTE_BLUETOOTH
+    Column(Modifier.fillMaxWidth().padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            RoundButton(if (muted) R.drawable.ic_mic_off else R.drawable.ic_mic, if (muted) "Muted" else "Mute", if (muted) Color.White else null, 64.dp, dark = muted) {
+                PhoneCalls.service?.setMuted(!muted)
+            }
+            RoundButton(if (keys) R.drawable.ic_close else R.drawable.ic_dialpad, if (keys) "Hide keys" else "Keypad", null, 64.dp, click = toggleKeys)
+            // more than earpiece and speaker (a headset, the buds, the computer): choose; else Speaker turns on and off
+            RoundButton(routeIcon, if (devices.isNotEmpty() || mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) "$routeName ▾" else routeName, if (loud) Color.White else null, 64.dp, dark = loud) {
+                if (devices.isEmpty()) PhoneCalls.service?.setAudioRoute(if (route == CallAudioState.ROUTE_SPEAKER) CallAudioState.ROUTE_WIRED_OR_EARPIECE else CallAudioState.ROUTE_SPEAKER)
+                else if (android.os.Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) askNames.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                else picking = true
+            }
         }
-        RoundButton(routeIcon, routeName, if (route == CallAudioState.ROUTE_SPEAKER || route == CallAudioState.ROUTE_BLUETOOTH) Color.White else null, 64.dp,
-            dark = route == CallAudioState.ROUTE_SPEAKER || route == CallAudioState.ROUTE_BLUETOOTH) {
-            PhoneCalls.service?.setAudioRoute(next)
+        if (!keys) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            if (canHold) RoundButton(if (held) R.drawable.ic_play else R.drawable.ic_pause, if (held) "Resume" else "Hold", if (held) Color.White else null, 64.dp, dark = held) {
+                if (held) call.unhold() else call.hold()
+            } else Spacer(Modifier.size(64.dp))
+            RoundButton(R.drawable.ic_add, "Add call", null, 64.dp, click = addCall)
+            RoundButton(R.drawable.ic_note_add, "Note", null, 64.dp) { noting = true }
         }
+    }
+    if (picking) ModalBottomSheet(onDismissRequest = { picking = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            Text("Sound", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+            @Composable fun option(icon: Int, name: String, on: Boolean, pick: () -> Unit) =
+                Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).background(if (on) PHONE_COLOR.copy(alpha = 0.35f) else Color.Transparent)
+                    .clickable { pick(); picking = false }.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Icon(painterResource(icon), contentDescription = null); Text(name, style = MaterialTheme.typography.bodyLarge)
+                }
+            if (mask and CallAudioState.ROUTE_EARPIECE != 0) option(R.drawable.ic_call, "Phone", route == CallAudioState.ROUTE_EARPIECE) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_EARPIECE) }
+            if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) option(R.drawable.ic_volume_up, "Headset", route == CallAudioState.ROUTE_WIRED_HEADSET) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_WIRED_HEADSET) }
+            option(R.drawable.ic_volume_up, "Speaker", route == CallAudioState.ROUTE_SPEAKER) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_SPEAKER) }
+            devices.forEach { d ->
+                option(R.drawable.ic_bluetooth_audio, PhoneRoutes.name(context, d), route == CallAudioState.ROUTE_BLUETOOTH && audio?.activeBluetoothDevice?.address == d.address) {
+                    PhoneCalls.service?.requestBluetoothAudio(d)
+                }
+            }
+        }
+    }
+    if (noting) CallNoteDialog(call) { noting = false }
+}
+
+/** A note typed during the call, kept with it (Tetra/Phone/notes.jsonl; Recents shows it under the call). */
+@Composable
+private fun CallNoteDialog(call: Call, done: () -> Unit) {
+    val context = LocalContext.current
+    val parts = PhoneCalls.parts(call)
+    var text by remember { mutableStateOf(parts.firstNotNullOfOrNull { PhoneNotes.of(context, PhoneCalls.number(it).orEmpty(), it.details.creationTimeMillis) }.orEmpty()) }
+    AlertDialog(onDismissRequest = done, title = { Text("Note on this call") },
+        text = { OutlinedTextField(text, { text = it }, minLines = 3, modifier = Modifier.fillMaxWidth()) },
+        confirmButton = { TextButton(onClick = { parts.forEach { p -> PhoneNotes.save(context, PhoneCalls.number(p).orEmpty(), p.details.creationTimeMillis, text.trim()) }; done() }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = done) { Text("Cancel") } })
+}
+
+/** Another call beside the one shown: on hold, dialling, or waiting — Swap, Merge, End. */
+@Composable
+private fun OtherCall(o: Call, main: Call) {
+    val contact = PhoneCalls.contact(o)
+    Surface(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CallAvatar(contact, 40.dp)
+            Column(Modifier.weight(1f)) {
+                Text(PhoneCalls.title(o), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+                Text(PhoneCalls.stateText(o, 0), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (o.state == Call.STATE_HOLDING) TextButton(onClick = { o.unhold() }) { Text("Swap") } // Telecom holds the other
+            if (o in main.conferenceableCalls || (main.details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE) && o.state == Call.STATE_HOLDING))
+                TextButton(onClick = { if (o in main.conferenceableCalls) main.conference(o) else main.mergeConference() }) { Text("Merge") }
+            IconButton(onClick = { PhoneCalls.hangUp(o) }) { Icon(painterResource(R.drawable.ic_call_end), contentDescription = "End this call", tint = CALL_RED) }
+        }
+    }
+}
+
+/** The names of the sound's ways: a Bluetooth device that is Tetra's paired computer says so. */
+internal object PhoneRoutes {
+    fun name(c: Context, d: android.bluetooth.BluetoothDevice): String {
+        val n = runCatching { d.name }.getOrNull()?.ifBlank { null } ?: return "Bluetooth"
+        val computers = runCatching { SyncStore(c).peers().map { it.name.lowercase() } }.getOrDefault(emptyList())
+        return if (n.lowercase() in computers) "Computer · $n" else n
     }
 }
 
@@ -183,11 +259,11 @@ private fun SimChoice(call: Call) {
 }
 
 @Composable
-internal fun RoundButton(icon: Int, label: String, fill: Color?, size: Dp, dark: Boolean = false, click: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(size).clip(CircleShape).background(fill ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)).clickable(onClickLabel = label, onClick = click),
+internal fun RoundButton(icon: Int, label: String, fill: Color?, size: Dp, dark: Boolean = false, modifier: Modifier = Modifier, click: () -> Unit) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(size).clip(CircleShape).background(fill ?: LocalContentColor.current.copy(alpha = 0.12f)).clickable(onClickLabel = label, onClick = click),
             contentAlignment = Alignment.Center) {
-            Icon(painterResource(icon), contentDescription = label, tint = if (dark) Color.Black else if (fill != null) Color.White else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(size * 0.42f))
+            Icon(painterResource(icon), contentDescription = label, tint = if (dark) Color.Black else if (fill != null) Color.White else LocalContentColor.current, modifier = Modifier.size(size * 0.42f))
         }
         Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp), maxLines = 1)
     }

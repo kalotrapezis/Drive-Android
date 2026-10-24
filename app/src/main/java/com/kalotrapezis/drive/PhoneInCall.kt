@@ -89,11 +89,14 @@ internal object PhoneCalls {
     fun changed(c: Context) { tick++; notify(c); proximity(c, wantsProximity()) }
 
     /** The call the screen shows: the one ringing, else the one talking, else the latest. */
-    fun top(): Call? = calls.firstOrNull { it.state == Call.STATE_RINGING } ?: calls.lastOrNull { it.state == Call.STATE_ACTIVE } ?: calls.lastOrNull()
+    fun top(): Call? = calls.filter { it.parent == null }.let { c -> c.firstOrNull { it.state == Call.STATE_RINGING } ?: c.lastOrNull { it.state == Call.STATE_ACTIVE } ?: c.lastOrNull() }
 
     fun number(call: Call): String? = call.details.handle?.schemeSpecificPart?.takeIf { it.isNotBlank() && call.details.handlePresentation == TelecomManager.PRESENTATION_ALLOWED }
+    /** The people on a call: a merged call's each, else the call itself. */
+    fun parts(call: Call): List<Call> = call.children.ifEmpty { listOf(call) }
     fun contact(call: Call): ContactInfo? = number(call)?.let { synchronized(names) { names[it] } }
-    fun title(call: Call): String = contact(call)?.name ?: number(call) ?: "Hidden number"
+    fun title(call: Call): String = if (call.details.hasProperty(Call.Details.PROPERTY_CONFERENCE))
+        call.children.joinToString(", ") { title(it) }.ifEmpty { "Conference" } else contact(call)?.name ?: number(call) ?: "Hidden number"
 
     /** The Tetra contact with this number (the last nine digits, as Contacts matches them), read from the files. */
     fun contactFor(number: String): ContactInfo? {
@@ -156,6 +159,21 @@ internal object PhoneCalls {
 
     fun answer(call: Call) = call.answer(VideoProfile.STATE_AUDIO_ONLY)
     fun hangUp(call: Call) = if (call.state == Call.STATE_RINGING) call.reject(false, null) else call.disconnect()
+}
+
+/** Notes typed during calls: Tetra/Phone/notes.jsonl, one line per note ({"at", "number", "note"}), the last line for a call wins. */
+internal object PhoneNotes {
+    private fun file() = java.io.File(phoneRoot(), "notes.jsonl")
+    private fun near(at: Long, other: Long) = kotlin.math.abs(at - other) < 15_000
+    fun all(): List<Triple<Long, String, String>> = runCatching {
+        file().readLines().mapNotNull { l -> runCatching { org.json.JSONObject(l).let { Triple(it.getLong("at"), it.getString("number"), it.getString("note")) } }.getOrNull() }
+    }.getOrDefault(emptyList())
+    /** The note for a call: the same number, started within 15 s (the call log's time and Telecom's differ a little). */
+    fun of(c: Context, number: String, at: Long, notes: List<Triple<Long, String, String>> = all()) =
+        notes.lastOrNull { near(it.first, at) && PhoneLog.same(it.second, number) }?.third?.ifBlank { null }
+    fun save(c: Context, number: String, at: Long, note: String) = runCatching {
+        file().apply { parentFile?.mkdirs() }.appendText(org.json.JSONObject().put("at", at).put("number", number).put("note", note).toString() + "\n")
+    }.onFailure { WriterLog.w("Phone: the note was not saved (${it.message})") }
 }
 
 /** Decline and Hang up from the call's notification. */

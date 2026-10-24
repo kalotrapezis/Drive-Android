@@ -91,8 +91,42 @@ class PdfTextDeviceTest {
         d.close(); dir.deleteRecursively()
     }
 
+    @Test fun wordsWithTheirOwnLook() {
+        val target = InstrumentationRegistry.getInstrumentation().targetContext
+        OfficeFonts.assets = target.assets
+        // as typed in Words' editor: two lines, one word bold and red
+        val words = "Plain words\nbold one"
+        val state = com.mohamedrejeb.richeditor.model.RichTextState()
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            state.setText(words)
+            state.addSpanStyle(PdfRun(12, 16, bold = true, color = 0xFF0000).style(), androidx.compose.ui.text.TextRange(12, 16))
+        }
+        assertEquals(words, state.toText())
+        val runs = PdfRun.of(state.annotatedString, words)
+        assertEquals(listOf(PdfRun(12, 16, bold = true, color = 0xFF0000)), runs)
+        // put on, saved, read back: the runs kept, the red word drawn red and the plain ones black
+        val dir = java.io.File(target.cacheDir, "pdf-text-test3").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        val t = PdfText(words, PdfTextLook(size = 30f), framed = false, runs = runs)
+        d.putText(0, 50f, 50f, t, 400f)
+        d.save(java.io.File(dir, "base.pdf")); d.close()
+        val again = PdfDoc(f)
+        val (r, back) = again.typedAt(0, Offset(60f, 60f))!!
+        assertEquals(runs, back.runs)
+        val bmp = kotlinx.coroutines.runBlocking { again.page(0, 595) }!!
+        fun count(x0: Int, x1: Int, y0: Int, y1: Int, red: Boolean) = (y0 until y1).sumOf { y -> (x0 until x1).count { x -> val c = bmp.getPixel(x, y)
+            if (red) android.graphics.Color.red(c) > 180 && android.graphics.Color.green(c) < 100 else android.graphics.Color.red(c) < 80 && android.graphics.Color.green(c) < 80 } }
+        val mid = (r.top + r.height() / 2).toInt()
+        assertTrue("the first line black", count(r.left.toInt(), r.right.toInt(), r.top.toInt(), mid, false) > 100)
+        assertTrue("no red on the first line", count(r.left.toInt(), r.right.toInt(), r.top.toInt(), mid, true) == 0)
+        assertTrue("the bold word red", count(r.left.toInt(), r.right.toInt(), mid, r.bottom.toInt(), true) > 100)
+        again.close(); dir.deleteRecursively()
+    }
+
     @Test fun lookKeptInTheFile() {
-        val t = PdfText("x", PdfTextLook(fill = 0xFFFF00, line = 0x0070C0, highlight = 0x00FF00, align = DocAlign.End, turn = 270), framed = true)
+        val t = PdfText("xyz", PdfTextLook(fill = 0xFFFF00, line = 0x0070C0, highlight = 0x00FF00, align = DocAlign.End, turn = 270), framed = true,
+            runs = listOf(PdfRun(0, 2, italic = true, underline = true, strike = true, highlight = 0x00FFFF)))
         assertEquals(t, PdfText.parse(t.json()))
         // a box put on before fills and borders were chosen (24 Oct, first build): its black frame kept
         assertEquals(0x000000, PdfText.parse("""{"words":"a","framed":true}""")?.look?.line)

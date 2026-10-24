@@ -2082,6 +2082,13 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       Then ("ok go on"): any angle — a handle over the chosen frame turns it about its middle (near a quarter turn it
       snaps to it), as Slides'; the file keeps its own size before turning (laidW/laidH), its place the box round it.
       A slanted text keeps its size (Rotate › Upright to size it). Emulator, tablet size; PdfTextDeviceTest at 30°.
+      Then ("go on finish and then will test"): words with their own look — typed in Words' editor (RichTextState);
+      with words selected, B I U, text colour and highlight go on those words only (nothing selected: the whole text);
+      kept as runs beside the words and look, drawn with the font's own faces; font and size stay the whole text's (as a
+      Slides box). The turning handle goes under the frame at the page's top; a turn counts from where the finger took
+      hold. PdfTextDeviceTest wordsWithTheirOwnLook (a red bold word drawn red, the other line black). Emulator, tablet.
+      Left for the user's test: the right button with the tablet's mouse (adb cannot send one). Left out: behind the
+      page's own text; a size or font for some words only.
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

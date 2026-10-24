@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -32,7 +31,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -56,15 +55,43 @@ internal data class PdfTextLook(val font: String = "Times New Roman", val size: 
     /** the box's fill and its border's colour (0xRRGGBB), as a Slides box's; none: clear, no border */ val fill: Int? = null, val line: Int? = null,
     /** turned clockwise, degrees (0–359) */ val turn: Int = 0)
 
-/** A text put on a page: its words, their look, and whether it is a text box (a thin frame, as wide as it was drawn). */
-internal data class PdfText(val words: String, val look: PdfTextLook, val framed: Boolean) {
+/**
+ * Some of a text's words with a look of their own (the user, 24 Oct: "finish"): [from] to [to] in its words, bold,
+ * italic, underlined, struck out, coloured or highlighted over the text's own look, as Words' letters are.
+ */
+internal data class PdfRun(val from: Int, val to: Int, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false,
+    val strike: Boolean = false, /** 0xRRGGBB */ val color: Int? = null, val highlight: Int? = null) {
+    /** As Words' editor holds a letter's look. */
+    fun style() = androidx.compose.ui.text.SpanStyle(fontWeight = if (bold) FontWeight.Bold else null, fontStyle = if (italic) FontStyle.Italic else null,
+        textDecoration = TextDecoration.combine(listOfNotNull(TextDecoration.Underline.takeIf { underline }, TextDecoration.LineThrough.takeIf { strike })).takeIf { underline || strike },
+        color = color?.let { Color(0xFF000000 or it.toLong()) } ?: Color.Unspecified, background = highlight?.let { Color(0xFF000000 or it.toLong()) } ?: Color.Unspecified)
+
+    companion object {
+        /**
+         * The looks Words' editor gives some of [words]' letters ([text]: its styled copy, a paragraph's end a space there),
+         * as runs; none when the two do not line up letter for letter.
+         */
+        fun of(text: androidx.compose.ui.text.AnnotatedString, words: String): List<PdfRun> = if (text.length != words.length) emptyList() else text.spanStyles.mapNotNull { r ->
+            val st = r.item; val deco = st.textDecoration
+            PdfRun(r.start, r.end, (st.fontWeight?.weight ?: 0) >= 600, st.fontStyle == FontStyle.Italic, deco?.contains(TextDecoration.Underline) == true,
+                deco?.contains(TextDecoration.LineThrough) == true, st.color.takeIf { it.isSpecified }?.let { it.toArgb() and 0xFFFFFF },
+                st.background.takeIf { it.isSpecified && it.alpha > 0f }?.let { it.toArgb() and 0xFFFFFF })
+                .takeIf { it.from < it.to && (it.bold || it.italic || it.underline || it.strike || it.color != null || it.highlight != null) }
+        }
+    }
+}
+
+/** A text put on a page: its words, their look, whether it is a text box (a thin frame, as wide as it was drawn), and words with their own look. */
+internal data class PdfText(val words: String, val look: PdfTextLook, val framed: Boolean, val runs: List<PdfRun> = emptyList()) {
     /** Its size as laid out before turning (points), as the file keeps it; null: from its place on the page ([unturned]). */
     var laid: Pair<Float, Float>? = null
     /** Kept in the file with it (the annotation's own key), so a tap opens it again as it was typed; [laid] its size before turning. */
     fun json(laid: Pair<Float, Float>? = null): String = JSONObject().put("words", words).put("font", look.font).put("size", look.size.toDouble()).put("bold", look.bold).put("italic", look.italic)
         .put("underline", look.underline).put("color", look.color).put("highlight", look.highlight ?: -1).put("align", look.align.name).put("framed", framed)
         .put("fill", look.fill ?: -1).put("line", look.line ?: -1).put("turn", look.turn)
-        .apply { laid?.let { (w, h) -> put("laidW", w.toDouble()).put("laidH", h.toDouble()) } }.toString()
+        .apply { laid?.let { (w, h) -> put("laidW", w.toDouble()).put("laidH", h.toDouble()) } }
+        .apply { if (runs.isNotEmpty()) put("runs", org.json.JSONArray(runs.map { r -> JSONObject().put("from", r.from).put("to", r.to).put("b", r.bold).put("i", r.italic)
+            .put("u", r.underline).put("s", r.strike).put("color", r.color ?: -1).put("highlight", r.highlight ?: -1) })) }.toString()
 
     /** Inside its frame, in points: a text box's words off its frame, a text's hugging them. */
     val pad get() = if (framed) 4f else 1f
@@ -80,7 +107,9 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
                 o.optBoolean("underline"), o.optInt("color", 0), o.optInt("highlight", -1).takeIf { it >= 0 }, runCatching { DocAlign.valueOf(o.optString("align")) }.getOrDefault(DocAlign.Start),
                 o.optInt("fill", -1).takeIf { it >= 0 }, o.optInt("line", if (o.optBoolean("framed")) 0 else -1).takeIf { it >= 0 }, // a box put on before borders were chosen: its black frame
                 Math.floorMod(o.optInt("turn"), 360)),
-                o.optBoolean("framed")).also { t ->
+                o.optBoolean("framed"), o.optJSONArray("runs")?.let { a -> (0 until a.length()).map { k -> a.getJSONObject(k).let { r ->
+                    PdfRun(r.getInt("from"), r.getInt("to"), r.optBoolean("b"), r.optBoolean("i"), r.optBoolean("u"), r.optBoolean("s"),
+                        r.optInt("color", -1).takeIf { it >= 0 }, r.optInt("highlight", -1).takeIf { it >= 0 }) } } }.orEmpty()).also { t ->
                 if (o.has("laidW")) t.laid = o.getDouble("laidW").toFloat() to o.getDouble("laidH").toFloat() }
         }.getOrNull()
 
@@ -99,6 +128,16 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
             }
             val s = SpannableString(t.words)
             l.highlight?.let { s.setSpan(BackgroundColorSpan(0xFF000000.toInt() or it), 0, s.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+            // words with their own look, over the text's: the font's own bold and italic faces (not drawn thicker or slanted)
+            val base = OfficeFonts.typeface(l.font) ?: Typeface.DEFAULT
+            t.runs.filter { it.from < minOf(it.to, s.length) }.forEach { r ->
+                fun span(o: Any) = s.setSpan(o, r.from, minOf(r.to, s.length), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                if (r.bold || r.italic) span(android.text.style.TypefaceSpan(Typeface.create(base, if (l.bold || r.bold) 700 else 400, l.italic || r.italic)))
+                if (r.underline) span(android.text.style.UnderlineSpan())
+                if (r.strike) span(android.text.style.StrikethroughSpan())
+                r.color?.let { span(android.text.style.ForegroundColorSpan(0xFF000000.toInt() or it)) }
+                r.highlight?.let { span(BackgroundColorSpan(0xFF000000.toInt() or it)) }
+            }
             return StaticLayout.Builder.obtain(s, 0, s.length, paint, ceil(width).toInt().coerceAtLeast(1))
                 .setAlignment(when (l.align) { DocAlign.Center -> Layout.Alignment.ALIGN_CENTER; DocAlign.End -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL })
                 .setJustificationMode(if (l.align == DocAlign.Justify) Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE)
@@ -151,7 +190,7 @@ internal data class PdfTyping(val page: Int, val x: Float, val y: Float, val roo
 
 /** The words typed on the page itself, in their look as they will be put on ([page] the page's size in points). */
 @Composable
-internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t: PdfTyping, value: TextFieldValue, look: PdfTextLook, change: (TextFieldValue) -> Unit) =
+internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t: PdfTyping, state: com.mohamedrejeb.richeditor.model.RichTextState, look: PdfTextLook) =
     BoxWithConstraints(Modifier.matchParentSize()) {
         val k = maxWidth / page.width // a page point on the screen
         val pad = if (t.framed) 4f else 1f
@@ -160,7 +199,8 @@ internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t:
         // the selection blue on the white page whatever the app's theme (dark: Ctrl+A's selection hardly showed, 24 Oct)
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
             androidx.compose.foundation.text.selection.TextSelectionColors(handleColor = Color(0xFF1A73E8), backgroundColor = Color(0x661A73E8))) {
-        BasicTextField(value, change, cursorBrush = SolidColor(Color.Black),
+        // Words' editor: some words bold, coloured… as Words' letters (the text's own look under them)
+        com.mohamedrejeb.richeditor.ui.BasicRichTextEditor(state, cursorBrush = SolidColor(Color.Black),
             modifier = Modifier.offset(k * t.x, k * t.y).width(k * t.room).heightIn(min = k * maxOf(t.minHeight, look.size * 1.2f + 2 * pad))
                 // the words as they were hidden while typed again; the box's own fill
                 .background(look.fill?.let { Color(0xFF000000 or it.toLong()) } ?: if (t.replacing != null) Color.White else Color.Transparent)
@@ -175,26 +215,38 @@ internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t:
 
 /** Typing on the page: Words' Home tools for its look ([PdfLookTools]); × leaves it as it was, ✓ puts it on. */
 @Composable
-internal fun PdfTextTools(w: Color, look: PdfTextLook, set: (PdfTextLook) -> Unit, font: () -> Unit, cancel: () -> Unit, done: () -> Unit) =
+internal fun PdfTextTools(w: Color, look: PdfTextLook, set: (PdfTextLook) -> Unit, font: () -> Unit, cancel: () -> Unit, done: () -> Unit,
+    words: com.mohamedrejeb.richeditor.model.RichTextState? = null) =
     RibbonLine(rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
         Tool(R.drawable.ic_close, "Leave it as it was", w, click = cancel)
-        PdfLookTools(w, look, set, font)
+        PdfLookTools(w, look, set, font, words)
         RibbonDivider(w)
         RibbonButton("Done", w, R.drawable.ic_check, click = done)
     }
 
-/** A text's look as a Slides box's Home tools give it: font, size, B I U, colour, highlight, the box's fill and border, alignment. */
+/**
+ * A text's look as a Slides box's Home tools give it: font, size, B I U, colour, highlight, the box's fill and border,
+ * alignment. While typing ([words]) with words selected, B I U, colour and highlight go on those words only, as Words'.
+ */
 @Composable
-internal fun PdfLookTools(w: Color, look: PdfTextLook, set: (PdfTextLook) -> Unit, font: () -> Unit) {
+internal fun PdfLookTools(w: Color, look: PdfTextLook, set: (PdfTextLook) -> Unit, font: () -> Unit, words: com.mohamedrejeb.richeditor.model.RichTextState? = null) {
+    val sel = words?.takeIf { !it.selection.collapsed }
+    val now = sel?.currentSpanStyle
     FontButton(look.font, w, click = font)
     val pt = Math.round(look.size)
     SizeStepper("$pt", w, pt > 4, pt < 200, { set(look.copy(size = (pt - 1).toFloat())) }, { set(look.copy(size = (pt + 1).toFloat())) })
     RibbonDivider(w)
-    Tool(R.drawable.ic_format_bold, "Bold", w, on = look.bold) { set(look.copy(bold = !look.bold)) }
-    Tool(R.drawable.ic_format_italic, "Italic", w, on = look.italic) { set(look.copy(italic = !look.italic)) }
-    Tool(R.drawable.ic_format_underlined, "Underline", w, on = look.underline) { set(look.copy(underline = !look.underline)) }
-    Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { c -> set(look.copy(color = (c ?: Color.Black).toArgb() and 0xFFFFFF)) }
-    Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { c -> set(look.copy(highlight = c?.let { it.toArgb() and 0xFFFFFF })) }
+    val bold = look.bold || (now?.fontWeight?.weight ?: 0) >= 600; val italic = look.italic || now?.fontStyle == FontStyle.Italic
+    val under = look.underline || now?.textDecoration?.contains(TextDecoration.Underline) == true
+    Tool(R.drawable.ic_format_bold, "Bold", w, on = bold) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) else set(look.copy(bold = !look.bold)) }
+    Tool(R.drawable.ic_format_italic, "Italic", w, on = italic) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontStyle = FontStyle.Italic)) else set(look.copy(italic = !look.italic)) }
+    Tool(R.drawable.ic_format_underlined, "Underline", w, on = under) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(textDecoration = TextDecoration.Underline)) else set(look.copy(underline = !look.underline)) }
+    Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { c ->
+        if (sel != null) { sel.removeSpanStyle(androidx.compose.ui.text.SpanStyle(color = sel.currentSpanStyle.color)); if (c != null) sel.addSpanStyle(androidx.compose.ui.text.SpanStyle(color = c)) }
+        else set(look.copy(color = (c ?: Color.Black).toArgb() and 0xFFFFFF)) }
+    Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { c ->
+        if (sel != null) { sel.removeSpanStyle(androidx.compose.ui.text.SpanStyle(background = sel.currentSpanStyle.background)); if (c != null) sel.addSpanStyle(androidx.compose.ui.text.SpanStyle(background = c)) }
+        else set(look.copy(highlight = c?.let { it.toArgb() and 0xFFFFFF })) }
     Swatches(w, R.drawable.ic_format_color_fill, "Fill", TEXT_COLOURS) { c -> set(look.copy(fill = c?.let { it.toArgb() and 0xFFFFFF })) }
     Swatches(w, R.drawable.ic_border_outer, "Border", TEXT_COLOURS) { c -> set(look.copy(line = c?.let { it.toArgb() and 0xFFFFFF })) }
     RibbonDivider(w)
@@ -233,14 +285,18 @@ internal fun BoxScope.PdfChosenFrame(page: androidx.compose.ui.geometry.Size, r:
         // the corner's: the size
         handle(Modifier.offset(left + w - 11.dp, top + h - 11.dp)
             .pointerInput(r) { detectDragGestures(onDragEnd = { if (grow != androidx.compose.ui.geometry.Offset.Zero) sized(r.width() + grow.x / px, r.height() + grow.y / px) }) { ch, d -> ch.consume(); grow += d } })
-        // the one over it: the turn, the angle from the box's middle to the finger (straight up: as it is)
+        // the one over it (under it at the page's top, where over it is off the page): the turn, as far as the finger
+        // goes round the box's middle from where it took hold
         val lift = 30.dp
-        handle(Modifier.offset(left + w / 2 - 11.dp, top - lift - 11.dp)
+        val below = top < lift + 22.dp
+        handle(Modifier.offset(left + w / 2 - 11.dp, if (below) top + h + lift - 11.dp else top - lift - 11.dp)
             .pointerInput(r, turn) {
-                val half = size.width / 2f; val middle = androidx.compose.ui.geometry.Offset(half, half + lift.toPx() + r.height() * px / 2)
-                var at = androidx.compose.ui.geometry.Offset(half, half)
-                fun angle() = turn + Math.toDegrees(kotlin.math.atan2((at.x - middle.x).toDouble(), (middle.y - at.y).toDouble())).toFloat()
-                detectDragGestures(onDragStart = { at = it; spin = angle() },
+                val half = size.width / 2f; val reach = lift.toPx() + r.height() * px / 2
+                val middle = androidx.compose.ui.geometry.Offset(half, if (below) half - reach else half + reach)
+                var at = androidx.compose.ui.geometry.Offset(half, half); var from = 0f
+                fun round() = Math.toDegrees(kotlin.math.atan2((at.x - middle.x).toDouble(), (middle.y - at.y).toDouble())).toFloat()
+                fun angle() = turn + round() - from
+                detectDragGestures(onDragStart = { at = it; from = round(); spin = angle() },
                     onDragEnd = { val a = Math.round(angle()); val q = Math.round(a / 90f) * 90; spin = null; turned(if (kotlin.math.abs(a - q) <= 4) q else a) },
                     onDragCancel = { spin = null }) { ch, d -> ch.consume(); at += d; spin = angle() }
             })

@@ -61,6 +61,19 @@ class CalendarTest {
             b.event.alarms.single().times(b.start, b.end).map { it.toLocalDateTime().toString() })
     }
 
+    @Test fun `Google's birthday on the day, the day before and a week before, all at 9`() {
+        // All day starts at midnight, so on the day at 09:00 is P0DT9H0M0S, after the start (the user's tablet, 24 Oct)
+        val due = CalendarAlarms.reminders(CalendarFiles.calendars(root), at("2026-10-01T00:00"), at("2026-11-01T00:00"))
+            .filter { it.occ.event.uid == "godchild-birthday@google.com" }
+        assertEquals(listOf("2026-10-17T09:00", "2026-10-23T09:00", "2026-10-24T09:00"), due.map { LocalDateTime.ofInstant(it.at, athens).toString() })
+        val b = due[0].occ
+        assertEquals(listOf("On the day at 09:00", "The day before at 09:00", "A week before at 09:00"), b.event.alarms.map { alarmText(it, true, b.start) })
+        // the day after is the 25th, when the clocks go back: still 09:00, as on the desktop
+        assertEquals("The day after at 09:00", alarmText(CalAlarm(1, 9 * 3600), true, b.start))
+        assertEquals("2026-10-25T09:00", CalAlarm(0, 9 * 3600).times(b.start.plusDays(1), b.end.plusDays(1), true).single().toLocalDateTime().toString())
+        assertEquals("9 hours after", alarmText(CalAlarm(0, 9 * 3600), false, b.start.withHour(10)))
+    }
+
     @Test fun `a file Claude wrote, in UTC with plain line ends, reads`() {
         val d = occ("2026-10-20T00:00", "2026-10-21T00:00").single { it.event.title == "Dentist" }
         assertEquals("2026-10-20T09:30", local(d))

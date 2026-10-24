@@ -220,11 +220,13 @@ internal fun alarmText(a: CalAlarm, allDay: Boolean, start: ZonedDateTime): Stri
     val base = when {
         a.at != null -> "At " + a.at.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.ENGLISH))
         a.fromEnd -> if (t == 0L) "At the end" else spanText(t) + if (t < 0) " before the end" else " after the end"
-        t <= 0 && (allDay || t <= -86400) -> {
-            val fires = start.plusDays(a.days).plusSeconds(a.seconds)
+        // all day starts at midnight, so "on the day at 09:00" is PT9H, after the start: still said by its day
+        allDay || t <= -86400 -> {
+            val fires = a.times(start, start, allDay)[0]
             val before = ChronoUnit.DAYS.between(fires.toLocalDate(), start.toLocalDate())
             val clock = fires.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
-            when (before) { 0L -> "On the day at $clock"; 1L -> "The day before at $clock"; 7L -> "A week before at $clock"; else -> "$before days before at $clock" }
+            when (before) { 0L -> "On the day at $clock"; 1L -> "The day before at $clock"; 7L -> "A week before at $clock"; -1L -> "The day after at $clock"
+                else -> if (before > 0) "$before days before at $clock" else "${-before} days after at $clock" }
         }
         t == 0L -> "At the time"
         else -> spanText(t) + if (t < 0) " before" else " after"
@@ -724,6 +726,17 @@ private fun viewIcon(v: CalView) = when (v) {
     }
 }
 
+/** A reminder rung while Tetra is in front pops up here, as HyperOS shows none for the app in front (the user, 24 Oct). */
+@Composable internal fun CalendarRinging() {
+    val r = CalendarAlarms.ringing.value ?: return
+    val c = LocalContext.current
+    androidx.compose.material3.AlertDialog(onDismissRequest = { CalendarAlarms.ringing.value = null }, // beside it: the notification stays
+        icon = { Icon(painterResource(R.drawable.ic_calendar_today), contentDescription = null, tint = Color(r.color)) },
+        title = { Text(r.title) }, text = { Text(r.text) },
+        confirmButton = { TextButton(onClick = { CalendarAlarms.answer(c, r, done = true) }) { Text("Done") } },
+        dismissButton = { TextButton(onClick = { CalendarAlarms.answer(c, r, done = false) }) { Text("Snooze 10 min") } })
+}
+
 @Composable internal fun RemindersSwitch() {
     val context = LocalContext.current
     var on by remember { mutableStateOf(CalendarAlarms.enabled(context)) }
@@ -1183,7 +1196,7 @@ internal fun importCalendars(context: Context, uri: android.net.Uri): String {
     }
     RemindersSwitch()
     ShareWithClaude()
-    TextButton(onClick = { CalendarAlarms.test(context); said = "A test reminder comes in 5 seconds: go to the home screen to see it in the island (HyperOS shows none for the app in front)." }) { Text("Send a test reminder") }
+    TextButton(onClick = { CalendarAlarms.test(context); said = "A test reminder comes in 5 seconds: here it pops up over Tetra; on the home screen, in the island." }) { Text("Send a test reminder") }
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch { said = withContext(Dispatchers.IO) { runCatching { importCalendars(context, uri) }.getOrElse { "Not imported: ${it.message}" } } }
     }

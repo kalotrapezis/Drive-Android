@@ -168,10 +168,13 @@ object ICal {
 /**
  * A reminder (VALARM): [days] and [seconds] from the start (or the end), or at a set time; [repeat] more after it,
  * [every] seconds apart — RFC 5545's REPEAT/DURATION, which is how "3 days before at 9:00, each day" is written.
+ * All day, the hours are the clock's: "on the day at 9:00" (PT9H) is 09:00 on the day the clocks change too.
  */
 data class CalAlarm(val days: Long, val seconds: Long, val fromEnd: Boolean = false, val at: Instant? = null, val repeat: Int = 0, val every: Long = 0) {
-    fun times(start: ZonedDateTime, end: ZonedDateTime): List<ZonedDateTime> {
-        val first = at?.atZone(start.zone) ?: (if (fromEnd) end else start).plusDays(days).plusSeconds(seconds)
+    fun times(start: ZonedDateTime, end: ZonedDateTime, allDay: Boolean = false): List<ZonedDateTime> {
+        val first = at?.atZone(start.zone) ?: if (fromEnd) end.plusDays(days).plusSeconds(seconds)
+            else if (allDay) start.toLocalDateTime().plusDays(days).plusSeconds(seconds).atZone(start.zone)
+            else start.plusDays(days).plusSeconds(seconds)
         return (0..repeat.coerceIn(0, 100)).map { first.plusSeconds(every * it) }
     }
 }

@@ -27,6 +27,9 @@ import java.util.Locale
 /** A reminder due: when, for which time of which event; [key] is the same each time it is worked out. */
 internal data class DueReminder(val at: Instant, val occ: Occurrence, val key: String)
 
+/** A reminder rung while Tetra is in front: what its notification says, for the pop-up Tetra shows itself. */
+internal data class Ringing(val id: Int, val title: String, val text: String, val color: Int, val occurrence: String, val time: String)
+
 internal object CalendarAlarms {
     private const val CHANNEL = "calendar_reminders"
     private const val ACTION_RING = "com.kalotrapezis.drive.CALENDAR_RING"
@@ -38,6 +41,11 @@ internal object CalendarAlarms {
     private val LEAD: Duration = Duration.ofDays(120)
     private val MISSED: Duration = Duration.ofDays(1)
 
+    /** Tetra in front (MainActivity resumed): HyperOS gives the app in front neither island nor pop-up (the user, 24 Oct). */
+    @Volatile var front = false
+    /** The reminder [CalendarRinging] pops up over Tetra, until ✕ Done, Snooze or a tap beside it. */
+    val ringing = androidx.compose.runtime.mutableStateOf<Ringing?>(null)
+
     private fun prefs(c: Context) = c.getSharedPreferences("calendar_alarms", Context.MODE_PRIVATE)
     fun enabled(c: Context) = prefs(c).getBoolean("on", true)
     fun setEnabled(c: Context, on: Boolean) { prefs(c).edit().putBoolean("on", on).apply(); planSoon(c) }
@@ -46,7 +54,7 @@ internal object CalendarAlarms {
     fun reminders(cals: List<CalendarInfo>, from: Instant, to: Instant): List<DueReminder> =
         CalendarFiles.occurrences(cals, from.minus(MISSED), to.plus(LEAD)).flatMap { o ->
             o.event.alarms.flatMapIndexed { i, a ->
-                a.times(o.start, o.end).mapIndexedNotNull { n, t ->
+                a.times(o.start, o.end, o.allDay).mapIndexedNotNull { n, t ->
                     val at = t.toInstant()
                     if (at < from || at >= to) null else DueReminder(at, o, "${o.file.uid}|${o.start.toInstant()}|$i|$n")
                 }
@@ -132,6 +140,14 @@ internal object CalendarAlarms {
         if (HyperIsland.isSupported(c)) HyperIsland.reminder(n, title, text, time, done,
             android.graphics.drawable.Icon.createWithResource(c, R.drawable.ic_reminder_done), snooze)
         runCatching { NotificationManagerCompat.from(c).notify(id, n.build()) } // notifications not allowed: nothing to show
+        if (front) ringing.value = Ringing(id, title, text, color, occurrence, time)
+    }
+
+    /** The pop-up's ✕ Done or Snooze: the same as the notification's buttons. */
+    fun answer(c: Context, r: Ringing, done: Boolean) {
+        ringing.value = null
+        c.sendBroadcast(Intent(c, CalendarAlarmReceiver::class.java).setAction(if (done) ACTION_DONE else ACTION_SNOOZE).putExtra("id", r.id)
+            .putExtra("title", r.title).putExtra("text", r.text).putExtra("color", r.color).putExtra("occurrence", r.occurrence).putExtra("time", r.time))
     }
 
 

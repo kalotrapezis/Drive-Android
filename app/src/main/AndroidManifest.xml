@@ -153,6 +153,9 @@
         <activity-alias android:name=".AppContacts" android:targetActivity=".AppletLaunch" android:enabled="false" android:exported="true" android:label="Tetra Contacts" android:icon="@mipmap/applet_contacts" android:roundIcon="@mipmap/applet_contacts">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
+        <activity-alias android:name=".AppPhone" android:targetActivity=".PhoneActivity" android:enabled="false" android:exported="true" android:label="Tetra Phone" android:icon="@mipmap/applet_phone" android:roundIcon="@mipmap/applet_phone">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
         <!-- Calendar: an .ics from any app (Open with › Tetra Calendar) is imported -->
         <activity-alias android:name=".CalendarOpen" android:targetActivity=".MainActivity" android:exported="true" android:label="Tetra Calendar" android:icon="@mipmap/applet_calendar">
             <intent-filter>

@@ -62,18 +62,21 @@ internal enum class PhoneTab(val icon: Int) { Recents(R.drawable.ic_history), Fa
 class PhoneActivity : ComponentActivity() {
     private val number = mutableStateOf("")
     private val keypad = mutableStateOf(false)
+    private val tab = mutableStateOf(PhoneTab.Recents)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this)
         TetraLook.load(this)
         take(intent)
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = TetraLook.light
-        setContent { TetraTheme { PhoneApp(keypad, number, back = { finish() }) } }
+        setContent { TetraTheme { PhoneApp(keypad, tab, number, back = { finish() }) } }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); take(intent) }
     private fun take(i: Intent) {
         if (i.action == Intent.ACTION_DIAL || i.data != null) { keypad.value = true; number.value = i.data?.schemeSpecificPart.orEmpty() }
+        when (i.getStringExtra(TAB)) { "keypad" -> keypad.value = true; "recents" -> tab.value = PhoneTab.Recents; "contacts" -> tab.value = PhoneTab.Contacts }
     }
+    companion object { const val TAB = "com.kalotrapezis.drive.phone.TAB" } // Home's slots: keypad, recents, contacts
 }
 
 /** Opens Tetra's Contacts on a person, or at a new contact with this number. */
@@ -86,7 +89,7 @@ internal fun phoneRoot() = java.io.File(TetraFolder.root(android.os.Environment.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhoneApp(keypad: MutableState<Boolean>, number: MutableState<String>, back: () -> Unit) {
+private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<PhoneTab>, number: MutableState<String>, back: () -> Unit) {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -97,7 +100,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, number: MutableState<String>
         runCatching { context.contentResolver.registerContentObserver(CallLog.Calls.CONTENT_URI, true, log) }
         onDispose { lifecycle.lifecycle.removeObserver(o); context.contentResolver.unregisterContentObserver(log) }
     }
-    var tab by remember { mutableStateOf(PhoneTab.Recents) }
+    var tab by tabState
     var query by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf(emptySet<CallGroup>()) }
     val tablet = remember { PhoneRelay.noCalls(context) } // no calls of its own: the phone's, through the computer (PhoneRelay)

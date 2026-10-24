@@ -701,6 +701,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.Timer -> screen = Screen.Timer
             Applet.Maps -> { mapsGo = null; mapsSearch = null; mapsBack = Screen.Home; screen = Screen.Maps }
             Applet.Contacts -> { contactsOpen = null; screen = Screen.Contacts }
+            Applet.Phone -> openPhone(context)
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -953,6 +954,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                         "timer" -> screen = Screen.Timer
                         "maps" -> { mapsGo = null; mapsSearch = null; mapsBack = Screen.Settings; screen = Screen.Maps }
                         "contacts" -> { contactsOpen = null; screen = Screen.Contacts }
+                        "phone" -> openPhone(context)
                     } },
                 )
             }
@@ -1111,6 +1113,7 @@ private fun Home(
         "settings" -> HomeWideCard("Settings", "Permissions and local storage", R.drawable.settings_art, openSettings)
         // Contacts and Maps (23 Oct, the user: Maps one card with 4 slots, Contacts beside it)
         "contacts" -> HomeContactsGroup(openContacts)
+        "phone" -> HomePhoneGroup()
         "maps" -> HomeMapsGroup(wide, openMaps)
     } }
     // each part small: just its icon, as a launcher's (Scanner and Codes are two apps, so two icons)
@@ -1126,6 +1129,7 @@ private fun Home(
         "calendar" -> listOf(HomeIcon("Calendar", R.drawable.calendar_art, openCalendar))
         "timer" -> listOf(HomeIcon("Timer", R.drawable.timer_art, openTimer))
         "contacts" -> listOf(HomeIcon("Contacts", R.drawable.contacts_art, { openContacts(null) }))
+        "phone" -> listOf(HomeIcon("Phone", R.drawable.phone_art, { openPhone(context) }))
         "maps" -> listOf(HomeIcon("Maps", R.drawable.maps_art, { openMaps(null) }))
         else -> emptyList()
     }
@@ -1370,6 +1374,42 @@ private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
                             Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                 if (f != null) ContactAvatar(f, 40.dp) else Icon(painterResource(R.drawable.ic_add), contentDescription = null, tint = lookTint(Color(0xFFD7A982), Color(0xFF8D5A3B)), modifier = Modifier.size(28.dp))
                                 Text(f?.let { it.given.ifBlank { it.name } } ?: "Add", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    } }
+                }
+            }
+        }
+    }
+}
+
+/** The Phone (Plan.md § Phone): its own window, as Android's phone app is (Recents · Favourites · Contacts · Recordings). */
+internal fun openPhone(c: Context, tab: String? = null) = c.startActivity(Intent(c, PhoneActivity::class.java).putExtra(PhoneActivity.TAB, tab).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+
+/** The Phone on Home: its art, and four favourites to call with one tap (the plan's question 7, its recommended answer). */
+@Composable private fun HomePhoneGroup() {
+    val context = LocalContext.current
+    val favs by produceState(emptyList<ContactInfo>()) {
+        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).map { it.info }.filter { it.favourite && it.phones.isNotEmpty() }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4) }.getOrDefault(emptyList()) }
+    }
+    val scope = rememberCoroutineScope()
+    fun call(f: ContactInfo) {
+        val n = f.defaultPhone ?: f.phones.first().value
+        if (PhoneRelay.noCalls(context)) scope.launch { val said = withContext(Dispatchers.IO) { PhoneRelay.place(context, n, f.name) }; Toast.makeText(context, said, Toast.LENGTH_SHORT).show() }
+        else if (!placePhoneCall(context, n)) openPhone(context)
+    }
+    HomeGroup(Category.Phone.color) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HomeArtCard("Phone", R.drawable.phone_art, { openPhone(context) }, Modifier.weight(1f), artSize = 76)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // the favourites first; the slots left: Keypad, Recents, Contacts
+                val spare = listOf(Triple("Keypad", R.drawable.ic_dialpad, "keypad"), Triple("Recents", R.drawable.ic_history, "recents"), Triple("Contacts", R.drawable.ic_contacts, "contacts"))
+                (favs.map { it to null } + spare.take(4 - favs.size).map { null to it }).chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { (f, s) ->
+                        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = Modifier.weight(1f).height(73.dp).clickable { if (f != null) call(f) else openPhone(context, s?.third) }) {
+                            Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                if (f != null) ContactAvatar(f, 40.dp) else Icon(painterResource(s!!.second), contentDescription = null, modifier = Modifier.size(26.dp))
+                                Text(f?.let { it.given.ifBlank { it.name } } ?: s!!.first, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     } }

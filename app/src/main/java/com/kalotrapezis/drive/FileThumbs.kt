@@ -11,20 +11,13 @@ import android.util.LruCache
 import android.util.Size
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -33,8 +26,9 @@ import java.security.MessageDigest
 /**
  * Files' thumbnails (the user, 23 Oct: "thumbnails in Files … for documents the SVGs you have at the homescreen as
  * overlay at the center"): a picture or a video its own; a document its first page, drawn by Tetra's own Words, Tables
- * and Slides, with its category's tile (Words', Tables', Slides', PDFs': the user's icons, 24 Oct) in the middle. Made once and kept in the app's cache (never in Tetra's synced
- * folder), named by the file's path, size and time, so a changed file gets a new one.
+ * and Slides, with no icon over it (the user, 24 Oct: "when we have a preview of the file have no icon"). Made once and
+ * kept in the app's cache (never in Tetra's synced folder), named by the file's path, size and time, so a changed file
+ * gets a new one.
  */
 internal object FileThumbs {
     enum class Kind { Picture, Video, Pdf, Words, Tables, Slides }
@@ -53,8 +47,8 @@ internal object FileThumbs {
         else -> null
     }
 
-    /** The tile in the middle of a document's thumbnail: its category's icon (file-kinds.json). */
-    fun badge(kind: Kind, name: String): Int? = if (kind == Kind.Words || kind == Kind.Tables || kind == Kind.Slides || kind == Kind.Pdf) FileKinds.icon(name) else null
+    /** A page (a document's, a PDF's): shown whole on white, never cut to fill the tile as a picture is. */
+    fun isPage(kind: Kind) = kind == Kind.Words || kind == Kind.Tables || kind == Kind.Slides || kind == Kind.Pdf
 
     /** The cache's name for a file as it is now: another path, size or time is another thumbnail. */
     fun key(path: String, length: Long, modified: Long): String =
@@ -131,19 +125,14 @@ internal object FileThumbs {
     }
 }
 
-/**
- * A file's thumbnail in Files' list and grid, a document's with its category's tile in the middle; [fallback] (its icon)
- * for a file with none, and while one is being made.
- */
+/** A file's thumbnail in Files' list and grid; [fallback] (its icon) for a file with none, and while one is being made. */
 @Composable
-internal fun FileThumb(file: File, badgeSize: Dp, modifier: Modifier, crop: Boolean, fallback: @Composable () -> Unit) {
+internal fun FileThumb(file: File, modifier: Modifier, crop: Boolean, fallback: @Composable () -> Unit) {
     val kind = FileThumbs.kind(file.name) ?: return fallback()
     val context = LocalContext.current
     val modified = file.lastModified()
     val bitmap = produceState(FileThumbs.remembered(file, modified), file, modified) { value = FileThumbs.load(context, file, kind) }.value ?: return fallback()
-    val badge = FileThumbs.badge(kind, file.name)
-    Box(modifier.background(if (badge != null) Color.White else Color.Transparent), contentAlignment = Alignment.Center) {
-        Image(bitmap.asImageBitmap(), contentDescription = null, contentScale = if (crop && badge == null) ContentScale.Crop else ContentScale.Fit, modifier = Modifier.matchParentSize())
-        badge?.let { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(badgeSize).shadow(3.dp, androidx.compose.foundation.shape.RoundedCornerShape(badgeSize * 0.23f))) }
-    }
+    val page = FileThumbs.isPage(kind)
+    Image(bitmap.asImageBitmap(), contentDescription = null, contentScale = if (crop && !page) ContentScale.Crop else ContentScale.Fit,
+        modifier = modifier.background(if (page) Color.White else Color.Transparent))
 }

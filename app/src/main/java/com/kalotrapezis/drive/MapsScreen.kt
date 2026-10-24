@@ -221,6 +221,9 @@ internal object MapsPrefs {
     fun setRolling(c: Context, on: Boolean) = prefs(c).edit().putBoolean("rolling", on).apply()
     fun bends(c: Context) = prefs(c).getBoolean("bends", true)
     fun setBends(c: Context, on: Boolean) = prefs(c).edit().putBoolean("bends", on).apply()
+    /** By car on main roads (MapsRouting.MAIN_ROADS) or the shortest way (the user, 24 Oct). */
+    fun mainRoads(c: Context) = prefs(c).getBoolean("main_roads", true)
+    fun setMainRoads(c: Context, on: Boolean) = prefs(c).edit().putBoolean("main_roads", on).apply()
     /** What is said a little before a sharp bend ([bendsOn]). */
     fun bendWords(lang: String, right: Boolean) = if (lang == "en") "Sharp bend to the ${if (right) "right" else "left"} ahead"
         else "Ακολουθεί απότομη στροφή ${if (right) "δεξιά" else "αριστερά"}"
@@ -446,7 +449,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         finding = "Finding the way…"
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.routes(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), lang,
-                if (mode == "car" && !choose) headingOf(from) else Double.NaN) } }
+                if (mode == "car" && !choose) headingOf(from) else Double.NaN, MapsPrefs.mainRoads(context)) } }
             finding = null
             r.onSuccess { routes ->
                 if (choose && routes.size > 1) {

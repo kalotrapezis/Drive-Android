@@ -626,3 +626,39 @@ class MapsAddressTest {
         assertEquals(setOf("parking.json", "parking (2).json", "parking (3).json"), File(root.parentFile, "Trash").list()!!.toSet())
     }
 }
+
+/**
+ * Main roads (the user, 24 Oct, home → My Market and the phone's route to Σκάλα's school: "it always chooses the shorter
+ * path … even if that means a road that falls off a cliff"), on the computer's graph when it is there.
+ */
+class MapsMainRoadsTest {
+    private val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
+
+    /** Kilometres of each road class along the way from → to, as the phone asks it. */
+    private fun classes(from: Pair<Double, Double>, to: Pair<Double, Double>, main: Boolean): Map<String, Double> {
+        val gh = MapsRouting.open(dir)
+        val req = com.graphhopper.GHRequest(from.first, from.second, to.first, to.second).setProfile("car").setPathDetails(listOf("road_class"))
+        if (main) req.hints.putObject(MapsRouting.MAIN_ROADS, true).putObject(com.graphhopper.util.Parameters.CH.DISABLE, true)
+        val p = gh.route(req).best
+        val km = HashMap<String, Double>()
+        p.pathDetails["road_class"].orEmpty().forEach { d ->
+            for (i in d.first until d.last) km.merge(d.value.toString(), metresBetween(p.points.getLat(i), p.points.getLon(i), p.points.getLat(i + 1), p.points.getLon(i + 1)) / 1000, Double::plus)
+        }
+        return km
+    }
+
+    @Test fun homeToMarket() {
+        assumeTrue(File(dir, "properties").isFile)
+        val home = 37.27639 to 22.58912; val market = 37.349324 to 22.584650; val skala = 37.212858 to 22.551289
+        for ((name, to) in listOf("My Market" to market, "Σκάλα school" to skala)) for (main in listOf(false, true)) {
+            val r = MapsRouting.route(dir, home.first, home.second, to.first, to.second, "car", main = main)
+            val km = classes(home, to, main)
+            println("$name ${if (main) "main roads" else "shortest"}: ${"%.1f".format(r.metres / 1000)} km, ${r.millis / 60_000} min, ${r.roads}; " +
+                km.entries.sortedByDescending { it.value }.joinToString { "${it.key} ${"%.1f".format(it.value)}" })
+        }
+        // below secondary: on 24 Oct shortest took 3.6 km of tertiary to My Market and 2 km of track to Σκάλα
+        val small = { km: Map<String, Double> -> km.filterKeys { it !in setOf("motorway", "trunk", "primary", "secondary") }.values.sum() }
+        for (to in listOf(market, skala)) assertTrue(small(classes(home, to, true)) < small(classes(home, to, false)))
+        assertTrue((classes(home, skala, true)["track"] ?: 0.0) < 0.3)
+    }
+}

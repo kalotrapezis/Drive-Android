@@ -2213,6 +2213,11 @@ private fun SettingsTab(
                 Text("On foot", style = MaterialTheme.typography.titleSmall)
                 Text(if (rolling) "Rolling: routes for a wheelchair, without steps or rough paths, and its icon." else "Walking: every footpath and step.", style = MaterialTheme.typography.bodySmall)
                 Choices(listOf(false to "Walking", true to "Rolling"), rolling) { rolling = it; MapsPrefs.setRolling(mapsContext, it) }
+                var mainRoads by remember { mutableStateOf(MapsPrefs.mainRoads(mapsContext)) }
+                Text("By car", style = MaterialTheme.typography.titleSmall)
+                Text(if (mainRoads) "Main roads: it keeps to the bigger roads and leaves tracks and small country roads for when there is no other way, even if that is a little longer."
+                    else "Shortest: the shorter way, even on tracks and small roads.", style = MaterialTheme.typography.bodySmall)
+                Choices(listOf(true to "Main roads", false to "Shortest"), mainRoads) { mainRoads = it; MapsPrefs.setMainRoads(mapsContext, it) }
                 var autoPark by remember { mutableStateOf(MapsPrefs.autoPark(mapsContext)) }
                 Row(Modifier.fillMaxWidth().clickable { autoPark = !autoPark; MapsPrefs.setAutoPark(mapsContext, autoPark) }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

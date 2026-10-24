@@ -330,6 +330,14 @@ How to write here:
       tile sits as large as the others'; Home's card draws it at 76 dp as the others (it was 100 for the bare page). Home's
       Notes yellow (#F2B705) kept. Desktop: no Notes applet icon (public/notes.png is unused). Checked on the emulator, light,
       dark and Edit Home. Not merged until the user says.
+- [~] (maps-slots session, 24 Oct; branches claude/maps-main-roads + Drive maps-main-roads) Maps: Main roads or Shortest by car
+      (the user, after the drive to the supermarket: "it always chooses the shorter path … even if that means a road that falls
+      off a cliff"). The phone's 13:24 route to Σκάλα's school ran 2 km on a track, the car's to My Market 3.6 km on tertiary:
+      car.json counts each km as 1.5 min more (distance_influence 90), so the shorter small road won. Main roads: no pull to
+      the shorter way, smaller roads slower (tertiary 0.8 … track 0.1), searched without the shortcuts up to 500 000 nodes
+      (~160 km; farther, the shortest way), phone, Android Auto (⚙ › Roads) and desktop (beside Car). MapsMainRoadsTest:
+      Σκάλα 11.7 km/17 min no track, My Market 11.1 km on secondary. Road surface and slope are not in the graph (a rebuild
+      would add them). Default Main roads — the user's yes asked. Not installed, not merged.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

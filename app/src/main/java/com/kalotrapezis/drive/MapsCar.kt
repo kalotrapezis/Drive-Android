@@ -907,7 +907,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         val t0 = System.currentTimeMillis()
         val facing = headingOf(from)
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang, facing) } }
+            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang, facing, MapsPrefs.mainRoads(carContext)) } }
             finding = null
             r.onSuccess { route ->
                 val rerouted = nav?.target == target
@@ -1090,6 +1090,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             MapsPrefs.RADII.forEach { (_, label) -> radii.addItem(Row.Builder().setTitle(label).build()) }
             val roads = ItemList.Builder().addItem(Row.Builder().setTitle("Warn of sharp bends")
                 .setToggle(androidx.car.app.model.Toggle.Builder { on -> MapsPrefs.setBends(carContext, on) }.setChecked(MapsPrefs.bends(carContext)).build()).build())
+                .addItem(Row.Builder().setTitle("Main roads").addText("Off: the shortest way")
+                    .setToggle(androidx.car.app.model.Toggle.Builder { on -> MapsPrefs.setMainRoads(carContext, on) }.setChecked(MapsPrefs.mainRoads(carContext)).build()).build())
             return ListTemplate.Builder().setTitle("Settings").setHeaderAction(Action.BACK)
                 .addSectionedList(androidx.car.app.model.SectionedItemList.create(items.build(), "Voice"))
                 .addSectionedList(androidx.car.app.model.SectionedItemList.create(roads.build(), "Roads"))
@@ -1152,7 +1154,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             val h = here
             lifecycleScope.launch {
                 routes = if (h == null) emptyList() else withContext(Dispatchers.IO) {
-                    runCatching { MapsRouting.routes(graphDir, h.latitude, h.longitude, target.lat, target.lng, "car", lang) }.getOrDefault(emptyList())
+                    runCatching { MapsRouting.routes(graphDir, h.latitude, h.longitude, target.lat, target.lng, "car", lang, main = MapsPrefs.mainRoads(carContext)) }.getOrDefault(emptyList())
                         .also { rs -> tollCounts = rs.map { r -> runCatching { tollsOn(r, cumulative(r), MapsSearch.tolls(root)).size }.getOrDefault(0) } }
                 }
                 invalidate()

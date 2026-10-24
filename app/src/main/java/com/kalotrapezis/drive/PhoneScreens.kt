@@ -97,6 +97,8 @@ private fun PhoneCallScreen(done: () -> Unit) {
     val contact = PhoneCalls.contact(call)
     var keys by remember { mutableStateOf(false) }
     var typed by remember { mutableStateOf("") }
+    var replying by remember { mutableStateOf(false) }
+    if (replying) QuickReply(call) { replying = false }
     Box(Modifier.fillMaxSize().background(callWash(PHONE_COLOR)), contentAlignment = Alignment.TopCenter) {
     Column(Modifier.fillMaxHeight().widthIn(max = 460.dp).systemBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(40.dp))
@@ -117,9 +119,16 @@ private fun PhoneCallScreen(done: () -> Unit) {
         when {
             ended -> Unit
             call.state == Call.STATE_SELECT_PHONE_ACCOUNT -> SimChoice(call)
-            call.state == Call.STATE_RINGING -> Row(Modifier.fillMaxWidth().padding(bottom = 32.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                RoundButton(R.drawable.ic_call_end, "Decline", CALL_RED, 76.dp) { PhoneCalls.hangUp(call) }
-                RoundButton(R.drawable.ic_call, "Answer", CALL_GREEN, 76.dp) { PhoneCalls.answer(call) }
+            call.state == Call.STATE_RINGING -> {
+                // call waiting: the call already on, which answering puts on hold
+                PhoneCalls.calls.filter { it != call && it.state != Call.STATE_DISCONNECTED && it.parent == null }.forEach { OtherCall(it, call) }
+                if (call.details.can(Call.Details.CAPABILITY_RESPOND_VIA_TEXT)) TextButton(onClick = { replying = true }, modifier = Modifier.padding(bottom = 12.dp)) {
+                    Icon(painterResource(R.drawable.ic_chat), contentDescription = null, modifier = Modifier.size(18.dp)); Text("  Decline with a message")
+                }
+                Row(Modifier.fillMaxWidth().padding(bottom = 32.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    RoundButton(R.drawable.ic_call_end, "Decline", CALL_RED, 76.dp) { PhoneCalls.hangUp(call) }
+                    RoundButton(R.drawable.ic_call, "Answer", CALL_GREEN, 76.dp) { PhoneCalls.answer(call) }
+                }
             }
             else -> {
                 PhoneCalls.calls.filter { it != call && it.state != Call.STATE_DISCONNECTED && it.parent == null }.forEach { OtherCall(it, call) }
@@ -199,6 +208,21 @@ private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, ad
         }
     }
     if (noting) CallNoteDialog(call) { noting = false }
+}
+
+/** Decline with a message: one of the usual ones, or one written now; Telecom sends it as an SMS. */
+@Composable
+private fun QuickReply(call: Call, done: () -> Unit) {
+    var own by remember { mutableStateOf("") }
+    fun send(text: String) { call.reject(true, text); done() }
+    AlertDialog(onDismissRequest = done, title = { Text("Decline with a message") }, confirmButton = { TextButton(onClick = { if (own.isNotBlank()) send(own.trim()) }) { Text("Send") } },
+        dismissButton = { TextButton(onClick = done) { Text("Cancel") } },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                QUICK_REPLIES.forEach { r -> Text(r, Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { send(r) }.padding(vertical = 10.dp, horizontal = 4.dp)) }
+                OutlinedTextField(own, { own = it }, placeholder = { Text("Write one…") }, modifier = Modifier.fillMaxWidth())
+            }
+        })
 }
 
 /** A note typed during the call, kept with it (Tetra/Phone/notes.jsonl; Recents shows it under the call). */
@@ -306,27 +330,31 @@ internal fun PhoneSettings() {
     val dialer = PhonePrefs.isDialer(context)
     var answer by remember { mutableStateOf(PhonePrefs.buzzAnswer(context)) }
     var end by remember { mutableStateOf(PhonePrefs.buzzEnd(context)) }
+    var unknown by remember { mutableStateOf(PhonePrefs.silenceUnknown(context)) }
+    var hidden by remember { mutableStateOf(PhonePrefs.declineHidden(context)) }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(if (dialer) "Tetra is the phone app" else "Tetra is not the phone app", style = MaterialTheme.typography.titleSmall)
             Text(if (dialer) "Calls ring and are spoken on Tetra's own call screen. To give it back: Android's Default apps › Phone app."
                 else "As the phone app, Tetra shows its own call screen and buzzes when they answer. The phone's own call recording is not shown then.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
         }
         TextButton(onClick = {
             if (dialer) runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             else askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
-        }) { Text(if (dialer) "Change" else "Make it") }
+        }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text(if (dialer) "Change" else "Make it") }
     }
     @Composable fun toggle(title: String, about: String, on: Boolean, set: (Boolean) -> Unit) =
         Row(Modifier.fillMaxWidth().clickable { set(!on) }, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
-                Text(about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(about, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
             }
             Switch(checked = on, onCheckedChange = set)
         }
     toggle("Vibrate when answered", "Two short taps when the other side picks up a call you made.", answer) { answer = it; PhonePrefs.setBuzzAnswer(context, it) }
     toggle("Vibrate when a call ends", "One tap when a call that was answered ends.", end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
-    TextButton(onClick = { context.startActivity(Intent(context, PhoneActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text("Open the keypad") }
+    toggle("Silence numbers not in Contacts", "They ring without sound and show in Recents as missed.", unknown) { unknown = it; PhonePrefs.setSilenceUnknown(context, it) }
+    toggle("Decline hidden numbers", "Calls that hide their number are declined before they ring.", hidden) { hidden = it; PhonePrefs.setDeclineHidden(context, it) }
+    TextButton(onClick = { context.startActivity(Intent(context, PhoneActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text("Open the Phone") }
 }

@@ -188,5 +188,9 @@ internal object PhonePrefs {
     fun buzzEnd(c: Context) = p(c).getBoolean("buzz_end", false)
     fun setBuzzAnswer(c: Context, on: Boolean) = p(c).edit().putBoolean("buzz_answer", on).apply()
     fun setBuzzEnd(c: Context, on: Boolean) = p(c).edit().putBoolean("buzz_end", on).apply()
+    fun silenceUnknown(c: Context) = p(c).getBoolean("silence_unknown", false)
+    fun declineHidden(c: Context) = p(c).getBoolean("decline_hidden", false)
+    fun setSilenceUnknown(c: Context, on: Boolean) = p(c).edit().putBoolean("silence_unknown", on).apply()
+    fun setDeclineHidden(c: Context, on: Boolean) = p(c).edit().putBoolean("decline_hidden", on).apply()
     fun isDialer(c: Context) = c.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_DIALER)
 }

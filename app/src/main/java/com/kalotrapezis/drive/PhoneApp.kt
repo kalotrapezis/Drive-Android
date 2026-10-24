@@ -177,6 +177,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, number: MutableState<String>
             Text("Phone", style = MaterialTheme.typography.titleLarge)
             PhoneSettings()
             SpeedDialSettings(contacts)
+            BlockedSettings()
         }
     }
 }
@@ -363,6 +364,7 @@ private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, ca
                         context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("Number", g.number))
                     }
                 }
+                if (g.number.isNotBlank()) NumberActions(g.number)
             }
         }
         items(all.take(50), key = { it.id }) { l ->
@@ -503,4 +505,49 @@ private fun SpeedDialSettings(contacts: List<ContactInfo>) {
         }
     }
     assigning?.let { k -> SpeedDialPicker(k, contacts, dismiss = { assigning = null; version++ }) }
+}
+
+/** Block or unblock a number; a person's ringtone (when the phone's contacts know the number). */
+@Composable
+private fun NumberActions(number: String) {
+    val context = LocalContext.current
+    var version by remember { mutableIntStateOf(0) }
+    val blocked = remember(version) { PhoneBlocked.isBlocked(context, number) }
+    val known = remember { PhoneRingtone.known(context, number) }
+    val tone = remember(version) { if (known) PhoneRingtone.get(context, number) else null }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == android.app.Activity.RESULT_OK) {
+            @Suppress("DEPRECATION") val uri = r.data?.getParcelableExtra<Uri>(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            PhoneRingtone.set(context, number, uri); version++
+        }
+    }
+    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
+        if (PhoneBlocked.can(context)) TextButton(onClick = { if (blocked) PhoneBlocked.unblock(context, number) else PhoneBlocked.block(context, number); version++ }) {
+            Icon(painterResource(R.drawable.ic_block), contentDescription = null, tint = if (blocked) islandContentColor() else CALL_RED, modifier = Modifier.size(18.dp))
+            Text(if (blocked) "  Unblock" else "  Block", color = if (blocked) islandContentColor() else CALL_RED)
+        }
+        if (known) TextButton(onClick = {
+            pick.launch(Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER).putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_RINGTONE)
+                .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, tone).putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true))
+        }) {
+            val name = tone?.let { runCatching { android.media.RingtoneManager.getRingtone(context, it)?.getTitle(context) }.getOrNull() } ?: "Default"
+            Text("Ringtone: $name", color = islandContentColor(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun BlockedSettings() {
+    val context = LocalContext.current
+    if (!PhoneBlocked.can(context)) return
+    var version by remember { mutableIntStateOf(0) }
+    val list = remember(version) { PhoneBlocked.all(context) }
+    Text("Blocked numbers", style = MaterialTheme.typography.titleSmall)
+    if (list.isEmpty()) Text("None. Block a number from its line in Recents.", style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+    list.forEach { (_, n) ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(n, Modifier.weight(1f))
+            TextButton(onClick = { PhoneBlocked.unblock(context, n); version++ }) { Text("Unblock") }
+        }
+    }
 }

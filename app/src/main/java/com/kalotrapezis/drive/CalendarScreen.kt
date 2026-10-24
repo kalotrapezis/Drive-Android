@@ -726,6 +726,17 @@ private fun viewIcon(v: CalView) = when (v) {
     }
 }
 
+/** A reminder rung while Tetra is in front pops up here, as HyperOS shows none for the app in front (the user, 24 Oct). */
+@Composable internal fun CalendarRinging() {
+    val r = CalendarAlarms.ringing.value ?: return
+    val c = LocalContext.current
+    androidx.compose.material3.AlertDialog(onDismissRequest = { CalendarAlarms.ringing.value = null }, // beside it: the notification stays
+        icon = { Icon(painterResource(R.drawable.ic_calendar_today), contentDescription = null, tint = Color(r.color)) },
+        title = { Text(r.title) }, text = { Text(r.text) },
+        confirmButton = { TextButton(onClick = { CalendarAlarms.answer(c, r, done = true) }) { Text("Done") } },
+        dismissButton = { TextButton(onClick = { CalendarAlarms.answer(c, r, done = false) }) { Text("Snooze 10 min") } })
+}
+
 @Composable internal fun RemindersSwitch() {
     val context = LocalContext.current
     var on by remember { mutableStateOf(CalendarAlarms.enabled(context)) }

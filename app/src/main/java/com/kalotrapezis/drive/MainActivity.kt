@@ -237,6 +237,9 @@ class MainActivity : ComponentActivity() {
         type in setOf("text/calendar", "text/x-vcalendar", "application/ics") || u.lastPathSegment.orEmpty().endsWith(".ics", true)
     }
 
+    override fun onResume() { super.onResume(); CalendarAlarms.front = true }
+    override fun onPause() { super.onPause(); CalendarAlarms.front = false }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
@@ -773,6 +776,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
     MaterialTheme(colorScheme = TetraLook.colors) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
+        CalendarRinging()
         Column(Modifier.fillMaxSize()) {
             if (externalSingle && external != null) ExternalMediaViewer(external, ::closeExternal)
             else when (screen) {

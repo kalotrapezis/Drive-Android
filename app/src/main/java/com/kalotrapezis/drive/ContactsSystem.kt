@@ -193,7 +193,9 @@ internal object PhoneCall {
 
         @Suppress("DEPRECATION")
         override fun onReceive(c: Context, i: Intent) {
-            if (PhoneCalls.service != null) return // Tetra is the phone app: its call screen tells the computer (PhoneCalls.report)
+            // Tetra is the phone app: its call screen tells the computer (PhoneCalls.report). The role, not a bound service: Android may
+            // say "ringing" a moment before it binds the call screen, and the computer would hear of the call twice
+            if (PhonePrefs.isDialer(c)) return
             val state = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE) ?: return
             i.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER)?.takeIf { it.isNotBlank() }?.let { number = it }
             val report = when (state) {

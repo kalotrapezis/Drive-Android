@@ -32,4 +32,10 @@ class PhoneSpamTest {
         assertEquals("https://www.callinsider.gr/gr/6900009322", PhoneSpam.lookUp("+30 690 000 9322"))
         assertNull(PhoneSpam.lookUp("+44 20 7946 0000"))
     }
+
+    @Test fun `the keypad's codes`() {
+        assertEquals("4636", PhoneCodes.secret("*#*#4636#*#*"))
+        assertNull(PhoneCodes.secret("*#06#"))
+        assertNull(PhoneCodes.secret("*100#")) // a USSD code: a call like any number
+    }
 }

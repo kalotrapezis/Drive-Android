@@ -456,6 +456,7 @@ object ContactsFiles {
         val part = File(f.parentFile, ".${f.name}.part")
         part.writeText(VCard.write(lines))
         if (!part.renameTo(f)) { f.writeText(part.readText()); part.delete() }
+        f.setLastModified(System.currentTimeMillis()) // its time is now: the phone's storage keeps a renamed-over file's first date, and sync's hash cache goes by size and date
     }
 
     /** [now] saved: over [c]'s file (only what changed rewritten), or a new file in [dir]. */

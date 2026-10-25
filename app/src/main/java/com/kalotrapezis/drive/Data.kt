@@ -330,6 +330,7 @@ internal object DataFiles {
         f.parentFile?.mkdirs()
         val tmp = File(f.parentFile, ".${f.name}.tmp"); tmp.writeText(text)
         if (!tmp.renameTo(f)) { f.writeText(text); tmp.delete() }
+        f.setLastModified(System.currentTimeMillis()) // its time is now: the phone's storage keeps a renamed-over file's first date, and sync's hash cache goes by size and date
         return true
     }
 

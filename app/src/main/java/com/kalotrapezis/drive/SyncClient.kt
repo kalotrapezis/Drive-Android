@@ -1100,6 +1100,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             }
             if (!part.renameTo(target)) throw SyncException("Could not put it in place.")
             file.optLong("modified").takeIf { it > 0 }?.let { target.setLastModified(it) }
+            driveManifest.remember(DriveRules.relative(root, target), target, sha)
         } finally {
             part.delete()
         }

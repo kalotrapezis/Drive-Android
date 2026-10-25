@@ -649,8 +649,15 @@ class DriveManifest(context: Context) {
         .filter { DriveRules.inside(root, it) && !it.name.startsWith(".") }
         .flatMap { if (it.isDirectory) walk(root, it) else listOf(it) }
 
+    /** What was just put at [relativePath] is [sha256]: its date is the sender's, so size and date alone could match an older version. */
+    fun remember(relativePath: String, file: File, sha256: String) {
+        preferences.edit().putString(relativePath, "${stamp(file)}|$sha256").apply()
+    }
+
+    private fun stamp(file: File) = "${file.length()}:${file.lastModified()}"
+
     private fun hash(relativePath: String, file: File): String {
-        val stamp = "${file.length()}:${file.lastModified()}"
+        val stamp = stamp(file)
         preferences.getString(relativePath, null)?.split('|')?.takeIf { it.size == 2 && it[0] == stamp }?.let { return it[1] }
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->

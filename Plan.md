@@ -545,6 +545,10 @@ How to write here:
       the whole sync at once) or one that never came then made a conflict and an offer of the computer's older copy back to the
       phone. Fixed in desktop `files.js`/`sync.js` only (SYNC_PLAN.md 6aq); test in `sync.test.js`; 136 desktop tests pass. Not
       merged, not run between real devices; the phone needs no new APK.
+- [~] (Drive `sync-same-size` / Drive-Android `claude/sync-same-size`, sync-copies session, 25 Oct evening) 6aq did not stop
+      them: the phone's storage keeps a renamed-over file's first date and both sides cache hashes by size and date, so a
+      same-length new month looked like the old one; memory that disagreed never healed. Fixed both sides (SYNC_PLAN.md 6ar);
+      desktop 148 + Android unit 658 pass. Not merged, not installed, not run between real devices.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

@@ -16,7 +16,7 @@ internal object SheetLinks {
         ZipFile(source).use { zip ->
             fun read(p: String) = zip.getEntry(p)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } }
             val relsPath = sheetPart.substringBeforeLast('/') + "/_rels/" + sheetPart.substringAfterLast('/') + ".rels"
-            var x = read(sheetPart) ?: error("No sheet.")
+            var x = read(sheetPart) ?: sheetProblem(R.string.tables_err_no_sheet)
             var rels = read(relsPath) ?: """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"""
             val ref = "${Sheets.colName(col)}${row + 1}"
             // the cell's own link gone (its outside relationship too)
@@ -42,10 +42,10 @@ internal object SheetLinks {
 
     fun ods(source: File, target: File, index: Int, row: Int, col: Int, url: String?) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"; val XLINK = "http://www.w3.org/1999/xlink"
             val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             val cell = SheetMerge.odsCell(doc, table, row, col)
             val p = (0 until cell.childNodes.length).mapNotNull { cell.childNodes.item(it) as? Element }.firstOrNull { it.localName == "p" && it.namespaceURI == TEXT }
                 ?: doc.createElementNS(TEXT, "text:p").also { cell.appendChild(it) }

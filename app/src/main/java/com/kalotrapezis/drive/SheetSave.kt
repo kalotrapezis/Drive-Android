@@ -68,7 +68,7 @@ internal object SheetSave {
      * breaks spelled out in the cells that shared it ([formulaAt]).
      */
     fun patchSheet(xml: String, edits: Map<Long, SheetCell>, styleOf: (SheetCell, Int?) -> Int, formulaAt: (Int, Int) -> String?, rows: Int, cols: Int): String {
-        val open = Regex("""<sheetData\s*/>|<sheetData[^>]*>""").find(xml) ?: error("No sheetData.")
+        val open = Regex("""<sheetData\s*/>|<sheetData[^>]*>""").find(xml) ?: sheetProblem(R.string.tables_err_no_sheet_data)
         val body0 = if (open.value.endsWith("/>")) open.range.last + 1 else open.range.last + 1
         val end = if (open.value.endsWith("/>")) body0 else xml.indexOf("</sheetData>", body0)
         val data = xml.substring(body0, end)
@@ -82,7 +82,7 @@ internal object SheetSave {
             val tagEnd = data.indexOf('>', at)
             val tag = data.substring(at, tagEnd + 1)
             val r = attr(tag, "r")?.toIntOrNull()?.minus(1) ?: next
-            val close = if (tag.endsWith("/>")) tagEnd + 1 else data.indexOf("</row>", tagEnd).let { if (it < 0) error("A row without its end.") else it + 6 }
+            val close = if (tag.endsWith("/>")) tagEnd + 1 else data.indexOf("</row>", tagEnd).let { if (it < 0) sheetProblem(R.string.tables_err_row_end) else it + 6 }
             list += Row(r, at, close); next = r + 1; i = close
         }
         val byRow = list.associateBy { it.r }
@@ -148,7 +148,7 @@ internal object SheetSave {
     private fun xlsx(book: Workbook, source: File, target: File) {
         val zip = ZipFile(source)
         val replaced = HashMap<String, ByteArray?>()
-        fun read(path: String) = zip.getEntry(path)?.let { e -> zip.getInputStream(e).use { it.readBytes() } } ?: error("No $path.")
+        fun read(path: String) = zip.getEntry(path)?.let { e -> zip.getInputStream(e).use { it.readBytes() } } ?: sheetProblem(R.string.tables_err_no_part, path)
         // styles for typed formats: (the cell's style, a format) → a new xf
         val wanted = LinkedHashMap<Pair<Int, String>, Int>()
         var styles = book.parts["styles"]?.let { String(read(it)) }
@@ -163,7 +163,7 @@ internal object SheetSave {
         }
         for ((i, edits) in book.edits) {
             if (edits.isEmpty()) continue
-            val path = book.parts["$i"] ?: error("No sheet ${i + 1}.")
+            val path = book.parts["$i"] ?: sheetProblem(R.string.tables_err_no_sheet_n, i + 1)
             val sheet = book.sheet(i)
             val xml = String(read(path), Charsets.UTF_8)
             replaced[path] = patchSheet(xml, edits, ::styleOf, { r, c -> sheet[r, c]?.formula }, sheet.rows, sheet.cols).toByteArray(Charsets.UTF_8)
@@ -294,9 +294,9 @@ internal object SheetSave {
 
     private fun ods(book: Workbook, source: File, target: File) {
         val zip = ZipFile(source)
-        val entry = zip.getEntry("content.xml") ?: error("Not a spreadsheet.")
+        val entry = zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)
         // shortcut: content.xml is changed as a whole document; a giant one (hundreds of MB) is too big to save here
-        check(entry.size in 0..80_000_000) { "This spreadsheet is too big to save on this device." }
+        if (entry.size !in 0..80_000_000) sheetProblem(R.string.tables_too_big_to_save)
         val doc = OfficeFormats.parse(zip.getInputStream(entry).use { it.readBytes() })
         val tables = doc.getElementsByTagNameNS(TABLE, "table").let { l -> (0 until l.length).map { l.item(it) as org.w3c.dom.Element } }
             .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is org.w3c.dom.Element && it.localName == "table" } }

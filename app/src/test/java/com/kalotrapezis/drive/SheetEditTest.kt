@@ -55,9 +55,9 @@ class SheetEditTest {
     /** ✓ on a formula Tables cannot read warns first (Excel's "There's a problem with this formula"); ordinary ones, ";" too, do not. */
     @Test fun `a formula warned about`() {
         listOf("=SUM(A1+)", "=A1+", "=A1 B1", "=SUM(A1,B1))").forEach { assertTrue(it, SheetInput.badFormula(it)) }
-        assertTrue(SheetInput.formulaProblem("=A1 B1")!!.contains("comma"))
-        assertTrue(SheetInput.formulaProblem("=SUM(A1,B1))")!!.contains(")"))
-        assertTrue(SheetInput.formulaProblem("=A1+")!!.contains("too soon"))
+        assertEquals(R.string.tables_problem_missing_operator, SheetInput.formulaProblem("=A1 B1")?.first)
+        assertEquals(R.string.tables_problem_close, SheetInput.formulaProblem("=SUM(A1,B1))")?.first)
+        assertEquals(R.string.tables_problem_end, SheetInput.formulaProblem("=A1+")?.first)
         listOf("=SUM(A1:A3)", "=sum(a1;b1)", "='My sheet'!A1", "=IF(A1>0,\"y\",\"n\")", "=FOO(1)", "plain", "=").forEach { assertFalse(it, SheetInput.badFormula(it)) }
     }
 

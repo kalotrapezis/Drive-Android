@@ -17,7 +17,7 @@ internal object SheetPageSetup {
     fun xlsx(source: File, target: File, sheetPart: String, index: Int, name: String, p: SheetPrint) {
         ZipFile(source).use { zip ->
             fun read(n: String) = zip.getEntry(n)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } }
-            var x = read(sheetPart) ?: error("No sheet.")
+            var x = read(sheetPart) ?: sheetProblem(R.string.tables_err_no_sheet)
             fun attrs(tag: String?) = Regex("""(\w+(?::\w+)?)="([^"]*)"""").findAll(tag.orEmpty()).associate { it.groupValues[1] to it.groupValues[2] }.toMutableMap()
             // pageSetup: its own other settings (a printer's r:id…) kept
             val setup = Regex("""<pageSetup\b[^>]*/>""").find(x)
@@ -45,7 +45,7 @@ internal object SheetPageSetup {
                 else -> x.replaceFirst(Regex("""(<worksheet\b[^>]*>)"""), "$1<sheetPr>$fit</sheetPr>")
             }
             // the print area: the workbook's defined name for this sheet
-            var wb = read("xl/workbook.xml") ?: error("Not a workbook.")
+            var wb = read("xl/workbook.xml") ?: sheetProblem(R.string.tables_err_not_workbook)
             // and the rows printed on every page (shortcut: columns printed on every page are not kept; upgrade if a file has them)
             for (n in listOf("Print_Area", "Print_Titles")) wb = wb.replace(Regex("""<definedName\b[^>]*name="_xlnm\.$n"[^>]*localSheetId="$index"[^>]*>[^<]*</definedName>"""), "")
                 .replace(Regex("""<definedName\b[^>]*localSheetId="$index"[^>]*name="_xlnm\.$n"[^>]*>[^<]*</definedName>"""), "")
@@ -102,9 +102,9 @@ internal object SheetPageSetup {
     fun ods(source: File, target: File, index: Int, name: String, p: SheetPrint) {
         ZipFile(source).use { zip ->
             fun bytes(n: String) = zip.getEntry(n)?.let { e -> zip.getInputStream(e).use { it.readBytes() } }
-            val content = OfficeFormats.parse(bytes("content.xml") ?: error("Not a spreadsheet."))
-            val styles = OfficeFormats.parse(bytes("styles.xml") ?: error("No styles."))
-            val table = tables(content).getOrNull(index) ?: error("No sheet ${index + 1}.")
+            val content = OfficeFormats.parse(bytes("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet))
+            val styles = OfficeFormats.parse(bytes("styles.xml") ?: sheetProblem(R.string.tables_err_no_styles))
+            val table = tables(content).getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             // a page layout and master page of this sheet's own (named after it), copies of the ones it had
             val masters = styles.getElementsByTagNameNS(S, "master-page").let { l -> (0 until l.length).map { l.item(it) as Element } }
             val layouts = styles.getElementsByTagNameNS(S, "page-layout").let { l -> (0 until l.length).map { l.item(it) as Element } }

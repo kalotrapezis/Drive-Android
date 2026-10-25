@@ -9,11 +9,12 @@ import org.w3c.dom.Element
  * as the same.
  */
 internal object SheetHeaderFooter {
-    /** The readable fields and Excel's codes for them. */
-    val FIELDS = listOf("[Page]" to "P", "[Pages]" to "N", "[Sheet]" to "A", "[File]" to "F", "[Date]" to "D", "[Time]" to "T")
-    /** Excel's ready-made ones (Page Layout › Header ▾): a name and its code; null: none. */
-    val PRESETS = listOf("None" to null, "Page 1" to "&CPage &P", "Page 1 of ?" to "&CPage &P of &N", "Sheet name" to "&C&A", "File name" to "&C&F",
-        "Sheet name, Page 1" to "&L&A&RPage &P")
+    /** The readable fields (as typed, in every language), Excel's codes for them, and their chips' names. */
+    val FIELDS = listOf(Triple("[Page]", "P", R.string.tables_field_page), Triple("[Pages]", "N", R.string.tables_field_pages), Triple("[Sheet]", "A", R.string.tables_sheet),
+        Triple("[File]", "F", R.string.tables_tab_file), Triple("[Date]", "D", R.string.tables_format_date), Triple("[Time]", "T", R.string.tables_format_time))
+    /** Excel's ready-made ones (Page Layout › Header ▾): a name (a string) and its code, written as Excel's English one; null: none. */
+    val PRESETS = listOf(R.string.common_none to null, R.string.tables_hf_page to "&CPage &P", R.string.tables_hf_page_of to "&CPage &P of &N",
+        R.string.tables_hf_sheet_name to "&C&A", R.string.tables_hf_file_name to "&C&F", R.string.tables_hf_sheet_page to "&L&A&RPage &P")
 
     /** Excel's [code] as its left, centre and right parts' words, its fields as [Page]…, its font codes left out. */
     fun parts(code: String?): List<String> {

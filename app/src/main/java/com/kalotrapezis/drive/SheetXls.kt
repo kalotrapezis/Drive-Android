@@ -121,7 +121,7 @@ internal object SheetXls {
     private class Font(val name: String, val size: Float, val bold: Boolean, val italic: Boolean, val underline: Boolean, val strike: Boolean, val color: Int)
 
     fun read(bytes: ByteArray, decimal: Char = '.', group: Char = ','): Workbook {
-        val w = stream(bytes, "Workbook", "Book") ?: error("Not an Excel workbook.")
+        val w = stream(bytes, "Workbook", "Book") ?: sheetProblem(R.string.tables_err_not_excel)
         val sheets = ArrayList<Triple<String, Int, Boolean>>() // name, its BOF's place, hidden
         val sstParts = ArrayList<ByteBuffer>()
         val fonts = ArrayList<Font>(); val formats = HashMap<Int, String>(); val xfs = ArrayList<Pair<Int, Int>>() // font, format

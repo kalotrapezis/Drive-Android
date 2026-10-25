@@ -24,8 +24,8 @@ internal object SheetOutline {
 
     fun xlsx(source: File, target: File, sheetPart: String, from: Int, to: Int, by: Int, collapse: Boolean?) {
         ZipFile(source).use { zip ->
-            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No sheet.")
-            val data = Regex("""<sheetData\b[^>]*?(?:/>|>([\s\S]*?)</sheetData>)""").find(x) ?: error("No sheet data.")
+            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: sheetProblem(R.string.tables_err_no_sheet)
+            val data = Regex("""<sheetData\b[^>]*?(?:/>|>([\s\S]*?)</sheetData>)""").find(x) ?: sheetProblem(R.string.tables_err_no_sheet_data)
             val rows = Regex("""<row\b[^>]*?(?:/>|>[\s\S]*?</row>)""").findAll(data.groupValues[1]).map { m -> (Regex("""\sr="(\d+)"""").find(m.value)!!.groupValues[1].toInt() - 1) to m.value }.toMap(java.util.TreeMap())
             fun edit(r: Int, change: (MutableMap<String, String>) -> Unit) {
                 val row = rows[r] ?: """<row r="${r + 1}"/>"""
@@ -51,27 +51,27 @@ internal object SheetOutline {
 
     fun ods(source: File, target: File, index: Int, from: Int, to: Int, by: Int, collapse: Boolean?) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val T = SheetMerge.T
             val table = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             fun make() = doc.createElementNS(T, "table:table-row").also { table.appendChild(it) }
             // rows from..to as elements of their own
             SheetMerge.at({ SheetMerge.rowsOf(table) }, from, "number-rows-repeated", ::make); SheetMerge.at({ SheetMerge.rowsOf(table) }, to, "number-rows-repeated", ::make)
             if (to + 1 < 1_048_576) SheetMerge.at({ SheetMerge.rowsOf(table) }, to + 1, "number-rows-repeated", ::make)
             var n = 0
             val rows = SheetMerge.rowsOf(table).filter { e -> val at = n; n += e.getAttributeNS(T, "number-rows-repeated").toIntOrNull() ?: 1; at in from..to }
-            if (rows.isEmpty()) error("No rows there.")
+            if (rows.isEmpty()) sheetProblem(R.string.tables_err_no_rows_there)
             when {
                 by > 0 -> {
                     // shortcut: rows across a group's edge are not grouped (Excel splits them); upgrade if that is asked for
-                    if (rows.any { it.parentNode !== rows[0].parentNode }) error("Those rows are partly in another group: ungroup it first")
+                    if (rows.any { it.parentNode !== rows[0].parentNode }) sheetProblem(R.string.tables_err_rows_other_group)
                     val g = doc.createElementNS(T, "table:table-row-group"); rows[0].parentNode.insertBefore(g, rows[0]); rows.forEach { g.appendChild(it) }
                 }
                 by < 0 -> {
                     // the innermost group round the rows taken apart (its rows put back where it was)
-                    val g = rows[0].parentNode as? Element ?: error("Not grouped.")
-                    if (g.localName != "table-row-group") error("Those rows are not grouped")
+                    val g = rows[0].parentNode as? Element ?: sheetProblem(R.string.tables_err_not_grouped)
+                    if (g.localName != "table-row-group") sheetProblem(R.string.tables_err_rows_not_grouped)
                     while (g.firstChild != null) g.parentNode.insertBefore(g.firstChild, g); g.parentNode.removeChild(g)
                 }
             }

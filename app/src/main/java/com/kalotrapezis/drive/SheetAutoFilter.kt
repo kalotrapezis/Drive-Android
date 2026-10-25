@@ -16,7 +16,7 @@ internal object SheetAutoFilter {
     fun xlsx(source: File, target: File, sheetPart: String, index: Int, name: String, range: SheetRange?, keep: Map<Int, Set<String>>, hidden: Set<Int>, old: SheetRange? = null) {
         ZipFile(source).use { zip ->
             fun read(p: String) = zip.getEntry(p)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } }
-            var x = read(sheetPart) ?: error("No sheet.")
+            var x = read(sheetPart) ?: sheetProblem(R.string.tables_err_no_sheet)
             x = x.replace(Regex("""<autoFilter\b[^>]*?(?:/>|>[\s\S]*?</autoFilter>)"""), "")
             // the sheet says whether a filter hides rows (LibreOffice reads the filter by it)
             x = x.replace(Regex("""(<sheetPr\b[^>]*?)\sfilterMode="[^"]*""""), "$1")
@@ -34,7 +34,7 @@ internal object SheetAutoFilter {
             val at = Regex("""<(sortState|dataConsolidate|customSheetViews|mergeCells|phoneticPr|conditionalFormatting|dataValidations|hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|drawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b""").find(x)?.range?.first ?: x.lastIndexOf("</worksheet>")
             x = x.substring(0, at) + filter + x.substring(at)
             // the rows filtered out hidden, the others in the table shown (a row the sheet has not written made, hidden)
-            val data = Regex("""<sheetData\b[^>]*?(?:/>|>([\s\S]*?)</sheetData>)""").find(x) ?: error("No sheet data.")
+            val data = Regex("""<sheetData\b[^>]*?(?:/>|>([\s\S]*?)</sheetData>)""").find(x) ?: sheetProblem(R.string.tables_err_no_sheet_data)
             val rows = Regex("""<row\b[^>]*?(?:/>|>[\s\S]*?</row>)""").findAll(data.groupValues[1]).map { m -> (Regex("""\sr="(\d+)"""").find(m.value)!!.groupValues[1].toInt() - 1) to m.value }.toMap(java.util.TreeMap())
             if (rowsShown != null) for (r in rowsShown.r1 + 1..rowsShown.r2) {
                 val row = rows[r] ?: if (r in hidden) """<row r="${r + 1}"/>""" else continue
@@ -45,7 +45,7 @@ internal object SheetAutoFilter {
             }
             x = x.replaceRange(data.range, "<sheetData>" + rows.values.joinToString("") + "</sheetData>")
             // Excel's hidden name for the filtered table
-            var wb = read("xl/workbook.xml") ?: error("Not a workbook.")
+            var wb = read("xl/workbook.xml") ?: sheetProblem(R.string.tables_err_not_workbook)
             wb = wb.replace(Regex("""<definedName\b[^>]*name="_xlnm\._FilterDatabase"[^>]*localSheetId="$index"[^>]*>[^<]*</definedName>"""), "")
                 .replace(Regex("""<definedName\b[^>]*localSheetId="$index"[^>]*name="_xlnm\._FilterDatabase"[^>]*>[^<]*</definedName>"""), "")
             if (range != null) { val d = """<definedName name="_xlnm._FilterDatabase" localSheetId="$index" hidden="1">'${OfficeFormats.esc(name.replace("'", "''"))}'!${'$'}${Sheets.colName(range.c1)}${'$'}${range.r1 + 1}:${'$'}${Sheets.colName(range.c2)}${'$'}${range.r2 + 1}</definedName>"""
@@ -58,11 +58,11 @@ internal object SheetAutoFilter {
     /** LibreOffice: the sheet's own database range (__Anonymous_Sheet_DB__) with its filter, its rows filtered out (visibility "filter"). */
     fun ods(source: File, target: File, index: Int, name: String, range: SheetRange?, keep: Map<Int, Set<String>>, hidden: Set<Int>, old: SheetRange? = null) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val T = SheetMerge.T
             val tables = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
                 .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }
-            val table = tables.getOrNull(index) ?: error("No sheet ${index + 1}.")
+            val table = tables.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             val sheet = table.parentNode as Element
             val q = if (Regex("""^\w+$""").matches(name)) name else "'" + name.replace("'", "''") + "'"
             // the sheet's anonymous range goes, made again

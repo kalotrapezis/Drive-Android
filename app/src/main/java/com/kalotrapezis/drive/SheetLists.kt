@@ -15,7 +15,7 @@ internal object SheetLists {
 
     fun xlsx(source: File, target: File, sheetPart: String, range: SheetRange, items: List<String>?) {
         ZipFile(source).use { zip ->
-            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No sheet.")
+            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: sheetProblem(R.string.tables_err_no_sheet)
             // shortcut: a validation partly over the range goes whole (not cut round it); upgrade if users keep half of one
             val kept = Regex("""<dataValidation\b(?:[^>]*/>|[\s\S]*?</dataValidation>)""").findAll(x).map { it.value }
                 .filter { v -> Regex("""\bsqref="([^"]*)"""").find(v)?.groupValues?.get(1).orEmpty().split(' ').mapNotNull(Sheets::rangeRef).none { overlaps(it, range) } }.toList()
@@ -33,11 +33,11 @@ internal object SheetLists {
 
     fun ods(source: File, target: File, index: Int, range: SheetRange, items: List<String>?) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val T = SheetMerge.T
             val tables = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
                 .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }
-            val table = tables.getOrNull(index) ?: error("No sheet ${index + 1}.")
+            val table = tables.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             var name: String? = null
             if (items != null) {
                 // the validities sit before the first table

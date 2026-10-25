@@ -55,9 +55,9 @@ internal object SheetProtect {
     /** Excel's Protect Workbook (its structure: sheets not added, deleted, renamed, moved or hidden), in workbook part [part]. */
     fun bookXlsx(source: File, target: File, part: String, protect: Boolean, password: String) {
         ZipFile(source).use { zip ->
-            var x = zip.getEntry(part)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("Not a workbook.")
+            var x = zip.getEntry(part)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: sheetProblem(R.string.tables_err_not_workbook)
             BOOK_PROTECTION.find(x)?.let { m -> if (!protect && !opens(attrs(m.value).filterKeys { it.startsWith("workbook") }
-                .mapKeys { (k, _) -> k.removePrefix("workbook").replaceFirstChar { it.lowercase() } }, password)) error("That password is not this workbook's") }
+                .mapKeys { (k, _) -> k.removePrefix("workbook").replaceFirstChar { it.lowercase() } }, password)) sheetProblem(R.string.tables_err_book_password) }
             x = x.replace(BOOK_PROTECTION, "")
             if (protect) {
                 val hash = if (password.isEmpty()) "" else {
@@ -65,7 +65,7 @@ internal object SheetProtect {
                     """ workbookAlgorithmName="SHA-512" workbookHashValue="${b64.encodeToString(excelHash(password, salt))}" workbookSaltValue="${b64.encodeToString(salt)}" workbookSpinCount="$SPIN""""
                 }
                 // in the schema's place: before the workbook's views, else its sheets
-                val at = Regex("""<bookViews\b|<sheets\b""").find(x)?.range?.first ?: error("No sheets.")
+                val at = Regex("""<bookViews\b|<sheets\b""").find(x)?.range?.first ?: sheetProblem(R.string.tables_err_no_sheets)
                 x = x.substring(0, at) + """<workbookProtection$hash lockStructure="1"/>""" + x.substring(at)
             }
             SheetSave.rezip(zip, target, mapOf(part to x.toByteArray()), null)
@@ -75,11 +75,11 @@ internal object SheetProtect {
     /** LibreOffice's Tools › Protect Spreadsheet Structure: office:spreadsheet's structure-protected, with its SHA-256 key. */
     fun bookOds(source: File, target: File, protect: Boolean, password: String) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val T = SheetMerge.T
-            val book = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "spreadsheet").item(0) as? Element ?: error("Not a spreadsheet.")
+            val book = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "spreadsheet").item(0) as? Element ?: sheetProblem(R.string.tables_err_not_spreadsheet)
             if (!protect && book.getAttributeNS(T, "structure-protected") == "true" && !opens(listOf("protection-key", "protection-key-digest-algorithm")
-                    .mapNotNull { a -> book.getAttributeNS(T, a).takeIf { it.isNotEmpty() }?.let { a to it } }.toMap(), password)) error("That password is not this workbook's")
+                    .mapNotNull { a -> book.getAttributeNS(T, a).takeIf { it.isNotEmpty() }?.let { a to it } }.toMap(), password)) sheetProblem(R.string.tables_err_book_password)
             listOf("structure-protected", "protection-key", "protection-key-digest-algorithm").forEach { book.removeAttributeNS(T, it) }
             if (protect) {
                 book.setAttributeNS(T, "table:structure-protected", "true")
@@ -98,8 +98,8 @@ internal object SheetProtect {
     /** Excel: sheet part [sheetPart] protected ([protect], with [password] or none) or not (the password, if it has one, checked). */
     fun xlsx(source: File, target: File, sheetPart: String, protect: Boolean, password: String) {
         ZipFile(source).use { zip ->
-            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No sheet.")
-            SHEET_PROTECTION.find(x)?.let { m -> if (!protect && !opens(attrs(m.value), password)) error("That password is not this sheet's") }
+            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: sheetProblem(R.string.tables_err_no_sheet)
+            SHEET_PROTECTION.find(x)?.let { m -> if (!protect && !opens(attrs(m.value), password)) sheetProblem(R.string.tables_err_sheet_password) }
             x = x.replace(SHEET_PROTECTION, "")
             if (protect) {
                 val hash = if (password.isEmpty()) "" else {
@@ -107,7 +107,7 @@ internal object SheetProtect {
                     """ algorithmName="SHA-512" hashValue="${b64.encodeToString(excelHash(password, salt))}" saltValue="${b64.encodeToString(salt)}" spinCount="$SPIN""""
                 }
                 // in the schema's place: after the sheet's data (and its calculation settings)
-                val at = Regex("""<sheetCalcPr\b[^>]*/>""").find(x)?.range?.last?.plus(1) ?: Regex("""</sheetData>|<sheetData\s*/>""").find(x)?.range?.last?.plus(1) ?: error("No sheet data.")
+                val at = Regex("""<sheetCalcPr\b[^>]*/>""").find(x)?.range?.last?.plus(1) ?: Regex("""</sheetData>|<sheetData\s*/>""").find(x)?.range?.last?.plus(1) ?: sheetProblem(R.string.tables_err_no_sheet_data)
                 x = x.substring(0, at) + """<sheetProtection$hash sheet="1" objects="1" scenarios="1"/>""" + x.substring(at)
             }
             SheetSave.rezip(zip, target, mapOf(sheetPart to x.toByteArray()), null)
@@ -117,12 +117,12 @@ internal object SheetProtect {
     /** LibreOffice: sheet [index] protected ([protect], with [password] or none) or not (the password, if it has one, checked). */
     fun ods(source: File, target: File, index: Int, protect: Boolean, password: String) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val T = SheetMerge.T
             val table = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             if (!protect && table.getAttributeNS(T, "protected") == "true" && !opens(listOf("protection-key", "protection-key-digest-algorithm")
-                    .mapNotNull { a -> table.getAttributeNS(T, a).takeIf { it.isNotEmpty() }?.let { a to it } }.toMap(), password)) error("That password is not this sheet's")
+                    .mapNotNull { a -> table.getAttributeNS(T, a).takeIf { it.isNotEmpty() }?.let { a to it } }.toMap(), password)) sheetProblem(R.string.tables_err_sheet_password)
             listOf("protected", "protection-key", "protection-key-digest-algorithm").forEach { table.removeAttributeNS(T, it) }
             if (protect) {
                 table.setAttributeNS(T, "table:protected", "true")

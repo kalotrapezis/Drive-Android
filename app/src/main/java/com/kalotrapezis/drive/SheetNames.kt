@@ -11,12 +11,12 @@ import java.util.zip.ZipFile
  */
 internal object SheetNames {
     /** Excel's rule for a name: a letter, _ or \ first, then letters, digits, _ . \; not a cell's name; at most 255. */
-    fun valid(name: String, taken: Collection<String>): String? = when {
-        name.isBlank() -> "Give it a name"
-        name.length > 255 -> "That name is too long"
-        !Regex("""^[\p{L}_\\][\p{L}\p{N}_.\\]*$""").matches(name) -> "A name starts with a letter and has no spaces"
-        Regex("""^[A-Za-z]{1,3}\d+$""").matches(name) || name.equals("R", true) || name.equals("C", true) -> "That is a cell's name"
-        taken.any { it.equals(name, true) } -> "There is a name like that already"
+    fun valid(name: String, taken: Collection<String>): Int? = when { // what is wrong, as a string
+        name.isBlank() -> R.string.tables_name_give
+        name.length > 255 -> R.string.tables_name_too_long
+        !Regex("""^[\p{L}_\\][\p{L}\p{N}_.\\]*$""").matches(name) -> R.string.tables_name_letter_first
+        Regex("""^[A-Za-z]{1,3}\d+$""").matches(name) || name.equals("R", true) || name.equals("C", true) -> R.string.tables_name_is_cell
+        taken.any { it.equals(name, true) } -> R.string.tables_name_taken_already
         else -> null
     }
 
@@ -48,7 +48,7 @@ internal object SheetNames {
     /** Excel: name [name] defined as [refersTo] (null: taken away) in the workbook part [workbook]. */
     fun xlsx(source: File, target: File, workbook: String, name: String, refersTo: String?) {
         ZipFile(source).use { zip ->
-            var x = zip.getEntry(workbook)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("Not a workbook.")
+            var x = zip.getEntry(workbook)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: sheetProblem(R.string.tables_err_not_workbook)
             // the workbook's own name (not a sheet's: localSheetId) of that name goes
             x = Regex("""<definedName\b([^>]*)>[^<]*</definedName>""").replace(x) { m ->
                 val n = Regex("""\bname="([^"]*)"""").find(m.groupValues[1])?.groupValues?.get(1)
@@ -63,7 +63,7 @@ internal object SheetNames {
     /** LibreOffice: name [name] as a named range of [sheet]'s cells [g] (null: taken away). */
     fun ods(source: File, target: File, name: String, sheet: String?, g: SheetRange?) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val T = SheetMerge.T
             val tables = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
                 .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }

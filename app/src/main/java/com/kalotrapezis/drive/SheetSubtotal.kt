@@ -9,8 +9,8 @@ import java.io.File
  * (every reference following). A change to the file.
  */
 internal object SheetSubtotal {
-    /** Excel's functions for it: name and SUBTOTAL's number. */
-    val FUNCTIONS = listOf("Sum" to 9, "Count" to 3, "Average" to 1, "Max" to 4, "Min" to 5, "Product" to 6)
+    /** Excel's functions for it: name (a string) and SUBTOTAL's number. */
+    val FUNCTIONS = listOf(R.string.tables_sub_sum to 9, R.string.tables_count to 3, R.string.tables_average to 1, R.string.tables_max to 4, R.string.tables_min to 5, R.string.tables_sub_product to 6)
 
     /** The runs of data rows of [g] alike in column [by] (what the cells show, any case). */
     fun groups(sheet: Sheet, g: SheetRange, by: Int): List<IntRange> {
@@ -38,7 +38,7 @@ internal object SheetSubtotal {
     /** [source] into [target]: sheet [index]'s subtotals made, as above. */
     fun apply(source: File, target: File, book: Workbook, index: Int, g: SheetRange, by: Int, cols: List<Int>, fn: Int, decimal: Char, group: Char) {
         val sheet = book.sheet(index); val name = book.tabs[index].name; val tabs = book.tabs.map { it.name }
-        val groups = groups(sheet, g, by); if (groups.isEmpty()) error("No rows to total")
+        val groups = groups(sheet, g, by); if (groups.isEmpty()) sheetProblem(R.string.tables_err_no_rows_total)
         val cells = cells(sheet, groups, by, cols, fn)
         var from = source; var n = 0
         fun step(op: (File, File) -> Unit) { val to = File(target.parentFile, "${target.nameWithoutExtension}.${n++}.part.${target.extension}"); op(from, to); if (from != source) from.delete(); from = to }

@@ -13,9 +13,9 @@ import java.util.zip.ZipFile
  */
 internal object SheetConditional {
     /** Excel's preset looks for a highlight rule: its name, fill, words' colour. */
-    val LOOKS = listOf(Triple("Light red fill with dark red text", 0xFFFFC7CE.toInt(), 0xFF9C0006.toInt()),
-        Triple("Yellow fill with dark yellow text", 0xFFFFEB9C.toInt(), 0xFF9C5700.toInt()),
-        Triple("Green fill with dark green text", 0xFFC6EFCE.toInt(), 0xFF006100.toInt()))
+    val LOOKS = listOf(Triple(R.string.tables_look_red, 0xFFFFC7CE.toInt(), 0xFF9C0006.toInt()),
+        Triple(R.string.tables_look_yellow, 0xFFFFEB9C.toInt(), 0xFF9C5700.toInt()),
+        Triple(R.string.tables_look_green, 0xFFC6EFCE.toInt(), 0xFF006100.toInt()))
 
     /**
      * A rule to make: [kind] "greaterThan", "lessThan", "between", "equal", "contains", "duplicate", "top10",
@@ -37,7 +37,7 @@ internal object SheetConditional {
     fun xlsx(source: File, target: File, sheetPart: String, stylesPart: String, range: SheetRange, rule: Rule?) {
         ZipFile(source).use { zip ->
             fun read(p: String) = zip.getEntry(p)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } }
-            var sheet = read(sheetPart) ?: error("No sheet.")
+            var sheet = read(sheetPart) ?: sheetProblem(R.string.tables_err_no_sheet)
             val out = LinkedHashMap<String, ByteArray?>()
             // shortcut: a rule partly over the range goes whole (Excel cuts it round the cells); upgrade if users clear parts of rules
             sheet = sheet.replace(Regex("""<conditionalFormatting\b[^>]*\bsqref="([^"]*)"[^>]*>[\s\S]*?</conditionalFormatting>""")) { m ->
@@ -45,7 +45,7 @@ internal object SheetConditional {
             if (rule != null) {
                 var dxf: Int? = null
                 if (rule.kind !in setOf("dataBar", "colorScale")) {
-                    var styles = read(stylesPart) ?: error("No styles.")
+                    var styles = read(stylesPart) ?: sheetProblem(R.string.tables_err_no_styles)
                     val (_, fill, color) = LOOKS[rule.look]
                     val d = """<dxf><font><color rgb="FF${hex(color)}"/></font><fill><patternFill><bgColor rgb="FF${hex(fill)}"/></patternFill></fill></dxf>"""
                     val now = Regex("""<dxfs\b[^>]*?(?:/>|>([\s\S]*?)</dxfs>)""").find(styles)
@@ -87,9 +87,9 @@ internal object SheetConditional {
             val CALC = "urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0"
             val STYLE = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"; val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
             val OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             fun kids(e: Element, local: String) = (0 until e.childNodes.length).mapNotNull { e.childNodes.item(it) as? Element }.filter { it.localName == local }
             val q = if (Regex("""^\w+$""").matches(name)) name else "'" + name.replace("'", "''") + "'"
             fun addr(g: SheetRange) = "$q.${Sheets.colName(g.c1)}${g.r1 + 1}:$q.${Sheets.colName(g.c2)}${g.r2 + 1}"
@@ -118,7 +118,7 @@ internal object SheetConditional {
                         val (_, fill, color) = LOOKS[rule.look]
                         // one name, no display name: LibreOffice finds a condition's style by the name it shows
                         val styleName = "Tetra_cf_${hex(fill)}"
-                        styles = OfficeFormats.parse(zip.getInputStream(zip.getEntry("styles.xml") ?: error("No styles.")).use { it.readBytes() })
+                        styles = OfficeFormats.parse(zip.getInputStream(zip.getEntry("styles.xml") ?: sheetProblem(R.string.tables_err_no_styles)).use { it.readBytes() })
                         val st = styles!!
                         val office = st.getElementsByTagNameNS(OFFICE, "styles").item(0) as Element? ?: st.createElementNS(OFFICE, "office:styles").also { st.documentElement.insertBefore(it, st.documentElement.firstChild) }
                         if (kids(office, "style").none { it.getAttributeNS(STYLE, "name") == styleName }) office.appendChild(st.createElementNS(STYLE, "style:style").also { s ->

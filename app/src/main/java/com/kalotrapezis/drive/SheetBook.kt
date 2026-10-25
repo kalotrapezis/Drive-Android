@@ -24,11 +24,11 @@ internal object SheetBook {
     fun quoted(name: String) = if (Regex("""^[\p{L}_][\p{L}\p{N}_.]*$""").matches(name) && !Regex("""^[A-Za-z]{1,3}\d+$""").matches(name)) name else "'" + name.replace("'", "''") + "'"
 
     /** A name a sheet can have: not empty, at most 31 letters, none of : \ / ? * [ ], not another sheet's. */
-    fun valid(name: String, others: List<String>): String? = when {
-        name.isBlank() -> "A sheet needs a name."
-        name.length > 31 -> "A sheet's name can be at most 31 letters."
-        name.any { it in ":\\/?*[]" } -> "A sheet's name cannot have : \\ / ? * [ or ]."
-        others.any { it.equals(name, ignoreCase = true) } -> "There is a sheet called that already."
+    fun valid(name: String, others: List<String>): Int? = when { // what is wrong, as a string
+        name.isBlank() -> R.string.tables_sheet_needs_name
+        name.length > 31 -> R.string.tables_sheet_name_long
+        name.any { it in ":\\/?*[]" } -> R.string.tables_sheet_name_letters
+        others.any { it.equals(name, ignoreCase = true) } -> R.string.tables_sheet_name_taken
         else -> null
     }
 
@@ -62,7 +62,7 @@ internal object SheetBook {
     fun xlsx(source: File, target: File, parts: Map<String, String>, tabs: List<String>, index: Int, add: String? = null, rename: String? = null, delete: Boolean = false, to: Int? = null, copy: Boolean = false) {
         val zip = ZipFile(source)
         val out = HashMap<String, ByteArray?>()
-        fun read(p: String) = out[p]?.let { String(it) } ?: zip.getEntry(p)?.let { e -> String(zip.getInputStream(e).readBytes()) } ?: error("No $p.")
+        fun read(p: String) = out[p]?.let { String(it) } ?: zip.getEntry(p)?.let { e -> String(zip.getInputStream(e).readBytes()) } ?: sheetProblem(R.string.tables_err_no_part, p)
         val wb = parts.getValue("workbook")
         val rels = wb.substringBeforeLast('/', "").let { if (it.isEmpty()) "_rels/" else "$it/_rels/" } + wb.substringAfterLast('/') + ".rels"
         var x = read(wb)

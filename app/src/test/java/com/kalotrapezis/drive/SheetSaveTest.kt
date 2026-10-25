@@ -621,7 +621,7 @@ class SheetSaveTest {
 
     /** Formulas › Names: a name for B2:B3 (Excel's definedName, LibreOffice's named range), used by a formula, kept by LibreOffice, taken away. */
     @Test fun `names defined and taken away`() {
-        assertEquals("That is a cell's name", SheetNames.valid("AB12", emptyList())); assertEquals(null, SheetNames.valid("Amounts_2026", listOf("Other")))
+        assertEquals(R.string.tables_name_is_cell, SheetNames.valid("AB12", emptyList())); assertEquals(null, SheetNames.valid("Amounts_2026", listOf("Other")))
         assertEquals("'My x'!\$A\$1:\$B\$5", SheetNames.fromOds("\$'My x'.\$A\$1:.\$B\$5"))
         val lo = runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0
         for (name in listOf("sheet.xlsx", "sheet.ods")) {

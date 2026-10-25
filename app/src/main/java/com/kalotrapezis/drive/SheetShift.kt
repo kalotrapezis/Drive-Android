@@ -291,13 +291,13 @@ internal class SheetShift(
     /** [source] (an .ods) into [target], LibreOffice's way: rows or cells added or taken out, every address moved. */
     fun ods(source: File, target: File, index: Int, tabs: List<String>) {
         val zip = ZipFile(source)
-        val entry = zip.getEntry("content.xml") ?: error("Not a spreadsheet.")
-        check(entry.size in 0..80_000_000) { "This spreadsheet is too big to change here." }
+        val entry = zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)
+        if (entry.size !in 0..80_000_000) sheetProblem(R.string.tables_too_big_to_change)
         val doc = OfficeFormats.parse(zip.getInputStream(entry).use { it.readBytes() })
         val T = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
         val tables = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as org.w3c.dom.Element } }
             .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is org.w3c.dom.Element && it.localName == "table" } }
-        val table = tables.getOrNull(index) ?: error("No sheet ${index + 1}.")
+        val table = tables.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
         fun kids(e: org.w3c.dom.Element, vararg names: String): List<org.w3c.dom.Element> {
             val out = ArrayList<org.w3c.dom.Element>(); var n = e.firstChild
             while (n != null) { if (n is org.w3c.dom.Element && n.namespaceURI == T && n.localName in names) out += n; n = n.nextSibling }

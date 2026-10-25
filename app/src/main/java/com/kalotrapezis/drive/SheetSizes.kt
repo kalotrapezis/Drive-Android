@@ -14,7 +14,7 @@ internal object SheetSizes {
 
     fun xlsx(source: File, target: File, sheetPart: String, cols: Boolean, from: Int, to: Int, px: Float?, hidden: Boolean?) {
         ZipFile(source).use { zip ->
-            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No sheet.")
+            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: sheetProblem(R.string.tables_err_no_sheet)
             if (cols) {
                 // Excel's columns: <col min max …/> runs (from 1); the ones over [from..to] cut out and changed, the gaps there filled
                 val a = from + 1; val b = to + 1
@@ -63,14 +63,14 @@ internal object SheetSizes {
 
     fun ods(source: File, target: File, index: Int, cols: Boolean, from: Int, to: Int, px: Float?, hidden: Boolean?) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val T = SheetMerge.T
             val S = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"
             val table = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             // the size as a style of its own (LibreOffice keeps a column's width and a row's height in one)
             val style = px?.let { p ->
-                val autos = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "automatic-styles").item(0) as? Element ?: error("No styles.")
+                val autos = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "automatic-styles").item(0) as? Element ?: sheetProblem(R.string.tables_err_no_styles)
                 val taken = (0 until autos.childNodes.length).mapNotNull { (autos.childNodes.item(it) as? Element)?.getAttributeNS(S, "name") }.toSet()
                 val name = generateSequence(1) { it + 1 }.map { (if (cols) "coT" else "roT") + it }.first { it !in taken }
                 val st = doc.createElementNS(S, "style:style"); st.setAttributeNS(S, "style:name", name); st.setAttributeNS(S, "style:family", if (cols) "table-column" else "table-row")

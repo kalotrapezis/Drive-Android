@@ -107,14 +107,14 @@ internal object SheetTables {
             fun read(p: String) = zip.getEntry(p)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } }
             val relsPath = sheetPart.substringBeforeLast('/') + "/_rels/" + sheetPart.substringAfterLast('/') + ".rels"
             var rels = read(relsPath) ?: """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"""
-            var types = read("[Content_Types].xml") ?: error("Not a workbook.")
-            var sheet = read(sheetPart) ?: error("No sheet.")
+            var types = read("[Content_Types].xml") ?: sheetProblem(R.string.tables_err_not_workbook)
+            var sheet = read(sheetPart) ?: sheetProblem(R.string.tables_err_no_sheet)
             // the workbook's tables: their ids and names (each unique in the workbook), this sheet's not overlapped
             val tables = zip.entries().toList().filter { it.name.startsWith("xl/tables/") && it.name.endsWith(".xml") }.map { it.name to read(it.name).orEmpty() }
             val mine = Regex("""<Relationship\b[^>]*/table"[^>]*/>""").findAll(rels).mapNotNull { Regex("""Target="([^"]+)"""").find(it.value)?.groupValues?.get(1)?.substringAfterLast('/') }.toSet()
             fun overlaps(a: SheetRange) = a.r1 <= range.r2 && range.r1 <= a.r2 && a.c1 <= range.c2 && range.c1 <= a.c2
             if (tables.any { (p, x) -> p.substringAfterLast('/') in mine && Regex("""<table\b[^>]*\bref="([^"]+)"""").find(x)?.groupValues?.get(1)?.let(Sheets::rangeRef)?.let(::overlaps) == true })
-                error("These cells are in a table already")
+                sheetProblem(R.string.tables_err_in_table)
             val id = (tables.mapNotNull { Regex("""<table\b[^>]*\bid="(\d+)"""").find(it.second)?.groupValues?.get(1)?.toInt() }.maxOrNull() ?: 0) + 1
             val taken = tables.mapNotNull { Regex("""\bdisplayName="([^"]+)"""").find(it.second)?.groupValues?.get(1)?.lowercase() }.toSet()
             val name = generateSequence(1) { it + 1 }.map { "Table$it" }.first { it.lowercase() !in taken }

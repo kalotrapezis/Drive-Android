@@ -41,6 +41,10 @@ internal object FunctionCategories {
         "Lookup" to setOf("XLOOKUP", "VLOOKUP", "HLOOKUP", "INDEX", "MATCH", "CHOOSE", "ROW", "ROWS", "COLUMN", "COLUMNS", "FILTER", "SORT", "UNIQUE"),
         "Information" to setOf("ISBLANK", "ISNUMBER", "ISTEXT", "ISERROR", "ISNA", "NA"),
     )
+    /** A category's name as shown (its id, the English name, is what the code goes by). */
+    val LABELS = mapOf("Maths" to R.string.tables_cat_maths, "Statistics" to R.string.tables_cat_statistics, "Logical" to R.string.tables_cat_logical,
+        "Text" to R.string.tables_cat_text, "Date and time" to R.string.tables_cat_date_time, "Lookup" to R.string.tables_cat_lookup,
+        "Information" to R.string.tables_cat_information, "Other" to R.string.tables_cat_other, RECENT to R.string.tables_recently_used)
     /** The bar's functions in [category]; the ones no category names go under "Other". */
     fun of(category: String) = SheetFunctions.all.filter { f -> ALL.firstOrNull { it.first == category }?.second?.contains(f.name) ?: ALL.none { f.name in it.second } }
 }
@@ -51,20 +55,21 @@ private const val RECENT = "Recently used"
 @Composable
 internal fun FunctionsDialog(dismiss: () -> Unit, pick: (String) -> Unit) {
     // Excel's "Most Recently Used" first, when there are any
-    val recent = TextEditorStore(androidx.compose.ui.platform.LocalContext.current).recentFunctions.let { r -> remember { r.mapNotNull { n -> SheetFunctions.all.firstOrNull { it.name == n } } } }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val recent = TextEditorStore(context).recentFunctions.let { r -> remember { r.mapNotNull { n -> SheetFunctions.all.firstOrNull { it.name == n } } } }
     var category by remember { mutableStateOf(if (recent.isNotEmpty()) RECENT else FunctionCategories.ALL.first().first) }
     var query by remember { mutableStateOf("") }
     val shown = if (query.isBlank()) (if (category == RECENT) recent else FunctionCategories.of(category))
-        else SheetFunctions.all.filter { f -> f.name.contains(query.trim(), true) || f.says.contains(query.trim(), true) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Insert function") }, text = {
+        else SheetFunctions.all.filter { f -> f.name.contains(query.trim(), true) || context.getString(f.says).contains(query.trim(), true) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.tables_insert_function)) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("Search, e.g. average") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text(stringResource(R.string.tables_search_functions)) }, modifier = Modifier.fillMaxWidth())
             if (query.isBlank()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                (listOfNotNull(RECENT.takeIf { recent.isNotEmpty() }) + FunctionCategories.ALL.map { it.first } + "Other").forEach { c -> Choice(c, c == category) { category = c } } }
+                (listOfNotNull(RECENT.takeIf { recent.isNotEmpty() }) + FunctionCategories.ALL.map { it.first } + "Other").forEach { c -> Choice(stringResource(FunctionCategories.LABELS.getValue(c)), c == category) { category = c } } }
             LazyColumn(Modifier.heightIn(max = 360.dp)) { items(shown, key = { it.name }) { f ->
                 Column(Modifier.fillMaxWidth().clickable { pick(f.name) }.padding(vertical = 8.dp)) {
-                    Text("${f.name}(${f.args})", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text(f.says, style = MaterialTheme.typography.bodySmall)
+                    Text("${f.name}(${if (f.args == 0) "" else stringResource(f.args)})", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(f.says), style = MaterialTheme.typography.bodySmall)
                 } } }
-        } }, confirmButton = {}, dismissButton = { TextButton(onClick = dismiss) { Text("Close") } })
+        } }, confirmButton = {}, dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
 }

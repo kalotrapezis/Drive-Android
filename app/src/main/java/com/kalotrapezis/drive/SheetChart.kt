@@ -94,9 +94,9 @@ internal object SheetChart {
             fun relsOf(p: String) = p.substringBeforeLast('/') + "/_rels/" + p.substringAfterLast('/') + ".rels"
             fun freeId(rels: String) = "rId" + ((Regex("""Id="rId(\d+)"""").findAll(rels).maxOfOrNull { it.groupValues[1].toInt() } ?: 0) + 1)
             fun emptyRels() = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"""
-            val types = Types(read("[Content_Types].xml") ?: error("Not a workbook."))
+            val types = Types(read("[Content_Types].xml") ?: sheetProblem(R.string.tables_err_not_workbook))
             val rel = part?.invoke(zip, out, types)
-            var sheet = read(sheetPart) ?: error("No sheet.")
+            var sheet = read(sheetPart) ?: sheetProblem(R.string.tables_err_no_sheet)
             var sheetRels = read(relsOf(sheetPart)) ?: emptyRels()
             // the sheet's drawing: its own, or a new one named in the sheet
             val own = Regex("""<drawing\b[^>]*\br:id="([^"]+)"""").find(sheet)?.groupValues?.get(1)
@@ -126,16 +126,16 @@ internal object SheetChart {
     /** LibreOffice: sheet [index]'s cell [row], [col] holding the chart's object, [widthPt] × [heightPt]. */
     fun ods(source: File, target: File, index: Int, row: Int, col: Int, widthPt: Float, heightPt: Float, ch: DocChart) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val T = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
             val table = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             val cell = SheetMerge.odsCell(doc, table, row, col)
             val name = generateSequence(1) { it + 1 }.map { "Object tetra-$it" }.first { zip.getEntry("$it/content.xml") == null }
             fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.3fcm", pt / 28.346457f)
             val frame = OfficeFormats.parse("""<draw:frame xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:xlink="http://www.w3.org/1999/xlink" draw:z-index="0" draw:name="Chart tetra" svg:x="0cm" svg:y="0cm" svg:width="${cm(widthPt)}" svg:height="${cm(heightPt)}"><draw:object xlink:href="./$name" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>""".toByteArray()).documentElement
             cell.insertBefore(doc.importNode(frame, true), cell.firstChild)
-            var manifest = zip.getEntry("META-INF/manifest.xml")?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No manifest.")
+            var manifest = zip.getEntry("META-INF/manifest.xml")?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: sheetProblem(R.string.tables_err_no_manifest)
             manifest = manifest.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$name/" manifest:version="1.3" manifest:media-type="application/vnd.oasis.opendocument.chart"/><manifest:file-entry manifest:full-path="$name/content.xml" manifest:media-type="text/xml"/></manifest:manifest>""")
             SheetSave.rezip(zip, target, mapOf("content.xml" to SlidesEdit.domXml(doc), "$name/content.xml" to ChartWriter.odf(ch, widthPt, heightPt).toByteArray(), "META-INF/manifest.xml" to manifest.toByteArray()), "mimetype")
         }
@@ -144,15 +144,15 @@ internal object SheetChart {
     /** LibreOffice: a picture in cell [row], [col] of sheet [index]: a frame with its image (Pictures/), [widthPt] × [heightPt]. */
     fun pictureOds(source: File, target: File, index: Int, row: Int, col: Int, widthPt: Float, heightPt: Float, bytes: ByteArray, ext: String, dxPt: Float = 0f, dyPt: Float = 0f) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             val path = generateSequence(1) { it + 1 }.map { "Pictures/tetra-$it.$ext" }.first { zip.getEntry(it) == null }
             fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.3fcm", pt / 28.346457f)
             val frame = OfficeFormats.parse("""<draw:frame xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:xlink="http://www.w3.org/1999/xlink" draw:z-index="0" draw:name="Picture tetra" svg:x="${cm(dxPt)}" svg:y="${cm(dyPt)}" svg:width="${cm(widthPt)}" svg:height="${cm(heightPt)}"><draw:image xlink:href="$path" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>""".toByteArray()).documentElement
             val cell = SheetMerge.odsCell(doc, table, row, col)
             cell.insertBefore(doc.importNode(frame, true), cell.firstChild)
-            var manifest = zip.getEntry("META-INF/manifest.xml")?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No manifest.")
+            var manifest = zip.getEntry("META-INF/manifest.xml")?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: sheetProblem(R.string.tables_err_no_manifest)
             manifest = manifest.replace("</manifest:manifest>", """<manifest:file-entry manifest:full-path="$path" manifest:media-type="${if (ext == "png") "image/png" else "image/jpeg"}"/></manifest:manifest>""")
             SheetSave.rezip(zip, target, mapOf("content.xml" to SlidesEdit.domXml(doc), path to bytes, "META-INF/manifest.xml" to manifest.toByteArray()), "mimetype")
         }
@@ -161,9 +161,9 @@ internal object SheetChart {
     /** LibreOffice: a text box in cell [row], [col] of sheet [index]: a rectangle shape holding [text], as LibreOffice's are. */
     fun textBoxOds(source: File, target: File, index: Int, row: Int, col: Int, widthPt: Float, heightPt: Float, text: String) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.3fcm", pt / 28.346457f)
             val paras = text.split('\n').joinToString("") { "<text:p>${OfficeFormats.esc(it)}</text:p>" }
             val shape = OfficeFormats.parse("""<draw:custom-shape xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" draw:z-index="0" draw:name="TextBox tetra" svg:x="0cm" svg:y="0cm" svg:width="${cm(widthPt)}" svg:height="${cm(heightPt)}">$paras<draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="rectangle" draw:enhanced-path="M 0 0 L 21600 0 21600 21600 0 21600 0 0 Z N"/></draw:custom-shape>""".toByteArray()).documentElement
@@ -181,12 +181,12 @@ internal object SheetChart {
     fun wordArtOds(source: File, target: File, index: Int, row: Int, col: Int, widthPt: Float, heightPt: Float, text: String, color: Int, sizePt: Float,
                    effects: TextEffects, warp: TextWarp?) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             val S = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"; val DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"; val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
             val FO = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
-            val autos = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "automatic-styles").item(0) as? Element ?: error("No styles.")
+            val autos = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "automatic-styles").item(0) as? Element ?: sheetProblem(R.string.tables_err_no_styles)
             val taken = (0 until autos.childNodes.length).mapNotNull { (autos.childNodes.item(it) as? Element)?.getAttributeNS(S, "name") }.toMutableSet()
             fun style(prefix: String, family: String, kind: String, set: (Element) -> Unit) = generateSequence(1) { it + 1 }.map { "$prefix$it" }.first { it !in taken }.also { name -> taken += name
                 autos.appendChild(doc.createElementNS(S, "style:style").also { st -> st.setAttributeNS(S, "style:name", name); st.setAttributeNS(S, "style:family", family)
@@ -215,11 +215,11 @@ internal object SheetChart {
     /** LibreOffice: a shape in cell [row], [col] of sheet [index] — Words' geometry for [kind], a graphic style of its own for its fill and line. */
     fun shapeOds(source: File, target: File, index: Int, row: Int, col: Int, widthPt: Float, heightPt: Float, kind: String, fill: Int?, line: Int?) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             val S = "urn:oasis:names:tc:opendocument:xmlns:style:1.0"; val DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"; val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
-            val autos = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "automatic-styles").item(0) as? Element ?: error("No styles.")
+            val autos = doc.getElementsByTagNameNS("urn:oasis:names:tc:opendocument:xmlns:office:1.0", "automatic-styles").item(0) as? Element ?: sheetProblem(R.string.tables_err_no_styles)
             val taken = (0 until autos.childNodes.length).mapNotNull { (autos.childNodes.item(it) as? Element)?.getAttributeNS(S, "name") }.toSet()
             val name = generateSequence(1) { it + 1 }.map { "grT$it" }.first { it !in taken }
             autos.appendChild(doc.createElementNS(S, "style:style").also { st -> st.setAttributeNS(S, "style:name", name); st.setAttributeNS(S, "style:family", "graphic")

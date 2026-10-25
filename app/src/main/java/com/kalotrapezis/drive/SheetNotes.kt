@@ -19,8 +19,8 @@ internal object SheetNotes {
             val out = LinkedHashMap<String, ByteArray?>()
             val relsPath = sheetPart.substringBeforeLast('/') + "/_rels/" + sheetPart.substringAfterLast('/') + ".rels"
             var rels = read(relsPath) ?: """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"""
-            var types = read("[Content_Types].xml") ?: error("Not a workbook.")
-            var sheet = read(sheetPart) ?: error("No sheet.")
+            var types = read("[Content_Types].xml") ?: sheetProblem(R.string.tables_err_not_workbook)
+            var sheet = read(sheetPart) ?: sheetProblem(R.string.tables_err_no_sheet)
             fun target(type: String) = Regex("""<Relationship\b[^>]*/>""").findAll(rels).map { it.value }.firstOrNull { "/$type\"" in it }
                 ?.let { Regex("""Target="([^"]+)"""").find(it)?.groupValues?.get(1) }?.let { t -> if (t.startsWith("/")) t.removePrefix("/") else "xl/" + t.removePrefix("../") }
             fun freeId() = "rId" + ((Regex("""Id="rId(\d+)"""").findAll(rels).maxOfOrNull { it.groupValues[1].toInt() } ?: 0) + 1)
@@ -64,10 +64,10 @@ internal object SheetNotes {
 
     fun ods(source: File, target: File, index: Int, row: Int, col: Int, author: String, text: String?) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"; val TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"; val DC = "http://purl.org/dc/elements/1.1/"
             val table = doc.getElementsByTagNameNS(SheetMerge.T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             val cell = SheetMerge.odsCell(doc, table, row, col)
             (0 until cell.childNodes.length).mapNotNull { cell.childNodes.item(it) as? Element }.filter { it.localName == "annotation" }.forEach { cell.removeChild(it) }
             if (text != null) {

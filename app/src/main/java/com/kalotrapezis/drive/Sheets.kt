@@ -15,6 +15,12 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/** A failure the user is told of in the screen's language: its string and that string's arguments ([said] makes the words). */
+internal class SheetProblem(@androidx.annotation.StringRes val text: Int, vararg val args: Any) : IllegalStateException("Tables problem, string $text ${args.joinToString()}")
+internal fun sheetProblem(@androidx.annotation.StringRes text: Int, vararg args: Any): Nothing = throw SheetProblem(text, *args)
+/** What to tell the user of a failure: a [SheetProblem]'s words, else its own message. */
+internal fun Throwable.said(context: android.content.Context): String? = if (this is SheetProblem) context.getString(text, *args) else message
+
 /**
  * Tetra's spreadsheets (the user, 15 Oct: "start with the viewer and let's complete it like we did with Word"): an
  * .xlsx, .ods or .csv read into sheets of cells, each cell as the file shows it — its text already formatted (Excel's
@@ -542,7 +548,7 @@ internal object Sheets {
         fun read(): Workbook {
             val book = rels("").values.firstOrNull { it.endsWith("workbook.xml") } ?: "xl/workbook.xml"
             val bookRels = rels(book)
-            val wb = OfficeFormats.parse(parts(book) ?: error("Not a spreadsheet.")).documentElement
+            val wb = OfficeFormats.parse(parts(book) ?: sheetProblem(R.string.tables_err_not_spreadsheet)).documentElement
             date1904 = wb.kid("workbookPr")?.attr("date1904")?.let { it == "1" || it == "true" } ?: false
             format = SheetFormat(sep.first, sep.second, date1904)
             bookRels.values.firstOrNull { it.contains("theme/") }?.let(parts)?.let(::readTheme)
@@ -559,7 +565,7 @@ internal object Sheets {
                 printNames[path] = named("_xlnm.Print_Area", i) to named("_xlnm.Print_Titles", i)
                 SheetTab(s.attr("name") ?: "Sheet", s.attr("state").let { it == "hidden" || it == "veryHidden" }) to path
             }
-            if (found.isEmpty()) error("No sheets.")
+            if (found.isEmpty()) sheetProblem(R.string.tables_err_no_sheets)
             WriterLog.i("Sheets: xlsx, ${found.size} sheets, ${strings.size} strings, ${styles.size} looks")
             return Workbook(found.map { it.first }, styles, active.coerceIn(0, found.lastIndex), scan = { i, q -> stream(found[i].second)?.use { scan(it, q) }.orEmpty() },
                 kind = "xlsx", format = format, theme = theme.takeIf { it.size >= 10 } ?: SheetTables.OFFICE,
@@ -569,7 +575,7 @@ internal object Sheets {
                 parts = mapOf("workbook" to book) + listOfNotNull(bookRels.values.firstOrNull { it.endsWith("styles.xml") }?.let { "styles" to it }) +
                     found.mapIndexed { i, f -> "$i" to f.second }) { i ->
                 val (tab, path) = found[i]
-                runCatching { readSheet(tab.name, path, stream(path) ?: error("No such part."), tab.hidden) }.getOrElse {
+                runCatching { readSheet(tab.name, path, stream(path) ?: sheetProblem(R.string.tables_err_no_such_part), tab.hidden) }.getOrElse {
                     WriterLog.w("Sheets: sheet ${i + 1} could not be read", it)
                     Sheet(tab.name, CellMap(), 0, 0, emptyMap(), emptyMap(), 64f, 20f, emptySet(), emptySet(), emptyList(), 0, 0, hidden = tab.hidden)
                 }
@@ -1370,7 +1376,7 @@ internal object Sheets {
             settings = readSettings()
             // The automatic styles, at the head of content.xml: read until the body begins.
             var locked = false
-            sax(stream("content.xml") ?: error("Not a spreadsheet."), object : DefaultHandler() {
+            sax(stream("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet), object : DefaultHandler() {
                 val autoStyles = styleHandler()
                 var inStyles = false
                 override fun startElement(uri: String?, local: String, q: String?, at: Attributes) {
@@ -1389,8 +1395,8 @@ internal object Sheets {
             // shortcut: a giant .ods (LibreOffice's copy of the user's 46 tables: 360 MB of content) takes ~9 s here on
             // the phone, inflating; upgrade to tabs that arrive while the first sheet shows if such files are opened.
             val count = parts("meta.xml")?.let { Regex("""table-count="(\d+)"""").find(String(it))?.groupValues?.get(1)?.toIntOrNull() }
-            val tabs = (stream("content.xml") ?: error("Not a spreadsheet.")).use { tables(it, count) }.map { (name, style) -> SheetTab(name, props(style)["tab.display"] == "false") }
-            if (tabs.isEmpty()) error("No sheets.")
+            val tabs = (stream("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { tables(it, count) }.map { (name, style) -> SheetTab(name, props(style)["tab.display"] == "false") }
+            if (tabs.isEmpty()) sheetProblem(R.string.tables_err_no_sheets)
             // Every cell look made now, so the list does not grow while a sheet is drawn.
             style(null) // index 0: the default look
             raw.filter { it.value.family == "table-cell" }.keys.sorted().forEach(::style)
@@ -1404,7 +1410,7 @@ internal object Sheets {
             val listNames = { runCatching { parts("content.xml")?.let { c -> Regex("""<table:named-(?:range|expression)\b[^>]*\btable:name="([^"]*)"""").findAll(String(c, Charsets.UTF_8)).map { it.groupValues[1] }.toList() } }.getOrNull().orEmpty()
                 .mapNotNull { n -> named[n.lowercase()]?.let { n to it } } }
             return Workbook(tabs, styles, active, kind = "ods", format = SheetFormat(sep.first, sep.second, calc = true), styleNames = names, names = lazyNames, nameList = listNames,
-                structureLocked = locked) { i -> table(stream("content.xml") ?: error("Not a spreadsheet."), i) }
+                structureLocked = locked) { i -> table(stream("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet), i) }
         }
 
         /** Each <table:table> start tag's name and style, found in the bytes (tables inside cells are not sheets: skipped). */
@@ -1765,7 +1771,7 @@ internal object Sheets {
                     throw Enough() // the sheets after it are not read
                 }
             })
-            return result ?: error("No sheet ${target + 1}.")
+            return result ?: sheetProblem(R.string.tables_err_no_sheet_n, target + 1)
         }
 
         class Settings(val tables: Map<String, Map<String, String>>, val active: String?, val showGrid: String?, val headings: String? = null)

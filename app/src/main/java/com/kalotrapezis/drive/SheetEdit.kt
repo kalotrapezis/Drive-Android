@@ -48,20 +48,21 @@ internal object SheetInput {
     }
     /** A typed formula Tables cannot read (as it would keep it: ";" made ","): Excel's "There's a problem with this formula". */
     fun badFormula(text: String) = formulaProblem(text) != null
-    /** … and what is wrong, in words: a missing comma or operator, a bracket without its pair, an end too soon (the user, 18 Oct). */
-    fun formulaProblem(text: String): String? {
+    /** … and what is wrong, as a string and its one argument (words in the screen's language, made where shown): a missing comma or
+     *  operator, a bracket without its pair, an end too soon (the user, 18 Oct). */
+    fun formulaProblem(text: String): Pair<Int, String>? {
         if (!text.startsWith("=") || text.length < 2) return null
         val e = runCatching { SheetCalc.parse(formula(text.drop(1))) }.exceptionOrNull() as? SheetCalc.Unknown ?: return null
         val what = e.message.orEmpty()
         val rest = what.substringAfter("left over: ", "").ifEmpty { what.substringAfter("name at ", "") }.trim()
         return when {
-            rest.startsWith(")") -> "a ) with no ( before it, or something missing before it"
-            rest.startsWith("}") || rest.startsWith("]") -> "a ${rest.first()} with no pair"
-            rest.startsWith("{") || rest.startsWith("[") -> "{ } and [ ] are not read here"
-            rest.isNotEmpty() -> "a comma or an operator (+ − * / &) missing before “${rest.take(12)}”"
-            what == "end" -> "it ends too soon: something is missing after the last operator or comma"
-            what == "args" -> "a ( with no ) — or a comma missing between what is in it"
-            else -> "something Tables cannot read ($what)"
+            rest.startsWith(")") -> R.string.tables_problem_close to ""
+            rest.startsWith("}") || rest.startsWith("]") -> R.string.tables_problem_unpaired to rest.first().toString()
+            rest.startsWith("{") || rest.startsWith("[") -> R.string.tables_problem_braces to ""
+            rest.isNotEmpty() -> R.string.tables_problem_missing_operator to rest.take(12)
+            what == "end" -> R.string.tables_problem_end to ""
+            what == "args" -> R.string.tables_problem_open to ""
+            else -> R.string.tables_problem_unreadable to what
         }
     }
     private val NO_ARGS = setOf("TODAY", "NOW", "PI", "RAND", "NA", "TRUE", "FALSE", "ROW", "COLUMN", "SHEET", "SHEETS", "RANDARRAY")
@@ -327,30 +328,30 @@ internal object SheetLook {
      * One of Excel's cell styles: its font colour, fill, weight, size, font and borders ([box]: all four) — put over a look,
      * only the [parts] Excel's style includes ("font", "fill", "border"), the rest of the cell's look kept.
      */
-    class CellStyle(val name: String, val color: Int?, val fill: Int? = null, val bold: Boolean = false, val italic: Boolean = false,
+    class CellStyle(val name: String, @androidx.annotation.StringRes val label: Int, val color: Int?, val fill: Int? = null, val bold: Boolean = false, val italic: Boolean = false,
                     val size: Float? = null, val font: String? = null, val top: SheetLine? = null, val bottom: SheetLine? = null, val box: SheetLine? = null,
                     val parts: String = "font fill border")
     private fun rgb(v: Long) = (0xFF000000 or v).toInt()
     private fun line(v: Long, width: Float = 1f, double: Boolean = false) = SheetLine(rgb(v), width, double)
     /** Home › Cell styles: Excel's own (its Office theme's colours), in its gallery's order. */
     val STYLES = listOf(
-        CellStyle("Normal", null),
-        CellStyle("Good", rgb(0x006100), rgb(0xC6EFCE), parts = "font fill"), CellStyle("Bad", rgb(0x9C0006), rgb(0xFFC7CE), parts = "font fill"),
-        CellStyle("Neutral", rgb(0x9C5700), rgb(0xFFEB9C), parts = "font fill"),
-        CellStyle("Calculation", rgb(0xFA7D00), rgb(0xF2F2F2), bold = true, box = line(0x7F7F7F)),
-        CellStyle("Check cell", rgb(0xFFFFFF), rgb(0xA5A5A5), bold = true, box = line(0x3F3F3F, 3f, double = true)),
-        CellStyle("Explanatory text", rgb(0x7F7F7F), italic = true, parts = "font"),
-        CellStyle("Input", rgb(0x3F3F76), rgb(0xFFCC99), box = line(0x7F7F7F)),
-        CellStyle("Linked cell", rgb(0xFA7D00), bottom = line(0xFF8001, 3f, double = true), parts = "font border"),
-        CellStyle("Note", null, rgb(0xFFFFCC), box = line(0xB2B2B2), parts = "fill border"),
-        CellStyle("Output", rgb(0x3F3F3F), rgb(0xF2F2F2), bold = true, box = line(0x3F3F3F)),
-        CellStyle("Warning text", rgb(0xFF0000), parts = "font"),
-        CellStyle("Title", rgb(0x44546A), size = 18f, font = "Calibri Light", parts = "font"),
-        CellStyle("Heading 1", rgb(0x44546A), bold = true, size = 15f, bottom = line(0x4472C4, 3f), parts = "font border"),
-        CellStyle("Heading 2", rgb(0x44546A), bold = true, size = 13f, bottom = line(0xA2B8E1, 3f), parts = "font border"),
-        CellStyle("Heading 3", rgb(0x44546A), bold = true, bottom = line(0x8EA9DB, 2f), parts = "font border"),
-        CellStyle("Heading 4", rgb(0x44546A), bold = true, parts = "font"),
-        CellStyle("Total", null, bold = true, top = line(0x4472C4), bottom = line(0x4472C4, 3f, double = true), parts = "font border"),
+        CellStyle("Normal", R.string.tables_style_normal, null),
+        CellStyle("Good", R.string.tables_style_good, rgb(0x006100), rgb(0xC6EFCE), parts = "font fill"), CellStyle("Bad", R.string.tables_style_bad, rgb(0x9C0006), rgb(0xFFC7CE), parts = "font fill"),
+        CellStyle("Neutral", R.string.tables_style_neutral, rgb(0x9C5700), rgb(0xFFEB9C), parts = "font fill"),
+        CellStyle("Calculation", R.string.tables_style_calculation, rgb(0xFA7D00), rgb(0xF2F2F2), bold = true, box = line(0x7F7F7F)),
+        CellStyle("Check cell", R.string.tables_style_check_cell, rgb(0xFFFFFF), rgb(0xA5A5A5), bold = true, box = line(0x3F3F3F, 3f, double = true)),
+        CellStyle("Explanatory text", R.string.tables_style_explanatory, rgb(0x7F7F7F), italic = true, parts = "font"),
+        CellStyle("Input", R.string.tables_style_input, rgb(0x3F3F76), rgb(0xFFCC99), box = line(0x7F7F7F)),
+        CellStyle("Linked cell", R.string.tables_style_linked_cell, rgb(0xFA7D00), bottom = line(0xFF8001, 3f, double = true), parts = "font border"),
+        CellStyle("Note", R.string.tables_style_note, null, rgb(0xFFFFCC), box = line(0xB2B2B2), parts = "fill border"),
+        CellStyle("Output", R.string.tables_style_output, rgb(0x3F3F3F), rgb(0xF2F2F2), bold = true, box = line(0x3F3F3F)),
+        CellStyle("Warning text", R.string.tables_style_warning, rgb(0xFF0000), parts = "font"),
+        CellStyle("Title", R.string.tables_style_title, rgb(0x44546A), size = 18f, font = "Calibri Light", parts = "font"),
+        CellStyle("Heading 1", R.string.tables_style_heading1, rgb(0x44546A), bold = true, size = 15f, bottom = line(0x4472C4, 3f), parts = "font border"),
+        CellStyle("Heading 2", R.string.tables_style_heading2, rgb(0x44546A), bold = true, size = 13f, bottom = line(0xA2B8E1, 3f), parts = "font border"),
+        CellStyle("Heading 3", R.string.tables_style_heading3, rgb(0x44546A), bold = true, bottom = line(0x8EA9DB, 2f), parts = "font border"),
+        CellStyle("Heading 4", R.string.tables_style_heading4, rgb(0x44546A), bold = true, parts = "font"),
+        CellStyle("Total", R.string.tables_style_total, null, bold = true, top = line(0x4472C4), bottom = line(0x4472C4, 3f, double = true), parts = "font border"),
     )
     /** [st] in cell style [c]: the parts it includes those of [c] over the workbook's [normal]; the number format, alignment and the rest kept. */
     fun styled(st: SheetStyle, c: CellStyle, normal: SheetStyle): SheetStyle {
@@ -434,114 +435,115 @@ internal class SheetHistory {
  * what it does, narrowed by the letters typed before the cursor; inside one's brackets, what that one takes.
  */
 object SheetFunctions {
-    class Fn(val name: String, val args: String, val says: String)
+    /** [args] and [says]: what it takes and does, in the screen's language ([args] 0: nothing). */
+    class Fn(val name: String, @androidx.annotation.StringRes val args: Int, @androidx.annotation.StringRes val says: Int)
 
     val all = listOf(
-        Fn("SUM", "number1, number2, …", "Adds the numbers"),
-        Fn("AVERAGE", "number1, number2, …", "The average of the numbers"),
-        Fn("COUNT", "value1, value2, …", "How many cells hold numbers"),
-        Fn("COUNTA", "value1, value2, …", "How many cells are not empty"),
-        Fn("COUNTBLANK", "range", "How many cells are empty"),
-        Fn("MAX", "number1, number2, …", "The largest number"),
-        Fn("MIN", "number1, number2, …", "The smallest number"),
-        Fn("IF", "test, if true, if false", "One value or another, by a test"),
-        Fn("SUMIF", "range, criterion, [sum range]", "Adds the cells that match"),
-        Fn("COUNTIF", "range, criterion", "Counts the cells that match"),
-        Fn("AVERAGEIF", "range, criterion, [average range]", "The average of the cells that match"),
-        Fn("SUMIFS", "sum range, range1, criterion1, …", "Adds the cells that match every test"),
-        Fn("COUNTIFS", "range1, criterion1, …", "Counts the cells that match every test"),
-        Fn("AVERAGEIFS", "average range, range1, criterion1, …", "The average of the cells that match every test"),
-        Fn("MAXIFS", "max range, range1, criterion1, …", "The largest of the cells that match"),
-        Fn("MINIFS", "min range, range1, criterion1, …", "The smallest of the cells that match"),
-        Fn("ROUND", "number, digits", "Rounds to so many decimals"),
-        Fn("ROUNDUP", "number, digits", "Rounds away from zero"),
-        Fn("ROUNDDOWN", "number, digits", "Rounds towards zero"),
-        Fn("TRUNC", "number, [digits]", "Cuts the decimals off"),
-        Fn("INT", "number", "Rounds down to a whole number"),
-        Fn("MOD", "number, divisor", "The remainder of a division"),
-        Fn("ABS", "number", "The number without its sign"),
-        Fn("SQRT", "number", "The square root"),
-        Fn("POWER", "number, power", "A number raised to a power"),
-        Fn("PRODUCT", "number1, number2, …", "Multiplies the numbers"),
-        Fn("MEDIAN", "number1, number2, …", "The middle number"),
-        Fn("STDEV", "number1, number2, …", "Standard deviation of a sample"),
-        Fn("STDEV.P", "number1, number2, …", "Standard deviation of everyone"),
-        Fn("STDEV.S", "number1, number2, …", "Standard deviation of a sample (as STDEV)"),
-        Fn("STDEVP", "number1, number2, …", "Standard deviation of everyone (as STDEV.P)"),
-        Fn("VAR", "number1, number2, …", "Variance of a sample"),
-        Fn("VAR.P", "number1, number2, …", "Variance of everyone"),
-        Fn("VAR.S", "number1, number2, …", "Variance of a sample (as VAR)"),
-        Fn("VARP", "number1, number2, …", "Variance of everyone (as VAR.P)"),
-        Fn("RANK", "number, range, [order]", "Where a number stands in a list"),
-        Fn("RANK.EQ", "number, range, [order]", "Where a number stands in a list (as RANK)"),
-        Fn("LARGE", "range, k", "The k-th largest"),
-        Fn("SMALL", "range, k", "The k-th smallest"),
-        Fn("CEILING", "number, step", "Rounds up to a multiple"),
-        Fn("FLOOR", "number, step", "Rounds down to a multiple"),
-        Fn("CEILING.MATH", "number, [step]", "Rounds up to a multiple (1 if not said)"),
-        Fn("FLOOR.MATH", "number, [step]", "Rounds down to a multiple (1 if not said)"),
-        Fn("MROUND", "number, multiple", "Rounds to the nearest multiple"),
-        Fn("SIGN", "number", "1, 0 or −1, by the sign"),
-        Fn("EXP", "number", "e raised to the number"),
-        Fn("LN", "number", "The natural logarithm"),
-        Fn("LOG10", "number", "The logarithm in base 10"),
-        Fn("PI", "", "π, 3,14159…"),
-        Fn("AND", "test1, test2, …", "TRUE when every test is"),
-        Fn("OR", "test1, test2, …", "TRUE when any test is"),
-        Fn("NOT", "test", "The opposite of the test"),
-        Fn("IFERROR", "value, if error", "The value, or another when it is an error"),
-        Fn("IFNA", "value, if #N/A", "The value, or another when it is #N/A"),
-        Fn("VLOOKUP", "key, table, column, [FALSE]", "Finds a row by its first cell; a cell of it"),
-        Fn("HLOOKUP", "key, table, row, [FALSE]", "Finds a column by its top cell; a cell of it"),
-        Fn("XLOOKUP", "key, look in, return from, [if none]", "Finds a key and returns what is beside it"),
-        Fn("FILTER", "cells, keep (e.g. B2:B9>5), [if none]", "The rows that pass, spilled below"),
-        Fn("SORT", "cells, [by column], [1 up or -1 down]", "The rows sorted, spilled below"),
-        Fn("UNIQUE", "cells, [by column], [only once]", "Each row once, spilled below"),
-        Fn("SEQUENCE", "rows, [columns], [start], [step]", "Numbers in order, spilled below"),
-        Fn("MATCH", "key, range, [0]", "Where a value is in a range"),
-        Fn("INDEX", "range, row, [column]", "The cell at a row and column of a range"),
-        Fn("CHOOSE", "n, value1, value2, …", "The n-th of the values"),
-        Fn("ROW", "[cell]", "The cell's row number"),
-        Fn("COLUMN", "[cell]", "The cell's column number"),
-        Fn("ROWS", "range", "How many rows a range has"),
-        Fn("COLUMNS", "range", "How many columns a range has"),
-        Fn("CONCAT", "text1, text2, …", "Joins texts together"),
-        Fn("CONCATENATE", "text1, text2, …", "Joins texts together"),
-        Fn("TEXTJOIN", "between, skip empty, text1, …", "Joins texts with something between"),
-        Fn("LEN", "text", "How many characters"),
-        Fn("LEFT", "text, [count]", "The first characters"),
-        Fn("RIGHT", "text, [count]", "The last characters"),
-        Fn("MID", "text, start, count", "Characters from the middle"),
-        Fn("UPPER", "text", "IN CAPITALS"),
-        Fn("LOWER", "text", "in small letters"),
-        Fn("PROPER", "text", "Each Word Capitalised"),
-        Fn("TRIM", "text", "Takes out extra spaces"),
-        Fn("SUBSTITUTE", "text, old, new", "Puts new text in place of old"),
-        Fn("REPT", "text, times", "The text repeated"),
-        Fn("FIND", "what, text, [start]", "Where a text is (case counts)"),
-        Fn("SEARCH", "what, text, [start]", "Where a text is (any case, * and ?)"),
-        Fn("EXACT", "text1, text2", "TRUE when two texts are the same"),
-        Fn("VALUE", "text", "A number written as text, as a number"),
-        Fn("TEXT", "number, format", "A number written in a format"),
-        Fn("TODAY", "", "Today's date"),
-        Fn("NOW", "", "The date and time now"),
-        Fn("DATE", "year, month, day", "A date from its parts"),
-        Fn("YEAR", "date", "The year of a date"),
-        Fn("MONTH", "date", "The month of a date"),
-        Fn("DAY", "date", "The day of a date"),
-        Fn("WEEKDAY", "date, [type]", "The day of the week, as a number"),
-        Fn("HOUR", "time", "The hour of a time"),
-        Fn("MINUTE", "time", "The minutes of a time"),
-        Fn("SECOND", "time", "The seconds of a time"),
-        Fn("DAYS", "end, start", "Days between two dates"),
-        Fn("EDATE", "date, months", "The date so many months later"),
-        Fn("EOMONTH", "date, months", "The last day of a month"),
-        Fn("ISBLANK", "cell", "TRUE when the cell is empty"),
-        Fn("ISNUMBER", "value", "TRUE when it is a number"),
-        Fn("ISTEXT", "value", "TRUE when it is text"),
-        Fn("ISERROR", "value", "TRUE when it is an error"),
-        Fn("ISNA", "value", "TRUE when it is #N/A"),
-        Fn("NA", "", "The error #N/A"),
+        Fn("SUM", R.string.tables_args_number1_number2_more, R.string.tables_fn_sum),
+        Fn("AVERAGE", R.string.tables_args_number1_number2_more, R.string.tables_fn_average),
+        Fn("COUNT", R.string.tables_args_value1_value2_more, R.string.tables_fn_count),
+        Fn("COUNTA", R.string.tables_args_value1_value2_more, R.string.tables_fn_counta),
+        Fn("COUNTBLANK", R.string.tables_args_range, R.string.tables_fn_countblank),
+        Fn("MAX", R.string.tables_args_number1_number2_more, R.string.tables_fn_max),
+        Fn("MIN", R.string.tables_args_number1_number2_more, R.string.tables_fn_min),
+        Fn("IF", R.string.tables_args_test_if_true_if_false, R.string.tables_fn_if),
+        Fn("SUMIF", R.string.tables_args_range_criterion_opt_sum_range, R.string.tables_fn_sumif),
+        Fn("COUNTIF", R.string.tables_args_range_criterion, R.string.tables_fn_countif),
+        Fn("AVERAGEIF", R.string.tables_args_range_criterion_opt_average_range, R.string.tables_fn_averageif),
+        Fn("SUMIFS", R.string.tables_args_sum_range_range1_criterion1_more, R.string.tables_fn_sumifs),
+        Fn("COUNTIFS", R.string.tables_args_range1_criterion1_more, R.string.tables_fn_countifs),
+        Fn("AVERAGEIFS", R.string.tables_args_average_range_range1_criterion1_more, R.string.tables_fn_averageifs),
+        Fn("MAXIFS", R.string.tables_args_max_range_range1_criterion1_more, R.string.tables_fn_maxifs),
+        Fn("MINIFS", R.string.tables_args_min_range_range1_criterion1_more, R.string.tables_fn_minifs),
+        Fn("ROUND", R.string.tables_args_number_digits, R.string.tables_fn_round),
+        Fn("ROUNDUP", R.string.tables_args_number_digits, R.string.tables_fn_roundup),
+        Fn("ROUNDDOWN", R.string.tables_args_number_digits, R.string.tables_fn_rounddown),
+        Fn("TRUNC", R.string.tables_args_number_opt_digits, R.string.tables_fn_trunc),
+        Fn("INT", R.string.tables_args_number, R.string.tables_fn_int),
+        Fn("MOD", R.string.tables_args_number_divisor, R.string.tables_fn_mod),
+        Fn("ABS", R.string.tables_args_number, R.string.tables_fn_abs),
+        Fn("SQRT", R.string.tables_args_number, R.string.tables_fn_sqrt),
+        Fn("POWER", R.string.tables_args_number_power, R.string.tables_fn_power),
+        Fn("PRODUCT", R.string.tables_args_number1_number2_more, R.string.tables_fn_product),
+        Fn("MEDIAN", R.string.tables_args_number1_number2_more, R.string.tables_fn_median),
+        Fn("STDEV", R.string.tables_args_number1_number2_more, R.string.tables_fn_stdev),
+        Fn("STDEV.P", R.string.tables_args_number1_number2_more, R.string.tables_fn_stdev_p),
+        Fn("STDEV.S", R.string.tables_args_number1_number2_more, R.string.tables_fn_stdev_s),
+        Fn("STDEVP", R.string.tables_args_number1_number2_more, R.string.tables_fn_stdevp),
+        Fn("VAR", R.string.tables_args_number1_number2_more, R.string.tables_fn_var),
+        Fn("VAR.P", R.string.tables_args_number1_number2_more, R.string.tables_fn_var_p),
+        Fn("VAR.S", R.string.tables_args_number1_number2_more, R.string.tables_fn_var_s),
+        Fn("VARP", R.string.tables_args_number1_number2_more, R.string.tables_fn_varp),
+        Fn("RANK", R.string.tables_args_number_range_opt_order, R.string.tables_fn_rank),
+        Fn("RANK.EQ", R.string.tables_args_number_range_opt_order, R.string.tables_fn_rank_eq),
+        Fn("LARGE", R.string.tables_args_range_k, R.string.tables_fn_large),
+        Fn("SMALL", R.string.tables_args_range_k, R.string.tables_fn_small),
+        Fn("CEILING", R.string.tables_args_number_step, R.string.tables_fn_ceiling),
+        Fn("FLOOR", R.string.tables_args_number_step, R.string.tables_fn_floor),
+        Fn("CEILING.MATH", R.string.tables_args_number_opt_step, R.string.tables_fn_ceiling_math),
+        Fn("FLOOR.MATH", R.string.tables_args_number_opt_step, R.string.tables_fn_floor_math),
+        Fn("MROUND", R.string.tables_args_number_multiple, R.string.tables_fn_mround),
+        Fn("SIGN", R.string.tables_args_number, R.string.tables_fn_sign),
+        Fn("EXP", R.string.tables_args_number, R.string.tables_fn_exp),
+        Fn("LN", R.string.tables_args_number, R.string.tables_fn_ln),
+        Fn("LOG10", R.string.tables_args_number, R.string.tables_fn_log10),
+        Fn("PI", 0, R.string.tables_fn_pi),
+        Fn("AND", R.string.tables_args_test1_test2_more, R.string.tables_fn_and),
+        Fn("OR", R.string.tables_args_test1_test2_more, R.string.tables_fn_or),
+        Fn("NOT", R.string.tables_args_test, R.string.tables_fn_not),
+        Fn("IFERROR", R.string.tables_args_value_if_error, R.string.tables_fn_iferror),
+        Fn("IFNA", R.string.tables_args_value_if_n_a, R.string.tables_fn_ifna),
+        Fn("VLOOKUP", R.string.tables_args_key_table_column_opt_false, R.string.tables_fn_vlookup),
+        Fn("HLOOKUP", R.string.tables_args_key_table_row_opt_false, R.string.tables_fn_hlookup),
+        Fn("XLOOKUP", R.string.tables_args_key_look_in_return_from_opt_if_none, R.string.tables_fn_xlookup),
+        Fn("FILTER", R.string.tables_args_cells_keep_e_g_b2_b9_5_opt_if_none, R.string.tables_fn_filter),
+        Fn("SORT", R.string.tables_args_cells_opt_by_column_opt_1_up_or_1_down, R.string.tables_fn_sort),
+        Fn("UNIQUE", R.string.tables_args_cells_opt_by_column_opt_only_once, R.string.tables_fn_unique),
+        Fn("SEQUENCE", R.string.tables_args_rows_opt_columns_opt_start_opt_step, R.string.tables_fn_sequence),
+        Fn("MATCH", R.string.tables_args_key_range_opt_0, R.string.tables_fn_match),
+        Fn("INDEX", R.string.tables_args_range_row_opt_column, R.string.tables_fn_index),
+        Fn("CHOOSE", R.string.tables_args_n_value1_value2_more, R.string.tables_fn_choose),
+        Fn("ROW", R.string.tables_args_opt_cell, R.string.tables_fn_row),
+        Fn("COLUMN", R.string.tables_args_opt_cell, R.string.tables_fn_column),
+        Fn("ROWS", R.string.tables_args_range, R.string.tables_fn_rows),
+        Fn("COLUMNS", R.string.tables_args_range, R.string.tables_fn_columns),
+        Fn("CONCAT", R.string.tables_args_text1_text2_more, R.string.tables_fn_concat),
+        Fn("CONCATENATE", R.string.tables_args_text1_text2_more, R.string.tables_fn_concatenate),
+        Fn("TEXTJOIN", R.string.tables_args_between_skip_empty_text1_more, R.string.tables_fn_textjoin),
+        Fn("LEN", R.string.tables_args_text, R.string.tables_fn_len),
+        Fn("LEFT", R.string.tables_args_text_opt_count, R.string.tables_fn_left),
+        Fn("RIGHT", R.string.tables_args_text_opt_count, R.string.tables_fn_right),
+        Fn("MID", R.string.tables_args_text_start_count, R.string.tables_fn_mid),
+        Fn("UPPER", R.string.tables_args_text, R.string.tables_fn_upper),
+        Fn("LOWER", R.string.tables_args_text, R.string.tables_fn_lower),
+        Fn("PROPER", R.string.tables_args_text, R.string.tables_fn_proper),
+        Fn("TRIM", R.string.tables_args_text, R.string.tables_fn_trim),
+        Fn("SUBSTITUTE", R.string.tables_args_text_old_new, R.string.tables_fn_substitute),
+        Fn("REPT", R.string.tables_args_text_times, R.string.tables_fn_rept),
+        Fn("FIND", R.string.tables_args_what_text_opt_start, R.string.tables_fn_find),
+        Fn("SEARCH", R.string.tables_args_what_text_opt_start, R.string.tables_fn_search),
+        Fn("EXACT", R.string.tables_args_text1_text2, R.string.tables_fn_exact),
+        Fn("VALUE", R.string.tables_args_text, R.string.tables_fn_value),
+        Fn("TEXT", R.string.tables_args_number_format, R.string.tables_fn_text),
+        Fn("TODAY", 0, R.string.tables_fn_today),
+        Fn("NOW", 0, R.string.tables_fn_now),
+        Fn("DATE", R.string.tables_args_year_month_day, R.string.tables_fn_date),
+        Fn("YEAR", R.string.tables_args_date, R.string.tables_fn_year),
+        Fn("MONTH", R.string.tables_args_date, R.string.tables_fn_month),
+        Fn("DAY", R.string.tables_args_date, R.string.tables_fn_day),
+        Fn("WEEKDAY", R.string.tables_args_date_opt_type, R.string.tables_fn_weekday),
+        Fn("HOUR", R.string.tables_args_time, R.string.tables_fn_hour),
+        Fn("MINUTE", R.string.tables_args_time, R.string.tables_fn_minute),
+        Fn("SECOND", R.string.tables_args_time, R.string.tables_fn_second),
+        Fn("DAYS", R.string.tables_args_end_start, R.string.tables_fn_days),
+        Fn("EDATE", R.string.tables_args_date_months, R.string.tables_fn_edate),
+        Fn("EOMONTH", R.string.tables_args_date_months, R.string.tables_fn_eomonth),
+        Fn("ISBLANK", R.string.tables_args_cell, R.string.tables_fn_isblank),
+        Fn("ISNUMBER", R.string.tables_args_value, R.string.tables_fn_isnumber),
+        Fn("ISTEXT", R.string.tables_args_value, R.string.tables_fn_istext),
+        Fn("ISERROR", R.string.tables_args_value, R.string.tables_fn_iserror),
+        Fn("ISNA", R.string.tables_args_value, R.string.tables_fn_isna),
+        Fn("NA", 0, R.string.tables_fn_na),
     )
 
     private val byName = all.associateBy { it.name }
@@ -582,9 +584,9 @@ object SheetFunctions {
     fun insert(t: String, cursor: Int, fn: Fn): Pair<String, Int> {
         val s = start(t, cursor)
         val rest = t.substring(cursor.coerceIn(s, t.length))
-        val open = if (rest.startsWith("(")) "" else "(" + (if (fn.args.isEmpty()) ")" else "") // its bracket already typed: kept
+        val open = if (rest.startsWith("(")) "" else "(" + (if (fn.args == 0) ")" else "") // its bracket already typed: kept
         var out = t.substring(0, s) + fn.name + open + rest
-        var at = s + fn.name.length + 1 + (if (fn.args.isEmpty() && open.isNotEmpty()) 1 else 0)
+        var at = s + fn.name.length + 1 + (if (fn.args == 0 && open.isNotEmpty()) 1 else 0)
         if (!out.startsWith("=")) { out = "=$out"; at++ }
         return out to at
     }

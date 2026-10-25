@@ -16,7 +16,7 @@ internal object SheetMerge {
     /** Excel: sheet part [sheetPart] with [range] merged ([merge]) or the merges over it taken away. */
     fun xlsx(source: File, target: File, sheetPart: String, range: SheetRange, merge: Boolean) {
         ZipFile(source).use { zip ->
-            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: error("No sheet.")
+            var x = zip.getEntry(sheetPart)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } } ?: sheetProblem(R.string.tables_err_no_sheet)
             // the merges kept: those not over the range (a merge partly over it goes, as Excel's Merge takes it in)
             val kept = Regex("""<mergeCell\b[^>]*\bref="([^"]+)"[^>]*/>""").findAll(x).map { it.groupValues[1] }
                 .filter { ref -> Sheets.rangeRef(ref)?.let { !overlaps(it, range) } ?: true }.toList()
@@ -33,7 +33,7 @@ internal object SheetMerge {
                 // after the sheet's data and what the schema puts between (protection, filter, sort…), before the rest
                 val after = Regex("""</sheetData>|<sheetData\s*/>|</?(sheetCalcPr|sheetProtection|protectedRanges|scenarios|autoFilter|sortState|dataConsolidate|customSheetViews)\b[^>]*>""")
                     .findAll(x).lastOrNull()?.let { m -> if (m.value.endsWith("/>") || m.value.startsWith("</")) m.range.last + 1
-                        else Regex("</${m.groupValues[1]}>").find(x, m.range.last)?.range?.last?.plus(1) ?: (m.range.last + 1) } ?: error("No sheet data.")
+                        else Regex("</${m.groupValues[1]}>").find(x, m.range.last)?.range?.last?.plus(1) ?: (m.range.last + 1) } ?: sheetProblem(R.string.tables_err_no_sheet_data)
                 x = x.substring(0, after) + block + x.substring(after)
             }
             SheetSave.rezip(zip, target, mapOf(sheetPart to x.toByteArray()), null)
@@ -71,10 +71,10 @@ internal object SheetMerge {
     /** LibreOffice: sheet [index] with [range] as one spanned cell over covered ones ([merge]), or its cells again. */
     fun ods(source: File, target: File, index: Int, range: SheetRange, merge: Boolean) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val O = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
             val table = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             for (r in range.r1..range.r2) {
                 for (c in range.c1..range.c2) {
                     val cell = odsCell(doc, table, r, c)

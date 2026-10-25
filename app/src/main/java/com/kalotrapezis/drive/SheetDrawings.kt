@@ -22,13 +22,13 @@ internal object SheetDrawings {
     fun xlsx(source: File, target: File, sheetPart: String, ordinal: Int, change: Change) {
         ZipFile(source).use { zip ->
             fun read(p: String) = zip.getEntry(p)?.let { e -> zip.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } }
-            val sheet = read(sheetPart) ?: error("No sheet.")
+            val sheet = read(sheetPart) ?: sheetProblem(R.string.tables_err_no_sheet)
             val rels = read(sheetPart.substringBeforeLast('/') + "/_rels/" + sheetPart.substringAfterLast('/') + ".rels").orEmpty()
-            val id = Regex("""<drawing\b[^>]*\br:id="([^"]+)"""").find(sheet)?.groupValues?.get(1) ?: error("This sheet has no drawings.")
+            val id = Regex("""<drawing\b[^>]*\br:id="([^"]+)"""").find(sheet)?.groupValues?.get(1) ?: sheetProblem(R.string.tables_err_no_drawings)
             val drawingPath = (Regex("""<Relationship\b[^>]*\bId="$id"[^>]*\bTarget="([^"]+)"""").find(rels) ?: Regex("""<Relationship\b[^>]*\bTarget="([^"]+)"[^>]*\bId="$id"""").find(rels))
-                ?.groupValues?.get(1)?.let { t -> if (t.startsWith("/")) t.removePrefix("/") else "xl/" + t.removePrefix("../") } ?: error("No drawing part.")
-            var x = read(drawingPath) ?: error("No drawing part.")
-            val m = ANCHOR.findAll(x).elementAtOrNull(ordinal) ?: error("That drawing is not there any more.")
+                ?.groupValues?.get(1)?.let { t -> if (t.startsWith("/")) t.removePrefix("/") else "xl/" + t.removePrefix("../") } ?: sheetProblem(R.string.tables_err_no_drawing_part)
+            var x = read(drawingPath) ?: sheetProblem(R.string.tables_err_no_drawing_part)
+            val m = ANCHOR.findAll(x).elementAtOrNull(ordinal) ?: sheetProblem(R.string.tables_err_drawing_gone)
             val p = m.groupValues[1]; var a = m.value
             when (change) {
                 Delete -> a = ""
@@ -57,10 +57,10 @@ internal object SheetDrawings {
 
     fun ods(source: File, target: File, index: Int, ordinal: Int, change: Change) {
         ZipFile(source).use { zip ->
-            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: error("Not a spreadsheet.")).use { it.readBytes() })
+            val doc = OfficeFormats.parse(zip.getInputStream(zip.getEntry("content.xml") ?: sheetProblem(R.string.tables_err_not_spreadsheet)).use { it.readBytes() })
             val T = SheetMerge.T; val SVG = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"; val DRAW = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
             val table = doc.getElementsByTagNameNS(T, "table").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: error("No sheet ${index + 1}.")
+                .filter { t -> generateSequence(t.parentNode) { it.parentNode }.none { it is Element && it.localName == "table" } }.getOrNull(index) ?: sheetProblem(R.string.tables_err_no_sheet_n, index + 1)
             // the sheet's frames and shapes in order, not those inside another (as the reader counts them)
             fun top(e: Element) = generateSequence(e.parentNode) { it.parentNode }.takeWhile { it !== table }.none { it is Element && it.namespaceURI == DRAW && it.localName in setOf("frame", "custom-shape") }
             val all = ArrayList<Element>()
@@ -68,7 +68,7 @@ internal object SheetDrawings {
                 if (c.namespaceURI == DRAW && c.localName in setOf("frame", "custom-shape") && top(c)) all += c
                 else if (c.localName != "table" && !(c.namespaceURI == DRAW && c.localName == "g")) walk(c) } } // a group's shapes the reader leaves out too
             walk(table)
-            val d = all.getOrNull(ordinal) ?: error("That drawing is not there any more.")
+            val d = all.getOrNull(ordinal) ?: sheetProblem(R.string.tables_err_drawing_gone)
             fun cm(pt: Float) = String.format(java.util.Locale.ROOT, "%.3fcm", pt / 28.346457f)
             // its far corner a cell no more: its size says how big
             fun loose() = listOf("end-cell-address", "end-x", "end-y").forEach { d.removeAttributeNS(T, it) }

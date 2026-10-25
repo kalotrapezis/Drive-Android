@@ -245,6 +245,7 @@ class MainActivity : ComponentActivity() {
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
         CalendarAlarms.planSoon(this) // the Calendar's next reminder, from the files as they are now
         ContactsPreload.warm(this) // Contacts open full, not "no contacts" for a second
+        PhoneLog.warm(this) // and the Phone's Recents
         Thread { runCatching { TimerService.check(this) } }.start() // a timer running (here or started elsewhere): its notification
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false

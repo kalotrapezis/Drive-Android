@@ -68,6 +68,8 @@ class PhoneActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WriterLog.init(this)
         TetraLook.load(this)
+        if (PhoneLog.recent == null) PhoneLog.warm(this) // opened from the launcher, not from Tetra's Home: read ahead from here
+        if (ContactsPreload.all == null) ContactsPreload.warm(this)
         take(intent)
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = TetraLook.light
         setContent { TetraTheme { PhoneApp(keypad, tab, number, missed, back = { finish() }) } }
@@ -114,10 +116,11 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     val scope = rememberCoroutineScope()
     val askRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { version++ }
     val contacts by produceState(ContactsPreload.all?.map { it.info } ?: emptyList(), version) {
-        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).also { ContactsPreload.all = it }.map { it.info } }.getOrDefault(value) }
+        value = withContext(Dispatchers.IO) { runCatching { ContactsPreload.load(context, ContactsPrefs.byLast(context)).map { it.info } }.getOrDefault(value) }
     }
-    val calls by produceState(emptyList<LoggedCall>(), version) {
-        value = withContext(Dispatchers.IO) { if (tablet) PhoneRelay.calls() else PhoneLog.read(context).also { PhoneHistory.write(context) } }
+    val calls by produceState(if (tablet) emptyList() else PhoneLog.recent.orEmpty(), version) {
+        value = withContext(Dispatchers.IO) { if (tablet) PhoneRelay.calls() else PhoneLog.read(context).also { PhoneLog.recent = it } }
+        if (!tablet) withContext(Dispatchers.IO) { PhoneHistory.write(context) } // after the list shows: it reads every call there is
     }
     LaunchedEffect(calls.isNotEmpty()) { if (calls.isNotEmpty() && shownAt == null) { androidx.compose.runtime.withFrameMillis {}; shownAt = android.os.SystemClock.uptimeMillis() } }
     val spam by produceState(PhoneSpam.read(), version) { value = withContext(Dispatchers.IO) { PhoneSpam.read() } }

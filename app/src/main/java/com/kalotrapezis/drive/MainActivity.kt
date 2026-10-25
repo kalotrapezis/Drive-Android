@@ -223,6 +223,7 @@ private const val HOME_PHOTO_BACKDROP = "home_photo_backdrop"
 internal fun driveRoot(): File = TetraFolder.root(Environment.getExternalStorageDirectory())
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(AppLocale.wrap(base))
     /** The part an applet icon asked for (Settings › App icons), until Tetra has turned to it. */
     private val applet = mutableStateOf<String?>(null)
 

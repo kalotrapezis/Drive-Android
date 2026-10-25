@@ -60,6 +60,7 @@ internal enum class PhoneTab(val icon: Int) { Recents(R.drawable.ic_history), Fa
  * keypad a round button beside it. Also what Android opens for a number (ACTION_DIAL, tel: links): then the keypad.
  */
 class PhoneActivity : ComponentActivity() {
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(AppLocale.wrap(base))
     private val number = mutableStateOf("")
     private val keypad = mutableStateOf(false)
     private val tab = mutableStateOf(PhoneTab.Recents)

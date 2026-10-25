@@ -12,6 +12,11 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (translations session, 25 Oct; branch `claude/translations`) **Translations, Greek first** (the user: "start the translation
+      work; first translation Greek. Make the code translation flexible so we can add all the EU countries. And have a language
+      option in the settings"). Android: every UI string into res/values/strings.xml, Greek in values-el; a language is one
+      file (the build lists the values-<tag> folders); Settings › Appearance › Language (Android's per-app language, so
+      Android's App languages page shows it too). Desktop: locales/<lang>.json, t(), Settings › Language. Applet by applet.
 - [x] (data-calls session, 25 Oct; branches `claude/data-calls` / Drive `data-calls`, not merged, nothing installed) Three of the
       user's reports. **41 % on the phone, 40 % on the computer, 83 % on the tablet**: the computer's copy of the phone's October
       stayed at the 10:00 counts (120.9 GB) while every newer version arrived as a sync copy ("(2)", "(2) (3)"… 14 of them, mtime

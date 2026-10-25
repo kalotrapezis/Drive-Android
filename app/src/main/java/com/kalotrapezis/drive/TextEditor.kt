@@ -285,6 +285,7 @@ internal class TextEditorStore(context: Context) {
 
 /** Opens a text file handed over by another app ("Open with Tetra") as a tab of the editor. */
 class TextEditorActivity : ComponentActivity() {
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(AppLocale.wrap(base))
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val uri = intent.data

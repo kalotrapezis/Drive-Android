@@ -50,6 +50,7 @@ internal val CALL_BLUE = Color(0xFF2F7DD9)
 
 /** A call's own screen, over the lock screen too: ringing, dialling, talking (Plan.md § Phone › Screens). */
 class PhoneCallActivity : ComponentActivity() {
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(AppLocale.wrap(base))
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this)

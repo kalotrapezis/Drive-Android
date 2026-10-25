@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,7 +49,7 @@ import kotlinx.coroutines.withContext
  */
 internal enum class SettingsPage(val title: String, val icon: Int, val tint: Color?, val summary: String, val items: List<String>) {
     Sync("Sync", R.drawable.ic_sync, null, "Computer, automatic sync", listOf("Computer", "Open Sync", "Sync automatically", "Listen in the background")),
-    Appearance("Appearance", R.drawable.ic_palette, null, "Theme, Home, app icons", listOf("Theme", "Photo on Home", "Hidden from Home", "App icons")),
+    Appearance("Appearance", R.drawable.ic_palette, null, "Theme, Home, app icons", listOf("Theme", "Language", "Photo on Home", "Hidden from Home", "App icons")),
     Gallery("Gallery", Category.Gallery.icon, Category.Gallery.color, "Access, search, folders", listOf("Photos and videos", "Search quality", "Folders")),
     Files("Files", Category.Files.icon, Category.Files.color, "Workspace, access", listOf("Drive workspace", "All files access")),
     Scanner("PDF scanner", Category.Scanner.icon, Category.Scanner.color, "Resolution", listOf("Resolution")),
@@ -265,6 +266,11 @@ internal fun SettingsTab(
     val context = LocalContext.current
     SettingsSection(null, "The same on every page; it does not follow the system or the wallpaper's colours. Maps' map has its own choice (Settings › Maps).") {
         ChoiceRow("Theme", "Dark or light", listOf(false to "Dark", true to "Light"), TetraLook.light) { TetraLook.set(context, it) }
+    }
+    SettingsSection(null, stringResource(R.string.settings_language_note)) {
+        var language by remember { mutableStateOf(AppLocale.get(context)) }
+        ChoiceRow(stringResource(R.string.settings_language), stringResource(R.string.settings_language_summary),
+            listOf("" to stringResource(R.string.settings_language_system)) + AppLocale.tags.map { it to AppLocale.name(it) }, language) { language = it; AppLocale.set(context, it) }
     }
     // what is hidden from Home on this device, each still opened here or shown again
     val wide = LocalConfiguration.current.screenWidthDp >= 700

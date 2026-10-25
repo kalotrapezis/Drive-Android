@@ -25,7 +25,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 13
         versionName = "0.6.0-beta.2"
+        // The languages Settings offers: English (res/values) and each res/values-<tag> with a strings.xml, so adding a
+        // language is that one file. Android's own App languages page reads the same folders (generateLocaleConfig).
+        val languages = listOf("en") + file("src/main/res").listFiles().orEmpty()
+            .filter { it.name.matches(Regex("values-[a-z]{2,3}(-r[A-Z]{2})?")) && File(it, "strings.xml").exists() }
+            .map { it.name.removePrefix("values-").replace("-r", "-") }.sorted()
+        buildConfigField("String", "LANGUAGES", "\"${languages.joinToString(",")}\"")
     }
+    androidResources { generateLocaleConfig = true }
     signingConfigs {
         signing?.let { properties ->
             create("release") {
@@ -52,7 +59,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     // One APK per processor. OpenCV, ML Kit, TensorFlow and MapLibre each ship a native library for four
     // architectures, and together they were 346 MB of a 423 MB APK — two thirds of it for emulators nobody
     // installs this on. Split, an arm64 phone downloads only its own.

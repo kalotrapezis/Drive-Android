@@ -65,6 +65,7 @@ private val CAR_COLOR = Color(0xFF26C6DA)
 
 /** Data, its own window as the Phone is (Plan.md § Data): Usage · Devices · Signal, and Setup the first time. */
 class DataActivity : ComponentActivity() {
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(AppLocale.wrap(base))
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this)

@@ -19,7 +19,11 @@ How to write here:
       history is written. writer.log says each opening's times ("Contacts: opened …", "Calls: opened …"). On the phone:
       Contacts 290–380 ms → 180–230 ms (3.3 s → 0.19 s right after Tetra starts); Phone 380–405 → 180–230 ms (2.3–2.8 s →
       0.25 s). Favourites: a two-row grid on top of All, the last cell "+N" opens Favourites (phone and desktop); a heart
-      for favourites everywhere, Contacts and the Phone (the star is the default number's). Not merged.
+      for favourites everywhere, Contacts and the Phone (the star is the default number's). A contact's page ends with
+      History (the last 50 calls on any of their numbers) and Recordings (Tetra/Phone/Recordings by name or number,
+      ContactsRecordings), the latest three and See all on their own page, "No recordings so far"; call types a white
+      arrow on green / blue / red (CallTypeIcon, desktop CallBadge) in Contacts and the Phone. Desktop 0.6.0-beta.14.
+      Not merged.
 - [x] (813e7c4, 18c031f) Office: one tab row for Words, Slides and Tables; Settings › Tab marker: Bubble / Dash; the
       bubble in each app's colour (office tab-marker session, 17 Oct).
 - [x] (386b04c) A: tab names and order alike in Words, Slides, Tables (office-parity builder, 17 Oct).

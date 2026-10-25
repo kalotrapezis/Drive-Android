@@ -113,13 +113,14 @@ internal class DataSpeedService : Service() {
 
     private fun notification(down: Long, up: Long): android.app.Notification {
         val nm = getSystemService(NotificationManager::class.java)
-        if (nm.getNotificationChannel(CHANNEL) == null)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Live speed", NotificationManager.IMPORTANCE_LOW).apply { description = "The network speed in the status bar"; setShowBadge(false) })
+        val name = getString(R.string.data_live_speed) // made again when the language changed: an existing channel takes only its name and description
+        if (nm.getNotificationChannel(CHANNEL)?.name?.toString() != name)
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, name, NotificationManager.IMPORTANCE_LOW).apply { description = getString(R.string.data_channel_speed_about); setShowBadge(false) })
         val open = PendingIntent.getActivity(this, ID, Intent(this, DataActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val stop = PendingIntent.getService(this, ID, Intent(this, DataSpeedService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(icon(down, up))
             .setContentTitle("↓ ${DataRules.bytes(down)}/s   ↑ ${DataRules.bytes(up)}/s")
             .setOngoing(true).setSilent(true).setOnlyAlertOnce(true).setShowWhen(false).setPriority(NotificationCompat.PRIORITY_LOW)
-            .setContentIntent(open).addAction(0, "Turn off", stop).build()
+            .setContentIntent(open).addAction(0, getString(R.string.data_turn_off), stop).build()
     }
 }

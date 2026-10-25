@@ -20,8 +20,23 @@ internal data class MobileReading(val dbm: Int, val level: Int, val gen: String,
 /** One speed and loss test to the computer, with how each end was connected (to compare Ethernet, Wi-Fi, the hotspot). */
 internal data class SpeedTest(val at: String, val here: String, val there: String, val down: Double, val up: Double, val ms: Long, val loss: Int?)
 
+/**
+ * Words for the screen as a string's id and its arguments, put into words where they are shown (the rules stay pure, and the
+ * tests compare ids): a [DataWords] argument is worded too, a date shown "d MMM" in the UI's language; [count] picks a plural.
+ */
+internal data class DataWords(@androidx.annotation.StringRes val id: Int, val args: List<Any> = emptyList(), val count: Int? = null) {
+    fun text(c: Context): String {
+        val a = args.map { x -> when (x) {
+            is DataWords -> x.text(c)
+            is java.time.LocalDate -> x.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", c.resources.configuration.locales[0]))
+            else -> x
+        } }.toTypedArray()
+        return if (count != null) c.resources.getQuantityString(id, count, *a) else c.getString(id, *a)
+    }
+}
+
 /** A piece of advice from the Analyzer: information, never a change made for the user (the user, 25 Oct: "giving info, not … auto fix"). */
-internal data class Advice(val title: String, val text: String)
+internal data class Advice(val title: DataWords, val text: DataWords)
 
 /**
  * Data › Signal › Meter and Analyzer (Plan.md § Data): what the phone, the tablet and the computer are connected by, and how
@@ -33,7 +48,7 @@ internal object DataMeter {
         val ss = runCatching { tm.signalStrength }.getOrNull() ?: return null
         val nr = ss.getCellSignalStrengths(CellSignalStrengthNr::class.java).firstOrNull { it.ssRsrp != CellInfo.UNAVAILABLE }
         val lte = ss.getCellSignalStrengths(CellSignalStrengthLte::class.java).firstOrNull { it.rsrp != CellInfo.UNAVAILABLE }
-        val gen = when { nr != null && lte != null -> "5G (with 4G)"; nr != null -> "5G"; lte != null -> "4G"; else -> "" }
+        val gen = when { nr != null && lte != null -> c.getString(R.string.data_5g_with_4g); nr != null -> "5G"; lte != null -> "4G"; else -> "" }
         val dbm = nr?.ssRsrp ?: lte?.rsrp ?: ss.cellSignalStrengths.firstOrNull()?.dbm ?: return null
         val detail = when {
             nr != null -> listOfNotNull(nr.ssRsrq.takeIf { it != CellInfo.UNAVAILABLE }?.let { "RSRQ $it" }, nr.ssSinr.takeIf { it != CellInfo.UNAVAILABLE }?.let { "SINR $it dB" }).joinToString(" · ")
@@ -64,6 +79,12 @@ internal object DataMeter {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Mobile"
             else -> "Other"
         }
+    }
+
+    /** [link]'s answer in words: Wi-Fi and Ethernet as they are, the others in the UI's language. */
+    fun linkName(c: Context, link: String): String = when (link) {
+        "Hotspot" -> c.getString(R.string.data_hotspot); "Mobile" -> c.getString(R.string.data_mobile)
+        "Offline" -> c.getString(R.string.data_offline); "Other" -> c.getString(R.string.data_other); else -> link
     }
 
     /** The computer's own connection as its /data/wifi says it: "Ethernet 1000 Mb/s" or "Wi-Fi −58 dBm". */
@@ -123,21 +144,18 @@ internal object DataMeter {
             val here = DataSignal.crowdingAt(nets, ch)
             if (ch in 1..14 && best != null && best.first != ch && here - best.second >= 1.0) {
                 val near = others.count { DataSignal.channel(it.second) in 1..14 && kotlin.math.abs(DataSignal.channel(it.second) - ch) < 5 }
-                out += Advice("Channel ${best.first} is quieter", "Your network is on channel $ch, with $near ${if (near == 1) "network" else "networks"} on it or next to it. " +
-                    (if (hotspot) "A phone's hotspot picks its own channel; turning it off and on may pick another." else "Channel ${best.first} is the least crowded: it is changed in the router's settings."))
+                out += Advice(DataWords(R.string.data_adv_channel, listOf(best.first)),
+                    if (hotspot) DataWords(R.plurals.data_adv_channel_hotspot, listOf(ch, near), near) else DataWords(R.plurals.data_adv_channel_router, listOf(ch, near, best.first), near))
             }
-            if (ch in 1..14) out += Advice("2.4 GHz", "It reaches farther and through more walls; 5 GHz is much faster in the same room or the next. " +
-                (if (hotspot) "In the phone's hotspot settings, 5 GHz can be chosen if every device has it." else "Most routers offer both: use 5 GHz where it reaches."))
+            if (ch in 1..14) out += Advice(DataWords(R.string.data_band_24), DataWords(if (hotspot) R.string.data_adv_24_hotspot else R.string.data_adv_24_router))
             when {
-                mine.rssi < -75 -> out += Advice("Weak here (${mine.rssi} dBm)", "Walls, floors and large furniture between you and the " + (if (hotspot) "phone" else "router") +
-                    " weaken it, concrete and metal most. " + (if (hotspot) "Keep the phone high and uncovered — not in a pocket, a bag or under a pillow — and nearer." else
-                    "Raise the router, move it toward the middle of the home, out of cabinets and away from the TV, mirrors, metal, aquariums and the microwave."))
-                mine.rssi < -67 -> out += Advice("Fair here (${mine.rssi} dBm)", "Enough for the web; video calls may stutter. A room nearer, or the " + (if (hotspot) "phone" else "router") + " higher, helps.")
-                else -> out += Advice("Good here (${mine.rssi} dBm)", "Strong enough for anything at this spot.")
+                mine.rssi < -75 -> out += Advice(DataWords(R.string.data_adv_weak, listOf(mine.rssi)), DataWords(if (hotspot) R.string.data_adv_weak_hotspot else R.string.data_adv_weak_router))
+                mine.rssi < -67 -> out += Advice(DataWords(R.string.data_adv_fair, listOf(mine.rssi)), DataWords(if (hotspot) R.string.data_adv_fair_hotspot else R.string.data_adv_fair_router))
+                else -> out += Advice(DataWords(R.string.data_adv_good, listOf(mine.rssi)), DataWords(R.string.data_adv_good_text))
             }
         }
         val crowded24 = others.count { DataSignal.channel(it.second) in 1..14 && it.third > -80 }
-        if (crowded24 >= 10) out += Advice("Busy air", "$crowded24 networks around on 2.4 GHz. 5 GHz has many more channels and is usually calmer.")
+        if (crowded24 >= 10) out += Advice(DataWords(R.string.data_adv_busy), DataWords(R.string.data_adv_busy_text, listOf(crowded24)))
         return out
     }
 }

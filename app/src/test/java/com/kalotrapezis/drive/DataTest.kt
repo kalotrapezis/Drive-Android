@@ -75,10 +75,10 @@ class DataTest {
         assertEquals(null, m.runsOut) // ~ 8 GB a day for a month stays under 300 GB
         val apps = listOf(DataApp(d(10, 20), "com.facebook.katana", "Facebook", "mobile", 100_000_000, 400_000_000, 0))
         val tips = DataInsights.tips(p, s, m, apps, phone = true).map { it.title }
-        assertTrue(tips.any { it.startsWith("About") && it.endsWith("% of the limit") })
-        assertTrue("90 % went through the hotspot" in tips)
-        assertTrue("Weekends use more" in tips)
-        assertTrue("Facebook: 500 MB on mobile" in tips)
+        assertTrue(tips.any { it.id == R.string.data_tip_about })
+        assertTrue(DataWords(R.string.data_tip_hotspot, listOf(90)) in tips)
+        assertTrue(tips.any { it.id == R.string.data_tip_weekends })
+        assertTrue(DataWords(R.string.data_tip_app, listOf("Facebook", "500 MB")) in tips)
         // a small limit: the day it runs out
         val small = p.copy(size = 200_000_000_000) // 170 GB used by the 25th, ~240 GB by the renewal
         val ms = DataInsights.metrics(small, DataRules.status(small, days, today), days, today, phone = true)
@@ -117,9 +117,10 @@ class DataTest {
     }
 
     @Test fun `a use in words, the hotspot apart`() {
-        assertEquals("Hotspot 70 GB · Wi-Fi 28 GB", Use(0, 70_000_000_000, 28_000_000_000).words())
-        assertEquals("Mobile 0 B · Wi-Fi 0 B", Use(0, 0, 0).words(always = true))
-        assertEquals("Mobile 1.2 GB", Use(1_200_000_000, 0, 0).words())
+        val en = { id: Int -> mapOf(R.string.data_mobile to "Mobile", R.string.data_hotspot to "Hotspot").getValue(id) }
+        assertEquals("Hotspot 70 GB · Wi-Fi 28 GB", Use(0, 70_000_000_000, 28_000_000_000).words(word = en))
+        assertEquals("Mobile 0 B · Wi-Fi 0 B", Use(0, 0, 0).words(always = true, word = en))
+        assertEquals("Mobile 1.2 GB", Use(1_200_000_000, 0, 0).words(word = en))
     }
 
     @Test fun `the EU and outside it`() {

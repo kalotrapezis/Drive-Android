@@ -23,11 +23,11 @@ class DataMeterTest {
         val mine = WifiReading(-78, 72, 2437, "Home") // channel 6, weak
         val heard = listOf(Triple("Home", 2437, -78), Triple("A", 2437, -50), Triple("B", 2442, -55), Triple("C", 2452, -60), Triple("D", 2412, -90))
         val a = DataMeter.advice(mine, hotspot = false, heard)
-        assertEquals("Channel 1 is quieter", a[0].title)
-        assertTrue(a.any { it.title == "2.4 GHz" })
-        assertTrue(a.any { it.title.startsWith("Weak here") && "router" in it.text })
+        assertEquals(DataWords(R.string.data_adv_channel, listOf(1)), a[0].title)
+        assertTrue(a.any { it.title.id == R.string.data_band_24 })
+        assertTrue(a.any { it.title.id == R.string.data_adv_weak && it.text.id == R.string.data_adv_weak_router })
         val h = DataMeter.advice(mine, hotspot = true, heard)
-        assertTrue(h.first { it.title.startsWith("Weak here") }.text.contains("pocket")) // a phone's hotspot: advice for the phone
+        assertEquals(R.string.data_adv_weak_hotspot, h.first { it.title.id == R.string.data_adv_weak }.text.id) // a phone's hotspot: advice for the phone
     }
 
     @Test fun `a rough distance grows as the signal falls`() {

@@ -67,9 +67,9 @@ internal data class DataSpot(val at: String, val spot: String, val round: String
 internal object DataSignal {
     // ---- the rules, kept pure for the tests ----
 
-    fun quality(rssi: Int) = when {
-        rssi >= -55 -> "Excellent"; rssi >= -67 -> "Good: calls and video"; rssi >= -75 -> "Fair: the web"; rssi >= -85 -> "Poor: it may drop"; else -> "Almost none"
-    }
+    fun quality(c: Context, rssi: Int): String = c.getString(when {
+        rssi >= -55 -> R.string.data_q_excellent; rssi >= -67 -> R.string.data_q_good; rssi >= -75 -> R.string.data_q_fair; rssi >= -85 -> R.string.data_q_poor; else -> R.string.data_q_none
+    })
     fun band(mhz: Int) = when { mhz >= 5925 -> "6 GHz"; mhz >= 4900 -> "5 GHz"; mhz > 0 -> "2.4 GHz"; else -> "" }
     fun channel(mhz: Int) = when {
         mhz == 2484 -> 14; mhz in 2412..2472 -> (mhz - 2407) / 5; mhz in 5000..5895 -> (mhz - 5000) / 5; mhz >= 5955 -> (mhz - 5950) / 5; else -> 0
@@ -213,17 +213,18 @@ internal object DataSignal {
     fun drops(all: Map<String, List<DataMonth>>): List<Pair<String, DataEvent>> =
         all.flatMap { (d, m) -> m.flatMap { it.events }.map { d to it } }.filter { it.second.kind in DROPS }.distinct().sortedByDescending { it.second.at }
 
-    fun describe(e: DataEvent, timeOnly: Boolean = false): String {
-        val t = runCatching { OffsetDateTime.parse(e.at).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern(if (timeOnly) "HH:mm" else "EEE d MMM HH:mm", Locale.ENGLISH)) }.getOrDefault(e.at)
-        val len = if (e.secs >= 60) "${e.secs / 60} min ${e.secs % 60} s" else "${e.secs} s"
+    fun describe(c: Context, e: DataEvent, timeOnly: Boolean = false): String {
+        val t = runCatching { OffsetDateTime.parse(e.at).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern(if (timeOnly) "HH:mm" else "EEE d MMM HH:mm", c.resources.configuration.locales[0])) }.getOrDefault(e.at)
+        val len = if (e.secs >= 60) c.getString(R.string.data_len_min, e.secs / 60, e.secs % 60) else c.getString(R.string.data_len_s, e.secs)
+        fun noted(plain: Int, withNote: Int) = if (e.note.isNotEmpty()) c.getString(withNote, len, e.note) else c.getString(plain, len)
         return "$t · " + when (e.kind) {
-            "drop-mobile" -> "mobile data lost $len" + (if (e.note.isNotEmpty()) " (${e.note})" else "")
-            "no-service" -> "no service $len"
-            "weak-mobile" -> "no mobile signal $len"
-            "drop-wifi" -> "Wi-Fi lost $len" + (if (e.note.isNotEmpty()) " (${e.note})" else "")
-            "weak-wifi" -> "Wi-Fi very weak $len"
-            "left-hotspot" -> "off the phone's hotspot $len"
-            else -> "fell from ${e.note} to ${e.kind.removePrefix("fell-to-")}"
+            "drop-mobile" -> noted(R.string.data_drop_mobile, R.string.data_drop_mobile_note)
+            "no-service" -> c.getString(R.string.data_no_service, len)
+            "weak-mobile" -> c.getString(R.string.data_weak_mobile, len)
+            "drop-wifi" -> noted(R.string.data_drop_wifi, R.string.data_drop_wifi_note)
+            "weak-wifi" -> c.getString(R.string.data_weak_wifi, len)
+            "left-hotspot" -> c.getString(R.string.data_left_hotspot, len)
+            else -> c.getString(R.string.data_fell, e.note, e.kind.removePrefix("fell-to-"))
         }
     }
 
@@ -235,13 +236,16 @@ internal object DataSignal {
         if (p.getString("dropsDay", "") == yesterday.toString()) return
         val l = drops(all).filter { runCatching { OffsetDateTime.parse(it.second.at).atZoneSameInstant(ZoneId.systemDefault()).toLocalDate() == yesterday }.getOrDefault(false) }
         p.edit().putString("dropsDay", yesterday.toString()).apply()
-        if (l.isNotEmpty()) DataStats.notify(c, 0xDA20, "Signal drops yesterday: ${l.size}", l.take(4).joinToString("\n") { (d, e) -> "$d: " + describe(e).substringAfter(" · ") })
+        if (l.isNotEmpty()) DataStats.notify(c, 0xDA20, c.getString(R.string.data_drops_yesterday, l.size), l.take(4).joinToString("\n") { (d, e) -> "$d: " + describe(c, e).substringAfter(" · ") })
     }
 }
 
 // ---- the Signal tab: its own tabs at the top (the user, 25 Oct: "the signal tab now is a wall of text") ----
 
-private enum class SignalPage { Meter, Analyzer, Spots, Drops }
+private enum class SignalPage(@androidx.annotation.StringRes val label: Int) { Meter(R.string.data_page_meter), Analyzer(R.string.data_page_analyzer), Spots(R.string.data_page_spots), Drops(R.string.data_page_drops) }
+
+/** The locale the screen is shown in, for dates. */
+@Composable private fun uiLocale(): Locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
 
 @Composable
 internal fun DataSignalTab(pad: PaddingValues) {
@@ -255,7 +259,7 @@ internal fun DataSignalTab(pad: PaddingValues) {
                     SignalPage.entries.forEach { p ->
                         Surface(onClick = { page = p }, shape = CircleShape, color = if (p == page) dataColor() else Color.Transparent,
                             contentColor = if (p == page) onData() else MaterialTheme.colorScheme.onSurface) {
-                            Text(p.name, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), maxLines = 1, softWrap = false)
+                            Text(stringResource(p.label), Modifier.padding(horizontal = 12.dp, vertical = 8.dp), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -277,9 +281,9 @@ internal fun DataSignalTab(pad: PaddingValues) {
 @Composable internal fun Info(title: String, text: String) {
     var open by remember { mutableStateOf(false) }
     IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
-        Icon(painterResource(R.drawable.ic_info), contentDescription = "About $title", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Icon(painterResource(R.drawable.ic_info), contentDescription = stringResource(R.string.data_about_info, title), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
     }
-    if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(title) }, text = { Text(text) }, confirmButton = { TextButton(onClick = { open = false }) { Text("OK") } })
+    if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(title) }, text = { Text(text) }, confirmButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
 }
 
 private fun signalColor(rssi: Int) = when { rssi >= -67 -> Color(0xFF7CC417); rssi >= -75 -> Color(0xFFF2B705); else -> Color(0xFFE53935) }
@@ -353,21 +357,21 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
         LazyColumn(Modifier.fillMaxSize(), contentPadding = pad, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 val wifiGauge: @Composable (Modifier) -> Unit = { m ->
-                    if (link == "Ethernet") Gauge("Ethernet", null, -100, -30, Color(0xFF7CC417), "Connected by cable", listOf("No radio: the cable is as good as it gets"), emptyList(), m)
-                    else Gauge(if (link == "Hotspot") "Wi-Fi · a phone's hotspot" else "Wi-Fi", wifi?.rssi, -95, -30, signalColor(wifi?.rssi ?: -100),
-                        wifi?.let { DataSignal.quality(it.rssi) } ?: "Not on Wi-Fi",
-                        listOfNotNull(wifi?.let { r -> listOfNotNull(r.ssid, DataSignal.band(r.mhz), DataSignal.channel(r.mhz).takeIf { it > 0 }?.let { "ch $it" }).joinToString(" · ") },
-                            wifi?.let { "Link ${it.speed} Mb/s" }), wifiHistory, m) {
+                    if (link == "Ethernet") Gauge("Ethernet", null, -100, -30, Color(0xFF7CC417), stringResource(R.string.data_by_cable), listOf(stringResource(R.string.data_cable_best)), emptyList(), m)
+                    else Gauge(if (link == "Hotspot") stringResource(R.string.data_wifi_hotspot) else "Wi-Fi", wifi?.rssi, -95, -30, signalColor(wifi?.rssi ?: -100),
+                        wifi?.let { DataSignal.quality(context, it.rssi) } ?: stringResource(R.string.data_not_on_wifi),
+                        listOfNotNull(wifi?.let { r -> listOfNotNull(r.ssid, DataSignal.band(r.mhz), DataSignal.channel(r.mhz).takeIf { it > 0 }?.let { context.getString(R.string.data_ch, it) }).joinToString(" · ") },
+                            wifi?.let { context.getString(R.string.data_link_speed, it.speed) }), wifiHistory, m) {
                         IconButton(onClick = { sound = !sound }, modifier = Modifier.size(36.dp)) {
-                            Icon(painterResource(if (sound) R.drawable.ic_volume_up else R.drawable.ic_volume_off), contentDescription = if (sound) "Sound off" else "Sound: beeps faster as the signal grows",
+                            Icon(painterResource(if (sound) R.drawable.ic_volume_up else R.drawable.ic_volume_off), contentDescription = if (sound) stringResource(R.string.data_sound_off) else stringResource(R.string.data_sound_on),
                                 tint = if (sound) dataColor() else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
                 val mobileGauge: @Composable (Modifier) -> Unit = { m ->
                     val r = mobile
-                    Gauge("Mobile" + (r?.gen?.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""), r?.dbm, -125, -75, mobileColor(r?.level ?: 0),
-                        r?.let { listOf("No signal", "Poor", "Fair", "Good", "Excellent")[it.level.coerceIn(0, 4)] } ?: "No mobile signal",
+                    Gauge(stringResource(R.string.data_mobile) + (r?.gen?.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""), r?.dbm, -125, -75, mobileColor(r?.level ?: 0),
+                        r?.let { stringResource(listOf(R.string.data_level_0, R.string.data_level_1, R.string.data_level_2, R.string.data_level_3, R.string.data_level_4)[it.level.coerceIn(0, 4)]) } ?: stringResource(R.string.data_no_mobile_signal),
                         listOfNotNull(r?.let { listOfNotNull(it.operator.ifBlank { null }, it.band).joinToString(" · ") }, r?.detail), mobileHistory, m)
                 }
                 if (wide && hasMobile) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { wifiGauge(Modifier.weight(1f)); mobileGauge(Modifier.weight(1f)) }
@@ -377,15 +381,13 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("The computer", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                            Info("The computer", "How the paired computer is connected now, read from it every few seconds. The test sends 20 MB each way between this device " +
-                                "and the computer over your network (no internet) and pings it 20 times: the speed of the Wi-Fi, the hotspot or the cable between you, " +
-                                "and how many packets were lost. Each test keeps how both ends were connected, so Ethernet, Wi-Fi and the hotspot can be compared.")
+                            Text(stringResource(R.string.data_the_computer), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            Info(stringResource(R.string.data_the_computer), stringResource(R.string.data_info_computer))
                         }
-                        Text(computer?.let { "Connected by " + DataMeter.computerLink(it) + (it.optString("ssid").takeIf { s -> s.isNotEmpty() && !it.has("ethernet") }?.let { s -> " · $s" } ?: "") }
-                            ?: "Not answering (is Tetra open on it, on the same network?)", style = MaterialTheme.typography.bodyMedium)
+                        Text(computer?.let { stringResource(R.string.data_connected_by, DataMeter.computerLink(it)) + (it.optString("ssid").takeIf { s -> s.isNotEmpty() && !it.has("ethernet") }?.let { s -> " · $s" } ?: "") }
+                            ?: stringResource(R.string.data_not_answering), style = MaterialTheme.typography.bodyMedium)
                         Button(enabled = testing == null && computer != null, onClick = {
-                            testing = "Testing…"
+                            testing = context.getString(R.string.data_testing)
                             scope.launch {
                                 val r = withContext(Dispatchers.IO) {
                                     runCatching {
@@ -393,21 +395,22 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
                                         val (down, up, ms) = client.speedTest()
                                         val loss = DataMeter.ping(client.computerHost())
                                         // a phone on mobile data that reaches the computer reaches it over its own hotspot
-                                        val here = DataMeter.link(context).let { if (it == "Mobile") "its own hotspot" else it + (DataSignal.wifi(context)?.let { w -> if (it != "Ethernet") " ${w.rssi} dBm" else "" } ?: "") }
+                                        val here = DataMeter.link(context).let { if (it == "Mobile") context.getString(R.string.data_its_own_hotspot) else DataMeter.linkName(context, it) + (DataSignal.wifi(context)?.let { w -> if (it != "Ethernet") " ${w.rssi} dBm" else "" } ?: "") }
                                         SpeedTest(ZonedDateTime.now().toOffsetDateTime().withNano(0).toString(), here,
                                             DataMeter.computerLink(computer), down, up, loss?.second?.let { Math.round(it) } ?: ms, loss?.first)
                                     }
                                 }
-                                r.onSuccess { DataMeter.addTest(context, it); tests = DataMeter.tests(context); testing = null }.onFailure { testing = "The computer did not answer: ${it.message}" }
+                                r.onSuccess { DataMeter.addTest(context, it); tests = DataMeter.tests(context); testing = null }.onFailure { testing = context.getString(R.string.data_computer_no_answer, it.message) }
                             }
-                        }, colors = ButtonDefaults.buttonColors(containerColor = dataColor(), contentColor = onData())) { Text("Test speed and loss") }
+                        }, colors = ButtonDefaults.buttonColors(containerColor = dataColor(), contentColor = onData())) { Text(stringResource(R.string.data_test_speed), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         testing?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                         tests.forEachIndexed { i, t ->
-                            val time = runCatching { OffsetDateTime.parse(t.at).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.ENGLISH)) }.getOrDefault(t.at)
+                            val locale = uiLocale()
+                            val time = runCatching { OffsetDateTime.parse(t.at).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM HH:mm", locale)) }.getOrDefault(t.at)
                             Column(Modifier.padding(top = if (i == 0) 6.dp else 2.dp)) {
-                                Text("↓ %.0f Mb/s  ↑ %.0f Mb/s  ·  %d ms".format(t.down, t.up, t.ms) + (t.loss?.let { "  ·  $it % lost" } ?: ""),
+                                Text("↓ %.0f Mb/s  ↑ %.0f Mb/s  ·  %d ms".format(t.down, t.up, t.ms) + (t.loss?.let { "  ·  " + stringResource(R.string.data_lost, it) } ?: ""),
                                     style = if (i == 0) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium)
-                                Text("$time · this one: ${t.here} · computer: ${t.there}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.data_test_line, time, t.here, t.there), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -444,8 +447,8 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
         if (!located) item {
             Surface(color = dataColor().copy(alpha = 0.16f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("To hear the networks around, Android needs the location permission (only while this page is open).", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    TextButton(onClick = { ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }) { Text("Allow", color = dataColor()) }
+                    Text(stringResource(R.string.data_hear_networks), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = { ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }) { Text(stringResource(R.string.common_allow), color = dataColor(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         } else item {
@@ -459,10 +462,9 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                Text(if (scanning) "Listening…" else heard?.let { "${it.size} ${if (it.size == 1) "network" else "networks"}" } ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                IconButton(onClick = ::scan, enabled = !scanning) { Icon(painterResource(R.drawable.ic_refresh), contentDescription = "Listen again") }
-                Info("The channels", "Each curve is a network heard around, as wide as the channels it uses and as tall as it is strong; yours is lime, with ✓. The metres are a rough guess from the signal alone (walls make networks look farther). " +
-                    "Networks that overlap share the air and slow each other down. Android lets an app listen 4 times in 2 minutes.")
+                Text(if (scanning) stringResource(R.string.data_listening) else heard?.let { pluralStringResource(R.plurals.data_n_networks, it.size, it.size) } ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconButton(onClick = ::scan, enabled = !scanning) { Icon(painterResource(R.drawable.ic_refresh), contentDescription = stringResource(R.string.data_listen_again)) }
+                Info(stringResource(R.string.data_channels_title), stringResource(R.string.data_info_channels))
             }
         }
         heard?.let { list ->
@@ -471,18 +473,18 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
             items(advice.size) { i ->
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(advice[i].title, style = MaterialTheme.typography.titleSmall, color = dataColor())
-                        Text(advice[i].text, style = MaterialTheme.typography.bodyMedium)
+                        Text(advice[i].title.text(context), style = MaterialTheme.typography.titleSmall, color = dataColor())
+                        Text(advice[i].text.text(context), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
             item {
                 var open by remember { mutableStateOf(false) }
-                TextButton(onClick = { open = !open }) { Text(if (open) "Hide the networks" else "All networks (${list.size})") }
+                TextButton(onClick = { open = !open }) { Text(if (open) stringResource(R.string.data_hide_networks) else stringResource(R.string.data_all_networks_n, list.size), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 if (open) Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     list.sortedByDescending { it.level }.forEach { s ->
-                        @Suppress("DEPRECATION") val name = s.SSID.ifBlank { "(hidden)" }
-                        Text("${s.level} dBm · ch ${DataSignal.channel(s.frequency)} · ${DataSignal.band(s.frequency)} · $name" + if (s.is80211mcResponder) " · RTT" else "", style = MaterialTheme.typography.bodySmall)
+                        @Suppress("DEPRECATION") val name = s.SSID.ifBlank { stringResource(R.string.data_hidden_ssid) }
+                        Text("${s.level} dBm · ${stringResource(R.string.data_ch, DataSignal.channel(s.frequency))} · ${DataSignal.band(s.frequency)} · $name" + if (s.is80211mcResponder) " · RTT" else "", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -495,6 +497,7 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
     val quiet = MaterialTheme.colorScheme.onSurfaceVariant; val lime = dataColor()
     val measure = androidx.compose.ui.text.rememberTextMeasurer()
     val small = MaterialTheme.typography.labelSmall
+    val hiddenName = stringResource(R.string.data_hidden_ssid)
     val nets = list.filter { (DataSignal.channel(it.frequency) > 14) == high && DataSignal.channel(it.frequency) > 0 }
     val lo: Int; val hi: Int
     if (!high) { lo = -1; hi = 16 } else {
@@ -530,12 +533,12 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
             }
             drawPath(path, c.copy(alpha = if (yours) 0.35f else 0.22f))
             drawPath(path, c, style = androidx.compose.ui.graphics.drawscope.Stroke(if (yours) 5f else 2.5f))
-            @Suppress("DEPRECATION") val name = s.SSID.ifBlank { "(hidden)" }.take(16) + (if (yours) " ✓" else "") + " (~${DataSignal.distance(s.level, s.frequency)} m)"
+            @Suppress("DEPRECATION") val name = s.SSID.ifBlank { hiddenName }.take(16) + (if (yours) " ✓" else "") + " (~${DataSignal.distance(s.level, s.frequency)} m)"
             val t = measure.measure(name, small)
             drawText(t, c, Offset((x(ch) - t.size.width / 2f).coerceIn(left, size.width - t.size.width), (y(s.level) - t.size.height - 2.dp.toPx()).coerceAtLeast(0f)))
         }
     }
-    if (nets.isEmpty()) Text("Nothing heard on ${if (high) "5 GHz" else "2.4 GHz"}.", style = MaterialTheme.typography.bodySmall, color = quiet)
+    if (nets.isEmpty()) Text(stringResource(R.string.data_nothing_heard, if (high) "5 GHz" else "2.4 GHz"), style = MaterialTheme.typography.bodySmall, color = quiet)
 }
 
 // ---- Spots ----
@@ -550,24 +553,23 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
     LazyColumn(Modifier.fillMaxSize(), contentPadding = pad, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(round, { round = it; prefs.edit().putString("round", it).apply() }, label = { Text("Round: where the router is") }, singleLine = true, modifier = Modifier.weight(1f))
-                Info("Spots", "Stand somewhere and save it: ten seconds of the signal, averaged, and the speed to the computer. Then move the router (or the phone " +
-                    "that is the hotspot), give the round a new name, and save the same spots again: the rounds side by side say which place was best.")
+                OutlinedTextField(round, { round = it; prefs.edit().putString("round", it).apply() }, label = { Text(stringResource(R.string.data_round_label)) }, singleLine = true, modifier = Modifier.weight(1f))
+                Info(stringResource(R.string.data_page_spots), stringResource(R.string.data_info_spots))
             }
         }
         item {
-            Button(onClick = { saving = true }, enabled = DataSignal.wifi(context) != null, colors = ButtonDefaults.buttonColors(containerColor = dataColor(), contentColor = onData())) { Text("Save this spot") }
+            Button(onClick = { saving = true }, enabled = DataSignal.wifi(context) != null, colors = ButtonDefaults.buttonColors(containerColor = dataColor(), contentColor = onData())) { Text(stringResource(R.string.data_save_spot), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         val rounds = DataSignal.rounds(spots)
         if (rounds.size > 1) item {
             Surface(color = dataColor().copy(alpha = 0.16f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("Best: ${rounds.first().first.ifBlank { "(no name)" }}", style = MaterialTheme.typography.titleSmall, color = dataColor())
-                    rounds.forEach { Text("${it.first.ifBlank { "(no name)" }}: ${"%.0f".format(it.second)} dBm on average", style = MaterialTheme.typography.bodySmall) }
+                    Text(stringResource(R.string.data_best, rounds.first().first.ifBlank { stringResource(R.string.data_no_name) }), style = MaterialTheme.typography.titleSmall, color = dataColor())
+                    rounds.forEach { Text(stringResource(R.string.data_round_avg, it.first.ifBlank { stringResource(R.string.data_no_name) }, "%.0f".format(it.second)), style = MaterialTheme.typography.bodySmall) }
                 }
             }
         }
-        if (spots.isEmpty()) item { Text("No spots yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (spots.isEmpty()) item { Text(stringResource(R.string.data_no_spots), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         spots.groupBy { it.spot }.toList().sortedByDescending { (_, l) -> l.maxOf { it.rssi } }.forEach { (name, l) -> item(key = "spot:$name") {
             Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -580,7 +582,7 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
                             }
                             Text(" ${s.rssi} dBm" + (if (s.down > 0) " · ↓%.0f".format(s.down) else ""), style = MaterialTheme.typography.bodySmall)
                             IconButton(onClick = { scope.launch { withContext(Dispatchers.IO) { DataSignal.deleteSpot(context, s.spot, s.round) }; changed() } }, modifier = Modifier.size(32.dp)) {
-                                Icon(painterResource(R.drawable.ic_close), contentDescription = "Remove", modifier = Modifier.size(16.dp))
+                                Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_remove), modifier = Modifier.size(16.dp))
                             }
                         }
                     }
@@ -594,24 +596,23 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
 // ---- Drops ----
 
 @Composable private fun DropsPage(pad: PaddingValues, version: Int) {
+    val context = LocalContext.current
     val all by produceState(emptyMap<String, List<DataMonth>>(), version) { value = withContext(Dispatchers.IO) { runCatching { DataFiles.all() }.getOrDefault(emptyMap()) } }
     val drops = DataSignal.drops(all).take(80)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = pad, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${drops.size} recorded", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                Info("Drops", "Lost or very weak signal, from Android's own callbacks on the phone and the tablet and from the computer: mobile data lost, no service, " +
-                    "a fall to 3G, Wi-Fi lost and back within ten minutes, the computer off the hotspot. Recorded while Tetra runs; hours it was not running are gaps, " +
-                    "not \"no drops\". Today's arrive with the next hourly look.")
+                Text(pluralStringResource(R.plurals.data_n_recorded, drops.size, drops.size), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                Info(stringResource(R.string.data_page_drops), stringResource(R.string.data_info_drops))
             }
         }
-        if (drops.isEmpty()) item { Text("None yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (drops.isEmpty()) item { Text(stringResource(R.string.data_none_yet), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         drops.groupBy { it.second.at.take(10) }.forEach { (day, l) ->
-            item { Text(runCatching { LocalDate.parse(day).format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.ENGLISH)) }.getOrDefault(day), color = dataColor(), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) }
+            item { val locale = uiLocale(); Text(runCatching { LocalDate.parse(day).format(DateTimeFormatter.ofPattern("EEEE d MMMM", locale)) }.getOrDefault(day), color = dataColor(), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) }
             l.forEach { (device, e) -> item {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFE53935)))
-                    Text(DataSignal.describe(e, timeOnly = true), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Text(DataSignal.describe(context, e, timeOnly = true), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Text(DataFiles.label(all, device), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } }
@@ -625,18 +626,18 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
     var name by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    AlertDialog(onDismissRequest = { if (busy == null) close() }, title = { Text("Save this spot") }, text = {
+    AlertDialog(onDismissRequest = { if (busy == null) close() }, title = { Text(stringResource(R.string.data_save_spot)) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(name, { name = it }, label = { Text("Where (desk, bedroom, balcony…)") }, singleLine = true)
-            Text(if (round.isBlank()) "Round: (no name)" else "Round: $round", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.data_where_label)) }, singleLine = true)
+            Text(stringResource(R.string.data_round, round.ifBlank { stringResource(R.string.data_no_name) }), style = MaterialTheme.typography.bodySmall)
             busy?.let { Text(it) }
         }
     }, confirmButton = {
         TextButton(enabled = name.isNotBlank() && busy == null, onClick = {
             scope.launch {
                 val readings = mutableListOf<WifiReading>()
-                repeat(10) { i -> busy = "Measuring… ${10 - i} s"; DataSignal.wifi(context)?.let(readings::add); delay(1000) }
-                busy = "Speed to the computer…"
+                repeat(10) { i -> busy = context.getString(R.string.data_measuring, 10 - i); DataSignal.wifi(context)?.let(readings::add); delay(1000) }
+                busy = context.getString(R.string.data_speed_to_computer)
                 val pc = withContext(Dispatchers.IO) { runCatching { SyncClient(context, SyncStore(context)).speedTest(8_000_000) }.getOrNull() }
                 val r = readings.ifEmpty { listOfNotNull(start) }
                 if (r.isNotEmpty()) withContext(Dispatchers.IO) {
@@ -645,6 +646,6 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
                 }
                 close()
             }
-        }) { Text("Measure and save") }
-    }, dismissButton = { TextButton(enabled = busy == null, onClick = close) { Text("Cancel") } })
+        }) { Text(stringResource(R.string.data_measure_save), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    }, dismissButton = { TextButton(enabled = busy == null, onClick = close) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
 }

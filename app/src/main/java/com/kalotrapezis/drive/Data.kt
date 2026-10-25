@@ -212,33 +212,29 @@ internal object DataInsights {
         val out = mutableListOf<Advice>()
         val b = DataRules::bytes
         if (p != null && s != null && p.limited) {
-            if (s.used >= s.size) out += Advice("The limit is reached", "${b(s.used)} of ${b(s.size)} used, " +
-                "${s.daysLeft} days before the renewal. What comes now may be slower or cost extra, as the carrier's terms say.")
-            else if (m.runsOut != null) out += Advice("The limit comes ${m.runsOut.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH))}",
-                "At your usual pace the ${b(s.size)} run out before ${s.cycle.end.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH))}. To last, stay near ${b(s.budget)} a day.")
-            else out += Advice("About ${s.size.let { if (it > 0) m.forecast * 100 / it else 0 }} % of the limit", "At your usual pace you will use about ${b(m.forecast)} of ${b(s.size)}: " +
-                "${b(maxOf(0, s.size - m.forecast))} to spare. You could use up to ${b(s.budget)} a day and still make it.")
+            if (s.used >= s.size) out += Advice(DataWords(R.string.data_tip_reached), DataWords(R.string.data_tip_reached_text, listOf(b(s.used), b(s.size), s.daysLeft)))
+            else if (m.runsOut != null) out += Advice(DataWords(R.string.data_tip_runs_out, listOf(m.runsOut)), DataWords(R.string.data_tip_runs_out_text, listOf(b(s.size), s.cycle.end, b(s.budget))))
+            else out += Advice(DataWords(R.string.data_tip_about, listOf(s.size.let { if (it > 0) m.forecast * 100 / it else 0 })),
+                DataWords(R.string.data_tip_about_text, listOf(b(m.forecast), b(s.size), b(maxOf(0, s.size - m.forecast)), b(s.budget))))
         }
-        if (phone && m.hotspotShare >= 40) out += Advice("${m.hotspotShare} % went through the hotspot",
-            "Most of the plan goes to the tablet and the computer. Their updates, downloads, backups and video fill it fastest: leave those for a Wi-Fi that is not the phone's, " +
-                "or set them to pause on metered networks (Android and most computers can).")
+        if (phone && m.hotspotShare >= 40) out += Advice(DataWords(R.string.data_tip_hotspot, listOf(m.hotspotShare)), DataWords(R.string.data_tip_hotspot_text))
         if (m.weekends > 0 && m.workdays > 0) {
             val r = m.weekends.toDouble() / m.workdays
-            if (r >= 1.3) out += Advice("Weekends use more", "A weekend day ${b(m.weekends)}, a workday ${b(m.workdays)} (×%.1f): with no Wi-Fi at work to lean on, weekends are where a Wi-Fi saves the most.".format(java.util.Locale.ROOT, r))
-            else if (r <= 0.77) out += Advice("Workdays use more", "A workday ${b(m.workdays)}, a weekend day ${b(m.weekends)}: the commute and work hours are where the plan goes.")
+            if (r >= 1.3) out += Advice(DataWords(R.string.data_tip_weekends), DataWords(R.string.data_tip_weekends_text, listOf(b(m.weekends), b(m.workdays), "%.1f".format(java.util.Locale.ROOT, r))))
+            else if (r <= 0.77) out += Advice(DataWords(R.string.data_tip_workdays), DataWords(R.string.data_tip_workdays_text, listOf(b(m.workdays), b(m.weekends))))
         }
         // the app (not the hotspot) using the most mobile data, and what of it ran in the background
         val mobileApps = apps.filter { it.net == "mobile" && it.app != "hotspot" }.groupBy { it.app }.map { (k, l) -> Triple(k, l.first().name, l.sumOf { it.fg } to l.sumOf { it.bg }) }
         mobileApps.maxByOrNull { it.third.first + it.third.second }?.let { (app, name, fb) ->
             val total = fb.first + fb.second
             if (total >= 300_000_000) out += when {
-                app == "com.android.vending" -> Advice("$name: ${b(total)} on mobile", "Mostly app updates. In the Play Store › Settings › Network preferences, app updates can be set to Wi-Fi only.")
-                fb.second * 2 > total -> Advice("$name: ${b(total)} on mobile", "${b(fb.second)} of it in the background. Android's settings for the app can stop its background data (tap it in Apps).")
-                else -> Advice("$name: ${b(total)} on mobile", "The app using the most of the plan, mostly while open. Its own settings may have a data saver or a lower video quality.")
+                app == "com.android.vending" -> Advice(DataWords(R.string.data_tip_app, listOf(name, b(total))), DataWords(R.string.data_tip_app_play))
+                fb.second * 2 > total -> Advice(DataWords(R.string.data_tip_app, listOf(name, b(total))), DataWords(R.string.data_tip_app_background, listOf(b(fb.second))))
+                else -> Advice(DataWords(R.string.data_tip_app, listOf(name, b(total))), DataWords(R.string.data_tip_app_open))
             }
         }
-        m.busiest?.let { (day, v) -> if (m.average > 0 && v > m.average * 2) out += Advice("Busiest: ${day.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH))}, ${b(v)}",
-            "Over twice your average of ${b(m.average)}. Tap that day's bar to see which apps it was.") }
+        m.busiest?.let { (day, v) -> if (m.average > 0 && v > m.average * 2) out += Advice(DataWords(R.string.data_tip_busiest, listOf(day, b(v))),
+            DataWords(R.string.data_tip_busiest_text, listOf(b(m.average)))) }
         return out
     }
 }

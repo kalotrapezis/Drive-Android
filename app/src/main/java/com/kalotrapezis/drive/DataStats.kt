@@ -251,8 +251,8 @@ internal object DataStats {
 
     private fun channel(c: Context): NotificationManager {
         val nm = c.getSystemService(NotificationManager::class.java)
-        if (nm.getNotificationChannel(CHANNEL) == null)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Data warnings", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "Your plan's limits and roaming" })
+        // made again each time: an existing channel takes only its name and description, in the language now
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, c.getString(R.string.data_channel_warnings), NotificationManager.IMPORTANCE_DEFAULT).apply { description = c.getString(R.string.data_channel_warnings_about) })
         return nm
     }
 
@@ -277,13 +277,14 @@ internal object DataStats {
         val given = p.getStringSet(key, emptySet())!!.mapNotNull { it.toIntOrNull() }.toSet()
         val due = DataRules.due(plan, st.used, st.size, given)
         due.lastOrNull()?.let { w ->
-            val of = if (plan.kind == DataPlan.FAIR_USE) "of the ${DataRules.bytes(st.size)} fair-use limit" else "of your ${DataRules.bytes(st.size)}"
-            val text = if (w >= 100) "All $of is used, ${st.daysLeft} days before the plan renews." else "${DataRules.bytes(st.used)} used $of · ${DataRules.bytes(st.left)} left for ${st.daysLeft} days."
-            notify(c, 0xDA70 + w, "Data: $w % used", text, if (w >= 80) "Android's data settings" to settings(c, Settings.ACTION_DATA_USAGE_SETTINGS, 0xDA01) else null)
+            val fair = plan.kind == DataPlan.FAIR_USE
+            val text = if (w >= 100) c.getString(if (fair) R.string.data_warn_all_fair else R.string.data_warn_all, DataRules.bytes(st.size), st.daysLeft)
+                else c.getString(if (fair) R.string.data_warn_used_fair else R.string.data_warn_used, DataRules.bytes(st.used), DataRules.bytes(st.size), DataRules.bytes(st.left), st.daysLeft)
+            notify(c, 0xDA70 + w, c.getString(R.string.data_warn_title, w), text, if (w >= 80) c.getString(R.string.data_android_data_settings) to settings(c, Settings.ACTION_DATA_USAGE_SETTINGS, 0xDA01) else null)
             p.edit().putStringSet(key, (given + due).map { it.toString() }.toSet()).apply()
         }
         if (p.getBoolean("warnBudget", false) && plan.limited && st.today > st.budget && p.getString("budgetDay", "") != today.toString()) {
-            notify(c, 0xDA02, "Data: today's budget passed", "${DataRules.bytes(st.today)} today, the budget was ${DataRules.bytes(st.budget)}.")
+            notify(c, 0xDA02, c.getString(R.string.data_budget_title), c.getString(R.string.data_budget_text, DataRules.bytes(st.today), DataRules.bytes(st.budget)))
             p.edit().putString("budgetDay", today.toString()).apply()
         }
         roamingPass(c, plan, months.flatMap { it.days }.firstOrNull { it.day == today })
@@ -299,7 +300,7 @@ internal object DataStats {
 
     private fun dataRoamingOn(c: Context) = runCatching { c.getSystemService(TelephonyManager::class.java).isDataRoamingEnabled }.getOrDefault(true)
 
-    private fun country(iso: String) = java.util.Locale("", iso.uppercase()).getDisplayCountry(java.util.Locale.ENGLISH).ifEmpty { iso.uppercase() }
+    private fun country(c: Context, iso: String) = java.util.Locale("", iso.uppercase()).getDisplayCountry(c.resources.configuration.locales[0]).ifEmpty { iso.uppercase() }
 
     /** A look at roaming (the network watch calls it on every change, the hourly look too): its notices, once each. */
     fun checkRoaming(c: Context) {
@@ -310,17 +311,17 @@ internal object DataStats {
         p.edit().putString("roamingIn", now).apply()
         val stamp = ZonedDateTime.now().toOffsetDateTime().withNano(0).toString()
         val plan = DataFiles.plan()
-        val turnOff = "Turn off data roaming" to settings(c, Settings.ACTION_DATA_ROAMING_SETTINGS, 0xDA03)
+        val turnOff = c.getString(R.string.data_turn_off_roaming) to settings(c, Settings.ACTION_DATA_ROAMING_SETTINGS, 0xDA03)
         if (now != null) {
             note(c, DataEvent(stamp, "roaming", note = now))
-            if (DataRules.inEu(now)) notify(c, 0xDA10, "Roaming in ${country(now)}", "In the EU: as at home" + if (plan?.euCounts == false) ", but your plan does not count it." else ", counted against your plan.")
+            if (DataRules.inEu(now)) notify(c, 0xDA10, c.getString(R.string.data_roaming_in, country(c, now)), c.getString(if (plan?.euCounts == false) R.string.data_roaming_eu_free else R.string.data_roaming_eu_counted))
             else {
-                val pass = plan?.takeIf { it.passPrice > 0 }?.let { " Your day pass: ${it.currency}${"%.0f".format(it.passPrice)} for ${DataRules.bytes(it.passSize)} a day." } ?: " Roaming here may cost extra."
-                notify(c, 0xDA10, "Roaming in ${country(now)} — outside the EU", pass + if (dataRoamingOn(c)) " Data roaming is ON." else " Data roaming is off.", if (dataRoamingOn(c)) turnOff else null)
+                val pass = plan?.takeIf { it.passPrice > 0 }?.let { c.getString(R.string.data_roaming_pass, "${it.currency}${"%.0f".format(it.passPrice)}", DataRules.bytes(it.passSize)) } ?: c.getString(R.string.data_roaming_extra)
+                notify(c, 0xDA10, c.getString(R.string.data_roaming_outside, country(c, now)), pass + " " + c.getString(if (dataRoamingOn(c)) R.string.data_roaming_on else R.string.data_roaming_off), if (dataRoamingOn(c)) turnOff else null)
             }
         } else if (was != null) {
             note(c, DataEvent(stamp, "home"))
-            notify(c, 0xDA10, "Roaming ended", if (dataRoamingOn(c) && !DataRules.inEu(was)) "Back home. Data roaming is still ON — turn it off for the next trip?" else "Back home.",
+            notify(c, 0xDA10, c.getString(R.string.data_roaming_ended), c.getString(if (dataRoamingOn(c) && !DataRules.inEu(was)) R.string.data_back_home_on else R.string.data_back_home),
                 if (dataRoamingOn(c) && !DataRules.inEu(was)) turnOff else null)
         }
     }
@@ -331,14 +332,14 @@ internal object DataStats {
         if (DataRules.inEu(where) || plan.passPrice <= 0 || today == null || today.roaming <= 0) return
         val p = prefs(c); val key = "pass.${today.day}"
         val given = p.getStringSet(key, emptySet())!!
-        val turnOff = "Turn off data roaming" to settings(c, Settings.ACTION_DATA_ROAMING_SETTINGS, 0xDA03)
+        val turnOff = c.getString(R.string.data_turn_off_roaming) to settings(c, Settings.ACTION_DATA_ROAMING_SETTINGS, 0xDA03)
         val price = "${plan.currency}${"%.0f".format(plan.passPrice)}"
         val steps = listOf("first" to 0L, "80" to plan.passSize * 8 / 10, "100" to plan.passSize).filter { (k, at) -> k !in given && today.roaming > at }
         steps.lastOrNull()?.let { (k, _) ->
             when (k) {
-                "first" -> notify(c, 0xDA11, "Roaming data today: $price", "The first roaming data today — today counts as a day of your pass ($price for ${DataRules.bytes(plan.passSize)}).", turnOff)
-                else -> notify(c, 0xDA11, "Day pass: $k % used", "${DataRules.bytes(today.roaming)} of today's ${DataRules.bytes(plan.passSize)}." +
-                    if (k == "100") " More may cost extra or be slow." else "", turnOff)
+                "first" -> notify(c, 0xDA11, c.getString(R.string.data_pass_first_title, price), c.getString(R.string.data_pass_first_text, price, DataRules.bytes(plan.passSize)), turnOff)
+                else -> notify(c, 0xDA11, c.getString(R.string.data_pass_title, k.toInt()), c.getString(if (k == "100") R.string.data_pass_full_text else R.string.data_pass_text,
+                    DataRules.bytes(today.roaming), DataRules.bytes(plan.passSize)), turnOff)
             }
             p.edit().putStringSet(key, given + steps.map { it.first }).apply()
         }

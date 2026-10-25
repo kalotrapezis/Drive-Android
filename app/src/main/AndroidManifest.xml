@@ -77,9 +77,15 @@
             <intent-filter><action android:name="android.intent.action.DIAL" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
             <intent-filter><action android:name="android.intent.action.DIAL" /><category android:name="android.intent.category.DEFAULT" /><data android:scheme="tel" /></intent-filter>
             <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="tel" /></intent-filter>
+            <!-- the call log: what Android opens from a missed-call notification -->
+            <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="vnd.android.cursor.dir/calls" /></intent-filter>
         </activity>
         <receiver android:name=".PhoneCallReceiver" android:exported="false" />
         <receiver android:name=".PhoneRelayReceiver" android:exported="false" />
+        <!-- Android's missed-call notice, handed to the phone app; only Telecom (it holds MODIFY_PHONE_STATE) may send it -->
+        <receiver android:name=".PhoneMissedReceiver" android:exported="true" android:permission="android.permission.MODIFY_PHONE_STATE">
+            <intent-filter><action android:name="android.telecom.action.SHOW_MISSED_CALLS_NOTIFICATION" /></intent-filter>
+        </receiver>
         <service android:name=".PhoneScreening" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true">
             <intent-filter><action android:name="android.telecom.CallScreeningService" /></intent-filter>
         </service>

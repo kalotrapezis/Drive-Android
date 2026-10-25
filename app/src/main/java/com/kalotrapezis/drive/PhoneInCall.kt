@@ -243,3 +243,40 @@ internal object PhonePrefs {
     fun setDeclineHidden(c: Context, on: Boolean) = p(c).edit().putBoolean("decline_hidden", on).apply()
     fun isDialer(c: Context) = c.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_DIALER)
 }
+
+/**
+ * Missed calls: Android hands their notice to the phone app (TelecomManager.ACTION_SHOW_MISSED_CALLS_NOTIFICATION, count 0
+ * to clear it), so it is Tetra's — "Missed call from Μαρία" with Call back and Message, a tap opening Recents › Missed.
+ */
+class PhoneMissedReceiver : BroadcastReceiver() {
+    override fun onReceive(c: Context, i: Intent) {
+        if (i.action != TelecomManager.ACTION_SHOW_MISSED_CALLS_NOTIFICATION) return
+        val nm = c.getSystemService(NotificationManager::class.java)
+        val count = i.getIntExtra(TelecomManager.EXTRA_NOTIFICATION_COUNT, 0)
+        if (count <= 0) { nm.cancel(NOTE); return }
+        val number = i.getStringExtra(TelecomManager.EXTRA_NOTIFICATION_PHONE_NUMBER)?.takeIf { it.isNotBlank() }
+        val app = c.applicationContext
+        val done = goAsync()
+        Thread {
+            runCatching {
+                val who = number?.let { PhoneCalls.contactFor(it)?.name } ?: number
+                if (nm.getNotificationChannel(CHANNEL) == null) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Missed calls", NotificationManager.IMPORTANCE_DEFAULT))
+                val open = PendingIntent.getActivity(app, 10, Intent(app, PhoneActivity::class.java).putExtra(PhoneActivity.TAB, "missed").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                @Suppress("DEPRECATION") val clear = i.getParcelableExtra<PendingIntent>("android.telecom.extra.CLEAR_MISSED_CALLS_INTENT") // TelecomManager.EXTRA_CLEAR_MISSED_CALLS_INTENT, a system API name
+                val b = NotificationCompat.Builder(app, CHANNEL).setSmallIcon(R.drawable.ic_call_missed).setCategory(NotificationCompat.CATEGORY_MISSED_CALL)
+                    .setContentTitle(if (count == 1) "Missed call" else "$count missed calls").setContentText(if (count == 1) who ?: "Hidden number" else who?.let { "The last from $it" })
+                    .setContentIntent(open).setAutoCancel(true).setDeleteIntent(clear)
+                if (count == 1 && number != null) {
+                    b.addAction(0, "Call back", PendingIntent.getActivity(app, 11, Intent(Intent.ACTION_CALL, android.net.Uri.fromParts("tel", number, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                    b.addAction(0, "Message", PendingIntent.getActivity(app, 12, Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:${android.net.Uri.encode(number)}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                }
+                nm.notify(NOTE, b.build())
+            }.onFailure { WriterLog.w("Phone: the missed-call notice (${it.message})") }
+            done.finish()
+        }.start()
+    }
+    private companion object { const val CHANNEL = "phone_missed"; const val NOTE = 4150 }
+}

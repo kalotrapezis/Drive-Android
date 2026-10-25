@@ -147,3 +147,30 @@ internal object PhoneHistory {
         }.onFailure { WriterLog.w("Phone: the call history was not written (${it.message})") }
     }
 }
+
+/**
+ * The keypad's codes, as every phone app answers them: *#*#4636#*#* and the like go to whatever app listens for them
+ * (Android's sendDialerSpecialCode, the phone app's alone), *#06# shows the phone's IMEI or, where Android keeps it from
+ * an ordinary app, opens About phone. Others (*100# for the balance) are calls, placed as any number.
+ */
+internal object PhoneCodes {
+    private val SECRET = Regex("""\*#\*#(\d+)#\*#\*""")
+    fun secret(typed: String) = SECRET.matchEntire(typed)?.groupValues?.get(1)
+
+    /** A code just completed on the keypad: done here, and true (the number then clears). */
+    fun typed(c: Context, typed: String): Boolean? {
+        secret(typed)?.let { code ->
+            runCatching { c.getSystemService(android.telephony.TelephonyManager::class.java).sendDialerSpecialCode(code) }
+                .onFailure { WriterLog.w("Phone: code $code (${it.message})") }
+            return true
+        }
+        if (typed == "*#06#") {
+            @Suppress("MissingPermission")
+            val ids = runCatching { val tm = c.getSystemService(android.telephony.TelephonyManager::class.java); (0 until tm.activeModemCount).mapNotNull { tm.getImei(it) } }.getOrNull()
+            if (ids.isNullOrEmpty()) runCatching { c.startActivity(android.content.Intent(android.provider.Settings.ACTION_DEVICE_INFO_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            else android.app.AlertDialog.Builder(c).setTitle("IMEI").setMessage(ids.joinToString("\n")).setPositiveButton("OK", null).show()
+            return true
+        }
+        return null
+    }
+}

@@ -369,5 +369,21 @@ internal fun PhoneSettings() {
     toggle("Vibrate when a call ends", "One tap when a call that was answered ends.", end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
     toggle("Silence numbers not in Contacts", "They ring without sound and show in Recents as missed.", unknown) { unknown = it; PhonePrefs.setSilenceUnknown(context, it) }
     toggle("Decline hidden numbers", "Calls that hide their number are declined before they ring.", hidden) { hidden = it; PhonePrefs.setDeclineHidden(context, it) }
+    // HyperOS keeps two of its own permissions from apps it did not install: without them a ringing call cannot open its
+    // screen over the lock screen, or from the background (Xiaomi's own Security app, not Android's settings)
+    if (android.os.Build.MANUFACTURER.equals("Xiaomi", true) && dialer) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("On this Xiaomi", style = MaterialTheme.typography.titleSmall)
+            Text("Allow Tetra \"Show on Lock screen\" and \"Display pop-up windows while running in the background\", or a call rings without its screen.",
+                style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
+        }
+        TextButton(onClick = {
+            val editor = Intent("miui.intent.action.APP_PERM_EDITOR").setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                .putExtra("extra_pkgname", context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(editor) }.onFailure {
+                runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            }
+        }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text("Open") }
+    }
     TextButton(onClick = { context.startActivity(Intent(context, PhoneActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text("Open the Phone") }
 }

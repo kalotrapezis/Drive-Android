@@ -63,17 +63,21 @@ class PhoneActivity : ComponentActivity() {
     private val number = mutableStateOf("")
     private val keypad = mutableStateOf(false)
     private val tab = mutableStateOf(PhoneTab.Recents)
+    private val missed = mutableIntStateOf(0) // asked to show the missed calls (a missed-call notification's tap)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this)
         TetraLook.load(this)
         take(intent)
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = TetraLook.light
-        setContent { TetraTheme { PhoneApp(keypad, tab, number, back = { finish() }) } }
+        setContent { TetraTheme { PhoneApp(keypad, tab, number, missed, back = { finish() }) } }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); take(intent) }
     private fun take(i: Intent) {
-        if (i.action == Intent.ACTION_DIAL || i.data != null) { keypad.value = true; number.value = i.data?.schemeSpecificPart.orEmpty() }
+        if (i.action == Intent.ACTION_DIAL || i.data?.scheme == "tel") { keypad.value = true; number.value = i.data?.schemeSpecificPart.orEmpty() }
+        // the call log asked for (Android's own missed-call notification, or Tetra's): Recents › Missed
+        val log = i.action == Intent.ACTION_VIEW && (i.type == CallLog.Calls.CONTENT_TYPE || i.data?.authority == CallLog.AUTHORITY)
+        if (log || i.getStringExtra(TAB) == "missed") { keypad.value = false; tab.value = PhoneTab.Recents; missed.intValue++ }
         when (i.getStringExtra(TAB)) { "keypad" -> keypad.value = true; "recents" -> tab.value = PhoneTab.Recents; "contacts" -> tab.value = PhoneTab.Contacts }
     }
     companion object { const val TAB = "com.kalotrapezis.drive.phone.TAB" } // Home's slots: keypad, recents, contacts
@@ -89,7 +93,7 @@ internal fun phoneRoot() = java.io.File(TetraFolder.root(android.os.Environment.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<PhoneTab>, number: MutableState<String>, back: () -> Unit) {
+private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<PhoneTab>, number: MutableState<String>, missed: State<Int>, back: () -> Unit) {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -134,7 +138,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
         Box(Modifier.fillMaxHeight().widthIn(max = 560.dp).fillMaxWidth()) {
             if (keypad.value) Keypad(number, contacts, call = ::call)
             else when (tab) {
-                PhoneTab.Recents -> Recents(calls, ::who, { PhoneSpam.matches(spam, it) != null }, dialer, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
+                PhoneTab.Recents -> Recents(calls, ::who, { PhoneSpam.matches(spam, it) != null }, dialer, missed.value, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
                     askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
                 }
                 PhoneTab.Favourites -> Favourites(contacts.filter { it.favourite && (query.isBlank() || it.name.contains(query, true)) }.sortedBy { ContactsFiles.sortKey(it, false) }, top, call = ::call)
@@ -199,9 +203,10 @@ private enum class RecentsFilter { All, Missed, Unknown }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, isSpam: (String) -> Boolean, dialer: Boolean, query: String, selected: Set<CallGroup>, select: (Set<CallGroup>) -> Unit,
+private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, isSpam: (String) -> Boolean, dialer: Boolean, showMissed: Int, query: String, selected: Set<CallGroup>, select: (Set<CallGroup>) -> Unit,
                     pad: PaddingValues, call: (String) -> Unit, open: (CallGroup) -> Unit, makeDialer: () -> Unit) {
     var filter by remember { mutableStateOf(RecentsFilter.All) }
+    LaunchedEffect(showMissed) { if (showMissed > 0) filter = RecentsFilter.Missed }
     val zone = ZoneId.systemDefault()
     val groups = remember(calls, query, filter) {
         val q = query.trim().lowercase()
@@ -452,10 +457,16 @@ private fun Keypad(number: MutableState<String>, contacts: List<ContactInfo>, ca
                 }
             }
         }
-        Text(typed.ifEmpty { " " }, fontSize = if (typed.length > 13) 28.sp else 36.sp, maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+        // held: the number on the clipboard pasted in (digits, + * # only)
+        @OptIn(ExperimentalFoundationApi::class)
+        Text(typed.ifEmpty { " " }, fontSize = if (typed.length > 13) 28.sp else 36.sp, maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            .combinedClickable(onLongClickLabel = "Paste", onLongClick = {
+                context.getSystemService(android.content.ClipboardManager::class.java).primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                    ?.filter { it.isDigit() || it in "+*#" }?.takeIf { it.isNotEmpty() }?.let { number.value = it }
+            }) {})
         Text(PhoneArea.of(typed)?.takeIf { found.isEmpty() } ?: " ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
-        DialKeys(press = { ch -> number.value += ch }, hold = { ch ->
+        DialKeys(press = { ch -> number.value += ch; PhoneCodes.typed(context, number.value)?.let { number.value = "" } }, hold = { ch ->
             when (ch) {
                 '0' -> number.value = number.value.dropLast(1) + "+"
                 '1' -> if (number.value == "1") { number.value = ""; PhoneSpeed.voicemail(context) }

@@ -2696,6 +2696,18 @@ small "Message" for a quick reply; over the lock screen. An ongoing-call notific
    Android app can sit beside Tetra as the phone's caller-ID/spam app (Android lets one app hold that role while Tetra is the
    phone app) — the user's choice. PhoneSpamTest. Emulator: a call in 69800* declined unrung (logged blocked); Spam on a
    ringing call listed the number and declined it.
+- [x] 11. Both directions gone through again before the install (the user, 24 Oct: "check the dialer is finished in both
+   directions"; on branch `phone` again, from main 41b5008). Found and fixed: **missed calls** were Android's own notice, whose tap
+   opened Google's app — now Tetra's ("Missed call from Μαρία", Call back, Message; PhoneMissedReceiver for
+   ACTION_SHOW_MISSED_CALLS_NOTIFICATION, only Telecom may send it) and the call log's VIEW opens Recents › Missed; the
+   computer could hear of a ringing call twice (the old phone-state watcher stood down only once the call screen was bound;
+   now whenever Tetra holds the role); **Xiaomi**: HyperOS keeps "Show on Lock screen" and "pop-up windows while running in
+   the background" from sideloaded apps, without which a ringing call has no screen — Settings › Phone › On this Xiaomi ›
+   Open (its own permission editor); the keypad's codes (*#*#4636#*#* through sendDialerSpecialCode, *#06# the IMEI or About
+   phone; *100# stays a call) and paste (hold the number). Emulator: a missed call → Tetra's notice → Recents › Missed;
+   *#*#4636#*#* opened Android's testing menu. Unit 627, 0 failing, 9 skipped; desktop 135/135.
+   Still only on the real devices: the lock screen and pop-ups on HyperOS, the PC's bubble with Tetra as the phone app
+   (answer/decline/end/hold/mute), calls placed from the PC, the history reaching the PC, the tablet's path, Record.
 - Checks at 540411b: unit 623 tests, 0 failing, 9 skipped (HomeLayoutTest counts the Phone's rows now); desktop `tsc` clean,
    `npm test` 135/135.
 - [ ] **On the real devices** (the user's OK to install with tools/phone-install.sh): Settings › Phone › Make it, a real call

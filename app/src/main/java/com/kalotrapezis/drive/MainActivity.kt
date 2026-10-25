@@ -394,6 +394,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     androidx.compose.runtime.DisposableEffect(Unit) {
         runCatching { SyncServer.acquire(context.applicationContext, SyncStore(context.applicationContext)) }
         SyncListenService.start(context)
+        Thread { runCatching { DataStats.startAll(context.applicationContext) } }.start()
         onDispose { runCatching { SyncServer.release() } }
     }
     // the computer asks where the phone is (desktop Maps) and Tetra may not use the location yet: Android's question, here
@@ -703,6 +704,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.Maps -> { mapsGo = null; mapsSearch = null; mapsBack = Screen.Home; screen = Screen.Maps }
             Applet.Contacts -> { contactsOpen = null; screen = Screen.Contacts }
             Applet.Phone -> openPhone(context)
+            Applet.Data -> openData(context)
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -956,6 +958,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                         "maps" -> { mapsGo = null; mapsSearch = null; mapsBack = Screen.Settings; screen = Screen.Maps }
                         "contacts" -> { contactsOpen = null; screen = Screen.Contacts }
                         "phone" -> openPhone(context)
+                        "data" -> openData(context)
                     } },
                 )
             }
@@ -1115,6 +1118,7 @@ private fun Home(
         // Contacts and Maps (23 Oct, the user: Maps one card with 4 slots, Contacts beside it)
         "contacts" -> HomeContactsGroup(openContacts)
         "phone" -> HomePhoneGroup()
+        "data" -> HomeDataGroup()
         "maps" -> HomeMapsGroup(wide, openMaps)
     } }
     // each part small: just its icon, as a launcher's (Scanner and Codes are two apps, so two icons)
@@ -1131,6 +1135,7 @@ private fun Home(
         "timer" -> listOf(HomeIcon("Timer", R.drawable.timer_art, openTimer))
         "contacts" -> listOf(HomeIcon("Contacts", R.drawable.contacts_art, { openContacts(null) }))
         "phone" -> listOf(HomeIcon("Phone", R.drawable.phone_art, { openPhone(context) }))
+        "data" -> listOf(HomeIcon("Data", R.drawable.data_art, { openData(context) }))
         "maps" -> listOf(HomeIcon("Maps", R.drawable.maps_art, { openMaps(null) }))
         else -> emptyList()
     }
@@ -1395,6 +1400,36 @@ internal fun openPhone(c: Context, tab: String? = null) = c.startActivity(Intent
                                 Text(f?.let { it.given.ifBlank { it.name } } ?: s!!.first, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
+                    } }
+                }
+            }
+        }
+    }
+}
+
+/** Data on Home (Plan.md § Data): its art, the plan at a glance, and Usage · Devices · Signal. */
+@Composable private fun HomeDataGroup() {
+    val context = LocalContext.current
+    val line by produceState("") {
+        value = withContext(Dispatchers.IO) { runCatching {
+            val plan = DataFiles.plan()
+            val phone = DataFiles.all().values.maxByOrNull { m -> DataFiles.days(m).sumOf { it.mobile } }.orEmpty()
+            // a tablet: what it took over the phone's hotspot this month; a phone: its plan
+            if (PhoneRelay.noCalls(context)) DataFiles.days(DataFiles.all()[DataFiles.device()].orEmpty()).filter { it.day.withDayOfMonth(1) == java.time.LocalDate.now().withDayOfMonth(1) }
+                .sumOf { it.viaHotspot }.takeIf { it > 0 }?.let { "Hotspot ${DataRules.bytes(it)}" }.orEmpty()
+            else if (plan == null) "Set up" else DataRules.status(plan, DataFiles.days(phone), java.time.LocalDate.now()).let { s ->
+                if (plan.limited) "${s.used * 100 / s.size.coerceAtLeast(1)} % · ${s.daysLeft} d" else DataRules.bytes(s.used)
+            }
+        }.getOrDefault("") }
+    }
+    HomeGroup(Color(0xFF8ED11F)) { // the icon's lime, a step deeper so the tiles' text reads on it
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HomeArtCard("Data", R.drawable.data_art, { openData(context) }, Modifier.weight(1f), artSize = 76)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(listOf(Triple(line.ifEmpty { "Usage" }, R.drawable.ic_data_usage, "usage"), Triple("Devices", R.drawable.ic_devices, "devices")),
+                    listOf(Triple("Signal", R.drawable.ic_wifi, "signal"), Triple("Drops", R.drawable.ic_signal_bars, "signal"))).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { (label, icon, tab) ->
+                        HomeTile(label, icon, lookTint(Color(0xFFC5F27A), Color(0xFF4E8A0A)), Modifier.weight(1f)) { openData(context, tab) }
                     } }
                 }
             }
@@ -1988,6 +2023,7 @@ internal enum class Category(val color: Color, val icon: Int) {
     Maps(Color(0xFF25C4FE), R.drawable.ic_map),
     Contacts(CONTACTS_COLOR, R.drawable.ic_contacts),
     Phone(PHONE_COLOR, R.drawable.ic_call),
+    Data(DATA_COLOR, R.drawable.ic_data_usage),
 }
 
 @Composable

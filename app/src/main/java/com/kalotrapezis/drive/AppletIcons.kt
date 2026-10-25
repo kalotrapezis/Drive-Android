@@ -24,7 +24,8 @@ internal enum class Applet(val label: String, val art: Int) {
     Timer("Timer", R.drawable.timer_art),
     Maps("Maps", R.drawable.maps_art),
     Contacts("Contacts", R.drawable.contacts_art),
-    Phone("Phone", R.drawable.phone_art);
+    Phone("Phone", R.drawable.phone_art),
+    Data("Data", R.drawable.data_art);
 
     private fun component(context: Context) = ComponentName(context.packageName, "${Applet::class.java.packageName}.App$name")
 

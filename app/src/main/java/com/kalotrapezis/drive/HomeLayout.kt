@@ -24,12 +24,12 @@ internal object HomeLayout {
     const val SETTINGS = "settings"
     private val CARDS = setOf("sync", SETTINGS) // one row high
     // today's order: a tablet pairs Sync with Settings at the top; a phone has Maps before Contacts and Settings last
-    val WIDE = listOf("sync", SETTINGS, "gallery", "files", "notes", "scanner", "office", "text", "calendar", "timer", "contacts", "phone", "maps")
-    val NARROW = listOf("sync", "gallery", "files", "notes", "scanner", "office", "text", "calendar", "timer", "maps", "contacts", "phone", SETTINGS)
+    val WIDE = listOf("sync", SETTINGS, "gallery", "files", "notes", "scanner", "office", "text", "calendar", "timer", "contacts", "phone", "maps", "data")
+    val NARROW = listOf("sync", "gallery", "files", "notes", "scanner", "office", "text", "calendar", "timer", "maps", "contacts", "phone", "data", SETTINGS)
 
     val NAMES = mapOf("sync" to "Local Sync", SETTINGS to "Settings", "gallery" to "Photos", "files" to "Files", "notes" to "Notes",
         "scanner" to "Scanner & Codes", "office" to "Office", "text" to "Text editor", "calendar" to "Calendar", "timer" to "Timer",
-        "contacts" to "Contacts", "phone" to "Phone", "maps" to "Maps")
+        "contacts" to "Contacts", "phone" to "Phone", "maps" to "Maps", "data" to "Data")
 
     fun columns(wide: Boolean) = if (wide) 8 else 4
     private fun prefs(c: Context) = c.getSharedPreferences("home", Context.MODE_PRIVATE)

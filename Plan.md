@@ -395,6 +395,9 @@ How to write here:
       (~160 km; farther, the shortest way), phone, Android Auto (⚙ › Roads) and desktop (beside Car). MapsMainRoadsTest:
       Σκάλα 11.7 km/17 min no track, My Market 11.1 km on secondary. Road surface and slope are not in the graph (a rebuild
       would add them). Default Main roads (the user: yes). On the phone 24 Oct (phone-install.sh, Android Auto re-approved); not merged.
+- [x] (data-plan session, 25 Oct, branch claude/data-plan; Drive branch `data`) **Data** planned and built, steps 2–8 (§ Data); not merged; on the phone, the tablet and the computer (details in § Data). Planned: Setup, usage and the plan (fair use, roaming
+      day pass), live speed, three devices and the hotspot, Wi-Fi meter with Spots, signal drops; other apps checked; the house
+      map explained, not built; battery set aside by the user; the user answered most questions 25 Oct.
 - [ ] **Next, in this order** (the user, 25 Oct): (1) wait for the two agents now running — sync's clean-up of what Data
       leaves behind, and Contacts' call history with recordings — then merge everything; (2) one agent optimises every
       other applet one by one with Contacts' speed recipe (Notes is slow to show its notes; Files, Scanner, Timer, Calendar
@@ -2797,6 +2800,424 @@ small "Message" for a quick reply; over the lock screen. An ongoing-call notific
    Keypad · Recents · Contacts in the slots left.
 8. The tablet: the Phone view with calls through the phone (voice on the phone) — or leave the tablet to HyperOS's calls? —
    built (step 6); HyperOS's own calls still work beside it.
+
+## Data — data usage, the plan, Wi-Fi strength and signal drops (planned 25 Oct by the data-plan session; nothing built until the user agrees)
+
+**The user, 24–25 Oct (in Greek, relayed):** an applet to replace an old open-source F-Droid data monitor (its graph stops at
+2 GB and is not flexible). The plan (size, renewal day, monthly / weekly / custom), warnings at 50 %, 80 % and all used,
+graphs that scale to any size, Wi-Fi vs mobile, per app; the counts synced to the PC and the tablet so the three are seen
+together, and the hotspot's share and loss worked out from them; a Wi-Fi strength meter for the best spot for the phone or
+the router; a map of the house by Wi-Fi with the three devices ("maybe a spy thing"). Then: "look at the internet, see what
+other apps like that do, and do it" — their features only, never their code (free software forever). **Battery left out**
+(the user, 25 Oct: "the battery protection is a different applet, another time or maybe never"). Tetra goes to Google Play,
+so everything keeps to Play's rules. Nothing leaves the user's devices.
+
+**The user's answers, 25 Oct (in Greek):**
+- "A **Setup page** that takes you by the hand step by step, to open it and put your things in. Mine is unlimited, but not
+  unlimited — there is a limit, I think **300 GB**." → the Setup below; the plan kind "Unlimited with a fair-use limit". (The
+  limit is Nova's fair-use policy in the contract, not a law as far as known; Setup says "the number is in your carrier's terms".)
+- Live speed in the notification: "ideally yes" → in (feature 1).
+- The house map: one floor; "I've seen it done — from the many devices and the noise of the signal you can tell where furniture
+  and obstacles are, very 'dirty', not like a photo, but something comes out." Then: "**I don't want us to build the map**, it
+  just seemed interesting how it works. Make the strength meter, if we can find [the best spot] that way." → the map is not
+  built; how it works is explained under "The house map — how it would work (not built)"; the meter gains **Spots** to find
+  the best place without a map.
+- The hotspot: "we count the data on the phone, then on the tablet and the PC; take the tablet's and PC's from the phone's and
+  we have the losses — and also **which one uses the most**." → feature 2 as the user put it.
+- "We can also **measure signal drops**." → feature 4.
+- Roaming: "good, put it in — but I roam with a **day pass: €15 for 300 MB** (it was in North Macedonia [Skopje]). It could
+  also **notify automatically to turn roaming off**." → Roaming in feature 1.
+
+### What the other apps do (checked 25 Oct) → can Tetra do it
+| App | Its key features | Tetra on Android, with what it can get |
+|---|---|---|
+| **Android's own Data usage** (Settings › Network) | the cycle and its day, a warning and a **hard limit** (mobile data cut off), per app with foreground/background, Data Saver, "unrestricted data" per app, Wi-Fi marked metered | everything shown **yes** (the same counts, `NetworkStatsManager`). Setting Android's warning or limit, cutting data, Data Saver: **no** — `NetworkPolicyManager` is system-only; Tetra's warnings are its own notifications, and "Turn on Data Saver / set a limit" opens Android's page (`Settings.ACTION_DATA_USAGE_SETTINGS`) |
+| **Data Monitor** (drnoob, F-Droid, GPL; most likely the user's old app — question 1) | per-app stats, a plan with a **daily quota** and **rollover**, alerts, days left on the home screen, a widget, mobile/Wi-Fi/both | **yes**, all of it; the graph without its cap |
+| **DataStopwatch** (F-Droid) | counts from "start" to "stop" over a chosen time | **yes**: a "stopwatch" counter (a trip, a film streamed) — cheap, in |
+| **My Data Manager** | plan with cycle and start date, "unlimited" plans, mobile / Wi-Fi / **roaming** split, hourly history, a daily budget alarm, alarms at 90 %, **shared / family plans** across phones (its own servers) | plan, unlimited, roaming, hourly, daily budget, any thresholds: **yes**. Shared plans: **yes, but only between the user's own devices** through Tetra's sync (no server, no other people's phones) |
+| **GlassWire** | per-app graphs by hour/day/week/month, plan alerts, **"a new app went online"** alert, a **firewall** (block an app on Wi-Fi or mobile) through a local VPN, throttling alert on "unlimited" plans | graphs and alerts: **yes**; "new app used data" alert: **yes** (a UID seen for the first time in the stats — off by default). Firewall: **not planned** — only through `VpnService`, which Play allows only for apps whose core is a VPN/firewall (with a declaration), it takes the phone's one VPN slot and routes every packet through Tetra (battery, risk). Throttling detection: no (needs internet speed tests to a server) |
+| **NetGuard** (F-Droid, GPL) | firewall per app (Wi-Fi / mobile), usage per app per address, "an app accessed the internet" notices, speed graph in the status bar (Pro) | firewall and per-address logs: **no** (the VPN above). Live speed in the status bar: **yes** (`TrafficStats` once a second, screen on only) — the user wants it |
+| **WiFi Analyzer** (VREM, F-Droid, GPL) | list of networks with strength, channel graphs, **channel rating** (least crowded), strength over time, estimated distance, 2.4/5/6 GHz and widths, vendor lookup (offline OUI list), export | **yes**, all: `WifiManager.getScanResults` with the location permission (Tetra has it, for Maps) and Location on; scans throttled by Android (below). Vendor lookup: an offline OUI table (~1 MB) — later |
+| **NetSpot** (Android) | **site survey**: a floor-plan photo, calibrated, tap where you stand, heat maps (signal, signal-to-interference), predictive planning (paid), speed test (download, ping) | channel interference: **yes**. Survey and heat map: possible, **not built** (the user, 25 Oct; Spots instead, and how a map would work at the end). Speed test: **yes to the PC** (Tetra's own server on the LAN — the Wi-Fi's real speed, no internet server); an internet speed test needs someone's server — **no** |
+| **WiFiman** (Ubiquiti) | live signal graph, speed test (their servers), a scan of the devices on the network, a heat map that follows you with the camera's **AR** tracking | live graph: **yes**. AR tracking: **not planned** — ARCore is Google's closed library (free software forever); Tetra uses taps and walked lines instead. Device scan of the LAN: possible (ARP/mDNS), not asked — later |
+
+**Taken in** (worth having and possible): the plan with daily quota, rollover and unlimited; roaming; hourly history; a daily
+budget; any thresholds; the stopwatch counter; "a new app used mobile data"; apps using data in the background (state
+field); a channel rating; strength over time; saved spots to compare; a speed test to the PC; live speed; signal drops. **Not possible or not done**:
+cutting data or setting Android's limit (system-only), a firewall (VPN, Play's VPN rule), throttling and internet speed tests
+(someone's server), AR tracking (closed library), shared plans with other people (a server).
+
+### What Android allows (exact; checked 25 Oct in the SDK's own sources, android-36.1, and Android's docs)
+| API | What it gives | Needs / limits |
+|---|---|---|
+| `NetworkStatsManager.querySummary / queryDetails / queryDetailsForUid`, `querySummaryForDevice` | bytes and packets per **UID**, per network type (`TYPE_MOBILE`, `TYPE_WIFI`), with the bucket's **roaming**, **metered**, **foreground/background state**, default network. Special UIDs: `UID_TETHERING` (**the hotspot**), `UID_REMOVED`, system | **Usage access** (`PACKAGE_USAGE_STATS`): an app-op the user turns on in Settings › Special app access › Usage access (`Settings.ACTION_USAGE_ACCESS_SETTINGS`); no dialog. Without it: only Tetra's own UID, and `TrafficStats` device totals since boot (no history). With it the "device summary" level: all apps of the user plus tethering, removed apps and the system |
+| history and freshness | AOSP keeps about **90 days** (per-app buckets of 2 h, device totals 1 h; OEMs may change it — step 1 reads the oldest bucket on the Xiaomi). A query polls first by default, but "for any non-privileged caller, the poll might be omitted in case of rate limiting" (the source's words): numbers can lag up to ~30 min | Tetra keeps its own copy (below), so the history outlives the 90 days |
+| `NetworkStatsManager.registerUsageCallback(type, subscriberId, thresholdBytes, cb)` | a call when usage on mobile passes a threshold — the 50/80/100 % warnings on time | "as long as the process is live": a backstop look is needed (the listen service usually keeps Tetra alive; else the hourly job). Thresholds under **2 MiB** fire only at 2 MiB (`MIN_THRESHOLD_BYTES`) |
+| **per SIM** | — | **not possible directly** since Android 10: the `subscriberId` is for privileged/carrier apps only; `null` means "all mobile networks". Tetra can split going forward only: it samples mobile bytes and which SIM carries data (`SubscriptionManager.getActiveDataSubscriptionId`, no permission) at each change of the data SIM and each hourly look. The user has one active SIM (Nova, seen 24 Oct) — so later |
+| per Wi-Fi network (home, work, the phone's hotspot) | — | Android's per-network Wi-Fi template is system-only. Tetra logs **when** it was on which network (`ConnectivityManager` network callback) and asks the totals for those hours. The SSID needs the location permission (redacted otherwise); **the phone's hotspot is known without it** — the gateway is the phone's address Tetra already syncs with |
+| per-app names | `PackageManager` | Android 11+ hides other apps unless declared: a `<queries>` with MAIN/LAUNCHER (every app with an icon) is enough — **not** `QUERY_ALL_PACKAGES` (Play restricts it to search, antivirus, file managers and browsers). The rest show as "Android system", "Removed apps", "Hotspot" |
+| `WifiInfo` of the connected network (`NetworkCapabilities.transportInfo`) | RSSI (dBm), link speed up/down, frequency/band, Wi-Fi standard | **RSSI needs no permission** (only SSID/BSSID are redacted without location); the system refreshes it every few seconds while the screen is on — enough for the meter |
+| `WifiManager.startScan / getScanResults` | every network around: SSID, BSSID, RSSI, channel, width, standard, **is80211mcResponder** | **ACCESS_FINE_LOCATION even on Android 13+** (Android's docs: `NEARBY_WIFI_DEVICES` does not cover these two), and Location switched on. **Throttled**: 4 scans per 2 minutes in the foreground, 1 per 30 minutes in the background (Android 9+); only the user can lift it (Developer options › Wi-Fi scan throttling) |
+| `WifiRttManager.startRanging` (Wi-Fi RTT, 802.11mc) | the distance to an access point within ~1–2 m | `NEARBY_WIFI_DEVICES` (13+) or fine location; the phone must have `FEATURE_WIFI_RTT` and **the router must be an 802.11mc responder** — few home routers are (mesh systems such as Google/Nest Wifi are). One router = one distance, a circle, not a place; a place needs 3+ responders |
+| `TelephonyCallback` (SignalStrengths, DataConnectionState, DisplayInfo, ServiceState) | the mobile signal's level, data on/off, 5G/4G/3G, no service — the drops | **no permission** (READ_PHONE_STATE already held for Phone); the operator's name and cell need location (not used); only while Tetra's process lives |
+| Wi-Fi sensing of walls, furniture, people (CSI) | — | **not possible**: channel-state information comes only from special chips/firmware (research Wi-Fi cards, ESP32, rooted phones with patched firmware); no phone API and no ordinary Linux driver gives it; 802.11bf sensing is not exposed to apps either. Walls and furniture are what the user draws |
+| roaming | `TelephonyManager.isNetworkRoaming`, `networkCountryIso`, `isDataRoamingEnabled`; buckets' roaming flag | no permission (ACCESS_NETWORK_STATE for the last); **switching data roaming off: not possible** for an app (system setting) — Tetra opens `ACTION_DATA_ROAMING_SETTINGS` |
+| roles | — | there is no "data usage" role; nothing here needs Tetra to be a default app |
+
+**Google Play's rules** (checked 25 Oct; the "Permissions and APIs that Access Sensitive Information" policy):
+- **Usage access** is not on Play's restricted list (no declaration form), but it is personal data: a **prominent disclosure**
+  in Tetra before sending the user to Settings ("Tetra reads how much data each app used, to show it to you; it stays on
+  your devices") and the **Data safety** form says app activity is read and **not shared**; that Tetra's sync to the user's
+  own computer counts as "collected" or not is the same question as for the rest of Tetra.
+- **Location** (already declared for Maps): used for Wi-Fi scans only while the Wi-Fi tools are open — **foreground only**;
+  never background location for this (Play rejects it "without compelling justification").
+- **QUERY_ALL_PACKAGES**: not asked (the `<queries>` above). **VpnService**: not used.
+
+### What the applet does (the feature list)
+**0. Setup (the first time Data opens; again from Settings › Data › Setup)** — one step a page, ‹ Back / Next, a dot row:
+1. What Data does and that nothing leaves the user's devices (Play's prominent disclosure for Usage access).
+2. **Usage access**: why, then "Open Android's page" (`Settings.ACTION_USAGE_ACCESS_SETTINGS` with Tetra's package; on HyperOS
+   the page found in step 1 of the build), Tetra's row lit up in a picture; back in Tetra the step ticks itself ✓ (checked on
+   resume). Skip = Tetra's own use and today's totals only.
+3. **Your plan**: Limited (size) · **Unlimited with a fair-use limit** (the limit, e.g. 300 GB — "the number is in your
+   carrier's terms") · Unlimited (no limit; warnings off, the graphs stay). **Roaming**: in the EU as at home (the plan's
+   EU fair use, optional) · outside the EU a **day pass** (price and size, e.g. €15 for 300 MB) or none (pay per MB).
+4. **When it renews**: day N of the month (Feb gives the last day for 29–31) / weekly on a weekday / every N days from a date.
+   Daily quota and rollover under "More".
+5. **Used so far this cycle** (optional): the carrier app's number, so Tetra starts level with it.
+6. **Warnings**: 50 · 80 · 100 % ticked (add or remove); a day's budget passed (off). Asks for notifications
+   (POST_NOTIFICATIONS) if not allowed.
+7. **Live speed** in the status bar: on/off.
+8. **Wi-Fi around** (optional): the location permission and Location on, for the channel view; Skip is fine.
+9. Done: the Data page with the first numbers (history already there — Android kept the last ~90 days).
+
+**1. Usage and the plan (phone; the tablet for its own Wi-Fi)**
+- The plan as Setup set it; for "Unlimited with a fair-use limit" the warnings count against the limit and the ring says
+  "of 300 GB fair use".
+- "Correct to the carrier's figure" any time (Setup's step 5 again); Tetra keeps the difference for this cycle (Tetra's count
+  and the carrier's always differ a little: headers, rounding, what the carrier does not count).
+- Warnings (notifications): 50 %, 80 %, 100 %, "a day's budget passed" (off), "a new app used mobile data" (off), roaming
+  started (on). At 80 % and 100 % a button "Android's data settings" (to set Android's own limit or Data Saver).
+- Numbers on top: used / plan, left, days left, **daily average**, **today's budget** ((left) / (days left)), the
+  **projection** to the cycle's end (the last 7 days' pace) — "at this pace you run out on 3 Nov".
+- Graphs (Tetra's own Canvas chart, no library): bars per hour / day / week / month, Mobile and Wi-Fi stacked; the cycle's
+  running total as a line with the plan's line and the projection dashed. **The axis scales to the data** (1-2-5 steps,
+  B → TB; a 40 GB month and a 3 MB hour both fill the chart); pinch and drag through time; tap a bar → that hour's / day's apps.
+- Per app: list sorted by use, mobile / Wi-Fi / roaming, **foreground vs background**; an app's page with its own graph and
+  "Android's settings for this app" (to restrict its background data). Hotspot, Android system, removed apps as rows.
+- **Roaming** (the user's: outside the EU a day pass, €15 for 300 MB, as in North Macedonia):
+  - Tetra sees roaming begin (`TelephonyManager.isNetworkRoaming`, the network's country `networkCountryIso`; no permission)
+    and tells EU from outside it (a small list of EU/EEA country codes). On crossing into a non-EU country: "Roaming in North
+    Macedonia — outside the EU. Your day pass: €15 for 300 MB a day. Data roaming is ON" with **Turn off data roaming**
+    (opens Android's page, `Settings.ACTION_DATA_ROAMING_SETTINGS`) and Keep on. Android lets no app switch it itself
+    (a system setting) — so Tetra opens the switch, one tap away.
+  - While roaming: the day's roaming use against the pass ("212 of 300 MB today"), warnings at 80 % and 100 % of the day's
+    300 MB, each with Turn off data roaming; **the moment a day starts costing**: "First roaming data today — today counts
+    €15" (most day passes start at the first MB); the trip's total days and cost ("3 days · €45 · 640 MB").
+  - Back home: "Roaming ended" and the trip kept as a line in the history. Data roaming left ON on return: a reminder to
+    turn it off (`isDataRoamingEnabled`, readable).
+  - In the EU: counted against the plan's EU fair use (if set), no day-pass warnings.
+- The stopwatch: Start → Stop counts mobile and Wi-Fi for a trip or a film; kept in a short list.
+- **Live speed** (the user: yes): ↓ and ↑ drawn as the status-bar icon ("1.2M"), the notification "↓ 1.2 MB/s ↑ 80 KB/s ·
+  today 1.4 GB mobile"; `TrafficStats` totals read once a second **only while the screen is on** (a screen-off receiver stops
+  it: no cost in the pocket). It needs a running service: when Tetra's listening service runs (it usually does), **its**
+  notification carries the speed — one icon, not two; otherwise Data's own small foreground service (specialUse, "shows the
+  network speed the user asked for"). Silent channel, lowest importance.
+
+**2. Three devices together (sync) and the hotspot** (the user's way)
+- Each device counts its own and writes it as files (below); every Tetra shows the three side by side.
+- **The hotspot, as the user put it**: the phone counts what its hotspot carried (`UID_TETHERING`; Android gives no split per
+  client); the tablet and the PC each count what they used **while connected to the phone's hotspot** (their gateway is the
+  phone). **Phone's hotspot − (tablet + PC) = the difference** ("losses"), and **who used the most**:
+  ```
+   Hotspot this cycle (counted by the phone)   4.9 GB
+     PC         3.0 GB  ██████████████  61 %   ← the most
+     Tablet     1.6 GB  ███████          33 %
+     Difference 0.3 GB  █                 6 %   ← what the phone carried that the two did not count
+  ```
+  per cycle, per day and per hour (tap a bar). The phone's own use (its apps) is shown beside it, apart.
+- What the difference is, said under it: another device on the hotspot (a guest), hours when the PC or tablet was not
+  counting (Tetra closed or off), and small overheads (headers, DNS answered by the phone). Tetra's own sync between the
+  devices over the hotspot never touches the mobile network; the clients count it, so Tetra subtracts its own sync bytes on
+  their side first. A difference **below zero** is possible too (the clients counted local traffic the phone never sent to
+  the network). The carrier's bill follows the phone's mobile count.
+- The numbers arrive when sync next can; nothing is live, nothing urgent.
+
+**3. Wi-Fi strength meter — and finding the best spot without a map (phone and tablet)**
+- The connected network: a big dBm number and bar (−30 excellent … −67 good for calls/video … −75 fair … −85 poor), link
+  speed, band, standard; a line of the last 2 minutes; a **sound mode** (a beep that rises with the signal, like a metal
+  detector) to walk the house with the screen in the pocket. No location needed.
+- **Spots** (instead of the map): stand somewhere, "Save this spot" → a name ("desk", "bedroom", "balcony") and ~10 s of
+  readings averaged (RSSI, link speed, and the speed to the PC if it is reachable). The Spots list, best first, with bars:
+  "desk −52 dBm 433 Mb/s · bedroom −74 dBm 72 Mb/s". Saving again replaces a spot's reading (before/after moving the router).
+  Two uses:
+  - **Where to put the router**: try it in two or three places, walk the same spots each time → Tetra lays the rounds side by
+    side ("router in the hall: every spot ≥ −65; on the TV shelf: bedroom −79") and says which round was best.
+  - **Where to put the phone as the hotspot** (the user's usual case): the PC and the tablet stay where they are; as the phone
+    is moved, each reports what it sees of the phone's hotspot (RSSI, link speed, every 2 s, through SyncServer — the phone, as
+    the access point, reaches both). The phone's screen: "PC −58 dBm 433 Mb/s · Tablet −71 dBm 144 Mb/s"; "Save this place"
+    keeps it, and the places are ranked by the worse of the two. The PC reads its own from Linux (`iw dev <if> link` /
+    `/proc/net/wireless`, no root). Needs the PC and the tablet on with Tetra running for those minutes.
+- **Around**: the networks near, their channels as WiFi Analyzer draws them, and a **channel rating** ("your router is on
+  channel 6 with 9 neighbours; 1 has 2") — needs location + Location on; 4 scans per 2 minutes. Neighbours' names are shown,
+  never kept.
+- **Speed to the PC**: Tetra downloads/uploads 20 MB to the paired computer's server over the LAN → Mb/s and the ping — the
+  Wi-Fi's real speed at that spot, no internet server.
+- **RTT bonus**: if a scan says the router is an 802.11mc responder and the phone supports RTT, the meter also shows the
+  distance to it (± 1–2 m). Most likely not with the user's router — step 1 checks.
+
+**4. Signal drops (phone, tablet, PC)** (the user: "we can also measure signal drops")
+- **Mobile** (phone): no service, mobile data lost and back, the generation falling (5G → 4G → 3G), and the bars, from
+  Android's own callbacks (`TelephonyCallback`: SignalStrengths, DataConnectionState, DisplayInfo, ServiceState — no new
+  permission; the operator's name and cell need location and are not used). A drop = data or service gone for ≥ 5 s, or the
+  signal at the lowest level for ≥ 30 s.
+- **Wi-Fi** (phone, tablet): the network lost and back (`ConnectivityManager` network callback), RSSI below −80 dBm for
+  ≥ 30 s. On the **PC**: the Wi-Fi link down/up and its signal (NetworkManager, `iw`), and — on the phone's hotspot — the PC
+  falling off it.
+- A **Drops** list and a strip under the day's chart: "14:02 mobile data lost 40 s (4G) · 17:31 PC left the hotspot 2 min";
+  per day a count; the three devices together (so "the PC drops off the hotspot every evening" shows).
+- Recorded only while Tetra's process lives (the listening service usually keeps it so; the PC while the desktop runs); the
+  hours it was not watching are shown as gaps, not as "no drops". A notification only as a daily summary, off by default.
+
+### The files (Tetra/Data; synced as Calendar and Contacts, hidden in Files)
+```
+Tetra/Data/                              (~/Tetra/Files/Data on the PC)
+  plan.json                       {"kind":"fair-use","size":"300GB","renew":{"every":"month","day":5},"daily":null,"rollover":false,
+                                   "roaming":{"eu":"plan","pass":{"price":15,"currency":"EUR","size":"300MB","per":"day"}},"warn":[50,80,100],"carrier":{"cycle":"2026-10-05","offset":-120000000},"rev":3,"by":"24091RPADG"}
+  usage/2026-10.24091RPADG.jsonl  the phone: one line per hour and network kind, per app per day, and each drop:
+      {"h":"2026-10-25T14","net":"mobile","rx":51234567,"tx":3456789,"roam":0}
+      {"d":"2026-10-25","app":"org.mozilla.firefox","name":"Firefox","net":"mobile","fg":120000000,"bg":3000000}
+      {"d":"2026-10-25","app":"hotspot","net":"mobile","rx":…,"tx":…}
+      {"drop":"mobile-data","at":"2026-10-25T14:02:11+03:00","secs":40,"gen":"4G"}
+  usage/2026-10.theologos-82xm.jsonl   the PC: {"h":…,"net":"wifi","via":"phone-hotspot","rx":…,"tx":…,"tetra":…} and its drops
+  spots/24091RPADG.jsonl          the saved spots: {"at":…,"spot":"desk","round":"router in the hall","rssi":-52,"band":5,"speed":433,"pc":{"mbps":310,"ms":4}}
+```
+- **Each device writes only its own files** (Timer's rule), so sync never has two versions of one; `plan.json` goes by the
+  highest `rev` (`by` the device). A month's file is rewritten whole each hour (~100–300 KB).
+- Plain JSON lines, so any AI can read them ("how much did I use in October?", "when did the PC drop off the hotspot?").
+- Scope `data` (DriveScope + desktop files.js `SCOPES` and `APP_FOLDERS`), pushed with `ScopedSync.soon("data", …)` once an
+  hour, not at every change.
+
+### How it runs (the battery cost kept small)
+- **Phone**: an hourly look (the existing SyncJob schedule or its own JobScheduler job, no network needed) reads
+  NetworkStats for the last hours and rewrites this month's file; `registerUsageCallback` for the next warning while Tetra is
+  alive (the listen service usually keeps it so). The network and telephony callbacks log changes and drops (they wake
+  nothing; Android calls them). Live speed: once a second, screen on only.
+- **Tablet**: the same look for its own Wi-Fi, its hours on the phone's hotspot and its Wi-Fi drops.
+- **PC**: the running desktop reads `/sys/class/net/<if>/statistics/{rx,tx}_bytes` each minute, the gateway (phone's
+  hotspot or not), the SSID and link from NetworkManager (`nmcli`), and writes its hourly lines and drops. Per program on
+  Linux: **no** (needs root/eBPF). Nothing when the PC is off (its hours are gaps).
+- The meter, Spots and Around: only while their screens are open.
+
+### Screens
+**Phone — Data (opens here; Setup first the first time)**
+```
+ ( Search apps ……… )                         ← top pill
+   ╭───────────╮   41 of 300 GB fair use · 11 days left
+   │  ◔ 14 %   │   today 1.3 GB · budget 23 GB/day
+   ╰───────────╯   at this pace: 118 GB by 5 Nov ✓
+ [ Day | Week | Cycle | Month | Year ]        ← chart: bars Mobile/Wi-Fi, total line, plan line, projection dashed
+   ▇ ▆ ▂ ▇ ▅ ▃ ▇ █ ▂ …     axis 0 · 2 · 4 GB (scales by itself)   ↯ ↯   ← drops marked under the bars
+ Apps   Firefox 2.1 GB · YouTube 1.4 GB · Hotspot 4.9 GB …   ← tap = the app's page
+ [ Usage · Devices · Signal ]   (⋯)          ← bottom island; ⋯ = Plan, Stopwatch, Setup, Settings
+```
+- **Devices**: the three devices' bars for the cycle; the hotspot box (PC · Tablet · Difference, the most on top) and why it differs.
+- **Signal**: the meter (big dBm, the 2-minute line, sound mode); Spots (Save this spot, the list, rounds side by side);
+  Phone as hotspot; Around (channels, rating); Speed to PC; Drops (the list, the three devices).
+- **Setup**: one step a page, full screen, ‹ Back / Next, dots.
+**Tablet / wide**: the list left (≈ 380 dp: Usage, Devices, Signal, then apps), the chart or the signal page right, full
+height; Setup in the middle at phone width.
+**Desktop**: a Data page: the three devices' charts, the hotspot box, the drops of all three; the PC's own Wi-Fi (signal,
+network, link); Spots and the plan shown and editable.
+**Home**: a Data group in lime — the ring (used of plan, days left), today's use; its slots Signal · Devices · Drops (today's
+count). On the tablet without a phone paired: its own Wi-Fi and the meter.
+**Settings › Data** (under Apps, in the new layout, one row per setting): Setup (run again), Usage access (state, Open), Plan,
+Warnings, Roaming (EU / day pass, the reminders), Count from (the carrier offset), Live speed, Drops (summary notification), Wi-Fi scans (Location state),
+Send log.
+
+### Fit with Tetra
+- **Icon** (the user's, 25 Oct: `Assets/DataMeter.png`, 1254 px): a lime gauge with a needle over three rising bars on a
+  near-black rounded tile → `tools/applet-icons.py` (art, launcher, `applet_colors.xml`), Settings › App icons: Tetra Data.
+  **Unlike the other tiles its corners are dark, not white** (#232629 outside, #1F2226 just inside the tile, with a soft
+  shadow): the script's flood fill from the corners (thresh 60) would eat the tile too — Data's corners are cut with a
+  rounded-square mask instead (the tile ≈ 30…1224 px, corner radius ≈ 190 px; measured when built). Copy it into
+  Assets/Icons/Applets/Data.png first, as the others.
+- **Colour** (from the icon): **lime #A1F81A** (the arcs run #85F31D–#BFFB30) for Home's group and Category.Data; the
+  launcher background the tile's own charcoal ≈ #1C1F22 (as Phone's is its tile's dark teal). No applet is lime yet; Photos'
+  #95DF6B is a softer green beside it. On the light theme lime on white is too faint: text and lines a darker lime (≈ #4E8A0A)
+  — `lookTint(light, dark)` as the others.
+- Notifications: "Data warnings" (50/80/100 %, budget, roaming, new app); "Live speed" (silent, lowest; or inside the
+  listening notification); "Drops" (a daily summary, off); "Data meter" (the sound mode, while on).
+- Reuse: Contacts' island and pills, Settings' rows, `ScopedSync`, SyncServer for the
+  hotspot reports and the speed test, Home's group card.
+
+### Code (smallest that holds)
+- Android: `Data.kt` (the plan and its kinds, the cycle maths, projection and budget, the files), `DataStats.kt`
+  (NetworkStats → hours and apps, tethering, the hourly job, the usage callback, live speed), `DataScreen.kt` (Setup, the
+  screens, the chart), `DataSignal.kt` (meter, Spots, phone-as-hotspot reports, Around, speed test, drops). Manifest:
+  `PACKAGE_USAGE_STATS` (tools:ignore ProtectedPermissions), the `<queries>`.
+- Desktop: `data.js` (counters, gateway, nmcli, `iw`, the hourly file, drops, the speed-test and signal endpoints),
+  `src/Data.tsx`.
+- Tests: the cycle maths (renew on the 31st in February, weekly, custom, rollover, fair-use), roaming days and their cost (a day counted at its first MB, EU or not), the projection and budget, the
+  nice axis (B → TB), merging three devices' files and the hotspot box (who used most, a negative difference, Tetra's own sync
+  taken off), drop detection (5 s / 30 s rules, flapping joined into one), Spots' rounds ranking; desktop: the counter
+  reader and drop detection with a fake /sys and nmcli output.
+
+### Steps (each a commit; checked on the emulator as built, the real phone and tablet at the end)
+- [x] 1. Look on the real devices (read-only, adb). **The tablet (25 Oct 09:05, Data installed over 24 Oct's build, its data
+   kept and backed up to Coding/backups/tablet-20261025-0905)**: Android keeps per-app counts from 19 Jul (98 days, 2-hour
+   buckets) and device totals from 4 Jul (1-hour); the usage-access page opens straight on Tetra's own switch ("Να επιτρ. η
+   πρόσβαση σε δεδομ. χρήσης εφαρμ.") — and Tetra already had the access on this HyperOS (it counted every app without it
+   being switched there); its Wi-Fi on the phone's hotspot is `metered=true` in Android's own records, so Data showed "70 GB
+   over the phone's hotspot" of October's 98 GB; the meter −32 dBm on "Xiaomi 15", channel 1, 400 Mb/s; no Wi-Fi RTT
+   (Wi-Fi Aware yes); its name "Xiaomi Pad 7 Pro". **The phone (09:10, installed with tools/phone-install.sh; Android Auto
+   approved Tetra Maps again; its data backed up to Coding/backups/phone-20261025-0910)**: Android keeps per-app counts and
+   device totals from 15 Jul (102 days); 4G with 5G NSA (`overrideNetwork=NR_NSA`, Data says 5G); the hotspot on (wlan2,
+   tethered) and its traffic kept under the tethering UID; no Wi-Fi RTT; its name "Xiaomi 15"; Usage access **not** on
+   (unlike the tablet), so Data counts nothing until Setup's step 2. **The user's Setup (25 Oct 09:13)**: fair use 300 GB,
+   renews on the 4th, warnings 50 and 90 %, Nova's figure typed: Tetra had counted 128.4 GB mobile since 4 Oct, Nova said
+   ≈ 120.7 GB (Tetra 6 % higher: the carrier's figure lags, and the cycle's first hours are snapped to Android's 2-hour
+   buckets) — Data shows 121 GB, 40 %, 10 days left, at this pace 182 GB. **The hotspot**: 119.1 GB of the 128.4 (93 %);
+   the tablet counted 70 GB over it in October (59 %); the other 49 GB are the computer's and any guest's, which the
+   computer reports once its new Tetra runs. Seen on the phone: "Year" wrapped in the span chips — fixed, goes with the next install.
+- [x] 2. (205ad93, data-plan session, 25 Oct; Drive-Android branch claude/data-plan) Setup and usage: `Data.kt` (plan, cycles, status,
+   files), `DataStats.kt` (NetworkStats → Tetra/Data/usage/<month>.<device>.jsonl hourly through SyncJob's job 4150, the
+   first look back over the months Android kept; warnings 50/80/100 % and the day's budget; roaming notices with Android's
+   data-roaming page; the 50 MB usage callback while Tetra lives), `DataScreen.kt` (DataActivity: Setup's ten pages, Usage
+   with the ring, Day/Week/Cycle/Month/Year charts whose axis is a round step over the tallest bar, ‹ › through time, tap a
+   bar for its apps, an app's page with foreground/background and Android's settings for it; Devices; ⋯ = Setup, live
+   speed, stopwatch, Android's data settings), Settings › Data. Emulator: Setup walked through (Usage access's page opened
+   and ticked itself on return), Android's own counts read back to 16 Oct, the charts, "Data: 50 % used" with a 100 KB test
+   plan. **Not on the emulator**: the roaming notices (`gsm data roaming` did not make it roaming) — on the phone, abroad.
+   Android's Data usage said 424 kB mobile for 16 Oct–; Tetra 439 KB (Tetra counts every UID, tethering included).
+- [x] 3. Live speed (`DataSpeed.kt`): the status bar's icon (↓ big, ↑ small) once a second while the screen is on. **Its own
+   low notification**: the listening one is "min", and Android shows no status-bar icon for those, so they could not be
+   one. Emulator: the icon drawn and updating (↑59B seen).
+- [x] 4. The files and sync: scope `data` (DriveScope, its waiting job 4151, desktop files.js SCOPES and APP_FOLDERS), Data
+   hidden in Files on both. **The hotspot's share without logging intervals**: Android marks a Wi-Fi that is a phone's
+   hotspot as metered (the hotspot says so over DHCP), and its statistics keep that: the tablet's `via` = its metered Wi-Fi
+   bytes. NetworkManager does the same on the PC (seen 25 Oct: `GENERAL.METERED: yes (guessed)` on "Xiaomi 15").
+   Tetra's own sync with the phone is left out (25 Oct, the user: "do these too"): on Android its own UID's bytes, on the
+   computer each sync connection's bytes (sync.js → datacount.js `own`).
+- [x] 5. (Drive 414f43d, branch `data`) Desktop: `datacount.js` (each minute /sys/class/net counters → this computer's month file,
+   written every ten minutes and only once plan.json exists; Wi-Fi from `iw`; drops and "off the phone's hotspot"; sync's
+   /data/wifi and /data/speed), `src/Data.tsx` (the plan, 30 days of all devices, this cycle by device, the hotspot box with
+   who used most and the difference, this computer's Wi-Fi now, the drops). `test/datacount.test.js`; desktop 139/139, tsc
+   clean; the page rendered with sample files (scripts/shot.js, a separate profile). Each month file starts with its device's
+   name ({"deviceName":"Xiaomi 15"}, Android's own device name; the computer's host name), shown instead of the model code.
+- [x] 6. Signal (`DataSignal.kt`): the meter (dBm, words, the 2-minute line, sound mode), Spots with rounds and the best round,
+   speed to the computer, "Phone as hotspot" (the computer's own reading every 2 s; **the tablet cannot report to the phone**:
+   it is paired only with the computer, and the hotspot keeps the computer and the tablet apart — the tablet shows its own),
+   Around (scan, the least crowded channel, your own network left out, RTT marked). Emulator: the meter, a scan, a spot saved.
+- [x] 7. Drops: Android's callbacks (mobile data lost, no service, no signal ≥ 30 s, a fall to 3G/2G; Wi-Fi lost and back
+   within 10 min, very weak ≥ 30 s), the PC's own; listed in Signal and on the desktop page; a daily summary (off); red
+   marks under the chart's bars (every device's). Nothing to see on the emulator (no drops); the real phone will show.
+- [x] 8. Home's Data group (the art, the plan at a glance, Devices, Signal, Drops) and the icon: tools/applet-icons.py cuts
+   Data.png's dark corners with a rounded-square mask; launcher background #17191D; Settings › App icons: Tetra Data.
+   Emulator: light and dark, phone and tablet width. Unit suite 644, 0 failing, 9 skipped (DataTest, DataSignalTest).
+- [~] 9. On the real devices (25 Oct): the phone and the tablet installed (step 1's notes above), the phone's numbers next to
+   Nova's (6 % apart, the figure typed). **The computer**: desktop 0.6.0-beta.14 (Drive 9c05f58) installed by the user
+   (`sudo apt install ./…deb`), restarted 09:21; its first file at 09:30: 74 MB Wi-Fi, 27.8 MB of it over the phone's
+   hotspot — the other ~46 MB its own sync with the phone (the speed test's 40 MB among them), left out as designed. From
+   the phone: "Phone as hotspot" read "Computer: −16 dBm · 162 Mb/s · Xiaomi 15"; speed to the computer ↓ 192 · ↑ 22 Mb/s.
+   Left: the tablet's files reaching the phone and the computer (it was not connected when synced), a week of drops,
+   roaming on a trip; the span-chip fix (d780018) goes with the next phone install. Merging both branches waits for the user.
+- [x] 10. (the user, 25 Oct: "why do I have to go through Setup on the tablet? why does it not sync?"; "if it is just hotspot, write
+   Hotspot") The tablet had last reached the computer at 04:12, before the plan existed; and **after an install on the phone
+   its hotspot blocks the devices on it from each other (the phone and the computer still talk) until the hotspot is turned
+   off and on** (the user) — the phone's, not Tetra's. Now: Data asks the computer for its part when it opens, the
+   quarter-hourly look and the computer's nudge carry `data`, the computer nudges when plan.json changes; a tablet never
+   offers Setup ("the phone's plan arrives with Local Sync") and Home's slot says "Hotspot 70 GB". **Hotspot is its own
+   kind** beside Mobile and Wi-Fi (orange): per app (`net: hotspot` rows from Android's metered flag, Tetra's own sync left
+   out), per 2-hour slot for yesterday and today (one summary per slot: Android's hourly history has no metered flag), in
+   the charts, the legend, the app rows, Devices, and the computer's page. Emulator: a September with Mobile 4.5 · Hotspot 36 ·
+   Wi-Fi 20 GB. Not yet on the tablet (not connected) nor the computer (needs a beta.15 package).
+- [x] 11. (the user, 25 Oct: "the signal tab is a wall of text"; "giving info, not … auto fix everything"; "add the LAN option — Ethernet —
+   to recognise when I connect it and compare speeds and losses"; "the Signal tab should have its own tabs at the top"; the Network
+   Cell Info and WiFi Analyzer apps as the picture) Signal has tabs: **Meter** (half-circle gauges for Wi-Fi — hotspot or Ethernet
+   said — and mobile: RSRP, 4G/5G, operator, band with the location right, RSRQ/SINR; the two minutes as a line; the sound as an icon;
+   **the computer** card: how it is connected now, Wi-Fi or Ethernet, and **Test speed and loss** — 20 MB each way and 20 pings,
+   each result keeping how both ends were connected, the last ten), **Analyzer** (WiFi Analyzer's channel graph: a hill per
+   network, its name and a rough distance on top, the dBm scale and every channel; 2.4/5 GHz; then short advice cards — a quieter
+   channel, 2.4 vs 5 GHz, how good it is here and what weakens it, busy air — information only), **Spots** (cards with bars),
+   **Drops** (by day). Explanations behind (i). The computer: an Ethernet cable is recognised (`ethernet-on/off` lines), counted
+   apart (`eth`), and reported to the phone. DataMeterTest; unit 649, desktop 140. Emulator: the gauges and the graph.
+   **On the devices (25 Oct 10:17)**: the phone installed (tools/phone-install.sh, Android Auto approved again; data backed up to
+   Coding/backups/phone-20261025-1016); the computer on beta.15 (the user's apt install), restarted. The phone's Meter: Mobile 5G (with
+   4G) −115 dBm, Fair, NOVA · B3, RSRQ −17; Wi-Fi "not on Wi-Fi" (it is the hotspot); the computer "Wi-Fi −26 dBm · Xiaomi 15"; Test
+   speed and loss ↓ 40 · ↑ 46 Mb/s · 63 ms · 0 % lost. Fixed after it (with the next install): the phone said "this one: Mobile" (now
+   "its own hotspot") and the computer once "Wi-Fi 12 dBm" (a driver's positive reading right beside the phone: now just "Wi-Fi").
+   The tablet was not on USB (only one device is seen at a time).
+- [x] 12. (the user, 25 Oct, from the phone's screenshot) **Colours**: on the phone "Hotspot" had been its metered Wi-Fi — Android Auto's
+   link to the car, 14 GB — while what it shared sat in Mobile; now on a phone Hotspot is what it shared (the tethering UID, "tether"
+   hours apart) and the car's link is Wi-Fi; on a tablet/computer Hotspot is what they used through the phone. **The forecast**: the old
+   white line was the cycle's running total on a hidden 0–300 GB scale over daily bars; now faint bars for the days to come, each the
+   median of the same weekday over the last three weeks (six had pulled in a September of near-zero days: the user's hotspot use
+   began 4 Oct), and a dashed average line; the running total kept in a chart of its own (**The cycle so far**, 0 → the limit,
+   the forecast dashed); **This cycle in numbers** (average, workdays · weekends, busiest day, the hotspot's and Wi-Fi's share);
+   **For your plan** (the pace and the day the limit would come, the hotspot's share and what fills it, weekends, the top app's
+   background or Play Store updates, the busiest day — information only); (i) on each; the top ten apps and **All apps and services**.
+   **By app everywhere**: the computer counts each program's TCP bytes (`ss -tinp`, no root; QUIC/UDP calls and video as "Other");
+   the chart's **Kinds | Apps**; the phone's Hotspot row opens ▾ into the devices and their apps. Pages visited: left out — browsers
+   tell no other program what a site used (a small local extension of our own could, later). On the phone 11:00 (the 6-week forecast
+   still: 145 GB); the 3-week forecast on the phone at 11:17: 177 GB by 3 Nov, the faint bars 4–8 GB around the 6.8 GB average.
+   The desktop's beta.16 (per program) installed by the user 11:19 and restarted: Claude 12 MB, Chrome, Firefox, Thunderbird, Viber, "Other"
+   6 MB in its first minutes — and adb and Android Auto's head unit (the phone on USB) counted as hotspot. beta.17 (Drive): connections to
+   the computer itself are not counted, to the local network (the phone, the tablet) are Wi-Fi; built, to install.
+- [x] 13. (the user, 25 Oct, from the computer's page: "Xiaomi 15" four times; "Android Auto has its own Wi-Fi … make it Android Auto";
+   "can we do better on desktop"; "make sure there is a cleanup, no garbage left behind") **Sync's conflict copies**: the phone's month,
+   rewritten while the computer sent the last one back, came back as "2026-10.24129PN74G (2)/(3)/(4).jsonl" (history: 11:00, 11:11,
+   11:18), each read as another phone. Now no reader takes a "(n)" copy, and every device (and the computer) removes them; the cause
+   in the sync engine is left to look at apart. **Android Auto** its own kind (teal) on the phone: its metered Wi-Fi (`via` on a phone).
+   **Cleanup**, once a day: the copies, half-written ".tmp" files, the warnings of cycles before the last two and day passes over 30
+   days, the phone's own old "hotspot" hours, a month's per-app and hourly detail after 13 months (its days stay); the hourly job
+   cancelled and the live speed stopped when Data is no longer used; the computer: the same for its files, its writes under a dot
+   name. **The computer's page as the phone's**: the ring, Kinds | Apps with the faint forecast and the average, the cycle chart,
+   the numbers, the tips, the apps (top ten, all, the Hotspot ▾ by device and app), the devices, the connection, the drops; (i) on
+   each. Drive 3139ff3, beta.18 built; Android not installed (another session is using the phone).
+- [x] 14. (25 Oct 12:58) main (Contacts' lazy loading, call history) merged into claude/data-plan, then installed on the phone (backed up;
+   Android Auto approved). Found: the usage access had been taken away at ~11:27 (Android's own record), and **without it the hourly look
+   rewrote this month's file without its days** — fixed: with no access the files are left exactly as they are (events wait). Nothing was
+   lost: the access back (12:59), Android's counts wrote October again; the phone removed its 3 sync copies. The computer still had
+   "(2)…(7)" (beta.16 does not clean): beta.18 removes them on start. Old desktop builds (beta.14–17) and older phone backups removed.
+   13:06: Drive main (Contacts' latest) merged into `data` (c9b52f2), 0.6.0-beta.19 built (143 tests, tsc clean; both sides' code in the
+   package), installed by the user over main's beta.14 and restarted: the "(2)…(7)" copies gone on start; the computer holds the phone's
+   restored October (25 days, 128.5 GB mobile, 119.3 GB hotspot); its per-program lines go on (today's adb/head-unit rows from beta.16 stay).
+   The user: "empty space, no scroll, content out of reach" → the page scrolls (the app's page-scroll) and fills the window, two columns
+   when wide, one when not; checked at 1920, 1400, ~1000 and ~780, top and end; beta.20 (Drive 16923df) installed 13:13 and restarted.
+
+### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
+- **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);
+  a simple radio model (signal falls with distance, each wall costs some dB) fitted to the readings guesses the best router
+  spot. NetSpot and others do this.
+- **"From many devices and the signal's noise you see the obstacles, dirty, not a photo"** — that is real research:
+  *radio tomographic imaging*. Many radios around a room (tens of them), every pair measuring the signal between them; each
+  obstacle or person weakens the links that cross it, and a blurry picture of where things are is worked out from which
+  links got weaker — like a CT scan, with radio. Better versions use *channel-state information* (CSI: the signal per
+  sub-carrier, not just one strength number), which shows even a person breathing.
+- **Why not with Tetra's three devices**: three devices give three links (or three to the router) — a handful of lines across
+  the house, not the hundreds a picture needs; phones and ordinary Linux Wi-Fi drivers give one strength number (RSSI), not
+  CSI (CSI needs special chips/firmware: research Wi-Fi cards, ESP32 boards, rooted phones with patched firmware). Walking
+  the phone around gives many readings over time, and obstacles do show as weaker "shadows" behind them — that is the most a
+  phone's map would show: where the signal is weak, not what is there.
+- Seeing people through walls is the "spy thing"; Tetra does not do it.
+
+### Later / maybe
+- A **battery applet** — set aside by the user (25 Oct: "a different applet, another time or maybe never").
+- The house map above; per-SIM split (with a second SIM); a "devices on my network" scan; an offline vendor table; a Quick
+  Settings tile ("41 / 300 GB").
+
+### Questions for the user
+1. The old F-Droid app: Data Monitor (drnoob)? Anything in it to keep that is not above?
+2. The icon — the user made it, 25 Oct: `Assets/DataMeter.png` (a lime gauge and bars on near-black).
+3. Colour — from the icon: lime #A1F81A, the launcher background its charcoal (unless the user says otherwise).
+4. The plan — answered 25 Oct: a Setup page; the user's is unlimited with a fair-use limit (~300 GB; Setup asks the number
+   and the renewal day).
+5. Live speed — answered 25 Oct: yes.
+6. The house map — answered 25 Oct: not built; Spots in the meter instead.
+7. The hotspot — answered 25 Oct: phone − (tablet + PC) = the difference, and who used most. Still open: "Phone as hotspot" in
+   Signal needs the PC and the tablet on with Tetra for the minutes the phone is moved around — fine?
+8. Roaming — answered 25 Oct: a day pass outside the EU (€15 / 300 MB) and a reminder to turn data roaming off.
 
 ## The user's original wishlist (Sept 2026, unchanged)
 

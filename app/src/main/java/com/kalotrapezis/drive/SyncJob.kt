@@ -26,6 +26,11 @@ internal class SyncJob : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         val store = SyncStore(applicationContext)
+        // Data's hourly look (Plan.md § Data): Android's counts into this device's files, then the plan's warnings
+        if (params.jobId == DataStats.JOB) {
+            scope.launch { runCatching { DataStats.record(applicationContext); DataStats.checkRoaming(applicationContext) }.onFailure { WriterLog.w("Data: the hourly look failed (${it.message})") }; jobFinished(params, false) }
+            return true
+        }
         // Send to computer's files, waiting for the computer (Outbox): tried again until it has them.
         if (params.extras.getBoolean(Outbox.EXTRA)) {
             scope.launch {
@@ -40,7 +45,7 @@ internal class SyncJob : JobService() {
             scope.launch {
                 val error = runCatching { SyncClient(applicationContext, store).scopeOnly(part) }.onFailure { WriterLog.w("Scoped sync $part: ${it.message}") }.exceptionOrNull()
                 // the look carries the Timer's part too: a timer started on the computer reaches a closed Tetra here
-                if (params.jobId == ScopedSync.CALENDAR_LOOK) listOf("timer", "contacts").forEach { runCatching { SyncClient(applicationContext, store).scopeOnly(it) } }
+                if (params.jobId == ScopedSync.CALENDAR_LOOK) listOf("timer", "contacts", "data").forEach { runCatching { SyncClient(applicationContext, store).scopeOnly(it) } }
                 val tooOld = ScopedSync.tooOld(error) // the whole sync carries it
                 jobFinished(params, error != null && !tooOld && params.jobId != ScopedSync.CALENDAR_LOOK) // a change waiting is tried again; a look waits for the next
             }
@@ -129,6 +134,7 @@ internal object ScopedSync {
     private const val TIMER_WAITING = 4142
     private const val CONTACTS_WAITING = 4145 // 4143 is Send to computer's outbox job (SendToComputer.WAITING)
     private const val PHONE_WAITING = 4148
+    private const val DATA_WAITING = 4151 // 4150 is Data's hourly look (DataStats.JOB)
     private val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pending = java.util.concurrent.ConcurrentHashMap<String, Job>() // a timer's push never cancels an event's
 
@@ -157,7 +163,7 @@ internal object ScopedSync {
     /** Run by Android as soon as there is a network, and again until the computer has it. */
     private fun wait(context: Context, scope: String) {
         val jobs = context.getSystemService(JobScheduler::class.java) ?: return
-        jobs.schedule(JobInfo.Builder(when (scope) { "timer" -> TIMER_WAITING; "contacts" -> CONTACTS_WAITING; "phone" -> PHONE_WAITING; else -> CALENDAR_WAITING }, ComponentName(context, SyncJob::class.java))
+        jobs.schedule(JobInfo.Builder(when (scope) { "timer" -> TIMER_WAITING; "contacts" -> CONTACTS_WAITING; "phone" -> PHONE_WAITING; "data" -> DATA_WAITING; else -> CALENDAR_WAITING }, ComponentName(context, SyncJob::class.java))
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setBackoffCriteria(60_000, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
             .setExtras(android.os.PersistableBundle().apply { putString(SCOPE, scope) })

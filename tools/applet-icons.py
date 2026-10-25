@@ -1,18 +1,27 @@
-# Usage: python3 tools/applet-icons.py app/src/main/res <folder with DocScan.png, QRScan.png, Files.png, Office.png, Calendar.png, Contacts.png, Phone.png, Maps.png, Timer.png, Sync.png, Settings.png — any of them> (Assets/Icons/Applets)
+# Usage: python3 tools/applet-icons.py app/src/main/res <folder with DocScan.png, QRScan.png, Files.png, Office.png, Calendar.png, Contacts.png, Phone.png, Maps.png, Timer.png, Sync.png, Settings.png, Data.png — any of them> (Assets/Icons/Applets)
 # The applets' launcher icons from Home's own art, each on its own colour (asked 17 Oct: the corners in the applet's colour).
 import sys, os, glob
 from PIL import Image, ImageDraw
 res, dl = sys.argv[1], sys.argv[2]
 nodpi = f"{res}/drawable-nodpi"
 # the user's new tiles (17 Oct): their solid corners cut away (flood from each corner), at the other arts' size
-for src, out in [("DocScan", "scanner_art"), ("QRScan", "codes_art"), ("Files", "files_art"), ("Office", "office_art"), ("Notes", "notes_art"), ("Calendar", "calendar_art"), ("Contacts", "contacts_art"), ("Phone", "phone_art"), ("Maps", "maps_art"), ("Timer", "timer_art"), ("Sync", "sync_art"), ("Settings", "settings_art")]:
+# a tile on a dark ground (Data's, 25 Oct) has corners too near its own colour to flood: cut by its rounded square instead
+MASKS = {"Data": ((29, 27, 1222, 1209), 256)}
+for src, out in [("DocScan", "scanner_art"), ("QRScan", "codes_art"), ("Files", "files_art"), ("Office", "office_art"), ("Notes", "notes_art"), ("Calendar", "calendar_art"), ("Contacts", "contacts_art"), ("Phone", "phone_art"), ("Maps", "maps_art"), ("Timer", "timer_art"), ("Sync", "sync_art"), ("Settings", "settings_art"), ("Data", "data_art")]:
     if not os.path.exists(f"{dl}/{src}.png"): continue  # only the tiles given are made again
     a = Image.open(f"{dl}/{src}.png").convert("RGBA")
-    for c in [(0, 0), (a.width - 1, 0), (0, a.height - 1), (a.width - 1, a.height - 1)]:
-        ImageDraw.floodfill(a, c, (0, 0, 0, 0), thresh=60)
+    if src in MASKS:
+        box, r = MASKS[src]
+        m = Image.new("L", (a.width * 4, a.height * 4), 0)  # drawn at 4× and shrunk: a smooth edge
+        ImageDraw.Draw(m).rounded_rectangle([v * 4 for v in box], r * 4, fill=255)
+        a.putalpha(m.resize(a.size, Image.LANCZOS))
+        a = a.crop(box)
+    else:
+        for c in [(0, 0), (a.width - 1, 0), (0, a.height - 1), (a.width - 1, a.height - 1)]:
+            ImageDraw.floodfill(a, c, (0, 0, 0, 0), thresh=60)
     a.resize((627, 627), Image.LANCZOS).save(f"{nodpi}/{out}.png", optimize=True)
 apps = [("photos", "gallery_art"), ("files", "files_art"), ("notes", "notes_art"), ("scanner", "scanner_art"),
-        ("codes", "codes_art"), ("office", "office_art"), ("text_editor", "text_editor_art"), ("calendar", "calendar_art"), ("contacts", "contacts_art"), ("phone", "phone_art"), ("maps", "maps_art"), ("timer", "timer_art")]
+        ("codes", "codes_art"), ("office", "office_art"), ("text_editor", "text_editor_art"), ("calendar", "calendar_art"), ("contacts", "contacts_art"), ("phone", "phone_art"), ("maps", "maps_art"), ("timer", "timer_art"), ("data", "data_art")]
 for f in glob.glob(f"{res}/drawable/applet_*_fg.xml"): os.remove(f)
 colors = ['<?xml version="1.0" encoding="utf-8"?>', "<!-- The applet icons' backgrounds: each art's own edge colour, so its tile's corners blend in (tools/applet-icons.py). -->", "<resources>"]
 for name, art in apps:

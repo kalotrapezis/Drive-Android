@@ -64,6 +64,8 @@ internal enum class SettingsPage(val title: String, val icon: Int, val tint: Col
     Contacts("Contacts", Category.Contacts.icon, Category.Contacts.color, "Phone's contacts, birthdays", listOf("In the phone's contacts", "Birthdays go into")),
     Phone("Phone", Category.Phone.icon, Category.Phone.color, "Phone app, calls, the computer", listOf("Phone app", "Vibrate when answered", "Vibrate when a call ends",
         "Silence numbers not in Contacts", "Decline hidden numbers", "Calls on the computer", "Open the Phone")),
+    Data("Data", Category.Data.icon, Category.Data.color, "Your plan, warnings, roaming, live speed", listOf("Setup", "Usage access", "Your plan", "Warnings", "Roaming",
+        "Live speed", "Signal drops", "Wi-Fi around", "Open Data")),
 }
 
 @Composable
@@ -149,6 +151,7 @@ internal fun SettingsTab(
                     SettingsPage.Maps -> MapsPage()
                     SettingsPage.Contacts -> ContactsPage()
                     SettingsPage.Phone -> PhonePage()
+                    SettingsPage.Data -> DataPage()
                 } }
             }
         }
@@ -563,6 +566,42 @@ internal fun SettingsTab(
         }
         ChoiceRow("Birthdays go into", if (cals.isEmpty()) "No calendars yet" else "Each birthday and date is a yearly event there, reminded at 9:00 on the day and the day before",
             cals.map { it to it.name }, chosen) { c -> c?.let { ContactsPrefs.setBirthdays(context, it.dir.name) }; version.intValue++ }
+    }
+}
+
+/** Settings › Data (Plan.md § Data): the plan is set up in Data's own Setup; here its state and the switches. */
+@Composable private fun DataPage() {
+    val context = LocalContext.current
+    val back = resumes()
+    val access = remember(back.intValue) { DataStats.hasAccess(context) }
+    val plan = remember(back.intValue) { DataFiles.plan() }
+    val prefs = remember { context.getSharedPreferences("data", android.content.Context.MODE_PRIVATE) }
+    SettingsSection(null, "Data counts each app's mobile data and Wi-Fi from Android's own statistics. It stays on your devices: Local Sync carries it to your tablet and computer only.") {
+        SettingRow("Setup", "Your plan, when it renews, roaming, warnings — step by step", onClick = { openData(context, "setup") }) { Chevron() }
+        StatusRow("Usage access", if (access) "On" else "Off — Data sees only its own use", access, "Settings") {
+            runCatching { context.startActivity(DataStats.accessIntent(context)) }.onFailure { context.startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+        }
+        SettingRow("Your plan", plan?.let { p -> when (p.kind) {
+            DataPlan.UNLIMITED -> "Unlimited"; DataPlan.FAIR_USE -> "Unlimited, ${DataRules.bytes(p.size)} fair use"; else -> DataRules.bytes(p.size)
+        } + " · renews " + DataRules.cycle(p, java.time.LocalDate.now()).end.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH)) } ?: "Not set up", onClick = { openData(context, "setup") }) { Chevron() }
+    }
+    SettingsSection("Warnings") {
+        SettingRow("Warnings", plan?.takeIf { it.limited }?.warn?.joinToString(" · ") { "$it %" } ?: "None", onClick = { openData(context, "setup") }) { Chevron() }
+        var budget by remember { mutableStateOf(prefs.getBoolean("warnBudget", false)) }
+        SwitchRow("When a day's budget is passed", null, budget) { budget = it; prefs.edit().putBoolean("warnBudget", it).apply() }
+        SettingRow("Roaming", plan?.let { p -> (if (p.passPrice > 0) "Outside the EU: ${p.currency}${"%.0f".format(p.passPrice)} for ${DataRules.bytes(p.passSize)} a day" else "No day pass") +
+            "; notices to turn data roaming off" } ?: "Not set up", onClick = { openData(context, "setup") }) { Chevron() }
+    }
+    SettingsSection("Live") {
+        var live by remember { mutableStateOf(DataSpeed.enabled(context)) }
+        SwitchRow("Live speed", "In the status bar while the screen is on", live) { live = it; DataSpeed.setEnabled(context, it) }
+        var drops by remember { mutableStateOf(DataSignal.summaryOn(context)) }
+        SwitchRow("Signal drops", "A daily summary of the drops (they are always listed in Data)", drops) { drops = it; DataSignal.setSummary(context, it) }
+        val located = remember(back.intValue) { context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED }
+        StatusRow("Wi-Fi around", if (located) "Location allowed: the networks around and their channels" else "Needs the location permission (only while Signal is open)", located, if (located) null else "Settings") {
+            context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)))
+        }
+        SettingRow("Open Data", null, onClick = { openData(context) }) { Chevron() }
     }
 }
 

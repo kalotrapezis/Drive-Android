@@ -367,6 +367,30 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     /** The tablet's Phone (PhoneRelay): a call placed, or a button pressed, by the phone through the computer. */
     fun phoneViaComputer(path: String): JSONObject { val p = reach(store.pairing() ?: throw SyncException("Not paired with a computer.")); return postJson(p.hosts.first(), p, path, JSONObject()) }
 
+    /** Data › Signal: what the computer sees of its Wi-Fi now (signal, speed, network), for "Phone as hotspot". */
+    fun computerWifi(): JSONObject { val p = reach(store.pairing() ?: throw SyncException("Not paired with a computer.")); return postJson(p.hosts.first(), p, "/data/wifi", JSONObject()) }
+
+    /** The computer's address now, for Data's loss test (a ping to it). */
+    fun computerHost(): String = reach(store.pairing() ?: throw SyncException("Not paired with a computer.")).hosts.first()
+
+    /** Data › Signal: the Wi-Fi's real speed to the computer — [bytes] down from it, then up to it; Mb/s down, up, and the ping in ms. */
+    fun speedTest(bytes: Int = 20_000_000): Triple<Double, Double, Long> {
+        val p = reach(store.pairing() ?: throw SyncException("Not paired with a computer."))
+        val host = p.hosts.first()
+        val t0 = System.nanoTime(); postJson(host, p, "/data/wifi", JSONObject()); val ping = (System.nanoTime() - t0) / 1_000_000
+        val d0 = System.nanoTime()
+        val got = open(host, p.port, p.fingerprint, "/data/speed?n=$bytes", "GET", p.token).run { inputStream.use { s -> val b = ByteArray(65536); var n = 0L; while (true) { val r = s.read(b); if (r < 0) break; n += r }; n }.also { disconnect() } }
+        val down = got * 8 / ((System.nanoTime() - d0) / 1e9) / 1e6
+        val u0 = System.nanoTime()
+        open(host, p.port, p.fingerprint, "/data/speed", "POST", p.token).run {
+            doOutput = true; setFixedLengthStreamingMode(bytes); setRequestProperty("Content-Type", "application/octet-stream")
+            outputStream.use { o -> val b = ByteArray(65536); var left = bytes; while (left > 0) { val n = minOf(left, b.size); o.write(b, 0, n); left -= n } }
+            jsonResult().also { disconnect() }
+        }
+        val up = bytes * 8 / ((System.nanoTime() - u0) / 1e9) / 1e6
+        return Triple(down, up, ping)
+    }
+
     /** A call's state for the computer's call bubble (PhoneCall.Watcher): ringing, active, ended. */
     fun callState(state: JSONObject) { val p = reach(store.pairing() ?: return); postJson(p.hosts.first(), p, "/call/state", state) }
 

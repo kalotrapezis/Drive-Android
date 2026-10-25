@@ -465,6 +465,16 @@ How to write here:
       | Timer | 226–246 | 38–52 |
       | Contacts | 157–218 | 32–38 |
 
+      **The desktop (25 Oct, Drive branch `optimise`, beta.21; not merged):** measured hidden on a copy of the library
+      (Drive/desktop/scripts/measure.js: each page's time until it stops changing, and the longest task that kept the window
+      from answering). Already quick and left: Files, Notes, Calendar, Timer, Maps, Contacts, Data, Devices, Settings
+      (2–160 ms, no task over ~90 ms). Two froze the window:
+
+      | Page | before | after | what was slow |
+      |---|---|---|---|
+      | Photos (opened again) | 741 ms, the window busy 599 ms | 71 ms, none | every one of the 16 619 photos was made at each visit; now a period's photos are made within two screens of the view and let go farther away (its room kept), so any size of library opens the same |
+      | Phone | 510–545 ms, busy 288–293 ms | 47–76 ms, none | the phone's thousand recent calls made at once; now sixty, more as the list's end nears |
+
       Measuring on the phone: `am force-stop` then `am start` at once leaves HyperOS's recents_animation_input_consumer over the
       screen and adb's taps are lost; press HOME in between (memory phone-tap-measuring).
 

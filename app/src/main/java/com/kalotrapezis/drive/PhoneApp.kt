@@ -426,7 +426,7 @@ private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, ca
 @Composable
 private fun Favourites(people: List<ContactInfo>, pad: PaddingValues, call: (String) -> Unit) {
     val context = LocalContext.current
-    if (people.isEmpty()) { Box(Modifier.padding(pad)) { Hint("Star people in Contacts and they show here: one tap calls, holding opens them.") }; return }
+    if (people.isEmpty()) { Box(Modifier.padding(pad)) { Hint("Give people a heart in Contacts and they show here: one tap calls, holding opens them.") }; return }
     LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 76.dp, bottom = 96.dp)) {
         items(people, key = { it.uid.ifBlank { it.name } }) { p ->
             val number = p.defaultPhone ?: p.phones.firstOrNull()?.value

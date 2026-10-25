@@ -20,6 +20,10 @@ internal data class CallGroup(val calls: List<LoggedCall>) {
 
 /** Android's call log for the Phone's Recents (READ_CALL_LOG / WRITE_CALL_LOG, granted with the Phone app role). */
 internal object PhoneLog {
+    /** The latest calls read ahead when Tetra opens, so Recents opens full (the user, 25 Oct: "the dialer is slower than Contacts"). */
+    @Volatile var recent: List<LoggedCall>? = null
+    fun warm(c: Context) = Thread { runCatching { if (!PhoneRelay.noCalls(c)) recent = read(c) } }.start()
+
     fun read(c: Context, limit: Int = 600): List<LoggedCall> {
         if (c.checkSelfPermission(android.Manifest.permission.READ_CALL_LOG) != android.content.pm.PackageManager.PERMISSION_GRANTED) return emptyList()
         val out = mutableListOf<LoggedCall>()

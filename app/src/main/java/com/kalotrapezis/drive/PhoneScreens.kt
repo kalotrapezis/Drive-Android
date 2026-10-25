@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 internal val PHONE_COLOR = Color(0xFF168C93)
 internal val CALL_GREEN = Color(0xFF2E9E5B)
 internal val CALL_RED = Color(0xFFD93A3A)
+internal val CALL_BLUE = Color(0xFF2F7DD9)
 
 /** A call's own screen, over the lock screen too: ringing, dialling, talking (Plan.md § Phone › Screens). */
 class PhoneCallActivity : ComponentActivity() {

@@ -12,6 +12,18 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [x] (contacts-lazy session, 25 Oct; merged 440a754 / Drive f5b008c) Contacts and
+      the Phone open at once (the user: "slow, taps don't answer until it's all ready"). Read ahead when Tetra opens: the
+      favourites and the first screenful first (their faces made small at once, ContactThumbs), then everyone; sorting,
+      duplicates and photo decoding off the screen's thread; Recents read ahead and shown before the computer's call
+      history is written. writer.log says each opening's times ("Contacts: opened …", "Calls: opened …"). On the phone:
+      Contacts 290–380 ms → 180–230 ms (3.3 s → 0.19 s right after Tetra starts); Phone 380–405 → 180–230 ms (2.3–2.8 s →
+      0.25 s). Favourites: a two-row grid on top of All, the last cell "+N" opens Favourites (phone and desktop); a heart
+      for favourites everywhere, Contacts and the Phone (the star is the default number's). A contact's page ends with
+      History (the last 50 calls on any of their numbers) and Recordings (Tetra/Phone/Recordings by name or number,
+      ContactsRecordings), the latest three and See all on their own page, "No recordings so far"; call types a white
+      arrow on green / blue / red (CallTypeIcon, desktop CallBadge) in Contacts and the Phone. Desktop 0.6.0-beta.14.
+      Merged into main in both repos (25 Oct).
 - [x] (813e7c4, 18c031f) Office: one tab row for Words, Slides and Tables; Settings › Tab marker: Bubble / Dash; the
       bubble in each app's colour (office tab-marker session, 17 Oct).
 - [x] (386b04c) A: tab names and order alike in Words, Slides, Tables (office-parity builder, 17 Oct).
@@ -383,9 +395,16 @@ How to write here:
       (~160 km; farther, the shortest way), phone, Android Auto (⚙ › Roads) and desktop (beside Car). MapsMainRoadsTest:
       Σκάλα 11.7 km/17 min no track, My Market 11.1 km on secondary. Road surface and slope are not in the graph (a rebuild
       would add them). Default Main roads (the user: yes). On the phone 24 Oct (phone-install.sh, Android Auto re-approved); not merged.
-- [x] (data-plan session, 25 Oct, branch claude/data-plan; Drive branch `data`) **Data** planned and built, steps 2–8 (§ Data); not merged, not on the devices yet. Planned: Setup, usage and the plan (fair use, roaming
+- [x] (data-plan session, 25 Oct, branch claude/data-plan; Drive branch `data`) **Data** planned and built, steps 2–8 (§ Data); not merged; on the phone, the tablet and the computer (details in § Data). Planned: Setup, usage and the plan (fair use, roaming
       day pass), live speed, three devices and the hotspot, Wi-Fi meter with Spots, signal drops; other apps checked; the house
       map explained, not built; battery set aside by the user; the user answered most questions 25 Oct.
+- [ ] **Next, in this order** (the user, 25 Oct): (1) wait for the two agents now running — sync's clean-up of what Data
+      leaves behind, and Contacts' call history with recordings — then merge everything; (2) one agent optimises every
+      other applet one by one with Contacts' speed recipe (Notes is slow to show its notes; Files, Scanner, Timer, Calendar
+      should be fast; Office may stay slower), measured before → after on the phone; (3) translations for every applet:
+      **Greek first, then the EU languages, one string file per language** (Android values-<lang>/strings.xml; the desktop
+      one file per language); short words preferred, and what still doesn't fit ends with "…" (no wrapping, no shrinking);
+      (4) then push to GitHub as a fuller product.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

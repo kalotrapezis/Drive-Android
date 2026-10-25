@@ -44,6 +44,27 @@
   .panel h3 { margin: 0 0 6px; font-size: 24px; } .panel p { color: var(--muted); margin: 0 0 16px; }
   .panel .btn { min-width: 0; margin-top: 10px; }
   footer { color: #7d858f; font-size: 14px; padding: 48px 0 40px; text-align: center; }
+  .island { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; background: #000; border: 1px solid var(--line);
+            border-radius: 30px; padding: 8px; margin: 26px auto 22px; width: fit-content; max-width: 100%; }
+  .island button { font: inherit; font-size: 15px; font-weight: 600; color: var(--text); background: transparent; border: 0;
+                   border-radius: 999px; padding: 9px 18px; cursor: pointer; }
+  .island button:hover { background: #22262b; }
+  .island button[aria-selected="true"] { background: var(--c); color: var(--on); }
+  .island button:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
+  [role="tabpanel"] > p { text-align: center; color: var(--muted); max-width: 760px; margin: 0 auto 18px; }
+  .shots { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; align-items: flex-start; }
+  .shots figure { margin: 0; text-align: center; }
+  .shots figure.phone { flex: 0 1 230px; }
+  .shots figure.wide { flex: 1 1 560px; max-width: 900px; }
+  .shots img { width: 100%; display: block; border-radius: 16px; border: 1px solid var(--line); background: #000; }
+  .shots figure.phone img { border-radius: 26px; border: 6px solid #08090a; outline: 1px solid var(--line); }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  .note { text-align: center; color: #7d858f; font-size: 14px; }
+  .cards-small { display: none; }
+  @media (max-width: 700px) {  /* a phone: the tabs would not fit, so the cards as before */
+    .cards-small { display: grid; }
+    .island, [role="tabpanel"], .note { display: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -67,19 +88,121 @@
     <h2>A dozen apps, one place, your devices</h2>
     <p>Each applet opens from Home and shares one folder. The same applets run on Android phones and tablets and on
       Linux. Faces, labels, text recognition, maps and routes are worked out on the device: no account, no server,
-      no analytics, no ads. Tetra is free software and will stay free.</p>
-    <ul class="pills"><li>Photos</li><li>Files</li><li>Notes</li><li>Words</li><li>Tables</li><li>Slides</li><li>PDF</li><li>Calendar</li><li>Timer</li><li>Maps*</li><li>Contacts</li><li>Phone</li><li>Data</li><li>Scanner</li><li>Codes</li><li>Text editor</li></ul>
-    <p style="font-size:14px">* Maps covers Greece only for now; other countries will follow.</p>
-    <div class="grid">
+      no analytics, no ads. Tetra is free software and will stay free. Also inside: Scanner, Codes and a Text editor.</p>
+    <div class="grid cards-small">
       <img src="img/card-office.jpg" alt="Office: Word, Excel, PowerPoint and PDF" loading="lazy">
       <img src="img/card-photos.jpg" alt="Photos" loading="lazy">
       <img src="img/card-calendar.jpg" alt="Calendar and timers" loading="lazy">
       <img src="img/card-people.jpg" alt="Contacts and calls" loading="lazy">
-      <img src="img/card-maps.jpg" alt="Offline maps" loading="lazy">
+      <img src="img/card-maps.jpg" alt="Offline maps (Greece only for now)" loading="lazy">
       <img src="img/card-notes.jpg" alt="Notes and checklists" loading="lazy">
       <img src="img/card-files.jpg" alt="Files" loading="lazy">
       <img src="img/card-data.jpg" alt="Data, Wi-Fi and signal" loading="lazy">
     </div>
+    <div class="island" role="tablist" aria-label="Applets">
+      <button role="tab" id="tab-home" aria-controls="panel-home" aria-selected="true" tabindex="0" style="--c:#8E99A6;--on:#111">Home</button>
+      <button role="tab" id="tab-photos" aria-controls="panel-photos" aria-selected="false" tabindex="-1" style="--c:#95DF6B;--on:#111">Photos</button>
+      <button role="tab" id="tab-files" aria-controls="panel-files" aria-selected="false" tabindex="-1" style="--c:#177BFC;--on:#fff">Files</button>
+      <button role="tab" id="tab-notes" aria-controls="panel-notes" aria-selected="false" tabindex="-1" style="--c:#FED00A;--on:#111">Notes</button>
+      <button role="tab" id="tab-office" aria-controls="panel-office" aria-selected="false" tabindex="-1" style="--c:#FD7D12;--on:#111">Office</button>
+      <button role="tab" id="tab-calendar" aria-controls="panel-calendar" aria-selected="false" tabindex="-1" style="--c:#F41879;--on:#fff">Calendar</button>
+      <button role="tab" id="tab-timer" aria-controls="panel-timer" aria-selected="false" tabindex="-1" style="--c:#04D5CC;--on:#111">Timer</button>
+      <button role="tab" id="tab-maps" aria-controls="panel-maps" aria-selected="false" tabindex="-1" style="--c:#25C4FE;--on:#111">Maps*</button>
+      <button role="tab" id="tab-contacts" aria-controls="panel-contacts" aria-selected="false" tabindex="-1" style="--c:#BE7E4D;--on:#fff">Contacts</button>
+      <button role="tab" id="tab-phone" aria-controls="panel-phone" aria-selected="false" tabindex="-1" style="--c:#1A9AA8;--on:#fff">Phone</button>
+      <button role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1" style="--c:#9AD01E;--on:#111">Data</button>
+    </div>
+    <div role="tabpanel" id="panel-home" aria-labelledby="tab-home">
+      <p>Every applet in one place, each with its shortcuts. Edit mode sets their size and order.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/home-phone0.jpg"><img src="img/shots/home-phone0.jpg" alt="Home: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/home-tablet1.jpg"><img src="img/shots/home-tablet1.jpg" alt="Home: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+        <figure class="wide"><a href="img/shots/home-big2.jpg"><img src="img/shots/home-big2.jpg" alt="Home: Big screen (4K)" loading="lazy"></a><figcaption>Big screen (4K)</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-photos" aria-labelledby="tab-photos" hidden>
+      <p>Timeline, collections, people, documents found for you, a map, search and an editor. Faces and labels are worked out on the device.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/photos-phone0.jpg"><img src="img/shots/photos-phone0.jpg" alt="Photos: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/photos-tablet1.jpg"><img src="img/shots/photos-tablet1.jpg" alt="Photos: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+        <figure class="wide"><a href="img/shots/photos-computer2.jpg"><img src="img/shots/photos-computer2.jpg" alt="Photos: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" hidden>
+      <p>Your Tetra folder with tags, favourites, folder colours, Trash and an icon for every kind of file.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/files-phone0.jpg"><img src="img/shots/files-phone0.jpg" alt="Files: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/files-tablet1.jpg"><img src="img/shots/files-tablet1.jpg" alt="Files: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+        <figure class="wide"><a href="img/shots/files-computer2.jpg"><img src="img/shots/files-computer2.jpg" alt="Files: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-notes" aria-labelledby="tab-notes" hidden>
+      <p>Notes and checklists with colours, labels, pins and history, and keyboard shortcuts.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/notes-phone0.jpg"><img src="img/shots/notes-phone0.jpg" alt="Notes: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/notes-tablet1.jpg"><img src="img/shots/notes-tablet1.jpg" alt="Notes: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+        <figure class="wide"><a href="img/shots/notes-computer2.jpg"><img src="img/shots/notes-computer2.jpg" alt="Notes: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-office" aria-labelledby="tab-office" hidden>
+      <p>Words, Tables, Slides and PDF: Microsoft and LibreOffice files open and save as themselves, with the ribbon, rulers, charts and themes.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/office-phone0.jpg"><img src="img/shots/office-phone0.jpg" alt="Office: Office on a phone" loading="lazy"></a><figcaption>Office on a phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/office-tablet1.jpg"><img src="img/shots/office-tablet1.jpg" alt="Office: Words" loading="lazy"></a><figcaption>Words</figcaption></figure>
+        <figure class="wide"><a href="img/shots/office-tablet2.jpg"><img src="img/shots/office-tablet2.jpg" alt="Office: Tables" loading="lazy"></a><figcaption>Tables</figcaption></figure>
+        <figure class="wide"><a href="img/shots/office-tablet3.jpg"><img src="img/shots/office-tablet3.jpg" alt="Office: Slides" loading="lazy"></a><figcaption>Slides</figcaption></figure>
+        <figure class="wide"><a href="img/shots/office-tablet4.jpg"><img src="img/shots/office-tablet4.jpg" alt="Office: PDF" loading="lazy"></a><figcaption>PDF</figcaption></figure>
+        <figure class="wide"><a href="img/shots/office-big5.jpg"><img src="img/shots/office-big5.jpg" alt="Office: Words on a big screen" loading="lazy"></a><figcaption>Words on a big screen</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-calendar" aria-labelledby="tab-calendar" hidden>
+      <p>Plain iCalendar files: day, week, month and agenda, repeats, reminders, birthdays from Contacts.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/calendar-phone0.jpg"><img src="img/shots/calendar-phone0.jpg" alt="Calendar: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/calendar-tablet1.jpg"><img src="img/shots/calendar-tablet1.jpg" alt="Calendar: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+        <figure class="wide"><a href="img/shots/calendar-computer2.jpg"><img src="img/shots/calendar-computer2.jpg" alt="Calendar: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-timer" aria-labelledby="tab-timer" hidden>
+      <p>Timers that ring on whichever device you are at, pinned on Home.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/timer-phone0.jpg"><img src="img/shots/timer-phone0.jpg" alt="Timer: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/timer-tablet1.jpg"><img src="img/shots/timer-tablet1.jpg" alt="Timer: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+        <figure class="wide"><a href="img/shots/timer-computer2.jpg"><img src="img/shots/timer-computer2.jpg" alt="Timer: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-maps" aria-labelledby="tab-maps" hidden>
+      <p>OpenStreetMap on the device: search, places, lists and trips, car, walk and bike routes, voice guidance and Android Auto. *Greece only for now.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/maps-phone0.jpg"><img src="img/shots/maps-phone0.jpg" alt="Maps: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/maps-tablet1.jpg"><img src="img/shots/maps-tablet1.jpg" alt="Maps: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+        <figure class="wide"><a href="img/shots/maps-computer2.jpg"><img src="img/shots/maps-computer2.jpg" alt="Maps: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-contacts" aria-labelledby="tab-contacts" hidden>
+      <p>Your contacts as vCard files, with faces from Photos, favourites, labels and the calls with each person.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/contacts-phone0.jpg"><img src="img/shots/contacts-phone0.jpg" alt="Contacts: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/contacts-tablet1.jpg"><img src="img/shots/contacts-tablet1.jpg" alt="Contacts: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+        <figure class="wide"><a href="img/shots/contacts-computer2.jpg"><img src="img/shots/contacts-computer2.jpg" alt="Contacts: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-phone" aria-labelledby="tab-phone" hidden>
+      <p>A dialer with Recents, blocking and spam lookup. On the computer, the phone dials for you and a call bubble answers.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/phone-phone0.jpg"><img src="img/shots/phone-phone0.jpg" alt="Phone: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/phone-tablet1.jpg"><img src="img/shots/phone-tablet1.jpg" alt="Phone: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+        <figure class="wide"><a href="img/shots/phone-computer2.jpg"><img src="img/shots/phone-computer2.jpg" alt="Phone: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+      </div>
+    </div>
+    <div role="tabpanel" id="panel-data" aria-labelledby="tab-data" hidden>
+      <p>What each app uses on mobile data and Wi-Fi, plan alerts and forecast, the hotspot, Wi-Fi signal and drops.</p>
+      <div class="shots">
+        <figure class="phone"><a href="img/shots/data-phone0.jpg"><img src="img/shots/data-phone0.jpg" alt="Data: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="wide"><a href="img/shots/data-tablet1.jpg"><img src="img/shots/data-tablet1.jpg" alt="Data: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
+      </div>
+    </div>
+    <p class="note">Screenshots use invented sample data. Tap one to see it full size.</p>
   </div>
 </section>
 
@@ -126,5 +249,24 @@
   <div class="wrap">Tetra is free software. Screenshots use invented sample data.
     Source: <a href="https://github.com/kalotrapezis/Drive-Android">Android</a> · <a href="https://github.com/kalotrapezis/Drive">desktop</a></div>
 </footer>
+<script>
+  // The applet tabs: click, arrow keys, and #name in the address keep the chosen one.
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  function show(tab, focus) {
+    tabs.forEach(t => { const on = t === tab; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on; });
+    if (focus) tab.focus();
+    history.replaceState(null, '', '#' + tab.id.slice(4));
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => show(t));
+    t.addEventListener('keydown', e => {
+      const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (d) { e.preventDefault(); show(tabs[(i + d + tabs.length) % tabs.length], true); }
+    });
+  });
+  const start = document.getElementById('tab-' + location.hash.slice(1));
+  if (start) show(start);
+</script>
 </body>
 </html>

@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tetra</title>
-<meta name="description" content="Tetra: one private super app for your phone, tablet and computer. Photos, files, notes, Office, calendar, maps, contacts, calls and data, synced over your own Wi-Fi. Free software.">
+<meta name="description" content="Tetra: one private super app for your phone, tablet and computer. Free software; nothing leaves your devices.">
 <meta property="og:title" content="Tetra">
 <meta property="og:description" content="One private super app for your phone, tablet and computer. Nothing leaves your devices.">
-<meta property="og:image" content="img/tetra-hero.jpg">
+<meta property="og:image" content="img/tetra-devices.jpg">
 <link rel="icon" href="img/tetra.png">
 <style>
-  :root { --bg: #0f1113; --card: #191c20; --line: #2a2e34; --text: #f4f6f8; --muted: #b0b7c0;
-          --teal: #04d5cc; --phone: #02505b; --violet: #822ad1; --blue: #177bfc; --pink: #f41879; }
+  :root { --bg: #0f1113; --card: #191c20; --line: #2a2e34; --text: #f4f6f8; --muted: #b0b7c0; --teal: #04d5cc;
+          --phone: #02505b; --violet: #822ad1; --blue: #177bfc; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 system-ui, "Noto Sans", "Segoe UI", sans-serif; }
   a { color: var(--teal); }
@@ -24,30 +24,24 @@
                        radial-gradient(800px 560px at 100% 100%, rgba(254, 208, 10, .26) 0%, transparent 70%); }
   header img.logo { width: 128px; height: 128px; filter: drop-shadow(0 0 28px rgba(255, 255, 255, .18)); }
   h1 { font-size: clamp(40px, 7vw, 72px); margin: 8px 0 4px; letter-spacing: -1px; }
-  .lead { font-size: clamp(18px, 2.4vw, 22px); color: var(--muted); max-width: 760px; margin: 0 auto 28px; }
+  .lead { font-size: clamp(18px, 2.4vw, 22px); color: var(--muted); max-width: 720px; margin: 0 auto 28px; }
   .buttons { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin: 0 0 32px; }
   .btn { display: flex; align-items: center; gap: 14px; padding: 14px 22px 14px 14px; border-radius: 22px; color: #fff;
-         text-decoration: none; min-width: 270px; transition: transform .15s, filter .15s; }
+         text-decoration: none; min-width: 270px; text-align: left; transition: transform .15s, filter .15s; }
   .btn:hover { transform: translateY(-2px); filter: brightness(1.12); }
   .btn img { width: 52px; height: 52px; border-radius: 13px; }
   .btn b { display: block; font-size: 20px; } .btn span { font-size: 14px; opacity: .85; }
   .android { background: var(--phone); } .appimage { background: var(--violet); } .deb { background: var(--blue); }
   .hero { width: 100%; border-radius: 22px; display: block; border: 1px solid var(--line); }
-  section { padding: 48px 0 8px; }
-  h2 { font-size: clamp(28px, 4vw, 40px); margin: 0 0 8px; }
-  section > .wrap > p { color: var(--muted); max-width: 780px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 18px; margin-top: 22px; }
-  .grid img, .wide { width: 100%; border-radius: 18px; display: block; border: 1px solid var(--line); }
-  .pills { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; padding: 0; list-style: none; }
-  .pills li { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 15px; }
-  table { border-collapse: collapse; width: 100%; max-width: 720px; margin-top: 18px; font-size: 15px; }
-  td, th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font-weight: 600; } td:last-child { color: var(--teal); font-weight: 700; }
-  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; margin-top: 22px; }
-  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px; }
-  .panel h3 { margin: 0 0 6px; font-size: 24px; } .panel p { color: var(--muted); margin: 0 0 16px; }
-  .panel .btn { min-width: 0; margin-top: 10px; }
-  footer { color: #7d858f; font-size: 14px; padding: 48px 0 40px; text-align: center; }
+  section { padding: 56px 0 8px; }
+  h2 { font-size: clamp(28px, 4vw, 40px); margin: 0 0 8px; text-align: center; }
+  .sub { color: var(--muted); max-width: 760px; margin: 0 auto; text-align: center; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-top: 26px; }
+  .tile { background: linear-gradient(160deg, color-mix(in srgb, var(--c) 22%, var(--card)) 0%, var(--card) 55%);
+          border: 1px solid var(--line); border-radius: 22px; padding: 22px; }
+  .tile img { width: 56px; height: 56px; border-radius: 14px; }
+  .tile h3 { margin: 12px 0 6px; font-size: 21px; } .tile p { margin: 0; color: var(--muted); font-size: 16px; }
+  .tile b { color: var(--text); }
   .island { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; background: #000; border: 1px solid var(--line);
             border-radius: 30px; padding: 8px; margin: 26px auto 22px; width: fit-content; max-width: 100%; }
   .island button { font: inherit; font-size: 15px; font-weight: 600; color: var(--text); background: transparent; border: 0;
@@ -64,8 +58,15 @@
   .shots figure.phone img { border-radius: 26px; border: 6px solid #08090a; outline: 1px solid var(--line); }
   figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
   .note { text-align: center; color: #7d858f; font-size: 14px; }
+  .grid { display: grid; gap: 18px; margin-top: 22px; }
+  .grid img, .wide-img { width: 100%; border-radius: 18px; display: block; border: 1px solid var(--line); margin-top: 22px; }
   .cards-small { display: none; }
-  @media (max-width: 700px) {  /* a phone: the tabs would not fit, so the cards as before */
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; margin-top: 26px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px; }
+  .panel h3 { margin: 0 0 6px; font-size: 24px; } .panel p { color: var(--muted); margin: 0 0 6px; }
+  .panel .btn { min-width: 0; margin-top: 12px; }
+  footer { color: #7d858f; font-size: 14px; padding: 48px 0 40px; text-align: center; }
+  @media (max-width: 700px) {  /* a phone: the tabs would not fit, so the cards instead */
     .cards-small { display: grid; }
     .island, [role="tabpanel"], .note { display: none !important; }
   }
@@ -76,23 +77,35 @@
   <div class="wrap">
     <img class="logo" src="img/tetra.png" alt="">
     <h1>Tetra</h1>
-    <p class="lead">One private super app for your phone, tablet and computer. Photos, files, notes, Office, calendar,
-      timers, maps, contacts, calls and data, synced over your own Wi-Fi. Nothing leaves your devices.</p>
+    <p class="lead">One private super app for your phone, tablet and computer. Free software, no account, no cloud:
+      nothing leaves your devices.</p>
     <div class="buttons">
       <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.1/Tetra-0.6.0-beta.1-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Download for Android</b><span>APK · 0.6.0 beta 1 · Android 11+</span></div></a>
       <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.21/Tetra-0.6.0-beta.21.AppImage"><img src="img/tetra.png" alt=""><div><b>Linux AppImage</b><span>0.6.0 beta 21 · any distro</span></div></a>
       <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.21/local-drive-desktop_0.6.0-beta.21_amd64.deb"><img src="img/tetra.png" alt=""><div><b>Linux .deb</b><span>Debian, Ubuntu, Mint</span></div></a>
     </div>
-    <img class="hero" src="img/tetra-hero.jpg" alt="Tetra on a computer, a tablet and a phone">
+    <img class="hero" src="img/tetra-devices.jpg" alt="Tetra on a computer, a tablet and a phone">
   </div>
 </header>
 
 <section>
   <div class="wrap">
-    <h2>A dozen apps, one place, your devices</h2>
-    <p>Each applet opens from Home and shares one folder. The same applets run on Android phones and tablets and on
-      Linux. Faces, labels, text recognition, maps and routes are worked out on the device: no account, no server,
-      no analytics, no ads. Tetra is free software and will stay free. Also inside: Scanner, Codes and a Text editor.</p>
+    <h2>What Tetra does for you</h2>
+    <div class="tiles">
+      <div class="tile" style="--c:#177BFC"><img src="img/icons/files.png" alt=""><h3>Files to and from your PC in a second</h3><p>Share anything to <b>Send to computer</b> on the phone, or <b>Send to phone</b> on the PC. It goes over your own Wi-Fi: no cable, no cloud. If the computer is away, it goes when it is back.</p></div>
+      <div class="tile" style="--c:#1A9AA8"><img src="img/icons/phone.png" alt=""><h3>Call from your computer</h3><p>Click a number in Contacts on the PC and your phone dials it. A call bubble on the screen answers, holds, mutes and hangs up.</p></div>
+      <div class="tile" style="--c:#9AD01E"><img src="img/icons/data.png" alt=""><h3>Your data plan, watched</h3><p>Tell Tetra your plan once. It notifies you at 50 %, 80 % and 100 %, or at any steps you choose, and forecasts the end of the month before you get there.</p></div>
+      <div class="tile" style="--c:#F41879"><img src="img/icons/calendar.png" alt=""><h3>Calendar and timers, with AI</h3><p>Built-in skills let Claude, ChatGPT or any assistant that can use your computer import a timetable, plan your week or start a timer. They simply edit the calendar's and timers' files.</p></div>
+      <div class="tile" style="--c:#FD7D12"><img src="img/icons/office.png" alt=""><h3>Office that keeps your files</h3><p>Word, Excel, PowerPoint and PDF open and save as themselves, on a phone, a tablet laid out like the desktop programs, or a big screen.</p></div>
+      <div class="tile" style="--c:#25C4FE"><img src="img/icons/maps.png" alt=""><h3>Maps that work offline*</h3><p>Search, places, routes by car, on foot and by bike, voice guidance and Android Auto, all on the device. *Greece only for now.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Every applet, on every screen</h2>
+    <p class="sub">One Home, one folder, the same applets on Android and Linux. Also inside: Scanner, Codes and a Text editor.</p>
     <div class="grid cards-small">
       <img src="img/card-office.jpg" alt="Office: Word, Excel, PowerPoint and PDF" loading="lazy">
       <img src="img/card-photos.jpg" alt="Photos" loading="lazy">
@@ -117,7 +130,7 @@
       <button role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1" style="--c:#9AD01E;--on:#111">Data</button>
     </div>
     <div role="tabpanel" id="panel-home" aria-labelledby="tab-home">
-      <p>Every applet in one place, each with its shortcuts. Edit mode sets their size and order.</p>
+      <p>Every applet in one place, with its shortcuts; edit mode sets their size and order.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/home-phone0.jpg"><img src="img/shots/home-phone0.jpg" alt="Home: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/home-tablet1.jpg"><img src="img/shots/home-tablet1.jpg" alt="Home: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -125,7 +138,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-photos" aria-labelledby="tab-photos" hidden>
-      <p>Timeline, collections, people, documents found for you, a map, search and an editor. Faces and labels are worked out on the device.</p>
+      <p>Timeline, collections, people and documents found on the device, a map, search and an editor.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/photos-phone0.jpg"><img src="img/shots/photos-phone0.jpg" alt="Photos: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/photos-tablet1.jpg"><img src="img/shots/photos-tablet1.jpg" alt="Photos: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -133,7 +146,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" hidden>
-      <p>Your Tetra folder with tags, favourites, folder colours, Trash and an icon for every kind of file.</p>
+      <p>Tags, favourites, folder colours, a Trash, and an icon for every kind of file.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/files-phone0.jpg"><img src="img/shots/files-phone0.jpg" alt="Files: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/files-tablet1.jpg"><img src="img/shots/files-tablet1.jpg" alt="Files: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -141,7 +154,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-notes" aria-labelledby="tab-notes" hidden>
-      <p>Notes and checklists with colours, labels, pins and history, and keyboard shortcuts.</p>
+      <p>Notes and checklists with colours, labels, pins and history.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/notes-phone0.jpg"><img src="img/shots/notes-phone0.jpg" alt="Notes: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/notes-tablet1.jpg"><img src="img/shots/notes-tablet1.jpg" alt="Notes: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -149,7 +162,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-office" aria-labelledby="tab-office" hidden>
-      <p>Words, Tables, Slides and PDF: Microsoft and LibreOffice files open and save as themselves, with the ribbon, rulers, charts and themes.</p>
+      <p>Words, Tables, Slides and PDF, with the ribbon, rulers, charts and themes.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/office-phone0.jpg"><img src="img/shots/office-phone0.jpg" alt="Office: Office on a phone" loading="lazy"></a><figcaption>Office on a phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/office-tablet1.jpg"><img src="img/shots/office-tablet1.jpg" alt="Office: Words" loading="lazy"></a><figcaption>Words</figcaption></figure>
@@ -160,7 +173,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-calendar" aria-labelledby="tab-calendar" hidden>
-      <p>Plain iCalendar files: day, week, month and agenda, repeats, reminders, birthdays from Contacts.</p>
+      <p>Day, week, month and agenda, repeats, reminders, birthdays from Contacts.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/calendar-phone0.jpg"><img src="img/shots/calendar-phone0.jpg" alt="Calendar: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/calendar-tablet1.jpg"><img src="img/shots/calendar-tablet1.jpg" alt="Calendar: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -168,7 +181,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-timer" aria-labelledby="tab-timer" hidden>
-      <p>Timers that ring on whichever device you are at, pinned on Home.</p>
+      <p>Timers that ring on whichever device you are at.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/timer-phone0.jpg"><img src="img/shots/timer-phone0.jpg" alt="Timer: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/timer-tablet1.jpg"><img src="img/shots/timer-tablet1.jpg" alt="Timer: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -176,7 +189,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-maps" aria-labelledby="tab-maps" hidden>
-      <p>OpenStreetMap on the device: search, places, lists and trips, car, walk and bike routes, voice guidance and Android Auto. *Greece only for now.</p>
+      <p>Search, saved places, lists and trips, and routes. *Greece only for now.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/maps-phone0.jpg"><img src="img/shots/maps-phone0.jpg" alt="Maps: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/maps-tablet1.jpg"><img src="img/shots/maps-tablet1.jpg" alt="Maps: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -184,7 +197,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-contacts" aria-labelledby="tab-contacts" hidden>
-      <p>Your contacts as vCard files, with faces from Photos, favourites, labels and the calls with each person.</p>
+      <p>vCard files with faces from Photos, favourites, labels and each person's calls.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/contacts-phone0.jpg"><img src="img/shots/contacts-phone0.jpg" alt="Contacts: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/contacts-tablet1.jpg"><img src="img/shots/contacts-tablet1.jpg" alt="Contacts: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -192,7 +205,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-phone" aria-labelledby="tab-phone" hidden>
-      <p>A dialer with Recents, blocking and spam lookup. On the computer, the phone dials for you and a call bubble answers.</p>
+      <p>The dialer: Recents, Favourites, blocking and spam lookup.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/phone-phone0.jpg"><img src="img/shots/phone-phone0.jpg" alt="Phone: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/phone-tablet1.jpg"><img src="img/shots/phone-tablet1.jpg" alt="Phone: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -200,7 +213,7 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-data" aria-labelledby="tab-data" hidden>
-      <p>What each app uses on mobile data and Wi-Fi, plan alerts and forecast, the hotspot, Wi-Fi signal and drops.</p>
+      <p>Usage per app on mobile and Wi-Fi, the hotspot, Wi-Fi signal and drops.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/data-phone0.jpg"><img src="img/shots/data-phone0.jpg" alt="Data: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/data-tablet1.jpg"><img src="img/shots/data-tablet1.jpg" alt="Data: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
@@ -213,35 +226,27 @@
 <section>
   <div class="wrap">
     <h2>Fast, on purpose</h2>
-    <p>Every applet was measured and reworked: nothing is read while a screen draws, small indexes in the cache,
-      read-ahead after Home's first frame, lists made for thousands of items.</p>
-    <img class="wide" src="img/card-speed.jpg" alt="Every applet opens in a blink" loading="lazy">
-    <table>
-      <tr><th>On a Xiaomi 15</th><th>before</th><th>now</th></tr>
-      <tr><td>Contacts, right after start</td><td>3.3 s</td><td>0.19 s</td></tr>
-      <tr><td>Phone, right after start</td><td>2.3–2.8 s</td><td>0.25 s</td></tr>
-      <tr><td>Data</td><td>2.4 s</td><td>0.16–0.19 s</td></tr>
-      <tr><td>Notes (218 notes, tablet)</td><td>~1000 ms</td><td>~450 ms, then ~90 ms</td></tr>
-      <tr><td>Desktop Photos, opened again</td><td>741 ms</td><td>71 ms</td></tr>
-    </table>
+    <p class="sub">Every applet was measured on a phone and reworked until it opens in a blink: Contacts right after start
+      went from 3.3 s to 0.19 s. On the computer, Photos opens again in 71 ms instead of 741.</p>
+    <img class="wide-img" src="img/card-speed.jpg" alt="Before and after, applet by applet" loading="lazy">
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h2>Sync without a server</h2>
-    <img class="wide" src="img/card-sync.jpg" alt="Sync without a server" loading="lazy">
+    <h2>Get Tetra</h2>
+    <p class="sub">Install it on your phone and your computer, pair them once with a QR code, and they sync over your own Wi-Fi.</p>
     <div class="two">
       <div class="panel">
         <h3>Tetra for Android</h3>
-        <p>Phone and tablet, with a layout for each. Office on a tablet looks like the desktop programs.</p>
-        <a href="https://github.com/kalotrapezis/Drive-Android">Read more on GitHub</a>
+        <p>Phones and tablets, Android 11 or newer.</p>
+        <a href="https://github.com/kalotrapezis/Drive-Android">Source and details on GitHub</a>
         <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.1/Tetra-0.6.0-beta.1-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Download APK</b><span>0.6.0 beta 1</span></div></a>
       </div>
       <div class="panel">
         <h3>Tetra for the desktop</h3>
-        <p>Linux, in the tray, always ready for your phone. Photos, files, notes, calendar, maps, contacts and calls.</p>
-        <a href="https://github.com/kalotrapezis/Drive">Read more on GitHub</a>
+        <p>Linux, waiting in the tray for your phone.</p>
+        <a href="https://github.com/kalotrapezis/Drive">Source and details on GitHub</a>
         <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.21/Tetra-0.6.0-beta.21.AppImage"><img src="img/tetra.png" alt=""><div><b>AppImage</b><span>0.6.0 beta 21</span></div></a>
         <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.21/local-drive-desktop_0.6.0-beta.21_amd64.deb"><img src="img/tetra.png" alt=""><div><b>.deb</b><span>0.6.0 beta 21</span></div></a>
       </div>
@@ -250,7 +255,7 @@
 </section>
 
 <footer>
-  <div class="wrap">Tetra is free software. Screenshots use invented sample data.
+  <div class="wrap">Tetra is free software (GPL 3.0) and a beta: keep your own backups. Screenshots use invented sample data.
     Source: <a href="https://github.com/kalotrapezis/Drive-Android">Android</a> · <a href="https://github.com/kalotrapezis/Drive">desktop</a></div>
 </footer>
 <script>

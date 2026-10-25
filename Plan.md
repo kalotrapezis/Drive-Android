@@ -3042,7 +3042,7 @@ Send log.
 - [ ] 1. Look on the real devices first (read-only, adb): how many days of history the Xiaomi keeps, Usage access's page on
    HyperOS, `UID_TETHERING` while the hotspot is on, the telephony callbacks' values (4G/5G, levels), RTT support
    (`FEATURE_WIFI_RTT`) and whether the router answers RTT. — no device was connected (25 Oct); with step 9.
-- [x] 2. (data-plan session, 25 Oct; Drive-Android branch claude/data-plan) Setup and usage: `Data.kt` (plan, cycles, status,
+- [x] 2. (205ad93, data-plan session, 25 Oct; Drive-Android branch claude/data-plan) Setup and usage: `Data.kt` (plan, cycles, status,
    files), `DataStats.kt` (NetworkStats → Tetra/Data/usage/<month>.<device>.jsonl hourly through SyncJob's job 4150, the
    first look back over the months Android kept; warnings 50/80/100 % and the day's budget; roaming notices with Android's
    data-roaming page; the 50 MB usage callback while Tetra lives), `DataScreen.kt` (DataActivity: Setup's ten pages, Usage
@@ -3060,7 +3060,7 @@ Send log.
    hotspot as metered (the hotspot says so over DHCP), and its statistics keep that: the tablet's `via` = its metered Wi-Fi
    bytes. NetworkManager does the same on the PC (seen 25 Oct: `GENERAL.METERED: yes (guessed)` on "Xiaomi 15").
    Shortcut: Tetra's own sync over the hotspot is not subtracted yet (it is in the clients' counts).
-- [x] 5. (Drive branch `data`) Desktop: `datacount.js` (each minute /sys/class/net counters → this computer's month file,
+- [x] 5. (Drive 414f43d, branch `data`) Desktop: `datacount.js` (each minute /sys/class/net counters → this computer's month file,
    written every ten minutes and only once plan.json exists; Wi-Fi from `iw`; drops and "off the phone's hotspot"; sync's
    /data/wifi and /data/speed), `src/Data.tsx` (the plan, 30 days of all devices, this cycle by device, the hotspot box with
    who used most and the difference, this computer's Wi-Fi now, the drops). `test/datacount.test.js`; desktop 139/139, tsc

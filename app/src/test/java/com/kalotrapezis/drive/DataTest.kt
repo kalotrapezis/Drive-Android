@@ -60,6 +60,31 @@ class DataTest {
         assertEquals(3_000_000_000, DataRules.forecast(mapOf(d(10, 20) to 3_000_000_000L, d(10, 21) to 3_000_000_000L), d(10, 26), today))
     }
 
+    @Test fun `the metrics and the tips for the plan`() {
+        val today = d(10, 25)
+        val p = DataPlan(kind = DataPlan.FAIR_USE, size = 300_000_000_000, day = 4)
+        // six weeks: 6 GB a workday, 12 GB a weekend day, 90 % of it through the hotspot
+        val days = (0..42).map { i -> today.minusDays(i.toLong()) }.map { day ->
+            val m = if (day.dayOfWeek.value >= 6) 12_000_000_000 else 6_000_000_000
+            DataDay(day, m, 1_000_000_000, 0, m * 9 / 10, 0, false)
+        }
+        val s = DataRules.status(p, days, today)
+        val m = DataInsights.metrics(p, s, days, today, phone = true)
+        assertEquals(6_000_000_000, m.workdays); assertEquals(12_000_000_000, m.weekends)
+        assertEquals(90, m.hotspotShare)
+        assertEquals(null, m.runsOut) // ~ 8 GB a day for a month stays under 300 GB
+        val apps = listOf(DataApp(d(10, 20), "com.facebook.katana", "Facebook", "mobile", 100_000_000, 400_000_000, 0))
+        val tips = DataInsights.tips(p, s, m, apps, phone = true).map { it.title }
+        assertTrue(tips.any { it.startsWith("About") && it.endsWith("% of the limit") })
+        assertTrue("90 % went through the hotspot" in tips)
+        assertTrue("Weekends use more" in tips)
+        assertTrue("Facebook: 500 MB on mobile" in tips)
+        // a small limit: the day it runs out
+        val small = p.copy(size = 200_000_000_000) // 170 GB used by the 25th, ~240 GB by the renewal
+        val ms = DataInsights.metrics(small, DataRules.status(small, days, today), days, today, phone = true)
+        assertTrue(ms.runsOut != null && ms.runsOut!!.isAfter(today))
+    }
+
     @Test fun `rollover adds what was left of the cycle before`() {
         val p = DataPlan(size = 10_000_000_000, day = 1, rollover = true)
         val days = listOf(day(d(9, 10), 6_000_000_000), day(d(10, 2), 1_000_000_000))

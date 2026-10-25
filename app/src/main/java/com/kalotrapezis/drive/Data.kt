@@ -172,6 +172,77 @@ internal object DataRules {
     fun inEu(country: String) = country.lowercase() in EU
 }
 
+/** The cycle's numbers under the chart: what is usual, when the limit comes, where the data goes. */
+internal data class DataMetrics(val average: Long, val workdays: Long, val weekends: Long, val busiest: Pair<LocalDate, Long>?, val hotspotShare: Int,
+    val wifiShare: Int, val runsOut: LocalDate?, val forecast: Long)
+
+internal object DataInsights {
+    private fun median(l: List<Long>) = l.sorted().let { if (it.isEmpty()) 0L else it[it.size / 2] }
+
+    /**
+     * [days] are the device's own (on a phone, its mobile data is what the plan counts); [phone]: the hotspot is what it shared.
+     * The cycle is the plan's, or the calendar month without one.
+     */
+    fun metrics(p: DataPlan?, s: DataStatus?, days: List<DataDay>, today: LocalDate, phone: Boolean): DataMetrics {
+        val cycle = s?.cycle ?: DataCycle(today.withDayOfMonth(1), today.withDayOfMonth(1).plusMonths(1))
+        fun measure(d: DataDay) = if (phone) (if (p != null) DataRules.counted(p, d) else d.mobile) else d.mobile + d.wifi
+        val inCycle = days.filter { it.day in cycle && !it.day.isAfter(today) }
+        val done = inCycle.filter { it.day.isBefore(today) }
+        val recent = days.filter { it.day.isBefore(today) && !it.day.isBefore(today.minusDays(42)) }
+        val (weekend, work) = recent.partition { it.day.dayOfWeek.value >= 6 }
+        val hotspot = inCycle.sumOf { if (phone) it.hotspot else it.viaHotspot }
+        val mobile = inCycle.sumOf { it.mobile }; val wifi = inCycle.sumOf { it.wifi }
+        val history = days.associate { it.day to measure(it) }
+        val used = s?.used ?: inCycle.sumOf { measure(it) }
+        var acc = used - (inCycle.lastOrNull { it.day == today }?.let { measure(it) } ?: 0) +
+            maxOf(inCycle.lastOrNull { it.day == today }?.let { measure(it) } ?: 0, DataRules.forecast(history, today, today))
+        var runsOut: LocalDate? = null
+        val size = s?.size?.takeIf { p?.limited == true }
+        if (size != null && acc > size) runsOut = today
+        var d = today.plusDays(1)
+        while (d.isBefore(cycle.end)) { acc += DataRules.forecast(history, d, today); if (size != null && runsOut == null && acc > size) runsOut = d; d = d.plusDays(1) }
+        return DataMetrics(if (done.isEmpty()) 0 else done.sumOf { measure(it) } / done.size, median(work.map { measure(it) }), median(weekend.map { measure(it) }),
+            inCycle.maxByOrNull { measure(it) }?.let { it.day to measure(it) },
+            if (phone) (if (mobile > 0) (hotspot * 100 / mobile).toInt() else 0) else (if (wifi > 0) (hotspot * 100 / wifi).toInt() else 0),
+            if (mobile + wifi > 0) (wifi * 100 / (mobile + wifi)).toInt() else 0, runsOut, acc)
+    }
+
+    /** Short help for the plan from the numbers — information only, nothing changed for the user. */
+    fun tips(p: DataPlan?, s: DataStatus?, m: DataMetrics, apps: List<DataApp>, phone: Boolean): List<Advice> {
+        val out = mutableListOf<Advice>()
+        val b = DataRules::bytes
+        if (p != null && s != null && p.limited) {
+            if (s.used >= s.size) out += Advice("The limit is reached", "${b(s.used)} of ${b(s.size)} used, " +
+                "${s.daysLeft} days before the renewal. What comes now may be slower or cost extra, as the carrier's terms say.")
+            else if (m.runsOut != null) out += Advice("The limit comes ${m.runsOut.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH))}",
+                "At your usual pace the ${b(s.size)} run out before ${s.cycle.end.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH))}. To last, stay near ${b(s.budget)} a day.")
+            else out += Advice("About ${s.size.let { if (it > 0) m.forecast * 100 / it else 0 }} % of the limit", "At your usual pace you will use about ${b(m.forecast)} of ${b(s.size)}: " +
+                "${b(maxOf(0, s.size - m.forecast))} to spare. You could use up to ${b(s.budget)} a day and still make it.")
+        }
+        if (phone && m.hotspotShare >= 40) out += Advice("${m.hotspotShare} % went through the hotspot",
+            "Most of the plan goes to the tablet and the computer. Their updates, downloads, backups and video fill it fastest: leave those for a Wi-Fi that is not the phone's, " +
+                "or set them to pause on metered networks (Android and most computers can).")
+        if (m.weekends > 0 && m.workdays > 0) {
+            val r = m.weekends.toDouble() / m.workdays
+            if (r >= 1.3) out += Advice("Weekends use more", "A weekend day ${b(m.weekends)}, a workday ${b(m.workdays)} (×%.1f): with no Wi-Fi at work to lean on, weekends are where a Wi-Fi saves the most.".format(java.util.Locale.ROOT, r))
+            else if (r <= 0.77) out += Advice("Workdays use more", "A workday ${b(m.workdays)}, a weekend day ${b(m.weekends)}: the commute and work hours are where the plan goes.")
+        }
+        // the app (not the hotspot) using the most mobile data, and what of it ran in the background
+        val mobileApps = apps.filter { it.net == "mobile" && it.app != "hotspot" }.groupBy { it.app }.map { (k, l) -> Triple(k, l.first().name, l.sumOf { it.fg } to l.sumOf { it.bg }) }
+        mobileApps.maxByOrNull { it.third.first + it.third.second }?.let { (app, name, fb) ->
+            val total = fb.first + fb.second
+            if (total >= 300_000_000) out += when {
+                app == "com.android.vending" -> Advice("$name: ${b(total)} on mobile", "Mostly app updates. In the Play Store › Settings › Network preferences, app updates can be set to Wi-Fi only.")
+                fb.second * 2 > total -> Advice("$name: ${b(total)} on mobile", "${b(fb.second)} of it in the background. Android's settings for the app can stop its background data (tap it in Apps).")
+                else -> Advice("$name: ${b(total)} on mobile", "The app using the most of the plan, mostly while open. Its own settings may have a data saver or a lower video quality.")
+            }
+        }
+        m.busiest?.let { (day, v) -> if (m.average > 0 && v > m.average * 2) out += Advice("Busiest: ${day.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH))}, ${b(v)}",
+            "Over twice your average of ${b(m.average)}. Tap that day's bar to see which apps it was.") }
+        return out
+    }
+}
+
 /** The plan's numbers: [perDay] is each day of the cycle so far, today last. */
 internal data class DataStatus(val cycle: DataCycle, val size: Long, val used: Long, val left: Long, val daysLeft: Int, val budget: Long, val today: Long,
     val projection: Long, val perDay: List<Long>) {

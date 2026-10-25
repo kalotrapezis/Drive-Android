@@ -271,7 +271,7 @@ internal fun DataSignalTab(pad: PaddingValues) {
 }
 
 /** An explanation behind (i), not on the page. */
-@Composable private fun Info(title: String, text: String) {
+@Composable internal fun Info(title: String, text: String) {
     var open by remember { mutableStateOf(false) }
     IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
         Icon(painterResource(R.drawable.ic_info), contentDescription = "About $title", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))

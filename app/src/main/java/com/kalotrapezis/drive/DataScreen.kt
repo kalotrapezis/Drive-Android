@@ -216,6 +216,7 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
     var shift by remember(span) { mutableIntStateOf(0) }
     var picked by remember(span, shift) { mutableStateOf<Bar?>(null) }
     var app by remember { mutableStateOf<String?>(null) }
+    var allApps by remember { mutableStateOf(false) }
     val isPhone = remember { !PhoneRelay.noCalls(context) }
     val shown = remember(span, shift, mine, plan) { bars(span, shift, plan, mine, today, isPhone) }
     val drops = remember(all) { DataSignal.drops(all).mapNotNull { runCatching { java.time.OffsetDateTime.parse(it.second.at).atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDateTime() }.getOrNull() } }
@@ -246,6 +247,12 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                 else if (status != null) PlanHead(plan, status)
                 SpanChips(span) { span = it }
                 Chart(shown, span, plan, status, picked, shift, { shift += it }, drops) { picked = if (picked == it) null else it }
+                val myDays = remember(mine) { DataFiles.days(if (isPhone) mine else phone) }
+                if (plan != null && status != null && plan.limited) CycleChart(plan, status, myDays.associate { it.day to DataRules.counted(plan, it) }, today)
+                val metrics = remember(plan, status, mine) { DataInsights.metrics(plan, status, DataFiles.days(mine), today, isPhone) }
+                MetricsCard(metrics, isPhone)
+                val tips = remember(metrics, mine) { DataInsights.tips(plan, status, metrics, mine.flatMap { it.apps }.filter { status == null || it.day in status.cycle }, isPhone) }
+                if (tips.isNotEmpty()) TipsCard(tips)
             }
         }
         val list: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
@@ -253,7 +260,9 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                 color = dataColor(), fontWeight = FontWeight.Bold) }
             if (apps.isEmpty()) item { Text(if (DataStats.hasAccess(context)) "Nothing used then" else "Needs Usage access", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             val most = apps.maxOfOrNull { it.third.total } ?: 1
-            apps.forEach { (key, name, use) -> item(key = key) { AppRow(name, use, most) { app = key } } }
+            // the ten that matter; the rest, a tap away (the user, 25 Oct: "no need to list every app")
+            apps.take(10).forEach { (key, name, use) -> item(key = key) { AppRow(name, use, most) { app = key } } }
+            if (apps.size > 10) item { TextButton(onClick = { allApps = true }) { Text("All apps and services (${apps.size})", color = dataColor()) } }
         }
         if (wide) Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             Column(Modifier.weight(1.3f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(pad)) { head() }
@@ -264,6 +273,7 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
         }
     }
     app?.let { key -> AppSheet(key, mine) { app = null } }
+    if (allApps) AllApps(apps, { allApps = false }) { app = it }
 }
 
 @Composable private fun Notice(text: String, action: String, act: () -> Unit) =
@@ -290,7 +300,11 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             val of = when (plan.kind) { DataPlan.FAIR_USE -> " of ${DataRules.bytes(s.size)} fair use"; DataPlan.LIMITED -> " of ${DataRules.bytes(s.size)}"; else -> " this cycle" }
-            Text(DataRules.bytes(s.used) + of, style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(DataRules.bytes(s.used) + of, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                Info("Your plan", "The ring: how much of the limit the cycle has used (counting from what you typed from the carrier, if you did). Budget: what is left " +
+                    "shared over the days left, today included — staying under it, the plan lasts. Forecast: where your usual days take you by the renewal.")
+            }
             Text("${s.daysLeft} days left · renews ${s.cycle.end.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))}", style = MaterialTheme.typography.bodyMedium)
             Text("Today ${DataRules.bytes(s.today)}" + if (plan.limited) " · budget ${DataRules.bytes(s.budget)}/day" else " · average ${DataRules.bytes(s.average)}/day", style = MaterialTheme.typography.bodyMedium)
             if (plan.limited) {
@@ -333,7 +347,12 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { move(-1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Earlier") }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = MaterialTheme.typography.titleSmall)
+                    Info("The bars", "Each bar is a day (an hour in Day, a month in Year), stacked: mobile data (lime), the hotspot (orange) — on the phone what it " +
+                        "shared, on the tablet and the computer what they used through it — and Wi-Fi (blue). Tap a bar for its apps; tap it again for all. Faint bars: the " +
+                        "days to come, each the median of the same weekday over the last six weeks. Dashed line: your average day. Red dots: signal drops. ‹ › go back and forth in time.")
+                }
                 val real = bars.filter { !it.forecast }
                 Text(Use(real.sumOf { it.mobile }, real.sumOf { it.hotspot }, real.sumOf { it.wifi }).words(always = true), style = MaterialTheme.typography.bodySmall, color = quiet)
             }
@@ -399,6 +418,103 @@ internal data class Use(val mobile: Long, val hotspot: Long, val wifi: Long, val
         hotspot.takeIf { it > 0 }?.let { "Hotspot ${DataRules.bytes(it)}" },
         (wifi > 0 || always).takeIf { it }?.let { "Wi-Fi ${DataRules.bytes(wifi)}" },
         ethernet.takeIf { it > 0 }?.let { "Ethernet ${DataRules.bytes(it)}" }).joinToString(" · ")
+}
+
+/** Every app and service of the chosen days, the small ones too. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun AllApps(apps: List<Triple<String, String, Use>>, close: () -> Unit, open: (String) -> Unit) {
+    ModalBottomSheet(onDismissRequest = close) {
+        val most = apps.maxOfOrNull { it.third.total } ?: 1
+        LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+            item { Text("All apps and services", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp)) }
+            apps.forEach { (key, name, use) -> item(key = key) { AppRow(name, use, most) { open(key) } } }
+        }
+    }
+}
+
+/** The cycle so far against the limit, and the forecast to its end — on a scale of its own, 0 to the limit. */
+@Composable private fun CycleChart(plan: DataPlan, s: DataStatus, history: Map<LocalDate, Long>, today: LocalDate) {
+    val lime = dataColor(); val ink = MaterialTheme.colorScheme.onSurface; val quiet = MaterialTheme.colorScheme.onSurfaceVariant
+    val days = s.cycle.days
+    val ahead = generateSequence(today.plusDays(1)) { it.plusDays(1) }.takeWhile { it.isBefore(s.cycle.end) }.map { DataRules.forecast(history, it, today) }.toList()
+    val top = maxOf(s.size, s.projection)
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("The cycle so far", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Info("The cycle so far", "The solid line adds up the plan's data day by day since ${s.cycle.start.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))}; " +
+                    "the dashed one carries it on with your usual days to the renewal; the top line is the limit. If the dashed line crosses it, the limit comes before the renewal — " +
+                    "the day's budget above says how much a day would last.")
+            }
+            Row {
+                Column(Modifier.height(130.dp).padding(end = 6.dp), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) {
+                    Text(DataRules.bytes(top), style = MaterialTheme.typography.labelSmall, color = quiet)
+                    Text(DataRules.bytes(top / 2), style = MaterialTheme.typography.labelSmall, color = quiet)
+                    Text("0", style = MaterialTheme.typography.labelSmall, color = quiet)
+                }
+                Canvas(Modifier.weight(1f).height(130.dp)) {
+                    fun x(i: Int) = size.width * i / days
+                    fun y(v: Long) = size.height - size.height * (v.toDouble() / top).toFloat()
+                    drawLine(ink.copy(alpha = 0.5f), Offset(0f, y(s.size)), Offset(size.width, y(s.size)), 2f)
+                    var acc = 0L; var last = Offset(0f, size.height)
+                    s.perDay.forEachIndexed { i, v -> acc += v; val pt = Offset(x(i + 1), y(acc)); drawLine(lime, last, pt, 5f, StrokeCap.Round); last = pt }
+                    var fAcc = s.used; var i = s.perDay.size
+                    ahead.forEach { v -> fAcc += v; i++; val pt = Offset(x(i), y(fAcc)); drawLine(lime.copy(alpha = 0.6f), last, pt, 4f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))); last = pt }
+                }
+            }
+            Text("${DataRules.bytes(s.used)} so far · about ${DataRules.bytes(s.projection)} by ${s.cycle.end.minusDays(1).format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))} · limit ${DataRules.bytes(s.size)}",
+                style = MaterialTheme.typography.bodySmall, color = quiet)
+        }
+    }
+}
+
+/** A few numbers under the charts. */
+@Composable private fun MetricsCard(m: DataMetrics, phone: Boolean) {
+    val b = DataRules::bytes
+    val tiles = listOfNotNull(
+        "Average" to "${b(m.average)} a day",
+        ("Workdays · weekends" to "${b(m.workdays)} · ${b(m.weekends)}").takeIf { m.workdays + m.weekends > 0 },
+        m.busiest?.let { (d, v) -> "Busiest day" to "${d.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))} · ${b(v)}" },
+        ((if (phone) "Through the hotspot" else "Over the phone's hotspot") to "${m.hotspotShare} %").takeIf { m.hotspotShare > 0 },
+        "On Wi-Fi" to "${m.wifiShare} %",
+    )
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("This cycle in numbers", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Info("In numbers", (if (phone) "The phone's mobile data, as the plan counts it" else "This device's data") + ". Average: the days so far, today left out. " +
+                    "Workdays and weekends: the typical (median) day of each over the last six weeks, so one odd day does not pull it. " +
+                    (if (phone) "Through the hotspot: the share of the mobile data the phone gave to other devices. " else "Over the phone's hotspot: the share of this device's Wi-Fi that was the phone's hotspot. ") +
+                    "On Wi-Fi: Wi-Fi's share of everything this device used.")
+            }
+            tiles.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { (k, v) -> Column(Modifier.weight(1f)) {
+                        Text(k, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(v, style = MaterialTheme.typography.titleMedium)
+                    } }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+/** Help for the plan, from the numbers above: information, nothing changed. */
+@Composable private fun TipsCard(tips: List<Advice>) {
+    Surface(color = dataColor().copy(alpha = 0.12f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("For your plan", style = MaterialTheme.typography.titleSmall, color = dataColor(), modifier = Modifier.weight(1f))
+                Info("For your plan", "Worked out from your own days: the pace, where the data goes, the weekdays and the apps. Only information — Data changes nothing; " +
+                    "each line says where you could change it yourself.")
+            }
+            tips.forEach { t -> Column {
+                Text(t.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                Text(t.text, style = MaterialTheme.typography.bodyMedium)
+            } }
+        }
+    }
 }
 
 @Composable private fun AppRow(name: String, use: Use, most: Long, open: () -> Unit) {

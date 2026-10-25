@@ -3135,7 +3135,8 @@ Send log.
    **By app everywhere**: the computer counts each program's TCP bytes (`ss -tinp`, no root; QUIC/UDP calls and video as "Other");
    the chart's **Kinds | Apps**; the phone's Hotspot row opens ▾ into the devices and their apps. Pages visited: left out — browsers
    tell no other program what a site used (a small local extension of our own could, later). On the phone 11:00 (the 6-week forecast
-   still: 145 GB); the 3-week forecast (~178 GB on the user's days) and the desktop's beta.16 are built, not installed.
+   still: 145 GB); the 3-week forecast on the phone at 11:17: 177 GB by 3 Nov, the faint bars 4–8 GB around the 6.8 GB average.
+   The desktop's beta.16 (per program) is built, not installed.
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

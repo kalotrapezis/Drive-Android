@@ -88,9 +88,12 @@ private fun DataApp(start: String?, back: () -> Unit) {
         val o = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) version++ }
         lifecycle.lifecycle.addObserver(o); onDispose { lifecycle.lifecycle.removeObserver(o) }
     }
-    val plan by produceState(DataFiles.plan(), version) { value = withContext(Dispatchers.IO) { DataFiles.plan() } }
-    var setup by remember { mutableStateOf(start == "setup" || (DataFiles.plan() == null && !PhoneRelay.noCalls(context))) }
+    val firstPlan = remember { DataFiles.plan() } // read once, not on every recomposition
+    val plan by produceState(firstPlan, version) { value = withContext(Dispatchers.IO) { DataFiles.plan() } }
+    var setup by remember { mutableStateOf(start == "setup" || (firstPlan == null && !PhoneRelay.noCalls(context))) }
     val all by produceState(emptyMap<String, List<DataMonth>>(), version) {
+        // what is written shows first; today's counts from Android (a second and more) are added behind it
+        value = withContext(Dispatchers.IO) { DataFiles.all() }
         value = withContext(Dispatchers.IO) {
             runCatching { DataStats.record(context); DataStats.checkRoaming(context) }.onFailure { WriterLog.w("Data: ${it.message}") }
             DataStats.schedule(context); DataStats.watchUsage(context); DataSignal.watch(context)

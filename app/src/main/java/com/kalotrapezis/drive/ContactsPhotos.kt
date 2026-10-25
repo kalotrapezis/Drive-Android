@@ -150,10 +150,10 @@ internal object ContactsFaces {
         Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             val p = person
             if (p == null) {
-                Text("From Photos", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.contacts_from_photos), style = MaterialTheme.typography.titleMedium)
                 when {
-                    people == null -> Text("Looking…")
-                    people!!.isEmpty() -> Text("Photos knows no one by name yet: name people in Photos › People first.", color = islandContentColor().copy(alpha = 0.7f))
+                    people == null -> Text(stringResource(R.string.contacts_looking))
+                    people!!.isEmpty() -> Text(stringResource(R.string.contacts_photos_knows_no_one), color = islandContentColor().copy(alpha = 0.7f))
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     people.orEmpty().forEach { x ->
@@ -165,11 +165,11 @@ internal object ContactsFaces {
                 }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { person = null }) { Text("‹ People") }
+                    TextButton(onClick = { person = null }) { Text("‹ " + stringResource(R.string.contacts_people), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     Text(p.name, style = MaterialTheme.typography.titleMedium)
                 }
                 val faces by produceState<List<Pair<Uri, Rect>>?>(null, p) { value = withContext(Dispatchers.IO) { runCatching { ContactsFaces.faces(context, p) }.getOrDefault(emptyList()) } }
-                if (faces == null) Text("Looking…")
+                if (faces == null) Text(stringResource(R.string.contacts_looking))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     faces.orEmpty().forEach { (uri, box) -> Box(Modifier.clickable { pick(p, uri, box) }) { FaceThumb(uri, box, 72.dp) } }
                 }
@@ -184,8 +184,8 @@ internal object ContactsFaces {
     var picked by remember(pairs) { mutableStateOf(pairs.toSet()) }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Photos knows ${pairs.size} of these people", style = MaterialTheme.typography.titleMedium)
-            Text("Use their faces as their photos? Each is cropped from the face Photos shows them by.", style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+            Text(pluralStringResource(R.plurals.contacts_photos_knows_n, pairs.size, pairs.size), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.contacts_use_faces), style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                 pairs.forEach { pr ->
                     Row(Modifier.fillMaxWidth().clickable { picked = if (pr in picked) picked - pr else picked + pr }.padding(vertical = 4.dp),
@@ -197,8 +197,8 @@ internal object ContactsFaces {
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = dismiss) { Text("Not now") }
-                TextButton(enabled = picked.isNotEmpty(), onClick = { go(picked.toList()) }) { Text("Use ${picked.size}") }
+                TextButton(onClick = dismiss) { Text(stringResource(R.string.contacts_not_now), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                TextButton(enabled = picked.isNotEmpty(), onClick = { go(picked.toList()) }) { Text(stringResource(R.string.contacts_use_n, picked.size), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }

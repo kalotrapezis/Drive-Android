@@ -175,7 +175,17 @@ internal fun syncBirthdays(context: Context, contacts: List<ContactInfo>): List<
     return links
 }
 
-private enum class ContactsTab(val label: String, val icon: Int) { All("All", R.drawable.ic_person), Favourites("Favourites", R.drawable.ic_favorite), Labels("Labels", R.drawable.ic_label) }
+private enum class ContactsTab(@androidx.annotation.StringRes val label: Int, val icon: Int) { All(R.string.common_all, R.drawable.ic_person), Favourites(R.string.contacts_favourites, R.drawable.ic_favorite), Labels(R.string.contacts_labels, R.drawable.ic_label) }
+
+/** Tetra's own field labels, kept in English in the files (Google's and Apple's words), shown in the UI's language; a typed label as it is. */
+private val CONTACT_LABELS = mapOf("Mobile" to R.string.contacts_label_mobile, "Home" to R.string.contacts_label_home, "Work" to R.string.contacts_label_work,
+    "Main" to R.string.contacts_label_main, "Home fax" to R.string.contacts_label_home_fax, "Work fax" to R.string.contacts_label_work_fax, "Pager" to R.string.contacts_label_pager,
+    "Other" to R.string.contacts_label_other, "Anniversary" to R.string.contacts_label_anniversary, "Date" to R.string.contacts_label_date, "Home page" to R.string.contacts_label_home_page,
+    "Blog" to R.string.contacts_label_blog, "Profile" to R.string.contacts_label_profile, "Spouse" to R.string.contacts_label_spouse, "Partner" to R.string.contacts_label_partner,
+    "Mother" to R.string.contacts_label_mother, "Father" to R.string.contacts_label_father, "Parent" to R.string.contacts_label_parent, "Brother" to R.string.contacts_label_brother,
+    "Sister" to R.string.contacts_label_sister, "Child" to R.string.contacts_label_child, "Friend" to R.string.contacts_label_friend, "Assistant" to R.string.contacts_label_assistant,
+    "Manager" to R.string.contacts_label_manager)
+internal fun contactLabel(context: Context, id: String): String = CONTACT_LABELS[id]?.let(context::getString) ?: id
 
 /**
  * Contacts (Plan.md § Contacts): the list (search on top, favourites' faces, letters), a contact's page as the iPhone's
@@ -215,9 +225,9 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
 
     if (!hasAccess) {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-            Text("Your contacts are files in Tetra's folder, one per person, so they go with your other files and Claude can read them. Allow access to all files to use Contacts.")
-            TextButton(onClick = grant) { Text("Allow access") }
+            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
+            Text(stringResource(R.string.contacts_access_why))
+            TextButton(onClick = grant) { Text(stringResource(R.string.contacts_allow_access), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         return
     }
@@ -247,21 +257,21 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     /** Runs [work] on the IO thread, says what it answers, and reads the folder again. */
     fun act(work: () -> String) = scope.launch {
         val r = withContext(Dispatchers.IO) { runCatching(work) }
-        message = r.getOrElse { "Not done: ${it.message ?: it.javaClass.simpleName}" }
+        message = r.getOrElse { context.getString(R.string.contacts_not_done, it.message ?: it.javaClass.simpleName) }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: a change failed", it) }
         version++; pushed()
     }
     /** [c] (null: a new contact) saved as [i]; the page opens on it. */
-    fun save(c: Contact?, i: ContactInfo, said: String = "Saved") = scope.launch {
+    fun save(c: Contact?, i: ContactInfo, said: String = context.getString(R.string.contacts_saved)) = scope.launch {
         val r = withContext(Dispatchers.IO) { runCatching { ContactsFiles.save(root, c, i).also { saved ->
             // its birthday and dates into the calendar (the contact is the truth)
             runCatching { val calRoot = calendarRoot(); if (ContactsBirthdays.sync(calRoot, saved.info, ContactsPrefs.birthdays(context), ContactsBirthdays.linked(calRoot)[saved.info.uid].orEmpty()) > 0) CalendarAlarms.planSoon(context) }
                 .onFailure { WriterLog.e("Contacts: dates into the calendar", it) }
         } } }
-        r.onSuccess { openUid = it.info.uid; message = said }.onFailure { message = "Not saved: ${it.message}"; WriterLog.e("Contacts: save", it) }
+        r.onSuccess { openUid = it.info.uid; message = said }.onFailure { message = context.getString(R.string.contacts_not_saved, it.message); WriterLog.e("Contacts: save", it) }
         version++; pushed()
     }
-    fun imported(r: ContactsFiles.Imported) = "Imported: ${r.added} new" + if (r.same > 0) ", ${r.same} already here" else ""
+    fun imported(r: ContactsFiles.Imported) = if (r.same > 0) context.getString(R.string.contacts_imported_same, r.added, r.same) else context.getString(R.string.contacts_imported, r.added)
     /** Contacts with no photo whose faces Photos knows: offered after an import (and in the drawer). */
     suspend fun faces(show: Boolean) {
         faceMatches = withContext(Dispatchers.IO) { runCatching { ContactsFaces.matches(ContactsFiles.all(root).map { it.info }, ContactsFaces.people(context)) { it.name } }.getOrDefault(emptyList()) }
@@ -276,28 +286,28 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     LaunchedEffect(Unit) { birthdays(false) }
     // Import: the phone's own contacts (the Google account's among them), or a file — vCard, Google's CSV, Takeout's zip
     fun importPhone() = scope.launch {
-        busy = "Reading the phone's contacts…"
-        val r = withContext(Dispatchers.IO) { runCatching { ContactsFiles.import(root, ContactsSystem.phoneCards(context) { n, of -> busy = "Reading the phone's contacts… $n of $of" }) } }
+        busy = context.getString(R.string.contacts_reading_phone)
+        val r = withContext(Dispatchers.IO) { runCatching { ContactsFiles.import(root, ContactsSystem.phoneCards(context) { n, of -> busy = context.getString(R.string.contacts_reading_phone_n, n, of) }) } }
         busy = null
-        message = r.fold(::imported) { "Could not read them: ${it.message}" }
+        message = r.fold(::imported) { context.getString(R.string.contacts_could_not_read_them, it.message) }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: phone import", it) }
         version++; pushed()
         birthdays(true)
     }
-    val askContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) importPhone() else message = "Tetra needs to read the phone's contacts to bring them in." }
+    val askContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) importPhone() else message = context.getString(R.string.contacts_need_read) }
     fun fromPhone() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) importPhone()
         else askContacts.launch(Manifest.permission.READ_CONTACTS)
     }
     fun importFile(uri: Uri) = scope.launch {
-        busy = "Importing…"
+        busy = context.getString(R.string.contacts_importing)
         val r = withContext(Dispatchers.IO) { runCatching {
             val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
             val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: ""
             ContactsFiles.import(root, ContactsImport.read(bytes, name))
         } }
         busy = null
-        message = r.fold(::imported) { "Could not read it: ${it.message ?: it.javaClass.simpleName}" }
+        message = r.fold(::imported) { context.getString(R.string.contacts_could_not_read_it, it.message ?: it.javaClass.simpleName) }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: file import", it) }
         version++; pushed()
         birthdays(true)
@@ -308,13 +318,13 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     var systemOn by remember { mutableStateOf(ContactsAccount.on(context) && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
     LaunchedEffect(version, systemOn) { ContactsAccount.soon(context) }
     val askWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) { ContactsAccount.set(context, true); systemOn = true; message = "Your contacts are in the phone's contacts too" }
-        else message = "Tetra needs to write the phone's contacts for this."
+        if (ok) { ContactsAccount.set(context, true); systemOn = true; message = context.getString(R.string.contacts_system_now_on) }
+        else message = context.getString(R.string.contacts_need_write)
     }
     // Export: all, the favourites or a label, as one .vcf saved where the person chooses
     val exportTo = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/vcard")) { uri ->
         val cs = exporting
-        if (uri != null) act { context.contentResolver.openOutputStream(uri)!!.use { it.write(ContactsMerge.export(cs).toByteArray()) }; "${cs.size} contacts exported" }
+        if (uri != null) act { context.contentResolver.openOutputStream(uri)!!.use { it.write(ContactsMerge.export(cs).toByteArray()) }; context.resources.getQuantityString(R.plurals.contacts_n_exported, cs.size, cs.size) }
     }
     val duplicates by produceState(emptyList<Pair<Contact, Contact>>(), all) { value = withContext(Dispatchers.Default) { ContactsMerge.pairs(all) } }
 
@@ -334,7 +344,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 if (busy != null) item { Text(busy!!, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (tab == ContactsTab.Labels && label == null && query.isEmpty()) {
                     val labels = all.flatMap { it.info.labels }.groupingBy { it }.eachCount().toSortedMap(String.CASE_INSENSITIVE_ORDER)
-                    if (labels.isEmpty()) item { Hint("No labels yet. A contact's labels (Family, School…) come with an import, or are added on its page.") }
+                    if (labels.isEmpty()) item { Hint(stringResource(R.string.contacts_no_labels)) }
                     labels.forEach { (name, n) -> item(key = "label:$name") {
                         Row(Modifier.fillMaxWidth().clickable { label = name }.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             Icon(painterResource(R.drawable.ic_label), contentDescription = null, tint = CONTACTS_COLOR)
@@ -349,7 +359,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                         Surface(color = CONTACTS_COLOR.copy(alpha = 0.18f), shape = CircleShape) {
                             Row(Modifier.padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(label!!, style = MaterialTheme.typography.labelLarge)
-                                IconButton(onClick = { label = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "All contacts", Modifier.size(18.dp)) }
+                                IconButton(onClick = { label = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.contacts_all_contacts), Modifier.size(18.dp)) }
                             }
                         }
                     }
@@ -373,7 +383,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                                             else Box(Modifier.size(56.dp).clip(CircleShape).background(CONTACTS_COLOR.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
                                                 Text("+${favs.size - cells.size}", color = CONTACTS_COLOR, fontWeight = FontWeight.Bold)
                                             }
-                                            Text(c?.let { it.info.given.ifBlank { it.info.name } } ?: "All", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(c?.let { it.info.given.ifBlank { it.info.name } } ?: stringResource(R.string.common_all), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
                                     repeat(cols - row.size) { Spacer(Modifier.width(64.dp)) }
@@ -385,15 +395,15 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 if (loaded == null) item {
                     Row(Modifier.fillMaxWidth().padding(32.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         androidx.compose.material3.CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = CONTACTS_COLOR)
-                        Text("  Reading your contacts…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("  " + stringResource(R.string.contacts_reading), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (loaded != null && shown.isEmpty() && busy == null) item {
                     Hint(when {
-                        all.isEmpty() -> "No contacts yet. Pull up the island for Import: this phone's contacts, or a file from Google Contacts (vCard, CSV or Takeout's zip)."
-                        query.isNotEmpty() -> "No one matches \"$query\"."
-                        tab == ContactsTab.Favourites -> "No favourites yet: the heart on a contact's page adds one."
-                        else -> "No one here."
+                        all.isEmpty() -> stringResource(R.string.contacts_none_yet)
+                        query.isNotEmpty() -> stringResource(R.string.contacts_no_match, query)
+                        tab == ContactsTab.Favourites -> stringResource(R.string.contacts_no_favourites)
+                        else -> stringResource(R.string.contacts_no_one)
                     })
                 }
                 var last = ""
@@ -409,7 +419,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                             .combinedClickable(onLongClick = ::toggle) { if (selected.isNotEmpty()) toggle() else { openUid = c.info.uid; autoOpened = false } }.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                             if (picked) Box(Modifier.size(40.dp).clip(CircleShape).background(CONTACTS_COLOR), contentAlignment = Alignment.Center) {
-                                Icon(painterResource(R.drawable.ic_check), contentDescription = "Selected", tint = Color.White)
+                                Icon(painterResource(R.drawable.ic_check), contentDescription = stringResource(R.string.contacts_selected), tint = Color.White)
                             } else ContactAvatar(c.info, 40.dp)
                             Column(Modifier.weight(1f)) {
                                 Text(c.info.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -426,13 +436,13 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             if (selected.isNotEmpty()) Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                    IconButton(onClick = { selected = emptySet() }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Done choosing") }
+                    IconButton(onClick = { selected = emptySet() }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.contacts_done_choosing)) }
                 }
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.weight(1f)) {
                     Row(Modifier.padding(start = 18.dp, end = 4.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${selected.size} selected", Modifier.weight(1f))
+                        Text(pluralStringResource(R.plurals.contacts_n_selected, selected.size, selected.size), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         TextButton(onClick = { selected = if (selected.size == shown.size) emptySet() else shown.map { it.info.uid }.toSet() }) {
-                            Text(if (selected.size == shown.size) "None" else "All ${shown.size}", color = islandContentColor())
+                            Text(if (selected.size == shown.size) stringResource(R.string.common_none) else stringResource(R.string.contacts_all_n, shown.size), color = islandContentColor(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -441,17 +451,17 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                    IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                    IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
                 }
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.weight(1f)) {
                     Row(Modifier.padding(start = 16.dp, end = 4.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Icon(painterResource(R.drawable.ic_search), contentDescription = null, Modifier.size(22.dp))
                         Box(Modifier.weight(1f)) {
-                            if (query.isEmpty()) Text(if (all.isEmpty()) "Contacts" else "Search ${all.size} contacts", color = islandContentColor().copy(alpha = 0.7f), maxLines = 1)
+                            if (query.isEmpty()) Text(if (all.isEmpty()) stringResource(R.string.app_contacts) else pluralStringResource(R.plurals.contacts_search_n, all.size, all.size), overflow = TextOverflow.Ellipsis, color = islandContentColor().copy(alpha = 0.7f), maxLines = 1)
                             BasicTextField(query, { query = it }, singleLine = true, textStyle = TextStyle(color = islandContentColor(), fontSize = 16.sp),
                                 cursorBrush = SolidColor(islandContentColor()), modifier = Modifier.fillMaxWidth())
                         }
-                        if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear") }
+                        if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_clear)) }
                     }
                 }
             }
@@ -464,13 +474,13 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 delete = ed.first?.let { c -> { editing = null; openUid = null; act {
                     ContactsFiles.trash(root, c)
                     calendarRoot().let { cr -> ContactsBirthdays.sync(cr, c.info, null, ContactsBirthdays.linked(cr)[c.info.uid].orEmpty(), gone = true) }
-                    "${c.info.name} moved to the Trash"
+                    context.getString(R.string.contacts_moved_to_trash, c.info.name)
                 } } },
-                photo = { i, set -> ContactPhotoEdit(i, set) }) { i -> editing = null; save(ed.first, i, if (ed.first == null) "Contact created" else "Saved") }
+                photo = { i, set -> ContactPhotoEdit(i, set) }) { i -> editing = null; save(ed.first, i, context.getString(if (ed.first == null) R.string.contacts_created else R.string.contacts_saved)) }
             else if (open != null) ContactPage(open, all, wide, close = { openUid = null }, edit = { editing = open to open.info },
-                star = { save(open, open.info.favourite(!open.info.favourite), if (open.info.favourite) "Not a favourite" else "Added to favourites") }, keep = { act { ContactsFiles.copies(root, open).forEach { f -> DriveRules.moveToTrash(root.parentFile!!, f.relativeTo(root.parentFile!!).path) }; "Kept this version; the other went to the Trash" } },
+                star = { save(open, open.info.favourite(!open.info.favourite), context.getString(if (open.info.favourite) R.string.contacts_unfavourited else R.string.contacts_favourited)) }, keep = { act { ContactsFiles.copies(root, open).forEach { f -> DriveRules.moveToTrash(root.parentFile!!, f.relativeTo(root.parentFile!!).path) }; context.getString(R.string.contacts_kept_version) } },
                 openUid = { openUid = it }, openMaps = openMaps)
-            else if (wide) Hint("Choose a contact.", Modifier.align(Alignment.Center))
+            else if (wide) Hint(stringResource(R.string.contacts_choose), Modifier.align(Alignment.Center))
         }
     }
 
@@ -488,20 +498,20 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     val many = all.filter { it.info.uid in selected }
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
                         Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
-                            IconButton(onClick = { labelling = true }) { Icon(painterResource(R.drawable.ic_label), contentDescription = "Label") }
+                            IconButton(onClick = { labelling = true }) { Icon(painterResource(R.drawable.ic_label), contentDescription = stringResource(R.string.contacts_label)) }
                             IconButton(onClick = {
                                 val on = !many.all { it.info.favourite }
-                                act { many.forEach { c -> ContactsFiles.save(root, c, c.info.favourite(on)) }; if (on) "${many.size} added to favourites" else "${many.size} not favourites" }
-                            }) { Icon(painterResource(if (many.all { it.info.favourite }) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = "Favourites") }
+                                act { many.forEach { c -> ContactsFiles.save(root, c, c.info.favourite(on)) }; context.resources.getQuantityString(if (on) R.plurals.contacts_n_favourited else R.plurals.contacts_n_unfavourited, many.size, many.size) }
+                            }) { Icon(painterResource(if (many.all { it.info.favourite }) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = stringResource(R.string.contacts_favourites)) }
                             IconButton(onClick = {
                                 runCatching {
                                     val f = File(File(context.cacheDir, "share").apply { mkdirs() }, "${many.size} contacts.vcf").apply { writeText(ContactsMerge.export(many)) }
                                     val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
                                     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/x-vcard").putExtra(Intent.EXTRA_STREAM, uri)
-                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share ${many.size} contacts"))
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), context.resources.getQuantityString(R.plurals.contacts_share_n, many.size, many.size)))
                                 }.onFailure { WriterLog.e("Contacts: share many", it) }
-                            }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
-                            IconButton(onClick = { exporting = many; exportTo.launch("${many.size} contacts.vcf") }) { Icon(painterResource(R.drawable.ic_file_upload), contentDescription = "Export") }
+                            }) { Icon(painterResource(R.drawable.ic_share), contentDescription = stringResource(R.string.common_share)) }
+                            IconButton(onClick = { exporting = many; exportTo.launch("${many.size} contacts.vcf") }) { Icon(painterResource(R.drawable.ic_file_upload), contentDescription = stringResource(R.string.common_export)) }
                             if (many.size == 2) IconButton(onClick = {
                                 val (a, b) = many.sortedByDescending { it.lines.size }
                                 selected = emptySet()
@@ -509,18 +519,18 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                                     val kept = ContactsMerge.merge(root, a, b)
                                     calendarRoot().let { cr -> runCatching { ContactsBirthdays.moveLinks(cr, b.info.uid, kept.info); ContactsBirthdays.sync(cr, kept.info, ContactsPrefs.birthdays(context), ContactsBirthdays.linked(cr)[kept.info.uid].orEmpty()) } }
                                     openUid = kept.info.uid
-                                    "Merged"
+                                    context.resources.getQuantityString(R.plurals.contacts_n_merged, 1, 1)
                                 }
-                            }) { Icon(painterResource(R.drawable.ic_cell_merge), contentDescription = "Merge the two") }
-                            IconButton(onClick = { deletingMany = true }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete") }
+                            }) { Icon(painterResource(R.drawable.ic_cell_merge), contentDescription = stringResource(R.string.contacts_merge_two)) }
+                            IconButton(onClick = { deletingMany = true }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.common_delete)) }
                         }
                     }
                 } else IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
-                    ContactsTab.entries.forEach { t -> IslandNavigationItem(t.label, tab == t, t.icon) { tab = t; label = null } }
+                    ContactsTab.entries.forEach { t -> IslandNavigationItem(stringResource(t.label), tab == t, t.icon) { tab = t; label = null } }
                 }
                 if (selected.isEmpty()) IslandVisibility(!drawer) {
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                        IconButton(onClick = { editing = null to ContactInfo(categories = listOfNotNull(label)) }) { Icon(painterResource(R.drawable.ic_add), contentDescription = "New contact") }
+                        IconButton(onClick = { editing = null to ContactInfo(categories = listOfNotNull(label)) }) { Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.contacts_new)) }
                     }
                 }
             }
@@ -532,50 +542,50 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     }
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Import", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.common_import), style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DrawerButton(R.drawable.ic_phone, "From this phone", false, Modifier.weight(1f)) { drawer = false; fromPhone() }
-                DrawerButton(R.drawable.ic_file_download, "From a file", false, Modifier.weight(1f)) {
+                DrawerButton(R.drawable.ic_phone, stringResource(R.string.contacts_from_phone), false, Modifier.weight(1f)) { drawer = false; fromPhone() }
+                DrawerButton(R.drawable.ic_file_download, stringResource(R.string.contacts_from_file), false, Modifier.weight(1f)) {
                     drawer = false; pickFile.launch(arrayOf("text/vcard", "text/x-vcard", "text/directory", "text/csv", "text/comma-separated-values", "application/zip", "application/octet-stream", "*/*"))
                 }
             }
-            Text("A file from Google Contacts (Export › vCard or Google CSV), Google Takeout's zip, or any .vcf. A person already here is not added twice.",
+            Text(stringResource(R.string.contacts_import_hint),
                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
             HorizontalDivider(color = islandContentColor().copy(alpha = 0.15f))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DrawerButton(R.drawable.ic_file_upload, "Export", false, Modifier.weight(1f)) { drawer = false; exportOpen = true }
-                DrawerButton(R.drawable.ic_cell_merge, if (duplicates.isEmpty()) "Merge & fix" else "Merge & fix (${duplicates.size})", false, Modifier.weight(1f)) { drawer = false; mergeOpen = true }
+                DrawerButton(R.drawable.ic_file_upload, stringResource(R.string.common_export), false, Modifier.weight(1f)) { drawer = false; exportOpen = true }
+                DrawerButton(R.drawable.ic_cell_merge, if (duplicates.isEmpty()) stringResource(R.string.contacts_merge_fix) else stringResource(R.string.contacts_merge_fix_n, duplicates.size), false, Modifier.weight(1f)) { drawer = false; mergeOpen = true }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DrawerButton(R.drawable.ic_sort_name, if (byLast) "Sort: last name" else "Sort: first name", byLast, Modifier.weight(1f)) {
+                DrawerButton(R.drawable.ic_sort_name, stringResource(if (byLast) R.string.contacts_sort_last else R.string.contacts_sort_first), byLast, Modifier.weight(1f)) {
                     byLast = !byLast; ContactsPrefs.setByLast(context, byLast)
                 }
-                DrawerButton(R.drawable.ic_delete, "Trash", false, Modifier.weight(1f)) { drawer = false; trashOpen = true }
+                DrawerButton(R.drawable.ic_delete, stringResource(R.string.contacts_trash), false, Modifier.weight(1f)) { drawer = false; trashOpen = true }
             }
-            DrawerButton(R.drawable.ic_phone, if (systemOn) "In the phone's contacts: on" else "In the phone's contacts: off", systemOn, Modifier.fillMaxWidth()) {
+            DrawerButton(R.drawable.ic_phone, stringResource(if (systemOn) R.string.contacts_system_on else R.string.contacts_system_off), systemOn, Modifier.fillMaxWidth()) {
                 when {
-                    systemOn -> { ContactsAccount.set(context, false); systemOn = false; message = "Tetra's copy left the phone's contacts" }
+                    systemOn -> { ContactsAccount.set(context, false); systemOn = false; message = context.getString(R.string.contacts_system_left) }
                     ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED -> { ContactsAccount.set(context, true); systemOn = true }
                     else -> askWrite.launch(Manifest.permission.WRITE_CONTACTS)
                 }
             }
             // calls from the computer are asked for in one place, Settings › Phone (the user, 25 Oct), not here
-            Text("A read-only copy under the account Tetra, so the dialer, Viber, WhatsApp and the car show these names and photos. Edits are made here. Calls on the computer: Settings › Phone.",
+            Text(stringResource(R.string.contacts_system_hint),
                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 val calName = remember(drawer) { runCatching { CalendarFiles.calendars(calendarRoot()).let { cals -> cals.firstOrNull { it.dir.name == ContactsPrefs.birthdays(context) } ?: ContactsBirthdays.existing(cals) }?.name }.getOrNull() ?: ContactsBirthdays.NAME }
-                DrawerButton(R.drawable.ic_cake, "Birthdays: $calName", false, Modifier.weight(1f)) { drawer = false; choosingCalendar = true }
-                if (faceMatches.isNotEmpty()) DrawerButton(R.drawable.ic_person, "Faces from Photos (${faceMatches.size})", false, Modifier.weight(1f)) { drawer = false; facesOpen = true }
-                if (links.isNotEmpty()) DrawerButton(R.drawable.ic_link, "Link birthdays (${links.size})", false, Modifier.weight(1f)) { drawer = false; reviewing = true }
+                DrawerButton(R.drawable.ic_cake, stringResource(R.string.contacts_birthdays_in, calName), false, Modifier.weight(1f)) { drawer = false; choosingCalendar = true }
+                if (faceMatches.isNotEmpty()) DrawerButton(R.drawable.ic_person, stringResource(R.string.contacts_faces_n, faceMatches.size), false, Modifier.weight(1f)) { drawer = false; facesOpen = true }
+                if (links.isNotEmpty()) DrawerButton(R.drawable.ic_link, stringResource(R.string.contacts_link_birthdays_n, links.size), false, Modifier.weight(1f)) { drawer = false; reviewing = true }
             }
-            Text("Each birthday and date is an event in that calendar, reminded at 9:00 on the day and the day before; change it here and the event follows.",
+            Text(stringResource(R.string.contacts_birthdays_hint),
                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
         }
     }
     if (reviewing) LinkReview(links, { reviewing = false }) { chosen ->
         reviewing = false
         scope.launch {
-            busy = "Linking…"
+            busy = context.getString(R.string.contacts_linking)
             val n = withContext(Dispatchers.IO) { runCatching {
                 chosen.forEach { ContactsBirthdays.link(calendarRoot(), root, it) }
                 ContactsPrefs.dismiss(context, (links - chosen.toSet()).map { it.event.uid })
@@ -585,36 +595,36 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             version++; pushed()
             birthdays(false)
             faces(true)
-            message = "$n linked; the other birthdays are in the calendar"
+            message = context.resources.getQuantityString(R.plurals.contacts_n_linked, n, n)
         }
     }
     if (choosingCalendar) {
         val cals = remember { runCatching { CalendarFiles.calendars(calendarRoot()) }.getOrDefault(emptyList()) }
         ModalBottomSheet(onDismissRequest = { choosingCalendar = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
             Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Birthdays go into", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.contacts_birthdays_go_into), style = MaterialTheme.typography.titleMedium)
                 val now = cals.firstOrNull { it.dir.name == ContactsPrefs.birthdays(context) } ?: ContactsBirthdays.existing(cals)
                 cals.forEach { c ->
-                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { ContactsPrefs.setBirthdays(context, c.dir.name); choosingCalendar = false; message = "New birthdays go into ${c.name}" }
+                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { ContactsPrefs.setBirthdays(context, c.dir.name); choosingCalendar = false; message = context.getString(R.string.contacts_new_birthdays_into, c.name) }
                         .padding(horizontal = 8.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(Modifier.size(14.dp).clip(CircleShape).background(Color(c.color)))
                         Text(c.name, Modifier.weight(1f))
-                        if (c == now) Icon(painterResource(R.drawable.ic_check), contentDescription = "Chosen")
+                        if (c == now) Icon(painterResource(R.drawable.ic_check), contentDescription = stringResource(R.string.common_chosen))
                     }
                 }
-                if (cals.isEmpty()) Text("No calendars yet: ${ContactsBirthdays.NAME} is made with the first birthday.", color = islandContentColor().copy(alpha = 0.7f))
+                if (cals.isEmpty()) Text(stringResource(R.string.contacts_no_calendars, ContactsBirthdays.NAME), color = islandContentColor().copy(alpha = 0.7f))
             }
         }
     }
     if (exportOpen) {
-        val choices = listOf("All contacts" to all, "Favourites" to all.filter { it.info.favourite }) +
-            all.flatMap { it.info.labels }.distinctBy { it.lowercase() }.sortedBy { it.lowercase() }.map { l -> l to all.filter { c -> c.info.labels.any { it.equals(l, true) } } }
+        val choices = listOf(Triple(stringResource(R.string.contacts_all_contacts), "All contacts", all), Triple(stringResource(R.string.contacts_favourites), "Favourites", all.filter { it.info.favourite })) +
+            all.flatMap { it.info.labels }.distinctBy { it.lowercase() }.sortedBy { it.lowercase() }.map { l -> Triple(l, l, all.filter { c -> c.info.labels.any { it.equals(l, true) } }) }
         ModalBottomSheet(onDismissRequest = { exportOpen = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
             Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp).verticalScroll(rememberScrollState())) {
-                Text("Export as a .vcf", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
-                Text("One file any phone, Google Contacts or Apple's imports, each contact with its photo.", style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
-                choices.filter { it.second.isNotEmpty() }.forEach { (name, cs) ->
-                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { exportOpen = false; exporting = cs; exportTo.launch("$name.vcf") }.padding(horizontal = 8.dp, vertical = 14.dp)) {
+                Text(stringResource(R.string.contacts_export_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
+                Text(stringResource(R.string.contacts_export_hint), style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+                choices.filter { it.third.isNotEmpty() }.forEach { (name, file, cs) ->
+                    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { exportOpen = false; exporting = cs; exportTo.launch("$file.vcf") }.padding(horizontal = 8.dp, vertical = 14.dp)) {
                         Text(name, Modifier.weight(1f)); Text("${cs.size}", color = islandContentColor().copy(alpha = 0.7f))
                     }
                 }
@@ -629,20 +639,20 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 runCatching { ContactsBirthdays.moveLinks(calRoot, b.info.uid, kept.info); ContactsBirthdays.sync(calRoot, kept.info, ContactsPrefs.birthdays(context), ContactsBirthdays.linked(calRoot)[kept.info.uid].orEmpty()) }
                     .onFailure { WriterLog.e("Contacts: a merge's dates", it) }
             }
-            if (pairs.size == 1) "Merged" else "${pairs.size} merged"
+            context.resources.getQuantityString(R.plurals.contacts_n_merged, pairs.size, pairs.size)
         }
-    }, notSame = { a, b -> act { ContactsMerge.notTheSame(a, b); "Kept apart" } })
+    }, notSame = { a, b -> act { ContactsMerge.notTheSame(a, b); context.getString(R.string.contacts_kept_apart) } })
     if (facesOpen) FacesForMany(faceMatches, { facesOpen = false }) { chosen ->
         facesOpen = false
         scope.launch {
-            busy = "Making photos…"
+            busy = context.getString(R.string.contacts_making_photos)
             val n = withContext(Dispatchers.IO) { chosen.count { (c, p) -> runCatching {
                 val (photo, face) = p.cover?.let { ContactsFaces.portrait(context, it, p.box) } ?: return@runCatching false
                 val now = ContactsFiles.all(root).firstOrNull { it.info.uid == c.uid } ?: return@runCatching false
                 ContactsFiles.save(root, now, now.info.copy(photo = photo, face = face, photoUrl = null, person = p.uuid)); true
             }.getOrDefault(false) } }
             busy = null
-            message = "$n photos from Photos"
+            message = context.resources.getQuantityString(R.plurals.contacts_n_photos, n, n)
             version++; pushed()
             faces(false)
         }
@@ -655,12 +665,12 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             val off = many.all { c -> c.info.labels.any { it.equals(l, true) } }
             act {
                 many.forEach { c -> ContactsFiles.save(root, c, c.info.copy(categories = if (off) c.info.categories.filterNot { it.equals(l, true) } else (c.info.categories + l).distinctBy { it.lowercase() })) }
-                if (off) "$l taken off ${many.size}" else "$l given to ${many.size}"
+                context.getString(if (off) R.string.contacts_label_taken_off else R.string.contacts_label_given, l, many.size)
             }
         }
     }
-    if (deletingMany) androidx.compose.material3.AlertDialog(onDismissRequest = { deletingMany = false }, title = { Text("Delete ${selected.size} contacts?") },
-        text = { Text("They go to Tetra's Trash, with their birthdays' events, and can be restored from there (Contacts › Trash).") },
+    if (deletingMany) androidx.compose.material3.AlertDialog(onDismissRequest = { deletingMany = false }, title = { Text(pluralStringResource(R.plurals.contacts_delete_n, selected.size, selected.size)) },
+        text = { Text(stringResource(R.string.contacts_delete_many_hint)) },
         confirmButton = { TextButton(onClick = {
             deletingMany = false
             val many = all.filter { it.info.uid in selected }
@@ -668,11 +678,11 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             act {
                 val cr = calendarRoot(); val links = ContactsBirthdays.linked(cr)
                 many.forEach { c -> ContactsFiles.trash(root, c); runCatching { ContactsBirthdays.sync(cr, c.info, null, links[c.info.uid].orEmpty(), gone = true) } }
-                "${many.size} moved to the Trash"
+                context.resources.getQuantityString(R.plurals.contacts_n_trashed, many.size, many.size)
             }
-        }) { Text("Delete") } },
-        dismissButton = { TextButton(onClick = { deletingMany = false }) { Text("Cancel") } })
-    if (trashOpen) ContactsTrash(root, version, { trashOpen = false }) { c -> act { ContactsFiles.restore(root, c); "${c.info.name} restored" } }
+        }) { Text(stringResource(R.string.common_delete), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { TextButton(onClick = { deletingMany = false }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
+    if (trashOpen) ContactsTrash(root, version, { trashOpen = false }) { c -> act { ContactsFiles.restore(root, c); context.getString(R.string.contacts_restored, c.info.name) } }
 }
 
 @Composable private fun Hint(text: String, modifier: Modifier = Modifier) =
@@ -693,13 +703,13 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     }
 }
 
-/** "23 Oct · turns 41", "23 Oct 1985", "23 Oct". */
-internal fun dateText(d: VDate, birthday: Boolean, today: LocalDate = LocalDate.now()): String {
-    val day = d.inYear(today.year).format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))
+/** "23 Oct · turns 41", "23 Oct 1985", "23 Oct"; [age] words an age (true: it is today). */
+internal fun dateText(d: VDate, birthday: Boolean, today: LocalDate = LocalDate.now(), locale: Locale, age: (Int, Boolean) -> String): String {
+    val day = d.inYear(today.year).format(DateTimeFormatter.ofPattern("d MMM", locale))
     if (d.year == null) return day
     val next = d.inYear(today.year).let { if (it.isBefore(today)) d.inYear(today.year + 1) else it }
     val age = next.year - d.year
-    return if (birthday && age in 1..130) "$day · ${if (next == today) "$age today" else "turns $age"}" else "$day ${d.year}"
+    return if (birthday && age in 1..130) "$day · ${age(age, next == today)}" else "$day ${d.year}"
 }
 
 /**
@@ -711,10 +721,12 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
     val context = LocalContext.current
     val i = c.info
     fun go(uri: String, action: String = Intent.ACTION_VIEW) { runCatching { context.startActivity(Intent(action, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        .onFailure { android.widget.Toast.makeText(context, "No app opens this", android.widget.Toast.LENGTH_SHORT).show() } }
+        .onFailure { android.widget.Toast.makeText(context, context.getString(R.string.contacts_no_app), android.widget.Toast.LENGTH_SHORT).show() } }
+    val locale = LocalConfiguration.current.locales[0]
+    fun date(d: VDate, birthday: Boolean) = dateText(d, birthday, locale = locale) { a, now -> context.getString(if (now) R.string.contacts_age_today else R.string.contacts_turns, a) }
     var strip by remember { mutableStateOf<Pair<String, List<Pair<String, () -> Unit>>>?>(null) }
     var qr by remember { mutableStateOf(false) }
-    var more by remember(c.info.uid) { mutableStateOf<String?>(null) } // "History" or "Recordings": See all's page
+    var more by remember(c.info.uid) { mutableStateOf<Int?>(null) } // History or Recordings (their names' strings): See all's page
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding()
             .padding(top = 72.dp, bottom = 96.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { // clear of Edit at the bottom
@@ -734,39 +746,40 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                 fun open(w: AppWay) { runCatching {
                     val i = Intent(Intent.ACTION_VIEW).setDataAndType(android.content.ContentUris.withAppendedId(android.provider.ContactsContract.Data.CONTENT_URI, w.id), w.mime).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     try { context.startActivity(Intent(i).setPackage(ContactsWays.packageOf(w.mime))) } catch (_: android.content.ActivityNotFoundException) { context.startActivity(i) }
-                }.onFailure { android.widget.Toast.makeText(context, "${w.app} did not open", android.widget.Toast.LENGTH_SHORT).show() } }
+                }.onFailure { android.widget.Toast.makeText(context, context.getString(R.string.contacts_app_did_not_open, w.app), android.widget.Toast.LENGTH_SHORT).show() } }
                 fun sms(n: String) = go("smsto:${Uri.encode(n)}", Intent.ACTION_SENDTO)
                 // Tetra the phone app: the call at once (its own call screen); else the phone app opens with the number
                 fun dial(n: String) { if (!(PhonePrefs.isDialer(context) && placePhoneCall(context, n))) go("tel:${Uri.encode(n)}", Intent.ACTION_DIAL) }
                 fun mail(m: String) = go("mailto:$m", Intent.ACTION_SENDTO)
                 /** One way: at once; several (a number's apps, two numbers): a strip from the bottom to choose. */
                 fun choose(title: String, options: List<Pair<String, () -> Unit>>) { if (options.size == 1) options.single().second() else if (options.isNotEmpty()) strip = title to options }
-                fun numberText(n: String) = i.phones.firstOrNull { it.value == n }?.label?.ifEmpty { null }?.let { "$it $n" } ?: n
+                fun numberText(n: String) = i.phones.firstOrNull { it.value == n }?.label?.ifEmpty { null }?.let { "${contactLabel(context, it)} $n" } ?: n
                 // a number starred as the default (on the computer, TYPE=PREF): Message, Call and Video go to it alone
                 val nums = i.defaultPhone?.let { d -> i.phones.filter { it.value == d } }?.ifEmpty { null } ?: i.phones
                 val numWays = ways.filter { w -> nums.any { it.value == w.number } }
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    RoundAction(R.drawable.ic_chat, "Message", i.phones.isNotEmpty()) {
-                        choose("Message", nums.map { f -> "SMS · ${numberText(f.value)}" to { sms(f.value) } } + numWays.filter { it.way == Way.Message }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
+                    RoundAction(R.drawable.ic_chat, stringResource(R.string.contacts_message), i.phones.isNotEmpty()) {
+                        choose(context.getString(R.string.contacts_message), nums.map { f -> "SMS · ${numberText(f.value)}" to { sms(f.value) } } + numWays.filter { it.way == Way.Message }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
                     }
-                    RoundAction(R.drawable.ic_call, "Call", i.phones.isNotEmpty()) {
-                        choose("Call", nums.map { f -> "Phone · ${numberText(f.value)}" to { dial(f.value) } } + numWays.filter { it.way == Way.Call }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
+                    RoundAction(R.drawable.ic_call, stringResource(R.string.contacts_call), i.phones.isNotEmpty()) {
+                        choose(context.getString(R.string.contacts_call), nums.map { f -> context.getString(R.string.contacts_by_phone, numberText(f.value)) to { dial(f.value) } } + numWays.filter { it.way == Way.Call }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
                     }
-                    RoundAction(R.drawable.ic_videocam, "Video", numWays.any { it.way == Way.Video }) {
-                        choose("Video", numWays.filter { it.way == Way.Video }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
+                    RoundAction(R.drawable.ic_videocam, stringResource(R.string.contacts_video), numWays.any { it.way == Way.Video }) {
+                        choose(context.getString(R.string.contacts_video), numWays.filter { it.way == Way.Video }.map { w -> "${w.app} · ${w.number}" to { open(w) } })
                     }
-                    RoundAction(R.drawable.ic_mail, "Mail", i.emails.isNotEmpty()) { choose("Mail", i.emails.map { e -> e.value to { mail(e.value) } }) }
+                    RoundAction(R.drawable.ic_mail, stringResource(R.string.contacts_mail), i.emails.isNotEmpty()) { choose(context.getString(R.string.contacts_mail), i.emails.map { e -> e.value to { mail(e.value) } }) }
                 }
                 if (c.versions > 1) DetailCard {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${c.versions} versions of this contact (a change on two devices). This is the newer.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                        TextButton(onClick = keep) { Text("Keep this one") }
+                        Text(stringResource(R.string.contacts_versions, c.versions), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = keep) { Text(stringResource(R.string.contacts_keep_this), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
                 }
                 if (i.phones.isNotEmpty()) DetailCard { i.phones.forEach { f ->
                     // each number's apps as small chips: a tap writes to them there
                     val apps = ways.filter { it.number == f.value }.groupBy { it.app }
-                    DetailRow(f.label.ifEmpty { "Phone" } + if (i.phones.size > 1 && f.value == i.defaultPhone) " · ★ default" else "", f.value, onClick = { dial(f.value) }) {
+                    val shownLabel = contactLabel(context, f.label).ifEmpty { stringResource(R.string.contacts_phone) }
+                    DetailRow(if (i.phones.size > 1 && f.value == i.defaultPhone) stringResource(R.string.contacts_label_default, shownLabel) else shownLabel, f.value, onClick = { dial(f.value) }) {
                         // WhatsApp and Viber as their marks (the user, 24 Oct: "SVGs so it fits on the phone"); the others by name
                         apps.forEach { (app, ws) ->
                             val mark = when { app.startsWith("WhatsApp") -> R.drawable.ic_whatsapp; app == "Viber" -> R.drawable.ic_viber; else -> null }
@@ -778,42 +791,42 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                         }
                     }
                 } }
-                if (i.emails.isNotEmpty()) DetailCard { i.emails.forEach { f -> DetailRow(f.label.ifEmpty { "Email" }, f.value, onClick = { mail(f.value) }) } }
+                if (i.emails.isNotEmpty()) DetailCard { i.emails.forEach { f -> DetailRow(contactLabel(context, f.label).ifEmpty { stringResource(R.string.contacts_email) }, f.value, onClick = { mail(f.value) }) } }
                 if (i.birthday != null || i.dates.isNotEmpty()) DetailCard {
-                    i.birthday?.let { DetailRow("Birthday", dateText(it, true)) }
-                    i.dates.forEach { f -> VDate.parse(f.value)?.let { DetailRow(f.label, dateText(it, false)) } }
+                    i.birthday?.let { DetailRow(stringResource(R.string.contacts_birthday), date(it, true)) }
+                    i.dates.forEach { f -> VDate.parse(f.value)?.let { DetailRow(contactLabel(context, f.label), date(it, false)) } }
                 }
                 if (i.addresses.isNotEmpty()) DetailCard { i.addresses.forEach { a ->
-                    DetailRow(a.label.ifEmpty { "Address" }, a.text(), action = "Open in Maps", onClick = { openMaps(listOf(a.street, a.city).filter { it.isNotBlank() }.joinToString(", ").ifEmpty { a.text() }) })
+                    DetailRow(contactLabel(context, a.label).ifEmpty { stringResource(R.string.contacts_address) }, a.text(), action = stringResource(R.string.contacts_open_in_maps), onClick = { openMaps(listOf(a.street, a.city).filter { it.isNotBlank() }.joinToString(", ").ifEmpty { a.text() }) })
                 } }
-                if (i.urls.isNotEmpty()) DetailCard { i.urls.forEach { f -> DetailRow(f.label.ifEmpty { "Website" }, f.value, onClick = { go(if (f.value.contains("://")) f.value else "https://${f.value}") }) } }
+                if (i.urls.isNotEmpty()) DetailCard { i.urls.forEach { f -> DetailRow(contactLabel(context, f.label).ifEmpty { stringResource(R.string.contacts_website) }, f.value, onClick = { go(if (f.value.contains("://")) f.value else "https://${f.value}") }) } }
                 if (i.related.isNotEmpty()) DetailCard { i.related.forEach { f ->
                     val other = all.firstOrNull { it.info.uid != i.uid && ContactsFiles.plain(it.info.name) == ContactsFiles.plain(f.value) }
-                    DetailRow(f.label.ifEmpty { "Related" }, f.value, onClick = other?.let { o -> { openUid(o.info.uid) } })
+                    DetailRow(contactLabel(context, f.label).ifEmpty { stringResource(R.string.contacts_related) }, f.value, onClick = other?.let { o -> { openUid(o.info.uid) } })
                 } }
                 if (i.nickname.isNotEmpty() || i.labels.isNotEmpty() || i.note.isNotEmpty()) DetailCard {
-                    if (i.nickname.isNotEmpty()) DetailRow("Nickname", i.nickname)
-                    if (i.labels.isNotEmpty()) DetailRow("Labels", i.labels.joinToString(" · "))
-                    if (i.note.isNotEmpty()) DetailRow("Notes", i.note)
+                    if (i.nickname.isNotEmpty()) DetailRow(stringResource(R.string.contacts_nickname), i.nickname)
+                    if (i.labels.isNotEmpty()) DetailRow(stringResource(R.string.contacts_labels), i.labels.joinToString(" · "))
+                    if (i.note.isNotEmpty()) DetailRow(stringResource(R.string.contacts_notes), i.note)
                 }
                 // at the end, the calls with them and their recordings (the user, 25 Oct): the latest three of each, See all
                 // opens their own page (the last 50 calls, every number of theirs)
                 if (i.phones.isNotEmpty()) {
-                    SectionTitle("History", if (calls.size > 3) "See all ${calls.size}" else null) { more = "History" }
+                    SectionTitle(stringResource(R.string.contacts_history), if (calls.size > 3) stringResource(R.string.contacts_see_all, calls.size) else null) { more = R.string.contacts_history }
                     if (context.checkSelfPermission(Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) DetailCard {
                         // Google Play: the call log only for the phone's phone app, so this asks for that role, not the permission (Plan.md § Phone)
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Calls with ${i.given.ifBlank { i.name }} come from the phone's call log, which Tetra reads as the phone app.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.contacts_calls_need_role, i.given.ifBlank { i.name }), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                             TextButton(onClick = {
                                 askCalls.launch(context.getSystemService(android.app.role.RoleManager::class.java).createRequestRoleIntent(android.app.role.RoleManager.ROLE_DIALER))
-                            }) { Text("Make it", color = CONTACTS_COLOR) }
+                            }) { Text(stringResource(R.string.contacts_make_it), color = CONTACTS_COLOR, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         }
-                    } else if (calls.isEmpty()) DetailCard { Text("No calls so far", Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    } else if (calls.isEmpty()) DetailCard { Text(stringResource(R.string.contacts_no_calls), Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     else DetailCard { calls.take(3).forEach { call -> CallRow(call, i.phones.size > 1) { dial(call.number) } } }
                 }
-                SectionTitle("Recordings", if (recordings.size > 3) "See all ${recordings.size}" else null) { more = "Recordings" }
+                SectionTitle(stringResource(R.string.contacts_recordings), if (recordings.size > 3) stringResource(R.string.contacts_see_all, recordings.size) else null) { more = R.string.contacts_recordings }
                 DetailCard {
-                    if (recordings.isEmpty()) Text("No recordings so far", Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (recordings.isEmpty()) Text(stringResource(R.string.contacts_no_recordings), Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     recordings.take(3).forEach { f -> RecordingRow(f) }
                 }
                 // See all: its own page, over the contact's
@@ -823,9 +836,9 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding()
                                 .padding(top = 72.dp, bottom = 24.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("$what · ${i.name}", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
+                                    Text("${stringResource(what)} · ${i.name}", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
                                     DetailCard {
-                                        if (what == "History") calls.forEach { call -> CallRow(call, i.phones.size > 1) { more = null; dial(call.number) } }
+                                        if (what == R.string.contacts_history) calls.forEach { call -> CallRow(call, i.phones.size > 1) { more = null; dial(call.number) } }
                                         else recordings.forEach { f -> RecordingRow(f) }
                                     }
                                 }
@@ -841,7 +854,7 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
         }
         Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (!wide) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Contacts") }
+                IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.app_contacts)) }
             }
         }
         // the contact's own buttons in one island at the bottom right, within the thumb's reach (the user, 24 Oct: Edit
@@ -850,27 +863,27 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
             modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp)) {
             Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 // Share: as a .vcf (Viber, WhatsApp, mail take it) or as a QR code another phone scans
-                IconButton(onClick = { strip = "Share ${i.name}" to listOf(
-                    "Send as a contact file (.vcf)" to {
+                IconButton(onClick = { strip = context.getString(R.string.contacts_share_name, i.name) to listOf(
+                    context.getString(R.string.contacts_send_vcf) to {
                         runCatching {
                             val f = File(File(context.cacheDir, "share").apply { mkdirs() }, ContactsFiles.fileName(i.name, i.uid))
                             f.writeText(ContactsMerge.export(listOf(c)))
                             val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
                             context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/x-vcard").putExtra(Intent.EXTRA_STREAM, uri)
-                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share ${i.name}").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), context.getString(R.string.contacts_share_name, i.name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         }.onFailure { WriterLog.e("Contacts: share", it) }
                         Unit
                     },
-                    "Show as a QR code" to { qr = true },
-                ) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
+                    context.getString(R.string.contacts_show_qr) to { qr = true },
+                ) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = stringResource(R.string.common_share)) }
                 IconButton(onClick = star) {
-                    Icon(painterResource(if (i.favourite) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = if (i.favourite) "Remove from favourites" else "Add to favourites",
+                    Icon(painterResource(if (i.favourite) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = stringResource(if (i.favourite) R.string.contacts_remove_favourite else R.string.contacts_add_favourite),
                         tint = if (i.favourite) CONTACTS_COLOR else islandContentColor())
                 }
                 Surface(onClick = edit, color = Color.White.copy(alpha = 0.12f), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.padding(4.dp)) {
                     Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(painterResource(R.drawable.ic_edit), contentDescription = null)
-                        Text("Edit")
+                        Text(stringResource(R.string.common_edit), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -883,9 +896,9 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
         androidx.compose.ui.window.Dialog(onDismissRequest = { qr = false }) {
             Surface(shape = MaterialTheme.shapes.extraLarge, color = Color.White, contentColor = Color.Black) {
                 Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (bmp != null) Image(bmp, contentDescription = "QR code of ${i.name}", modifier = Modifier.size(300.dp)) else Text("Too much to fit in a QR code: share it as a file.")
+                    if (bmp != null) Image(bmp, contentDescription = stringResource(R.string.contacts_qr_of, i.name), modifier = Modifier.size(300.dp)) else Text(stringResource(R.string.contacts_qr_too_big))
                     Text(i.name, style = MaterialTheme.typography.titleMedium)
-                    Text("Scan it with a phone's camera, or Tetra › Codes › Add to Contacts.", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                    Text(stringResource(R.string.contacts_qr_hint), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -911,7 +924,7 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
             contentColor = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(56.dp)) {
             Box(contentAlignment = Alignment.Center) { Icon(painterResource(icon), contentDescription = label) }
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, color = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -927,21 +940,21 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.bodyLarge, color = if (onClick != null && action == null) CONTACTS_COLOR else MaterialTheme.colorScheme.onSurface)
         }
-        if (action != null && onClick != null) TextButton(onClick = onClick) { Text(action, color = CONTACTS_COLOR) }
+        if (action != null && onClick != null) TextButton(onClick = onClick) { Text(action, color = CONTACTS_COLOR, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { trailing() }
     }
 }
 
 /** "Mon 15:36 · in · 2 min": a call in a few words. */
-private fun callText(c: CallEntry): String {
+@Composable private fun callText(c: CallEntry): String {
     val at = java.time.Instant.ofEpochMilli(c.at).atZone(java.time.ZoneId.systemDefault())
-    val day = if (at.toLocalDate() == LocalDate.now()) "Today" else if (at.toLocalDate() == LocalDate.now().minusDays(1)) "Yesterday"
-        else at.format(DateTimeFormatter.ofPattern(if (at.year == LocalDate.now().year) "EEE d MMM" else "d MMM yyyy", Locale.ENGLISH))
-    val kind = when (c.type) {
-        android.provider.CallLog.Calls.INCOMING_TYPE -> "in"; android.provider.CallLog.Calls.OUTGOING_TYPE -> "out"
-        android.provider.CallLog.Calls.MISSED_TYPE -> "missed"; android.provider.CallLog.Calls.REJECTED_TYPE -> "declined"; else -> "call"
-    }
-    val length = if (c.seconds <= 0) "" else " · " + if (c.seconds < 60) "${c.seconds} s" else "${(c.seconds + 30) / 60} min"
+    val day = if (at.toLocalDate() == LocalDate.now()) stringResource(R.string.common_today) else if (at.toLocalDate() == LocalDate.now().minusDays(1)) stringResource(R.string.common_yesterday)
+        else at.format(DateTimeFormatter.ofPattern(if (at.year == LocalDate.now().year) "EEE d MMM" else "d MMM yyyy", LocalConfiguration.current.locales[0]))
+    val kind = stringResource(when (c.type) {
+        android.provider.CallLog.Calls.INCOMING_TYPE -> R.string.contacts_call_in; android.provider.CallLog.Calls.OUTGOING_TYPE -> R.string.contacts_call_out
+        android.provider.CallLog.Calls.MISSED_TYPE -> R.string.contacts_call_missed; android.provider.CallLog.Calls.REJECTED_TYPE -> R.string.contacts_call_declined; else -> R.string.contacts_call_other
+    })
+    val length = if (c.seconds <= 0) "" else " · " + if (c.seconds < 60) stringResource(R.string.contacts_seconds, c.seconds) else stringResource(R.string.contacts_minutes, (c.seconds + 30) / 60)
     return "$day ${at.format(DateTimeFormatter.ofPattern("HH:mm"))} · $kind$length"
 }
 
@@ -949,7 +962,7 @@ private fun callText(c: CallEntry): String {
 @Composable private fun SectionTitle(title: String, all: String?, open: () -> Unit) =
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-        if (all != null) TextButton(onClick = open) { Text(all, color = CONTACTS_COLOR) }
+        if (all != null) TextButton(onClick = open) { Text(all, color = CONTACTS_COLOR, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
 
 /** A call recorded on the computer: when, its size; a tap plays it in the phone's player. */
@@ -985,13 +998,13 @@ private fun callText(c: CallEntry): String {
     val trashed by produceState(emptyList<Contact>(), version) { value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.trashed(root) }.getOrDefault(emptyList()) } }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Trash", style = MaterialTheme.typography.titleMedium)
-            if (trashed.isEmpty()) Text("No contacts in the Trash.", color = islandContentColor().copy(alpha = 0.7f))
+            Text(stringResource(R.string.contacts_trash), style = MaterialTheme.typography.titleMedium)
+            if (trashed.isEmpty()) Text(stringResource(R.string.contacts_trash_empty), color = islandContentColor().copy(alpha = 0.7f))
             trashed.forEach { c ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ContactAvatar(c.info, 36.dp)
                     Text(c.info.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    TextButton(onClick = { restore(c) }) { Text("Restore") }
+                    TextButton(onClick = { restore(c) }) { Text(stringResource(R.string.contacts_restore), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         }
@@ -1007,8 +1020,8 @@ private fun callText(c: CallEntry): String {
     var picked by remember(links) { mutableStateOf(links.toSet()) }
     ModalBottomSheet(onDismissRequest = later, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Birthdays already in the calendar", style = MaterialTheme.typography.titleMedium)
-            Text("These events seem to be these people. Linked, the event stays and follows the contact; nothing is doubled.",
+            Text(stringResource(R.string.contacts_links_title), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.contacts_links_hint),
                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                 links.forEach { l ->
@@ -1018,15 +1031,15 @@ private fun callText(c: CallEntry): String {
                         ContactAvatar(l.contact, 36.dp)
                         Column(Modifier.weight(1f)) {
                             Text(l.contact.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${l.title} · ${l.event.master?.start?.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))}" + if (l.sameDate) " · same day" else "",
+                            Text("${l.title} · ${l.event.master?.start?.format(DateTimeFormatter.ofPattern("d MMM", LocalConfiguration.current.locales[0]))}" + if (l.sameDate) " · " + stringResource(R.string.contacts_same_day) else "",
                                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f), maxLines = 2)
                         }
                     }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = later) { Text("Later") }
-                TextButton(onClick = { go(picked.toList()) }) { Text(if (picked.isEmpty()) "None of them" else "Link ${picked.size}") }
+                TextButton(onClick = later) { Text(stringResource(R.string.contacts_later), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                TextButton(onClick = { go(picked.toList()) }) { Text(if (picked.isEmpty()) stringResource(R.string.contacts_none_of_them) else stringResource(R.string.contacts_link_n, picked.size), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }
@@ -1048,16 +1061,16 @@ private fun callText(c: CallEntry): String {
         // a face from Photos keeps its person; any picture gets the contact's (a new uuid if none): the computer then finds
         // that face in its copy of the picture and puts it in Photos under this contact's name (desktop contactfaces.js)
         if (b != null) set { it.copy(photo = b.first, face = b.second, photoUrl = null, person = person ?: it.person ?: java.util.UUID.randomUUID().toString()) }
-        else android.widget.Toast.makeText(context, "That picture could not be read", android.widget.Toast.LENGTH_SHORT).show()
+        else android.widget.Toast.makeText(context, context.getString(R.string.contacts_picture_unreadable), android.widget.Toast.LENGTH_SHORT).show()
     }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { use(it, null, null) } }
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         ContactAvatar(i, 96.dp)
-        if (working) Text("Making the photo…", style = MaterialTheme.typography.bodySmall)
+        if (working) Text(stringResource(R.string.contacts_making_photo), style = MaterialTheme.typography.bodySmall)
         Row {
-            TextButton(onClick = { fromPhotos = true }) { Text("From Photos", color = CONTACTS_COLOR) }
-            TextButton(onClick = { pick.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Choose a picture", color = CONTACTS_COLOR) }
-            if (i.photo != null || i.photoUrl != null) TextButton(onClick = { set { it.copy(photo = null, photoUrl = null, face = null) } }) { Text("Remove", color = CONTACTS_COLOR) }
+            TextButton(onClick = { fromPhotos = true }) { Text(stringResource(R.string.contacts_from_photos), color = CONTACTS_COLOR, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            TextButton(onClick = { pick.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text(stringResource(R.string.contacts_choose_picture), color = CONTACTS_COLOR, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            if (i.photo != null || i.photoUrl != null) TextButton(onClick = { set { it.copy(photo = null, photoUrl = null, face = null) } }) { Text(stringResource(R.string.common_remove), color = CONTACTS_COLOR, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
     if (fromPhotos) PhotosFacePicker(i.name, { fromPhotos = false }) { p, uri, box -> fromPhotos = false; use(uri, box, p.uuid) }
@@ -1072,10 +1085,10 @@ private fun callText(c: CallEntry): String {
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Merge & fix", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                if (pairs.size > 1) TextButton(onClick = { dismiss(); merge(pairs) }) { Text("Merge all ${pairs.size}") }
+                Text(stringResource(R.string.contacts_merge_fix), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (pairs.size > 1) TextButton(onClick = { dismiss(); merge(pairs) }) { Text(stringResource(R.string.contacts_merge_all_n, pairs.size), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
-            if (pairs.isEmpty()) Text("No one is here twice.", color = islandContentColor().copy(alpha = 0.7f))
+            if (pairs.isEmpty()) Text(stringResource(R.string.contacts_no_twins), color = islandContentColor().copy(alpha = 0.7f))
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 pairs.forEach { (a, b) ->
                     Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
@@ -1093,12 +1106,12 @@ private fun callText(c: CallEntry): String {
                             // what the second brings that the first has not (the fields that differ)
                             val m = ContactsMerge.merged(a.info, b.info)
                             val adds = (m.phones - a.info.phones.toSet()).map { it.value } + (m.emails - a.info.emails.toSet()).map { it.value } +
-                                listOfNotNull(m.birthday?.takeIf { a.info.birthday == null }?.let { "Birthday ${dateToText(it)}" }, "Photo".takeIf { a.info.photo == null && m.photo != null }) +
+                                listOfNotNull(m.birthday?.takeIf { a.info.birthday == null }?.let { stringResource(R.string.contacts_birthday_on, dateToText(it)) }, stringResource(R.string.contacts_photo).takeIf { a.info.photo == null && m.photo != null }) +
                                 (m.labels - a.info.labels.toSet())
-                            if (adds.isNotEmpty()) Text("Adds: " + adds.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = CONTACTS_COLOR)
+                            if (adds.isNotEmpty()) Text(stringResource(R.string.contacts_adds, adds.joinToString(" · ")), style = MaterialTheme.typography.bodySmall, color = CONTACTS_COLOR)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                TextButton(onClick = { notSame(a, b) }) { Text("Not the same") }
-                                TextButton(onClick = { merge(listOf(a to b)) }) { Text("Merge") }
+                                TextButton(onClick = { notSame(a, b) }) { Text(stringResource(R.string.contacts_not_same), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                TextButton(onClick = { merge(listOf(a to b)) }) { Text(stringResource(R.string.contacts_merge), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                             }
                         }
                     }
@@ -1114,17 +1127,17 @@ private fun callText(c: CallEntry): String {
     var name by remember { mutableStateOf("") }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Label ${many.size} contacts", style = MaterialTheme.typography.titleMedium)
+            Text(pluralStringResource(R.plurals.contacts_label_n, many.size, many.size), style = MaterialTheme.typography.titleMedium)
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 labels.forEach { l ->
                     val all = many.all { c -> c.info.labels.any { it.equals(l, true) } }
-                    androidx.compose.material3.FilterChip(all, { pick(l) }, label = { Text(l) },
+                    androidx.compose.material3.FilterChip(all, { pick(l) }, label = { Text(l, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = CONTACTS_COLOR, selectedLabelColor = Color.White))
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.OutlinedTextField(name, { name = it }, singleLine = true, placeholder = { Text("New label") }, modifier = Modifier.weight(1f))
-                TextButton(enabled = name.isNotBlank(), onClick = { pick(name.trim()) }) { Text("Add") }
+                androidx.compose.material3.OutlinedTextField(name, { name = it }, singleLine = true, placeholder = { Text(stringResource(R.string.contacts_new_label)) }, modifier = Modifier.weight(1f))
+                TextButton(enabled = name.isNotBlank(), onClick = { pick(name.trim()) }) { Text(stringResource(R.string.common_add), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }

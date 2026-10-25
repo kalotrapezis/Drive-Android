@@ -69,6 +69,7 @@ internal fun dateToText(d: VDate) = if (d.year != null) "%d/%d/%d".format(d.day,
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<String>, cancel: () -> Unit, delete: (() -> Unit)?, photo: @Composable (ContactInfo, ((ContactInfo) -> ContactInfo) -> Unit) -> Unit, save: (ContactInfo) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var i by remember { mutableStateOf(start) }
     var more by remember { mutableStateOf(listOf(start.prefix, start.middle, start.suffix, start.nickname).any { it.isNotBlank() }) }
     var birthday by remember { mutableStateOf(start.birthday?.let(::dateToText) ?: "") }
@@ -79,13 +80,13 @@ internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<S
     var problem by remember { mutableStateOf<String?>(null) }
     BackHandler { cancel() }
     fun done() {
-        val b = birthday.takeIf { it.isNotBlank() }?.let { dateFromText(it) ?: run { problem = "The birthday is not a date: write it as 23/10/1985, or 23/10 without the year."; return } }
-        val ds = dates.filter { it.second.isNotBlank() }.map { (l, v) -> VField(l, (dateFromText(v) ?: run { problem = "\"$v\" is not a date."; return }).value()) }
+        val b = birthday.takeIf { it.isNotBlank() }?.let { dateFromText(it) ?: run { problem = context.getString(R.string.contacts_birthday_bad); return } }
+        val ds = dates.filter { it.second.isNotBlank() }.map { (l, v) -> VField(l, (dateFromText(v) ?: run { problem = context.getString(R.string.contacts_not_a_date, v); return }).value()) }
         val names = listOf(i.prefix, i.given, i.middle, i.family, i.suffix) != listOf(start.prefix, start.given, start.middle, start.family, start.suffix)
         val out = i.copy(birthday = b, dates = ds, formatted = if (names || i.formatted.isBlank()) i.composed() else i.formatted,
             phones = i.phones.filter { it.value.isNotBlank() }, emails = i.emails.filter { it.value.isNotBlank() }, urls = i.urls.filter { it.value.isNotBlank() },
             related = i.related.filter { it.value.isNotBlank() }, addresses = i.addresses.filter { a -> a.parts.any { it.isNotBlank() } })
-        if (out.name.isBlank()) { problem = "Give a name, a company, a phone or an e-mail."; return }
+        if (out.name.isBlank()) { problem = context.getString(R.string.contacts_give_name); return }
         save(out)
     }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -94,97 +95,97 @@ internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<S
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { photo(i) { change -> i = change(i) } }
-                    Group("Name") {
-                        if (more) Text1("Prefix", i.prefix) { i = i.copy(prefix = it) }
-                        Text1("First name", i.given) { i = i.copy(given = it) }
-                        if (more) Text1("Middle name", i.middle) { i = i.copy(middle = it) }
-                        Text1("Last name", i.family) { i = i.copy(family = it) }
-                        if (more) { Text1("Suffix", i.suffix) { i = i.copy(suffix = it) }; Text1("Nickname", i.nickname) { i = i.copy(nickname = it) } }
-                        if (!more) TextButton(onClick = { more = true }) { Text("More name fields") }
+                    Group(stringResource(R.string.common_name)) {
+                        if (more) Text1(stringResource(R.string.contacts_prefix), i.prefix) { i = i.copy(prefix = it) }
+                        Text1(stringResource(R.string.contacts_first_name), i.given) { i = i.copy(given = it) }
+                        if (more) Text1(stringResource(R.string.contacts_middle_name), i.middle) { i = i.copy(middle = it) }
+                        Text1(stringResource(R.string.contacts_last_name), i.family) { i = i.copy(family = it) }
+                        if (more) { Text1(stringResource(R.string.contacts_suffix), i.suffix) { i = i.copy(suffix = it) }; Text1(stringResource(R.string.contacts_nickname), i.nickname) { i = i.copy(nickname = it) } }
+                        if (!more) TextButton(onClick = { more = true }) { Text(stringResource(R.string.contacts_more_name_fields), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    Group("Work") {
-                        Text1("Company", i.org) { i = i.copy(org = it) }
-                        Text1("Department", i.department) { i = i.copy(department = it) }
-                        Text1("Job title", i.title) { i = i.copy(title = it) }
+                    Group(stringResource(R.string.contacts_label_work)) {
+                        Text1(stringResource(R.string.contacts_company), i.org) { i = i.copy(org = it) }
+                        Text1(stringResource(R.string.contacts_department), i.department) { i = i.copy(department = it) }
+                        Text1(stringResource(R.string.contacts_job_title), i.title) { i = i.copy(title = it) }
                     }
-                    Group("Phone") {
+                    Group(stringResource(R.string.contacts_phone)) {
                         i.phones.forEachIndexed { n, f -> Labelled(f.label, { choosing = PHONE_LABELS to { l -> i = i.copy(phones = i.phones.toMutableList().also { it[n] = f.copy(label = l) }) } },
                             { i = i.copy(phones = i.phones.filterIndexed { k, _ -> k != n }) }) {
-                            Text1("Phone", f.value, KeyboardType.Phone) { v -> i = i.copy(phones = i.phones.toMutableList().also { it[n] = f.copy(value = v) }) }
+                            Text1(stringResource(R.string.contacts_phone), f.value, KeyboardType.Phone) { v -> i = i.copy(phones = i.phones.toMutableList().also { it[n] = f.copy(value = v) }) }
                         } }
-                        TextButton(onClick = { i = i.copy(phones = i.phones + VField(if (i.phones.isEmpty()) "Mobile" else "Home", "")) }) { Text("Add phone") }
+                        TextButton(onClick = { i = i.copy(phones = i.phones + VField(if (i.phones.isEmpty()) "Mobile" else "Home", "")) }) { Text(stringResource(R.string.contacts_add_phone), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    Group("Email") {
+                    Group(stringResource(R.string.contacts_email)) {
                         i.emails.forEachIndexed { n, f -> Labelled(f.label, { choosing = PLACE_LABELS to { l -> i = i.copy(emails = i.emails.toMutableList().also { it[n] = f.copy(label = l) }) } },
                             { i = i.copy(emails = i.emails.filterIndexed { k, _ -> k != n }) }) {
-                            Text1("Email", f.value, KeyboardType.Email) { v -> i = i.copy(emails = i.emails.toMutableList().also { it[n] = f.copy(value = v) }) }
+                            Text1(stringResource(R.string.contacts_email), f.value, KeyboardType.Email) { v -> i = i.copy(emails = i.emails.toMutableList().also { it[n] = f.copy(value = v) }) }
                         } }
-                        TextButton(onClick = { i = i.copy(emails = i.emails + VField("Home", "")) }) { Text("Add email") }
+                        TextButton(onClick = { i = i.copy(emails = i.emails + VField("Home", "")) }) { Text(stringResource(R.string.contacts_add_email), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    Group("Dates") {
-                        Text1("Birthday (23/10/1985, or 23/10)", birthday) { birthday = it }
+                    Group(stringResource(R.string.contacts_dates)) {
+                        Text1(stringResource(R.string.contacts_birthday_field), birthday) { birthday = it }
                         dates.forEachIndexed { n, (l, v) -> Labelled(l, { choosing = DATE_LABELS to { x -> dates = dates.toMutableList().also { it[n] = x to v } } }, { dates = dates.filterIndexed { k, _ -> k != n } }) {
-                            Text1("Date", v) { x -> dates = dates.toMutableList().also { it[n] = l to x } }
+                            Text1(stringResource(R.string.contacts_label_date), v) { x -> dates = dates.toMutableList().also { it[n] = l to x } }
                         } }
-                        TextButton(onClick = { dates = dates + ("Anniversary" to "") }) { Text("Add date") }
+                        TextButton(onClick = { dates = dates + ("Anniversary" to "") }) { Text(stringResource(R.string.contacts_add_date), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    Group("Address") {
+                    Group(stringResource(R.string.contacts_address)) {
                         i.addresses.forEachIndexed { n, a -> Labelled(a.label, { choosing = PLACE_LABELS to { l -> i = i.copy(addresses = i.addresses.toMutableList().also { it[n] = a.copy(label = l) }) } },
                             { i = i.copy(addresses = i.addresses.filterIndexed { k, _ -> k != n }) }) {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 fun set(k: Int, v: String) { i = i.copy(addresses = i.addresses.toMutableList().also { it[n] = a.copy(parts = a.parts.toMutableList().also { p -> p[k] = v }) }) }
-                                Text1("Street", a.street) { set(2, it) }
+                                Text1(stringResource(R.string.contacts_street), a.street) { set(2, it) }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Box(Modifier.weight(1f)) { Text1("Postcode", a.postcode) { set(5, it) } }
-                                    Box(Modifier.weight(2f)) { Text1("City", a.city) { set(3, it) } }
+                                    Box(Modifier.weight(1f)) { Text1(stringResource(R.string.contacts_postcode), a.postcode) { set(5, it) } }
+                                    Box(Modifier.weight(2f)) { Text1(stringResource(R.string.contacts_city), a.city) { set(3, it) } }
                                 }
-                                Text1("Region", a.region) { set(4, it) }
-                                Text1("Country", a.country) { set(6, it) }
+                                Text1(stringResource(R.string.contacts_region), a.region) { set(4, it) }
+                                Text1(stringResource(R.string.contacts_country), a.country) { set(6, it) }
                             }
                         } }
-                        TextButton(onClick = { i = i.copy(addresses = i.addresses + VAddress("Home", List(7) { "" })) }) { Text("Add address") }
+                        TextButton(onClick = { i = i.copy(addresses = i.addresses + VAddress("Home", List(7) { "" })) }) { Text(stringResource(R.string.contacts_add_address), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    Group("Website") {
-                        i.urls.forEachIndexed { n, f -> Labelled(f.label.ifEmpty { "Website" }, { choosing = URL_LABELS to { l -> i = i.copy(urls = i.urls.toMutableList().also { it[n] = f.copy(label = l) }) } },
+                    Group(stringResource(R.string.contacts_website)) {
+                        i.urls.forEachIndexed { n, f -> Labelled(f.label.ifEmpty { stringResource(R.string.contacts_website) }, { choosing = URL_LABELS to { l -> i = i.copy(urls = i.urls.toMutableList().also { it[n] = f.copy(label = l) }) } },
                             { i = i.copy(urls = i.urls.filterIndexed { k, _ -> k != n }) }) {
-                            Text1(if (f.label == "Revolut") "Revolut username" else "Website", f.value, KeyboardType.Uri) { v -> i = i.copy(urls = i.urls.toMutableList().also { it[n] = f.copy(value = v) }) }
+                            Text1(if (f.label == "Revolut") stringResource(R.string.contacts_revolut_user) else stringResource(R.string.contacts_website), f.value, KeyboardType.Uri) { v -> i = i.copy(urls = i.urls.toMutableList().also { it[n] = f.copy(value = v) }) }
                         } }
-                        TextButton(onClick = { i = i.copy(urls = i.urls + VField("", "")) }) { Text("Add website") }
+                        TextButton(onClick = { i = i.copy(urls = i.urls + VField("", "")) }) { Text(stringResource(R.string.contacts_add_website), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    Group("Related people") {
-                        i.related.forEachIndexed { n, f -> Labelled(f.label.ifEmpty { "Related" }, { choosing = VCard.RELATIONS to { l -> i = i.copy(related = i.related.toMutableList().also { it[n] = f.copy(label = l) }) } },
+                    Group(stringResource(R.string.contacts_related_people)) {
+                        i.related.forEachIndexed { n, f -> Labelled(f.label.ifEmpty { stringResource(R.string.contacts_related) }, { choosing = VCard.RELATIONS to { l -> i = i.copy(related = i.related.toMutableList().also { it[n] = f.copy(label = l) }) } },
                             { i = i.copy(related = i.related.filterIndexed { k, _ -> k != n }) }) {
-                            Text1("Name", f.value) { v -> i = i.copy(related = i.related.toMutableList().also { it[n] = f.copy(value = v) }) }
+                            Text1(stringResource(R.string.common_name), f.value) { v -> i = i.copy(related = i.related.toMutableList().also { it[n] = f.copy(value = v) }) }
                         } }
-                        TextButton(onClick = { i = i.copy(related = i.related + VField("Spouse", "")) }) { Text("Add person") }
+                        TextButton(onClick = { i = i.copy(related = i.related + VField("Spouse", "")) }) { Text(stringResource(R.string.contacts_add_person), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    Group("Labels") {
+                    Group(stringResource(R.string.contacts_labels)) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            FilterChip(i.favourite, { i = i.favourite(!i.favourite) }, label = { Text("Favourite") },
+                            FilterChip(i.favourite, { i = i.favourite(!i.favourite) }, label = { Text(stringResource(R.string.contacts_favourite), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 leadingIcon = { Icon(painterResource(R.drawable.ic_favorite), contentDescription = null) }, colors = chipColors())
                             (allLabels + i.labels).distinctBy { it.lowercase() }.sortedBy { it.lowercase() }.forEach { l ->
                                 val on = i.labels.any { it.equals(l, true) }
-                                FilterChip(on, { i = i.copy(categories = if (on) i.categories.filterNot { it.equals(l, true) } else i.categories + l) }, label = { Text(l) }, colors = chipColors())
+                                FilterChip(on, { i = i.copy(categories = if (on) i.categories.filterNot { it.equals(l, true) } else i.categories + l) }, label = { Text(l, maxLines = 1, overflow = TextOverflow.Ellipsis) }, colors = chipColors())
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.weight(1f)) { Text1("New label", newLabel) { newLabel = it } }
-                            TextButton(enabled = newLabel.isNotBlank(), onClick = { i = i.copy(categories = i.categories + newLabel.trim()); newLabel = "" }) { Text("Add") }
+                            Box(Modifier.weight(1f)) { Text1(stringResource(R.string.contacts_new_label), newLabel) { newLabel = it } }
+                            TextButton(enabled = newLabel.isNotBlank(), onClick = { i = i.copy(categories = i.categories + newLabel.trim()); newLabel = "" }) { Text(stringResource(R.string.common_add), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         }
                     }
-                    Group("Notes") { Text1("Notes", i.note, single = false) { i = i.copy(note = it) } }
-                    if (delete != null) TextButton(onClick = { asking = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete contact", color = MaterialTheme.colorScheme.error) }
+                    Group(stringResource(R.string.contacts_notes)) { Text1(stringResource(R.string.contacts_notes), i.note, single = false) { i = i.copy(note = it) } }
+                    if (delete != null) TextButton(onClick = { asking = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.contacts_delete_contact), color = MaterialTheme.colorScheme.error, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
             Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                    IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
+                    IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_cancel)) }
                 }
                 Spacer(Modifier.weight(1f))
                 // the whole pill is the button (its word as well as its ✓)
                 Surface(onClick = ::done, color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                     Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(if (isNew) "Save new" else "Save")
+                        Text(if (isNew) stringResource(R.string.contacts_save_new) else stringResource(R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Icon(painterResource(R.drawable.ic_check), contentDescription = null)
                     }
                 }
@@ -196,22 +197,22 @@ internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<S
         ModalBottomSheet(onDismissRequest = { choosing = null }, containerColor = SheetColor, contentColor = islandContentColor()) {
             var custom by remember { mutableStateOf("") }
             Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Label", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.contacts_label), style = MaterialTheme.typography.titleMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    labels.forEach { l -> FilterChip(false, { pick(l); choosing = null }, label = { Text(l) }, colors = chipColors()) }
+                    labels.forEach { l -> FilterChip(false, { pick(l); choosing = null }, label = { Text(contactLabel(context, l), maxLines = 1, overflow = TextOverflow.Ellipsis) }, colors = chipColors()) }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(custom, { custom = it }, singleLine = true, placeholder = { Text("Another label") }, modifier = Modifier.weight(1f))
-                    TextButton(enabled = custom.isNotBlank(), onClick = { pick(custom.trim()); choosing = null }) { Text("Use") }
+                    OutlinedTextField(custom, { custom = it }, singleLine = true, placeholder = { Text(stringResource(R.string.contacts_another_label)) }, modifier = Modifier.weight(1f))
+                    TextButton(enabled = custom.isNotBlank(), onClick = { pick(custom.trim()); choosing = null }) { Text(stringResource(R.string.contacts_use), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         }
     }
-    problem?.let { p -> AlertDialog(onDismissRequest = { problem = null }, text = { Text(p) }, confirmButton = { TextButton(onClick = { problem = null }) { Text("OK") } }) }
-    if (asking && delete != null) AlertDialog(onDismissRequest = { asking = false }, title = { Text("Delete ${start.name}?") },
-        text = { Text("The contact goes to Tetra's Trash, and can be restored from there (Contacts › Trash).") },
-        confirmButton = { TextButton(onClick = { asking = false; delete() }) { Text("Delete") } },
-        dismissButton = { TextButton(onClick = { asking = false }) { Text("Cancel") } })
+    problem?.let { p -> AlertDialog(onDismissRequest = { problem = null }, text = { Text(p) }, confirmButton = { TextButton(onClick = { problem = null }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) } }) }
+    if (asking && delete != null) AlertDialog(onDismissRequest = { asking = false }, title = { Text(stringResource(R.string.contacts_delete_q, start.name)) },
+        text = { Text(stringResource(R.string.contacts_delete_hint)) },
+        confirmButton = { TextButton(onClick = { asking = false; delete() }) { Text(stringResource(R.string.common_delete), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { TextButton(onClick = { asking = false }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
 }
 
 @Composable private fun chipColors() = FilterChipDefaults.filterChipColors(selectedContainerColor = CONTACTS_COLOR, selectedLabelColor = Color.White, selectedLeadingIconColor = Color.White)
@@ -231,7 +232,7 @@ internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<S
 /** A value with its label button before it and × after it. */
 @Composable private fun Labelled(label: String, choose: () -> Unit, remove: () -> Unit, field: @Composable () -> Unit) =
     Row(verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = choose, modifier = Modifier.width(110.dp)) { Text(label.ifEmpty { "Label" }, maxLines = 1, color = CONTACTS_COLOR) }
+        TextButton(onClick = choose, modifier = Modifier.width(110.dp)) { Text(contactLabel(androidx.compose.ui.platform.LocalContext.current, label).ifEmpty { stringResource(R.string.contacts_label) }, maxLines = 1, overflow = TextOverflow.Ellipsis, color = CONTACTS_COLOR) }
         Box(Modifier.weight(1f)) { field() }
-        IconButton(onClick = remove) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Remove") }
+        IconButton(onClick = remove) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_remove)) }
     }

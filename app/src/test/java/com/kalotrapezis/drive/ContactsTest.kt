@@ -173,8 +173,8 @@ class ContactsTest {
         assertNull(dateFromText("32/1"))
         assertNull(dateFromText("tomorrow"))
         assertEquals("23/10", dateToText(VDate(null, 10, 23)))
-        assertEquals("14 Mar · turns 42", dateText(VDate(1985, 3, 14), true, java.time.LocalDate.of(2026, 10, 23)))
-        assertEquals("23 Oct · 41 today", dateText(VDate(1985, 10, 23), true, java.time.LocalDate.of(2026, 10, 23)))
+        assertEquals("14 Mar · turns 42", dateText(VDate(1985, 3, 14), true, java.time.LocalDate.of(2026, 10, 23), locale = java.util.Locale.ENGLISH) { a, now -> if (now) "$a today" else "turns $a" })
+        assertEquals("23 Oct · 41 today", dateText(VDate(1985, 10, 23), true, java.time.LocalDate.of(2026, 10, 23), locale = java.util.Locale.ENGLISH) { a, now -> if (now) "$a today" else "turns $a" })
     }
 
     @Test fun photosPeopleMatchContactsByName() {

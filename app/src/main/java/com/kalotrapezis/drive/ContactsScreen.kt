@@ -95,6 +95,28 @@ internal object ContactsPreload {
     fun warm() = Thread { runCatching { all = ContactsFiles.all(contactsRoot()) } }.start()
 }
 
+/**
+ * How long Contacts takes to open (the user, 25 Oct: "slow, taps don't answer until it's all ready"), one line in
+ * writer.log each time: the screen opened → the first contacts drawn → the main thread free (the last frame that took
+ * over 100 ms, i.e. a tap waited) within five seconds, and the longest frame.
+ */
+internal object ContactsTiming {
+    fun watch(opened: Long, shown: () -> Long?) {
+        var last = 0L; var stuckUntil = 0L; var longest = 0L
+        val choreographer = android.view.Choreographer.getInstance()
+        choreographer.postFrameCallback(object : android.view.Choreographer.FrameCallback {
+            override fun doFrame(nanos: Long) {
+                val now = android.os.SystemClock.uptimeMillis()
+                if (last > 0 && now - last > 100) stuckUntil = now
+                if (last > 0) longest = maxOf(longest, now - last)
+                last = now
+                if (now - opened < 5000) choreographer.postFrameCallback(this)
+                else WriterLog.i("Contacts: opened → first contacts ${shown()?.let { "${it - opened} ms" } ?: "not yet"}, taps answered from ${if (stuckUntil == 0L) 0 else stuckUntil - opened} ms, longest frame $longest ms")
+            }
+        })
+    }
+}
+
 internal object ContactsPrefs {
     private fun p(c: Context) = c.getSharedPreferences("contacts", Context.MODE_PRIVATE)
     fun byLast(c: Context) = p(c).getBoolean("byLast", false)
@@ -175,6 +197,10 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(root).also { ContactsPreload.all = it }.let { ContactsFiles.sorted(it, byLast) } }.getOrDefault(emptyList()) }
     }
     val all = loaded.orEmpty()
+    val opened = remember { android.os.SystemClock.uptimeMillis() }
+    var shownAt by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(Unit) { ContactsTiming.watch(opened) { shownAt } }
+    LaunchedEffect(all.isNotEmpty()) { if (all.isNotEmpty() && shownAt == null) { androidx.compose.runtime.withFrameMillis {}; shownAt = android.os.SystemClock.uptimeMillis() } }
     val open = all.firstOrNull { it.info.uid == openUid }
     // two columns always show a contact; one column (a phone, split screen, a folded tablet) opens one only when it is
     // chosen, so a contact the two columns opened by themselves closes when the screen narrows (the user, 24 Oct)

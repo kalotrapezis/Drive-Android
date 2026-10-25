@@ -136,4 +136,38 @@ class DataTest {
             offsetStart = d(10, 1), offset = -5, warn = listOf(50, 90), rev = 3, by = "phone")
         assertEquals(p, DataPlan.parse(p.toJson()))
     }
+
+    @Test fun `the newest of a month and sync's copies of it is read, and only older copies are removed`() {
+        val root = kotlin.io.path.createTempDirectory("data").toFile(); val usage = java.io.File(root, "usage").apply { mkdirs() }
+        fun month(today: Long, at: Long = 0) = DataMonth("P", listOf(DataDay(d(10, 24), 9, 0, 0, 0, 0, false), DataDay(d(10, 25), today, 0, 0, 0, 0, false)), emptyList(), emptyList(), emptyList(), "Phone", at)
+        fun put(name: String, m: DataMonth) = java.io.File(usage, name).writeText(DataFiles.text(m))
+        assertEquals(month(5, 1_000), DataFiles.parse("P", DataFiles.text(month(5, 1_000)))) // the stamp reads back
+        // 25 Oct: the computer's month stuck at 10:00, every newer one a copy ("(2)", "(2) (3)") — the newest is the one read
+        put("2026-10.P.jsonl", month(1)); put("2026-10.P (2).jsonl", month(3)); put("2026-10.P (2) (3).jsonl", month(4)); put("2026-10.C (2).jsonl", month(7))
+        assertEquals(4L, DataFiles.all(root).getValue("P").single().days.last().mobile)
+        assertEquals(7L, DataFiles.all(root).getValue("C").single().days.last().mobile) // a copy with no month beside it is still read
+        assertEquals(1, DataFiles.dropCopies(root)) // "(2)" goes; the newest copy stays until its month catches up
+        assertEquals(setOf("2026-10.P.jsonl", "2026-10.P (2) (3).jsonl", "2026-10.C (2).jsonl"), usage.list()!!.toSet())
+        put("2026-10.P.jsonl", month(4, 2_000)) // the month arrives: stamped, so newer than the same counts without a stamp
+        assertEquals(2_000L, DataFiles.all(root).getValue("P").single().at)
+        assertEquals(1, DataFiles.dropCopies(root))
+        assertEquals(setOf("2026-10.P.jsonl", "2026-10.C (2).jsonl"), usage.list()!!.toSet())
+        root.deleteRecursively()
+    }
+
+    @Test fun `of two plans with one rev, the phone's wins, and takes plan json's place`() {
+        val root = kotlin.io.path.createTempDirectory("data").toFile(); val usage = java.io.File(root, "usage").apply { mkdirs() }
+        java.io.File(usage, "2026-10.PHONE.jsonl").writeText(DataFiles.text(DataMonth("PHONE", listOf(DataDay(d(10, 25), 5, 0, 0, 0, 0, false)), emptyList(), emptyList(), emptyList())))
+        java.io.File(usage, "2026-10.TABLET.jsonl").writeText(DataFiles.text(DataMonth("TABLET", listOf(DataDay(d(10, 25), 0, 9, 0, 0, 0, false)), emptyList(), emptyList(), emptyList())))
+        val phone = DataPlan(offsetStart = d(10, 4), offset = -7, rev = 1, by = "PHONE"); val tablet = phone.copy(offset = 121, by = "TABLET")
+        java.io.File(root, "plan.json").writeText(tablet.toJson()); java.io.File(root, "plan (2).json").writeText(phone.toJson())
+        assertEquals(phone, DataFiles.plan(root))
+        java.io.File(root, "plan (4).json").writeText(phone.copy(by = "GONE").toJson()) // a device with no counts here
+        assertEquals(phone, DataFiles.plan(root)); java.io.File(root, "plan (4).json").delete()
+        java.io.File(root, "plan (3).json").writeText(tablet.copy(rev = 2).toJson()) // a later change wins, whoever made it
+        assertEquals(2, DataFiles.plan(root)!!.rev)
+        assertEquals(2, DataFiles.settlePlan(root))
+        assertEquals(listOf("plan.json", "usage"), root.list()!!.sorted()); assertEquals(tablet.copy(rev = 2), DataFiles.plan(root))
+        root.deleteRecursively()
+    }
 }

@@ -12,6 +12,21 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [x] (data-calls session, 25 Oct; branches `claude/data-calls` / Drive `data-calls`, not merged, nothing installed) Three of the
+      user's reports. **41 % on the phone, 40 % on the computer, 83 % on the tablet**: the computer's copy of the phone's October
+      stayed at the 10:00 counts (120.9 GB) while every newer version arrived as a sync copy ("(2)", "(2) (3)"… 14 of them, mtime
+      all 09:11:59.373), which nothing read and the cleanup deleted, the newest (20:00, 123.3 GB) among them. Now on both sides a
+      device's month is the newest of the file and its copies (counted later, else further into the day), and the cleanup removes
+      only older copies (the newest stays until its month catches up); each month's first line says when it was counted
+      (`"counted"`, ms) and the computer's page says "<phone>'s counts from 20:14", re-reads each minute, and rounds the ring down
+      as the phone does. The tablet: its own plan.json from its Setup at 09:30 (carrier offset +121 GB, rev 1 like the phone's), so
+      neither won; now the highest rev, on a tie the plan by the device with mobile data, and the cleanup puts it in plan.json's
+      place. The sync engine's part is Drive `sync-one-writer` (not merged). **Background**: the files did travel (the computer got
+      a phone version about every two hours today, the tablet every quarter hour), nothing to change. **Calls**: a call ringing or
+      dialled with the phone paired but not on the computer's Bluetooth: connected by itself ("Connecting <phone> by Bluetooth for
+      the sound…"), else the bubble says "Sound stays on the phone: <phone> did not connect by Bluetooth" before Answer. DataTest 15,
+      desktop 147 (calls.test.js new, a fake bluetoothctl); emulator: the stamp written, the phone's plan winning (a crash found
+      there and fixed: a plan by a device with no counts); the computer's page from source on a copy of the real files: 123 GB, 40 %.
 - [x] (github session, 25 Oct) **Tetra on GitHub** (the user: "make new cards … a nice landing page with a download
       button … the same for the desktop app … a GitHub page"). Before the push, the unpushed history of both repos
       (261 + 78 commits) was rewritten so no personal data goes public: the house's address and position, the village,
@@ -3119,7 +3134,9 @@ Tetra/Data/                              (~/Tetra/Files/Data on the PC)
   spots/24091RPADG.jsonl          the saved spots: {"at":…,"spot":"desk","round":"router in the hall","rssi":-52,"band":5,"speed":433,"pc":{"mbps":310,"ms":4}}
 ```
 - **Each device writes only its own files** (Timer's rule), so sync never has two versions of one; `plan.json` goes by the
-  highest `rev` (`by` the device). A month's file is rewritten whole each hour (~100–300 KB).
+  highest `rev` (`by` the device; on a tie the device with mobile data). A month's file is rewritten whole each hour (~100–300 KB),
+  its first line `{"deviceName":…,"counted":<ms>}`. Should sync still leave copies ("… (2).jsonl"), each reader takes the newest
+  version of a device's month and the cleanup removes the older ones (25 Oct, data-calls session).
 - Plain JSON lines, so any AI can read them ("how much did I use in October?", "when did the PC drop off the hotspot?").
 - Scope `data` (DriveScope + desktop files.js `SCOPES` and `APP_FOLDERS`), pushed with `ScopedSync.soon("data", …)` once an
   hour, not at every change.

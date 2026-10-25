@@ -63,7 +63,7 @@ internal enum class SettingsPage(val title: String, val icon: Int, val tint: Col
         "Installed maps", "Send log")),
     Contacts("Contacts", Category.Contacts.icon, Category.Contacts.color, "Phone's contacts, birthdays", listOf("In the phone's contacts", "Birthdays go into")),
     Phone("Phone", Category.Phone.icon, Category.Phone.color, "Phone app, calls, the computer", listOf("Phone app", "Vibrate when answered", "Vibrate when a call ends",
-        "Silence numbers not in Contacts", "Decline hidden numbers", "Calls on the computer", "Open the Phone")),
+        "Silence numbers not in Contacts", "Decline hidden numbers", "Calls on the computer", "Phone permission", "Open the Phone")),
     Data("Data", Category.Data.icon, Category.Data.color, "Your plan, warnings, roaming, live speed", listOf("Setup", "Usage access", "Your plan", "Warnings", "Roaming",
         "Live speed", "Signal drops", "Wi-Fi around", "Open Data")),
 }
@@ -643,7 +643,14 @@ internal fun SettingsTab(
     SettingsSection("With the computer", (if (calls) "Once for Tetra, not for each contact. To take it back: Android's Settings › Apps › Tetra › Permissions › Phone and Call logs."
         else "Allow asks once, for Tetra (not for each contact): to place a call, to see a call ringing, and to answer or end it from the computer. The caller's number and the rest come with Tetra as the phone app.") +
         " The sound stays on the phone, unless the phone is connected to the computer by Bluetooth for calls (the computer's Settings › Calls).") {
-        StatusRow("Calls on the computer", if (calls) "Allowed: Call on the computer rings here at once, and the computer shows this phone's calls — answer, decline, end"
+        // the on/off (the user, 25 Oct: "the on/off was a different thing" from the permission below)
+        var pc by remember { mutableStateOf(PhonePrefs.pcCalls(context)) }
+        SwitchRow("Calls on the computer", if (pc) "The computer shows this phone's calls (answer, decline, end) and can place calls through it"
+            else "Off: the computer hears of no call here and cannot place one", pc) {
+            pc = it; PhonePrefs.setPcCalls(context, it)
+            if (it && !calls) askCalls.launch(PhoneCall.PERMISSIONS) // turned on: Android's permission asked then (the user, 25 Oct)
+        }
+        StatusRow("Phone permission", if (calls) "Allowed: Call on the computer rings here at once, and the computer sees this phone's calls"
             else "Each call from the computer comes as a notification to tap, and the computer does not see this phone's calls", true, if (calls) "Settings" else "Allow") {
             if (calls) runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             else askCalls.launch(PhoneCall.PERMISSIONS)

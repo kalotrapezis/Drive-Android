@@ -2768,6 +2768,13 @@ small "Message" for a quick reply; over the lock screen. An ongoing-call notific
    *#*#4636#*#* opened Android's testing menu. Unit 627, 0 failing, 9 skipped; desktop 135/135.
    Still only on the real devices: the lock screen and pop-ups on HyperOS, the PC's bubble with Tetra as the phone app
    (answer/decline/end/hold/mute), calls placed from the PC, the history reaching the PC, the tablet's path, Record.
+- [x] 12. Calls on the computer in one place (the user, 25 Oct: "the permission for PC calls out of the Contacts app … in
+   Settings"; "the on/off on the contacts was a different thing, add that one too"; "when you turn calls on the PC on, the
+   phone asks for the permission"): Contacts' drawer no longer asks (a line points to Settings › Phone); Settings › Phone ›
+   With the computer has the **Calls on the computer** switch (on by default, phone prefs pc_calls — off, the computer
+   hears of no call and cannot place one; turning it on asks Android's Phone permission when it is missing) and the
+   **Phone permission** row (its state, Allow / Settings). The messages that said "Settings › Contacts" say Settings › Phone.
+   Emulator: the switch off → on brought Android's "Allow Tetra to make and manage phone calls?". Branch phone-pc-calls.
 - Checks at 540411b: unit 623 tests, 0 failing, 9 skipped (HomeLayoutTest counts the Phone's rows now); desktop `tsc` clean,
    `npm test` 135/135.
 - [ ] **On the real devices** (the user's OK to install with tools/phone-install.sh): Settings › Phone › Make it, a real call

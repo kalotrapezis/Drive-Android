@@ -329,11 +329,6 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     // on only when it can be: chosen (the default since the user's yes) and Tetra may write the phone's contacts
     var systemOn by remember { mutableStateOf(ContactsAccount.on(context) && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
     LaunchedEffect(version, systemOn) { ContactsAccount.soon(context) }
-    var callsOn by remember { mutableStateOf(PhoneCall.allAllowed(context)) }
-    val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        callsOn = PhoneCall.allAllowed(context); PhoneCall.Watcher.start(context.applicationContext)
-        message = if (callsOn) "Calls on the computer: allowed" else "Calls from the computer come as a notification to tap"
-    }
     val askWrite = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) { ContactsAccount.set(context, true); systemOn = true; message = "Your contacts are in the phone's contacts too" }
         else message = "Tetra needs to write the phone's contacts for this."
@@ -586,10 +581,8 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     else -> askWrite.launch(Manifest.permission.WRITE_CONTACTS)
                 }
             }
-            DrawerButton(R.drawable.ic_call, if (callsOn) "Calls on the computer: allowed" else "Calls on the computer: allow", callsOn, Modifier.fillMaxWidth()) {
-                if (!callsOn) askCalls.launch(PhoneCall.PERMISSIONS) else message = "Turn it off in Android's settings › Apps › Tetra › Permissions › Phone"
-            }
-            Text("A read-only copy under the account Tetra, so the dialer, Viber, WhatsApp and the car show these names and photos. Edits are made here.",
+            // calls from the computer are asked for in one place, Settings › Phone (the user, 25 Oct), not here
+            Text("A read-only copy under the account Tetra, so the dialer, Viber, WhatsApp and the car show these names and photos. Edits are made here. Calls on the computer: Settings › Phone.",
                 style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 val calName = remember(drawer) { runCatching { CalendarFiles.calendars(calendarRoot()).let { cals -> cals.firstOrNull { it.dir.name == ContactsPrefs.birthdays(context) } ?: ContactsBirthdays.existing(cals) }?.name }.getOrNull() ?: ContactsBirthdays.NAME }

@@ -157,7 +157,7 @@ internal object ContactsWays {
 
 /**
  * A call asked for by the computer's Contacts (the user, 24 Oct: "phone calls"): a PC cannot place one, so this phone does
- * (SyncServer /call) — at once when Tetra may call (CALL_PHONE, Contacts › More › Calls from the computer), else a
+ * (SyncServer /call) — at once when Tetra may call (CALL_PHONE, Settings › Phone › Calls on the computer), else a
  * notification "Call Μαρία" that opens the dialer at a tap. The voice is the phone's, or a Bluetooth headset's.
  */
 internal object PhoneCall {
@@ -165,7 +165,7 @@ internal object PhoneCall {
     private const val NOTE = 4146
 
     fun allowed(c: Context) = c.checkSelfPermission(android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED
-    /** Android's "Phone" permissions the computer's calls need, asked once together (Settings › Contacts). */
+    /** Android's "Phone" permissions the computer's calls need, asked once together (Settings › Phone › Calls on the computer). */
     // not READ_CALL_LOG: Google Play allows it only to the phone app, which is granted it with the role (Plan.md § Phone)
     val PERMISSIONS = arrayOf(android.Manifest.permission.CALL_PHONE, android.Manifest.permission.READ_PHONE_STATE, android.Manifest.permission.ANSWER_PHONE_CALLS)
     fun allAllowed(c: Context) = PERMISSIONS.all { c.checkSelfPermission(it) == android.content.pm.PackageManager.PERMISSION_GRANTED }
@@ -182,10 +182,11 @@ internal object PhoneCall {
      */
     @Suppress("DEPRECATION", "MissingPermission")
     fun act(c: Context, what: String): org.json.JSONObject {
+        if (!PhonePrefs.pcCalls(c)) return org.json.JSONObject().put("error", OFF)
         PhoneCalls.act(what)?.let { ok -> WriterLog.i("Phone: $what from the computer: $ok")
             return if (ok) org.json.JSONObject().put("ok", true) else org.json.JSONObject().put("error", "The phone did not $what the call.") }
         if (c.checkSelfPermission(android.Manifest.permission.ANSWER_PHONE_CALLS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-            return org.json.JSONObject().put("error", "Allow it once on the phone: Settings › Contacts › Calls on the computer.")
+            return org.json.JSONObject().put("error", "Allow it once on the phone: Settings › Phone › Calls on the computer.")
         val tm = c.getSystemService(android.telecom.TelecomManager::class.java)
         val ok = runCatching { when (what) { "answer" -> { tm.acceptRingingCall(); true }; "end", "decline" -> tm.endCall(); else -> false } }
             .onFailure { WriterLog.e("Contacts: $what from the computer", it) }.getOrDefault(false)
@@ -213,7 +214,7 @@ internal object PhoneCall {
         override fun onReceive(c: Context, i: Intent) {
             // Tetra is the phone app: its call screen tells the computer (PhoneCalls.report). The role, not a bound service: Android may
             // say "ringing" a moment before it binds the call screen, and the computer would hear of the call twice
-            if (PhonePrefs.isDialer(c)) return
+            if (PhonePrefs.isDialer(c) || !PhonePrefs.pcCalls(c)) return
             val state = i.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE) ?: return
             i.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER)?.takeIf { it.isNotBlank() }?.let { number = it }
             val report = when (state) {
@@ -241,7 +242,10 @@ internal object PhoneCall {
     }
 
 
+    private const val OFF = "Calls on the computer are off on the phone: Settings › Phone › With the computer."
+
     fun fromComputer(c: Context, number: String, name: String): org.json.JSONObject {
+        if (!PhonePrefs.pcCalls(c)) return org.json.JSONObject().put("error", OFF)
         val uri = android.net.Uri.fromParts("tel", number, null)
         asked = number to System.currentTimeMillis()
         Watcher.start(c.applicationContext)
@@ -259,7 +263,7 @@ internal object PhoneCall {
         nm.notify(NOTE, androidx.core.app.NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_call)
             .setContentTitle("Call ${name.ifBlank { number }}").setContentText("From the computer: tap to call $number")
             // the way to skip the tap next time, said where it is asked for (the user, 24 Oct)
-            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText("From the computer: tap to call $number.\nTo have Tetra call by itself: Settings › Contacts › Calls from the computer › Allow (once)."))
+            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText("From the computer: tap to call $number.\nTo have Tetra call by itself: Settings › Phone › Calls on the computer › Allow (once)."))
             .setContentIntent(tap).setAutoCancel(true).setCategory(androidx.core.app.NotificationCompat.CATEGORY_CALL)
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH).build())
         return org.json.JSONObject().put("how", "notification")

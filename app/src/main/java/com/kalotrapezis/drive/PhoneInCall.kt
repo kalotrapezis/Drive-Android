@@ -99,7 +99,7 @@ internal object PhoneCalls {
     // (the phone's own calls stay its own, as before Tetra was the phone app).
     private val toComputer = mutableSetOf<Call>()
     fun report(c: Context, call: Call) {
-        if (call.parent != null) return // a merged call's people: the merged call speaks for them
+        if (call.parent != null || !PhonePrefs.pcCalls(c)) return // a merged call's people: the merged call speaks for them
         val incoming = call.details.callDirection == Call.Details.DIRECTION_INCOMING
         if (call !in toComputer) { if (call.state == Call.STATE_DISCONNECTED || !(incoming || PhoneCall.computerAsked(number(call)))) return; toComputer.add(call) }
         val state = when (call.state) {
@@ -237,6 +237,9 @@ internal object PhonePrefs {
     fun buzzEnd(c: Context) = p(c).getBoolean("buzz_end", false)
     fun setBuzzAnswer(c: Context, on: Boolean) = p(c).edit().putBoolean("buzz_answer", on).apply()
     fun setBuzzEnd(c: Context, on: Boolean) = p(c).edit().putBoolean("buzz_end", on).apply()
+    /** Calls with the computer (Settings › Phone › With the computer): off, the computer hears of no call and places none. */
+    fun pcCalls(c: Context) = p(c).getBoolean("pc_calls", true)
+    fun setPcCalls(c: Context, on: Boolean) = p(c).edit().putBoolean("pc_calls", on).apply()
     fun silenceUnknown(c: Context) = p(c).getBoolean("silence_unknown", false)
     fun declineHidden(c: Context) = p(c).getBoolean("decline_hidden", false)
     fun setSilenceUnknown(c: Context, on: Boolean) = p(c).edit().putBoolean("silence_unknown", on).apply()

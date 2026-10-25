@@ -6,6 +6,7 @@
     <files-path name="hidden_media" path="hidden_media/" />
     <!-- Writer's log, sent from File › Send log. -->
     <files-path name="logs" path="logs/" />
+    <external-files-path name="logs_shared" path="logs/" />
     <!-- the tetra-calendar skill, shared from Calendar › Share with Claude -->
     <cache-path name="share" path="share/" />
 </paths>

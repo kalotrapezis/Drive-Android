@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableIntStateOf
@@ -61,7 +62,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -104,7 +114,9 @@ private fun inView(n: Note, v: NotesView) = when (v) {
     NotesView.Archived -> n.trashedAt == null && n.archivedAt != null
     NotesView.Home -> n.trashedAt == null && n.archivedAt == null
 }
-private fun fold(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "").lowercase()
+private val accents = Regex("\\p{M}")
+private fun fold(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(accents, "").lowercase()
+private fun searchText(n: Note) = fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" "))
 
 /** `start`: true opens a new checklist, false a new note, null the list (the home card's three doors). */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -113,7 +125,8 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     val store = remember { notesStore() }
     val scope = rememberCoroutineScope()
     var version by remember { mutableIntStateOf(0) }
-    var notes by remember { mutableStateOf<List<Note>?>(null) }
+    var notes by remember { mutableStateOf(store.lastList()) } // read ahead when Tetra started; cards only (NotesStore.summary)
+    OpenTiming("Notes", notes != null)
     var view by remember { mutableStateOf(NotesView.Home) }
     var label by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
@@ -124,7 +137,19 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     var selected by remember { mutableStateOf(emptySet<String>()) }
     val remote by NotesSync.changed.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(version, remote, hasAccess) { if (hasAccess) notes = withContext(Dispatchers.IO) { store.sweep(); store.list() } }
+    LaunchedEffect(version, remote, hasAccess) {
+        if (!hasAccess) return@LaunchedEffect
+        // opened before the read-ahead finished: the list as the index file has it (one file), then the folder's
+        if (notes == null) withContext(Dispatchers.IO) { runCatching { store.indexed() }.getOrNull() }?.let { if (notes == null) notes = it }
+        val got = withContext(Dispatchers.IO) { store.list() }
+        notes = got
+        if (withContext(Dispatchers.IO) { store.sweep(notes = got) } > 0) notes = withContext(Dispatchers.IO) { store.list() } // after the list shows
+    }
+    // search's index: each note's whole text without accents, read from the files while search is open and let go after
+    // (thousands of notes stay out of memory); until it is ready, what the cards hold
+    val index by produceState(emptyMap<String, String>(), searching, notes) {
+        value = if (!searching) emptyMap() else withContext(Dispatchers.IO) { store.whole(notes.orEmpty().map { it.id }).associate { n -> n.id to searchText(n) } }
+    }
     LaunchedEffect(version) { if (version > 0) NotesSync.soon(context) } // a change made here, in the list or an editor
     // Opening Notes is the moment to catch up — the whole sync may have been skipped (asked 2026-09-26).
     var refreshing by remember { mutableStateOf(false) }
@@ -159,19 +184,28 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
         return
     }
     BackHandler { when { selected.isNotEmpty() -> selected = emptySet(); drawer -> drawer = false; searching -> { searching = false; query = "" }; label != null -> label = null; view != NotesView.Home -> view = NotesView.Home; else -> back() } }
+    // A keyboard (the user, 25 Oct), the desktop's keys: Ctrl+N a note, Ctrl+Shift+N a checklist, Ctrl+F search, Esc a step back
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(searching) { if (!searching) runCatching { keys.requestFocus() } } // the search field gone: the keys come here again
+    fun key(e: KeyEvent): Boolean = e.type == KeyEventType.KeyDown && when {
+        e.isCtrlPressed && e.key == Key.N -> { create(e.isShiftPressed); true }
+        e.isCtrlPressed && e.key == Key.F -> { searching = true; true }
+        e.key == Key.Escape -> { when { selected.isNotEmpty() -> selected = emptySet(); searching -> { searching = false; query = "" }; label != null -> label = null; view != NotesView.Home -> view = NotesView.Home; else -> back() }; true }
+        else -> false
+    }
 
     val all = notes.orEmpty()
     val q = fold(query.trim())
     // A search or a label looks through every note but the Trash, whichever page it starts from (asked 2026-09-28).
     val everywhere = q.isNotEmpty() || label != null
     val trash = view == NotesView.Trash && !everywhere
-    val shown = all.filter { n -> (if (everywhere) n.trashedAt == null else inView(n, view)) && (label == null || label in n.labels) &&
-        (q.isEmpty() || fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" ")).contains(q)) }
-        .sortedWith(if (trash) compareByDescending { it.trashedAt } else compareByDescending { it.updatedAt })
+    val shown = remember(all, view, label, q, index) { all.filter { n -> (if (everywhere) n.trashedAt == null else inView(n, view)) && (label == null || label in n.labels) &&
+        (q.isEmpty() || (index[n.id] ?: searchText(n)).contains(q)) }
+        .sortedWith(if (trash) compareByDescending { it.trashedAt } else compareByDescending { it.updatedAt }) }
     // Pinned on top of Home, the rest below them (asked 2026-09-26).
-    val pinned = if (view == NotesView.Home || everywhere) shown.filter { it.pinned } else emptyList()
-    val others = shown - pinned.toSet()
-    val labels = all.filter { it.trashedAt == null }.flatMap { it.labels }.groupingBy { it }.eachCount().toSortedMap()
+    val pinned = remember(shown, view, everywhere) { if (view == NotesView.Home || everywhere) shown.filter { it.pinned } else emptyList() }
+    val others = remember(shown, pinned) { shown - pinned.toSet() }
+    val labels = remember(all) { all.filter { it.trashedAt == null }.flatMap { it.labels }.groupingBy { it }.eachCount().toSortedMap() }
     // A label no note carries any more is gone, so it cannot stay chosen either.
     LaunchedEffect(labels.keys, notes) { if (notes != null && label != null && label !in labels) label = null }
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -184,12 +218,12 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     }
     val card: @Composable (Note) -> Unit = { n ->
         NoteCard(n, selected = n.id in selected, selecting = selected.isNotEmpty(), longPress = { selected = if (n.id in selected) selected - n.id else selected + n.id }) {
-            if (selected.isEmpty()) open = n else selected = if (n.id in selected) selected - n.id else selected + n.id
+            if (selected.isEmpty()) scope.launch { withContext(Dispatchers.IO) { store.get(n.id) }?.let { open = it } } // the whole note: the list holds its card else selected = if (n.id in selected) selected - n.id else selected + n.id
         }
     }
     val header: @Composable (String) -> Unit = { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 8.dp)) }
 
-    androidx.compose.material3.pulltorefresh.PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh() }, modifier = Modifier.fillMaxSize()) {
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh() }, modifier = Modifier.fillMaxSize().onPreviewKeyEvent(::key).focusRequester(keys).focusable()) {
         LazyVerticalStaggeredGrid(
             columns = StaggeredGridCells.Adaptive(165.dp),
             modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -334,7 +368,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                 else Spacer(Modifier.weight(1f))
                 if (n.pinned && !small) Icon(painterResource(R.drawable.ic_push_pin), contentDescription = "Pinned", modifier = Modifier.size(16.dp))
             }
-            NoteFormat.preview(n, if (small) 3 else 8).forEach { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+            remember(n, small) { NoteFormat.preview(n, if (small) 3 else 8) }.forEach { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis) }
             if (!small && n.labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
                 n.labels.forEach { Text(it, style = MaterialTheme.typography.labelSmall, modifier = Modifier.background(Color(0x33888888), CircleShape).padding(horizontal = 8.dp, vertical = 2.dp)) }
             }
@@ -434,8 +468,21 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         edit(b = TextFieldValue(r.text, TextRange(r.start, r.end)), step = true)
     }
     BackHandler { if (tools) tools = false else leave() }
+    // the desktop's keys: Esc leaves, Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) undo and redo, Ctrl+B / Ctrl+I bold and italic
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { keys.requestFocus() } }
+    fun key(e: KeyEvent): Boolean = e.type == KeyEventType.KeyDown && when {
+        e.key == Key.Escape -> { if (tools) tools = false else leave(); true }
+        trashed || !e.isCtrlPressed -> false
+        e.key == Key.Z && !e.isShiftPressed -> { apply(undo.undo()); true }
+        e.key == Key.Y || e.key == Key.Z -> { apply(undo.redo()); true }
+        initial.checklist || reading -> false
+        e.key == Key.B -> { format { NoteFormat.wrap(it, "**") }; true }
+        e.key == Key.I -> { format { NoteFormat.wrap(it, "*") }; true }
+        else -> false
+    }
 
-    Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
+    Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding().onPreviewKeyEvent(::key).focusRequester(keys).focusable()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (imeOpen) 64.dp else if (!trashed) 170.dp else 120.dp)) {
             // Enter in the title goes on to the body (asked 2026-09-26): the text, or a checklist's first item.
             BasicTextField(title, { t ->

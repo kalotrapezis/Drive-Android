@@ -58,7 +58,7 @@ internal fun guide(n: Nav, lat: Double, lng: Double, speed: Double, now: Long, b
 
 /**
  * A drive's trace (the user, 23 Oct: "what can you put in the logs to understand more?"): while directions run, a line a
- * fix in files/logs/drive/drive-<date>.csv, kept 7 days and sent with Maps' Send log — where the car was, how fast, which
+ * fix in logs/drive/drive-<date>.csv (WriterLog.dir), kept 7 days and sent with Maps' Send log — where the car was, how fast, which
  * way, how sure the GPS was, where on the route, and what the camera did — so a drive can be replayed in a test.
  *
  *     # <date time> <screen> to <lat> <lng> <mode> <name>        a route started (or a new one)
@@ -72,7 +72,7 @@ internal object MapsTrace {
     private val time = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
     private var dir: File? = null
 
-    fun folder(context: Context) = File(context.filesDir, "logs/drive")
+    fun folder(context: Context) = File(WriterLog.dir(context), "drive")
 
     /** A route started on [screen] ("car" or "phone") to [target]: its header line; traces older than 7 days removed. */
     fun start(context: Context, screen: String, target: Place, mode: String) {
@@ -123,7 +123,7 @@ internal object MapsTrace {
     /** Maps' Send log: the log and the drives of the last 7 days in one zip. */
     fun export(context: Context): File? {
         val log = WriterLog.export(context) ?: return null
-        val out = File(context.filesDir, "logs/Tetra Maps log.zip")
+        val out = File(WriterLog.dir(context), "Tetra Maps log.zip")
         java.util.zip.ZipOutputStream(out.outputStream()).use { z ->
             (listOf(log) + (folder(context).listFiles()?.sortedBy { it.name }.orEmpty())).forEach { f ->
                 z.putNextEntry(java.util.zip.ZipEntry(f.name)); f.inputStream().use { it.copyTo(z) }; z.closeEntry()

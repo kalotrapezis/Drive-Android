@@ -153,6 +153,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
     var file by remember(open) { mutableStateOf(if (open == NEW_SHEET) null else Uri.parse(open).path?.let(::File)) }
     RememberOpened(file) // the Office home's Recents
     var book by remember { mutableStateOf<Workbook?>(null) }
+    OpenTiming("Tables", book != null)
     var failed by remember { mutableStateOf<String?>(null) }
     var index by remember { mutableIntStateOf(-1) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }

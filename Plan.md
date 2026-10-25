@@ -398,6 +398,90 @@ How to write here:
 - [x] (data-plan session, 25 Oct, branch claude/data-plan; Drive branch `data`) **Data** planned and built, steps 2–8 (§ Data); not merged; on the phone, the tablet and the computer (details in § Data). Planned: Setup, usage and the plan (fair use, roaming
       day pass), live speed, three devices and the hotspot, Wi-Fi meter with Spots, signal drops; other apps checked; the house
       map explained, not built; battery set aside by the user; the user answered most questions 25 Oct.
+- [x] (optimise session, 25 Oct; branch claude/optimise-applets, not merged; on the phone) **Every applet opens fast** (the user, 25 Oct: "optimise all
+      the rest of the apps. Notes needs optimisation; it's kind of slow to show the notes"), one by one with Contacts' recipe.
+      Each applet writes its opening to writer.log ("Notes: opened → first notes … ms", ScreenTiming/OpenTiming). Measured on
+      the tablet (971f6b37, debug build; the phone not connected): first content shown when tapped on Home, Tetra ready /
+      reopened / tapped at once after start. Photos on the phone and the desktop (the tablet has no photos).
+
+      **Result so far (25 Oct, 15:10):** every applet measured; Notes, Home, Files, Calendar, Timer, Data and Office's home
+      changed, each a commit (the table below: before → after and what was slow). What was done, the same few things over:
+      nothing read or worked out on the UI thread while a screen composes (dates, colours, tags, pictures, a database line);
+      the list shown first and the side work after it (a Trash sweep, today's data counts, a service check, a clean-up); a
+      read-ahead when Tetra starts, at a background priority; a small index in the app's cache so a restart does not read
+      every file again (Notes' cards, the Calendar's events, the Office home's last look) — only files whose size or time
+      changed are read again, whoever changed them (Tetra, sync, Claude's skills); one look at each file (its size and time
+      in one call); made for thousands of items (the user: "think ahead"): the lists keep what a card shows, the whole item
+      is read when opened, search indexes live only while searching, and what was deleted leaves memory (Tetra left open
+      for months does not grow). Measured and left as they are (already quick, the camera or the map is the wait): Scanner
+      341 / 142 / 397 ms, Codes 310 / 99 / 388, Text editor 200 / 116 / 224, Maps 376 / 246 / 364. Office and PDF
+      documents measured (below; left as they are). Photos measured on the phone (below). Unit suite 655, 0 failing.
+
+      **On the phone (Xiaomi 15, 208c8192, debug build; installed with tools/phone-install.sh, 25 Oct 15:20–15:50)** — first
+      content in ms, Tetra ready; tapped at once after start; "taps" where the UI thread stayed busy after it:
+
+      | Applet | before | after |
+      |---|---|---|
+      | Data | 2353–2426; at once 4917 and over 5 s | 425–555; 758–912 — the last counts at once, today's from Android ~2 s later, the ring, numbers and bars growing to them (the user's idea) |
+      | Notes | 348–407; 399–496 | 134–169; 184–245 |
+      | Calendar | 268–291; 340–391 | 155–246; 224–442 |
+      | Photos (taps answered) | 341–394, taps from 693–1895; 619–667 | 411–462, taps from 113–130; 513–680 — the photo database's ten queries off the UI thread; the timeline waits for them so nothing hidden shows |
+      | Office home | 711–881; 1060–1121 | 726–1174; 647–874 (the phone walks the library fast; the gain is the tablet's and a larger library's) |
+      | Timer | 226–246; 242–257 | 168–226; 251–314 |
+      | Files | 159–173; 219–250 | 151–228; 211–298 |
+      | Contacts (taps, at once) | 157–218; taps from ~0.2 s | 176–250; taps from ~0.2 s |
+      | Home's first frame | 519–586 | 506–584 |
+
+      Found on the phone and fixed (6b12e1d): the Calendar's and Notes' read-aheads started with Tetra slowed Home's first frame
+      (683–781 ms) and Home's Contacts and Phone groups reading through Contacts' read-ahead published its list again to an open
+      Contacts (taps waiting ~1.3 s); now the read-aheads start after Home's first frame and Home reads the files itself.
+
+      **The biggest lever is the build, not the code:** the phone and the tablet run a debuggable build, and Android runs a
+      debuggable app's Compose several times slower. The same code built not debuggable, signed with the same debug key
+      (so it installs over the app as it is, nothing lost), on the tablet the same hour:
+
+      | Applet (Tetra ready; tapped at once after start) | debuggable | not debuggable |
+      |---|---|---|
+      | Notes | 435–438; 812 ms | 90–219; 112 ms |
+      | Calendar | 781–784; 1324 ms | 111–112; 131 ms |
+      | Data | 911–957 ms | 183–192; 327 ms |
+      | Office home | ~948 ms | 166–263; 187 ms |
+
+      **Chosen by the user (25 Oct, "Yes: make the build I install non-debuggable"), 6e4a37f:** the debug build is not debuggable
+      (`./gradlew assembleDebug -Pdebuggable` for one that is), same key, installed over the app on the phone with nothing lost.
+      Logs moved to /sdcard/Android/data/com.kalotrapezis.drive/files/logs (adb reads them without run-as; Send log shares from
+      there). On the phone, ms, Tetra ready (tapped at once after start where it differs):
+
+      | Applet (phone) | before (debuggable) | now (the branch, not debuggable) |
+      |---|---|---|
+      | Tetra's start to its first frame | 924 | 157–253 |
+      | Home's first frame | 519–586 | 83–100 |
+      | Data | 2353–2426 | 157–194 |
+      | Notes | 348–407 | 45–66 |
+      | Calendar | 268–291 | 32–35 |
+      | Photos | 619–667 at once | 266–375 at once |
+      | Office home | 711–881 | 59–65 |
+      | Files | 159–173 | 37–49 |
+      | Timer | 226–246 | 38–52 |
+      | Contacts | 157–218 | 32–38 |
+
+      Measuring on the phone: `am force-stop` then `am start` at once leaves HyperOS's recents_animation_input_consumer over the
+      screen and adb's taps are lost; press HOME in between (memory phone-tap-measuring).
+
+      Notes also has a keyboard now (the user, 25 Oct: "can we add keyboard support"), the desktop's keys: in the list Ctrl+N a
+      note, Ctrl+Shift+N a checklist, Ctrl+F search, Esc a step back; in a note Esc leaves, Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) undo
+      and redo, Ctrl+B / Ctrl+I bold and italic. Tried on the tablet with adb's key combinations.
+
+      | Applet | before | after | what was slow |
+      |---|---|---|---|
+      | Notes (218 notes) | 1000 / 740 / 1043 ms | 435 / 315 / 608 ms | every note file read and parsed twice per open (the Trash sweep, then the list) before anything showed; four Regexes built per line of every card. Now: read ahead at start, a file read again only when it changed, the sweep after the list shows, Regexes made once. Made for thousands of notes (the user: "think ahead"): the list keeps only each card (title, the lines it shows, labels, dates), a tap reads the whole note from its file, an index file in the app's cache (147 KB for 218 notes) shows the list at once however many there are, files changed since are read again; search's index is read from the files while search is open and let go after; what is kept follows the folder (Tetra open for months holds no deleted note). What is left is laying out ~12 cards of text (debug build) |
+      | Home | 431–501 ms first frame after start; 200 ms back from an applet | 363–404 ms; 97–111 ms (taps at once) | fifteen 627 px art pictures decoded full size on the UI thread at the first layout; Local Sync's line read its database on the UI thread; the Contacts and Phone groups read every contact's file again. Now: the pictures made small once off the UI thread, read ahead at start, one each for good; the line read off it; the groups take Contacts' read-ahead. What is left: ~450 ms of process start before Tetra's code (debug build), then measuring ~14 groups' text the first time |
+      | Files (root; the Trash's 371 files) | 393 / — / 491 ms; listing 371 files 124 ms warm, 393 cold | 343 / 184 / 462 ms; 41 ms warm, 253 cold | each file's real path asked four times while listing (a chain of calls on shared storage each), dates read again in every comparison when sorting by Modified, the colour and tag maps parsed again for each row drawn, 50 recents and the favourites checked on disk on the UI thread at each open. Now one look at each file (a link still followed and kept inside Tetra), its date and size kept for sorting and thumbnails, the maps read once per list, recents and favourites off the UI thread, and Files opened again shows its list at once while it reads it again |
+      | Calendar (388 + 3 calendars' events, 878 in the window) | 998 ms opened; 1172–1354 at once; a cold start's read 1.9–2.2 s | ~795 ms; 960–1326; 0.77–0.9 s | it composed empty, then read every event file and composed again; the by-day map was made on the UI thread; each file's size and time asked twice; the reminders and the screen parsed the same files at once; deleted events stayed in memory. Now (with the user's idea, "the calendar does not change that often… keep it on disk"): an index file per calendar in the app's cache keeps each event's essentials between starts, and only a file whose size or time changed — a change here, from sync, from Claude's skill — is read again; the events read ahead at start, the Calendar composes once with them; a file's whole is read only when export or a birthday asks; one reader at a time, at a background priority. What is left is composing the Day view the first time (~500 ms in a debug build). The measures of this row were taken together; the tablet ran ~250 ms slower then than for the rows above |
+      | Timer | 366–371 ms; 495–635 at once | 334–343; 438–606 | the timers' service check read their files on the UI thread before the cards, and the clean-up of sync's copies came first too; now the cards first, both after, off the UI thread |
+      | Data | 1556–1942 ms; 2347–2912 at once | 853–965; 1065–1443 | today's counts asked of Android (a second and more), the jobs scheduled, then the month files read: the page waited for all of it; the plan file read again at every recomposition. Now what is written shows first and today's counts follow |
+      | Office (home) | 2132–2137 ms; 2634–2743 at once | ~948 (2255 the first time, before its cache); 1106–1305 | every open walked the whole library (~700 folders on the tablet) to show the newest ten of each kind; now the list from the last look (the app's cache) shows at once and the walk runs behind it |
+      | Words (Test-Words/Tetra test.docx) and a PDF | Words 1779 ms the first in a session (read 16 ms, pages 55 ms, then one 1.64 s frame), 181–191 ms after; PDF 242–257 ms, ~170 after | not changed | the file is read and laid out in well under 0.1 s; the first document's wait is Words' own code running for the first time in a debug build (the phone's fonts, read then too, are at most ~30 ms of it, so they are not read ahead). The non-debuggable build is the cure |
 - [ ] **Next, in this order** (the user, 25 Oct): (1) wait for the two agents now running — sync's clean-up of what Data
       leaves behind, and Contacts' call history with recordings — then merge everything; (2) one agent optimises every
       other applet one by one with Contacts' speed recipe (Notes is slow to show its notes; Files, Scanner, Timer, Calendar

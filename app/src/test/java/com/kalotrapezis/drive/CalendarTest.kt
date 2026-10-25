@@ -80,6 +80,23 @@ class CalendarTest {
         assertEquals("Dr Papadopoulou, Thiva", d.event.place)
     }
 
+    @Test fun `the index keeps each event as it was read, and a file comes back whole when asked`() {
+        CalendarIndex.dir = java.nio.file.Files.createTempDirectory("calendar-index").toFile()
+        try {
+            val files = CalendarFiles.files(cal)
+            val events = files.flatMap { listOfNotNull(it.master) + it.overrides }
+            assertTrue(events.isNotEmpty() && events.any { it.rrule != null } && events.any { it.exdates.isNotEmpty() })
+            // every field, repeats, days off and reminders included, the same after the index
+            events.forEach { assertEquals(it, CalendarIndex.event(CalendarIndex.line(it))) }
+            val tricky = events.first().copy(title = "a\tb\\n", notes = "line one\nline two\r\nback\\slash")
+            assertEquals(tricky, CalendarIndex.event(CalendarIndex.line(tricky)))
+            val index = CalendarIndex.dir!!.listFiles()!!.single().readLines()
+            assertEquals(files.size, index.count { it.startsWith("F\t") })
+            val staff = files.single { it.uid.startsWith("staff") }
+            assertEquals(CalendarFiles.read(staff.file).comps.size, staff.comps.size)
+        } finally { CalendarIndex.dir = null }
+    }
+
     @Test fun `an edit keeps every line it does not change`() {
         val f = CalendarFiles.files(cal).single { it.uid.startsWith("staff") }
         CalendarFiles.save(f.file, f.master!!.copy(title = "Staff meeting, Room 4"), Instant.parse("2026-10-18T10:00:00Z"))

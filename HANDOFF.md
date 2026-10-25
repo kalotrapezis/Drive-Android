@@ -509,7 +509,7 @@
 **State.** Branch `writer-library`, all committed, all unit tests pass. Latest build on the **phone** (208c8192) and an
 older one on the tablet (971f6b37, install the latest there first). Test files: `Test-Words/` on both devices (the
 suite 01–06, `CV test copy.docx`, `Tetra test.docx`); the user's originals are never edited — copies only, deleted
-after. Writer has a log now: `adb shell run-as com.kalotrapezis.drive cat files/logs/writer.log` (memory `writer-log`).
+after. Writer has a log now: `adb shell cat /sdcard/Android/data/com.kalotrapezis.drive/files/logs/writer.log` (memory `writer-log`; in files/logs and read with run-as before 25 Oct).
 Phone helper used this session: open a document by touching it to the top of Office's Recent, then uiautomator taps by
 text (see the 1 Oct entries below). The phone's Mobile view is now **off** (13 Oct): the user edits on the paper (Print layout) — "a proper view where I know no matter where I open it, it will look like this". Leave it off after any test.
 
@@ -682,13 +682,13 @@ top of Recent, open, screenshot, Edit, screenshot, waiting on uiautomator for ea
   (the editor's lines are not the pages'); no space is opened between pages and footers are not shown.
 
 **Then: the Writer log** (the user: "add logs, the word app is huge, we are going to need them"). `WriterLog`
-(WriterLog.kt): logcat tag `Tetra.Writer` and `files/logs/writer.log` on the device (~0.5 MB, the older half in
+(WriterLog.kt): logcat tag `Tetra.Writer` and `writer.log` in the app's shared folder, /sdcard/Android/data/com.kalotrapezis.drive/files/logs (files/logs before 25 Oct), (~0.5 MB, the older half in
 writer.log.1). Written: app/device line per start, every crash (default uncaught handler, set in MainActivity),
 open (name, kind, size), read time, what was read (paragraphs/tables/pictures/comments, what was not kept, copy-only),
 draft restored, view/edit mode, tab, every ribbon tap (`RibbonButton`), what Writer said (`message`), undo/redo,
 picture changes, page layout time and count, save/save new (name, size, copy), write time, closing, and every error the
 Writer already caught (all `Log.e/w("Writer")` go through it). Never the documents' words. **File › Send log** shares
-it (FileProvider path `logs/`). Read it over adb: `adb shell run-as com.kalotrapezis.drive cat files/logs/writer.log`.
+it (FileProvider path `logs/`). Read it over adb: `adb shell cat /sdcard/Android/data/com.kalotrapezis.drive/files/logs/writer.log` — no run-as: since 25 Oct the build installed on the phone and the tablet is not debuggable (it runs several times faster); `./gradlew assembleDebug -Pdebuggable` builds one that is.
 Also: comment and form-field shading now covers the letters only (with paragraph spacing a range's path covered the
 whole spaced line).
 

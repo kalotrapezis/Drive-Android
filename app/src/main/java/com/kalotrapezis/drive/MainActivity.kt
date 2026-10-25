@@ -148,6 +148,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -243,9 +244,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
+        CalendarIndex.dir = cacheDir // the Calendar's events kept between starts
         CalendarAlarms.planSoon(this) // the Calendar's next reminder, from the files as they are now
         ContactsPreload.warm(this) // Contacts open full, not "no contacts" for a second
         PhoneLog.warm(this) // and the Phone's Recents
+        NotesStore.indexDir = cacheDir
+        HomeArt.warm(this) // Home's pictures made small before Home is drawn
+        // the Calendar's events and Notes once Home's first frame is drawn, at a background priority: started with it, they
+        // slowed that frame on the phone (25 Oct)
+        android.view.Choreographer.getInstance().postFrameCallback { window.decorView.post {
+            CalendarPreload.warm(this)
+            Thread { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); if (Environment.isExternalStorageManager()) runCatching { notesStore().list() } }.start()
+        } }
         Thread { runCatching { TimerService.check(this) } }.start() // a timer running (here or started elsewhere): its notification
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false
@@ -485,24 +495,18 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         Build.VERSION.SDK_INT == 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
-    fun loadPhotos() {
+    /** [quiet]: the photos already shown stay while they are read again (Photos opened again, back to the app). */
+    fun loadPhotos(quiet: Boolean = false) {
         if (!canReadPhotos()) { photosState = ListState.Error("Allow photos and videos to view DCIM and Screenshots."); return }
         val shown = (photosState as? ListState.Items)?.entries?.mapTo(HashSet(), Entry::photoKey)
-        photosState = ListState.Loading
+        if (!quiet || shown == null) photosState = ListState.Loading
         Thread {
-            val result = runCatching {
+            val read = runCatching {
                 val all = listDeviceMedia(context)
                 val choices = photoMetadata.folderChoices()
-                deviceFolders(all, choices).also { folders ->
-                    // Keep each included folder's album full as new photos land in it.
-                    folders.filter { it.included == true }.forEach { folder ->
-                        photoMetadata.fillFolderAlbum(folder.name, folder.entries.map(Entry::photoKey))
-                        photoMetadata.pruneFolderAlbum(folder.name, all.filter { !FolderRules.albumName(it.relativePath).equals(folder.name, ignoreCase = true) }.map(Entry::photoKey))
-                    }
-                    (context as MainActivity).runOnUiThread { photoFolders = folders }
-                }
-                showMotionAsOne(all.filter { FolderRules.isIncluded(it.relativePath, choices) })
+                Triple(all, choices, showMotionAsOne(all.filter { FolderRules.isIncluded(it.relativePath, choices) }))
             }
+            val result = read.map { it.third }
             (context as MainActivity).runOnUiThread {
                 photosState = result.fold(
                     onSuccess = { ListState.Items(it) },
@@ -514,6 +518,15 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 // only from SyncJob's trigger, which MIUI cancels once the app is in the background.
                 if (shown != null && result.getOrNull().orEmpty().any { it.photoKey !in shown }) Thread { SyncService.syncInBackground(context, gap = 0) }.start()
             }
+            // after the timeline shows (25 Oct: it waited for this): the folders, each included one's album kept full as new photos land in it
+            read.getOrNull()?.let { (all, choices) -> runCatching {
+                val folders = deviceFolders(all, choices)
+                folders.filter { it.included == true }.forEach { folder ->
+                    photoMetadata.fillFolderAlbum(folder.name, folder.entries.map(Entry::photoKey))
+                    photoMetadata.pruneFolderAlbum(folder.name, all.filter { !FolderRules.albumName(it.relativePath).equals(folder.name, ignoreCase = true) }.map(Entry::photoKey))
+                }
+                (context as MainActivity).runOnUiThread { photoFolders = folders }
+            } }
         }.start()
     }
     val requestPhotos = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { loadPhotos() }
@@ -744,7 +757,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) when (currentScreen) {
                 Screen.Drive -> if (currentDrivePane == DrivePane.Files) loadDrive()
-                Screen.Photos -> loadPhotos()
+                Screen.Photos -> loadPhotos(quiet = true)
                 Screen.PhotoSetup -> Unit
                 Screen.Home -> Unit
                 Screen.Sync -> Unit
@@ -797,10 +810,11 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     showPhotoBackdrop = homePhotoBackdrop,
                     hasPhotoAccess = canReadPhotos(),
                     photoMetadata = photoMetadata,
-                    openPhotos = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() },
-                    openScreenshots = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Screenshots; loadPhotos() },
-                    openDocuments = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Documents; loadPhotos() },
-                    openFiles = { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("") },
+                    openPhotos = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos(quiet = true) },
+                    openScreenshots = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Screenshots; loadPhotos(quiet = true) },
+                    openDocuments = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Documents; loadPhotos(quiet = true) },
+                    // opened again: the list as it was at once, read again behind it
+                    openFiles = { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("", quiet = (driveState as? DriveListState.Items)?.folder == "") },
                     openFavorites = { screen = Screen.Drive; drivePane = DrivePane.Favorites; driveFolder = "" },
                     openRecent = { screen = Screen.Drive; drivePane = DrivePane.Home; driveFolder = "" },
                     openSync = { screen = Screen.Sync },
@@ -1014,7 +1028,9 @@ private fun Home(
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val context = LocalContext.current
-    val syncSummary = remember(context) { SyncStore(context.applicationContext).summary() }
+    // its database read off the screen's thread; the last line said until it answers
+    val syncSummary by produceState(homeSyncSummary, context) { value = withContext(Dispatchers.IO) { SyncStore(context.applicationContext).summary() }.also { homeSyncSummary = it } }
+    OpenTiming("Home", true)
     // each part's group, as Home has always shown them
     val large: @Composable (String) -> Unit = { id -> when (id) {
         "gallery" -> {
@@ -1303,8 +1319,38 @@ private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
 }
 
 // the user's art is itself a tile, Sync's and Settings' too (24 Oct)
-@Composable private fun HomeIconArt(icon: HomeIcon, size: androidx.compose.ui.unit.Dp) =
-    Image(painterResource(icon.art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(size))
+@Composable private fun HomeIconArt(icon: HomeIcon, size: androidx.compose.ui.unit.Dp) = ArtImage(icon.art, size)
+
+/**
+ * The applets' art (627 px PNGs, shown at 34–112 dp) decoded once, off the screen's thread: fifteen decoded full size on
+ * the UI thread held Home's first frame ~300 ms (25 Oct). One bitmap per picture, so a Tetra left open for months holds
+ * no more than these fifteen.
+ */
+internal object HomeArt {
+    private val cache = java.util.concurrent.ConcurrentHashMap<Int, ImageBitmap>()
+    fun cached(art: Int) = cache[art]
+    /** Made for the largest it is shown (a medium part's 112 dp), a power-of-two step of the file. */
+    fun get(res: android.content.res.Resources, art: Int): ImageBitmap? = cache[art] ?: runCatching {
+        val px = 112 * res.displayMetrics.density
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeResource(res, art, bounds)
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= px) sample *= 2
+        BitmapFactory.decodeResource(res, art, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+    }.getOrNull()?.also { cache[art] = it }
+    /** Home's pictures ready before Home is drawn. */
+    fun warm(c: Context) {
+        val res = c.applicationContext.resources
+        Thread { (Applet.entries.map { it.art } + R.drawable.sync_art + R.drawable.settings_art).forEach { get(res, it) } }.start()
+    }
+}
+
+/** An applet's art ([HomeArt]); the space it takes until it is decoded. */
+@Composable internal fun ArtImage(art: Int, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val res = LocalContext.current.resources
+    val bitmap by produceState(HomeArt.cached(art), art) { if (value == null) value = withContext(Dispatchers.Default) { HomeArt.get(res, art) } }
+    bitmap?.let { Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = modifier.size(size)) } ?: Spacer(modifier.size(size))
+}
 
 /**
  * Maps (21 Oct): saved places beside the map, each one tap to directions there (the user, 21 Oct: "favorite locations
@@ -1344,14 +1390,23 @@ private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
     }
 }
 
+private var homeSyncSummary = ""
+
+/** Four favourites for Home, from Contacts' read-ahead (ContactsPreload): no second read of every contact's file. */
+private fun homeFavourites(all: List<Contact>?, phones: Boolean) =
+    all.orEmpty().map { it.info }.filter { it.favourite && (!phones || it.phones.isNotEmpty()) }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4)
+// read as the read-ahead reads (a file again only when it changed), not through it: its load published the whole list
+// again to an open Contacts, which then kept taps waiting ~1.3 s on the phone (25 Oct)
+private suspend fun homeFavourites(phones: Boolean, or: List<ContactInfo>) = withContext(Dispatchers.IO) {
+    runCatching { homeFavourites(ContactsFiles.all(contactsRoot()), phones) }.getOrDefault(or)
+}
+
 /**
  * Contacts (23 Oct): the icon's brown; four favourites' faces beside it, one tap opens that person (the plan's question 7,
  * its recommended answer), an empty one "Add" opening Contacts.
  */
 @Composable private fun HomeContactsGroup(open: (String?) -> Unit) {
-    val favs by produceState(emptyList<ContactInfo>()) {
-        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).map { it.info }.filter { it.favourite }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4) }.getOrDefault(emptyList()) }
-    }
+    val favs by produceState(remember { homeFavourites(ContactsPreload.all, false) }) { value = homeFavourites(false, value) }
     HomeGroup(Category.Contacts.color) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeArtCard("Contacts", R.drawable.contacts_art, { open(null) }, Modifier.weight(1f), artSize = 76)
@@ -1377,9 +1432,7 @@ internal fun openPhone(c: Context, tab: String? = null) = c.startActivity(Intent
 /** The Phone on Home: its art, and four favourites to call with one tap (the plan's question 7, its recommended answer). */
 @Composable private fun HomePhoneGroup() {
     val context = LocalContext.current
-    val favs by produceState(emptyList<ContactInfo>()) {
-        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).map { it.info }.filter { it.favourite && it.phones.isNotEmpty() }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4) }.getOrDefault(emptyList()) }
-    }
+    val favs by produceState(remember { homeFavourites(ContactsPreload.all, true) }) { value = homeFavourites(true, value) }
     val scope = rememberCoroutineScope()
     fun call(f: ContactInfo) {
         val n = f.defaultPhone ?: f.phones.first().value
@@ -1461,7 +1514,7 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
             if (hasBackdrop) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)))
             // Laid out like HomeArtCard: the Gallery tile top-right (only without the photo backdrop), the title at the bottom.
             Box(Modifier.fillMaxSize().padding(18.dp)) {
-                if (!hasBackdrop) Image(painterResource(R.drawable.gallery_art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.align(Alignment.TopEnd).size(76.dp))
+                if (!hasBackdrop) ArtImage(R.drawable.gallery_art, 76.dp, Modifier.align(Alignment.TopEnd))
                 Text("Photos", color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
             }
         }
@@ -1514,10 +1567,7 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
     modifier = modifier.height(156.dp).clickable(onClick = click),
 ) { Box(Modifier.fillMaxSize().padding(18.dp)) {
-    Image(
-        painter = painterResource(art), contentDescription = null, contentScale = ContentScale.Fit,
-        modifier = Modifier.align(Alignment.TopEnd).size(artSize.dp),
-    )
+    ArtImage(art, artSize.dp, Modifier.align(Alignment.TopEnd))
     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
 } }
 
@@ -1536,7 +1586,7 @@ private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, 
     modifier = modifier.height(156.dp).then(if (click == null) Modifier else Modifier.clickable(onClick = click)),
 ) {
     Box(Modifier.fillMaxSize().padding(18.dp)) {
-        Image(painterResource(art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.align(Alignment.TopEnd).size(76.dp))
+        ArtImage(art, 76.dp, Modifier.align(Alignment.TopEnd))
         Text(label, style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.align(Alignment.BottomStart))
     }
 }
@@ -1546,7 +1596,7 @@ private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, 
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant,
     modifier = modifier.fillMaxWidth().heightIn(min = 78.dp).clickable(onClick = click),
 ) { Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-    Image(painterResource(art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(44.dp))
+    ArtImage(art, 44.dp)
     Column {
         Text(label, style = MaterialTheme.typography.titleMedium)
         Text(detail, style = MaterialTheme.typography.bodySmall)
@@ -1998,7 +2048,7 @@ internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home") }
                 Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                art?.let { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(34.dp)) }
+                art?.let { ArtImage(it, 34.dp) }
                 actions()
             }
             Box(Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 1.dp, max = 1.dp).background(on.copy(alpha = 0.35f)))
@@ -2059,6 +2109,7 @@ private fun DriveTab(
     val root = remember { driveRoot() }
     val metadata = remember(context) { DriveMetadata(context) }
     val driveOpeners = remember(context) { DriveOpeners(context) }
+    OpenTiming("Files", state is DriveListState.Items)
     var grid by remember { mutableStateOf(false) }
     var sort by remember { mutableStateOf(DriveSort.Name) }
     var toolsOpen by remember { mutableStateOf(false) }
@@ -2072,8 +2123,9 @@ private fun DriveTab(
     var selectedTag by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var metadataVersion by remember { mutableStateOf(0) }
-    val recentItems = remember(recentsVersion, hasAccess) { if (hasAccess) recents() else emptyList() }
-    val favoriteItems = remember(metadataVersion, hasAccess) { if (hasAccess) metadata.favorites(root) else emptyList() }
+    // each checked on disk (50 recents): off the screen's thread, the last ones shown until then
+    val recentItems by produceState(lastRecents, recentsVersion, hasAccess) { value = if (hasAccess) withContext(Dispatchers.IO) { recents() }.also { lastRecents = it } else emptyList() }
+    val favoriteItems by produceState(lastFavorites, metadataVersion, hasAccess) { value = if (hasAccess) withContext(Dispatchers.IO) { metadata.favorites(root) }.also { lastFavorites = it } else emptyList() }
     val filtering = searchQuery.isNotBlank() || selectedTag != null
     val searchItems by produceState(emptyList<DriveItem>(), searchQuery, selectedTag, metadataVersion, state, hasAccess, diskVersion) {
         value = if (!hasAccess || !filtering) emptyList() else withContext(Dispatchers.IO) {
@@ -2155,10 +2207,10 @@ private fun DriveTab(
                 Text("This reads only Drive in main storage. It is needed to browse and open your local Drive files.")
                 Button(onClick = grant) { Text("Allow all files access") }
             }
-            filtering -> DriveFiles("", DriveListState.Items("", searchItems), grid, sort, metadata, { grid = !grid }, { relative -> searchQuery = ""; selectedTag = null; openFolder(relative) }, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { searchQuery = ""; selectedTag = null }, refresh, ::perform, ::performAll, title = selectedTag?.let { "#$it" } ?: "Search files", emptyMessage = "No matching Drive items.")
+            filtering -> DriveFiles("", DriveListState.Items("", searchItems), grid, sort, metadata, { grid = !grid }, { relative -> searchQuery = ""; selectedTag = null; openFolder(relative) }, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { searchQuery = ""; selectedTag = null }, refresh, ::perform, ::performAll, title = selectedTag?.let { "#$it" } ?: "Search files", emptyMessage = "No matching Drive items.", metadataVersion = metadataVersion)
             pane == DrivePane.Home -> DriveHome(root, recentItems, metadata, metadataVersion, home, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { setPane(DrivePane.Files); refresh() }, ::perform)
             pane == DrivePane.Favorites -> DriveFavorites(favoriteItems, metadata, home, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, openFolder, ::perform)
-            pane == DrivePane.Files -> DriveFiles(folder, state, grid, sort, metadata, { grid = !grid }, openFolder, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, goParent, refresh, ::perform, ::performAll, selection, { selection = it }, emptyTrash = if (folder == "Trash") { { emptyTrashConfirm = true } } else null)
+            pane == DrivePane.Files -> DriveFiles(folder, state, grid, sort, metadata, { grid = !grid }, openFolder, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, goParent, refresh, ::perform, ::performAll, selection, { selection = it }, emptyTrash = if (folder == "Trash") { { emptyTrashConfirm = true } } else null, metadataVersion = metadataVersion)
         }
         Row(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
@@ -2296,10 +2348,16 @@ private fun DriveFavorites(items: List<DriveItem>, metadata: DriveMetadata, home
     moreItem?.let { item -> DriveItemMoreSheet(item, metadata, { if (item.isDirectory) openFolder(item.relativePath) else openFile(item.relativePath) }, { openWith(item.relativePath) }, perform, { moreItem = null }) }
 }
 
+private var lastRecents = emptyList<DriveRecent>()
+private var lastFavorites = emptyList<DriveItem>()
+private var lastRecentItems = emptyList<DriveItem>()
+
 @Composable
 private fun DriveHome(root: File, recents: List<DriveRecent>, metadata: DriveMetadata, metadataVersion: Int, home: () -> Unit, openFile: (String) -> Unit, openWith: (String) -> Unit, openFiles: () -> Unit, perform: (DriveItem, DriveItemAction) -> Unit) {
     var moreItem by remember { mutableStateOf<DriveItem?>(null) }
-    val items = remember(recents, metadataVersion) { recents.mapNotNull { recent -> runCatching { DriveRules.item(root, recent.relativePath) }.getOrNull()?.let { DriveItem(it, recent.relativePath, false) } } }
+    val items by produceState(lastRecentItems, recents, metadataVersion) {
+        value = withContext(Dispatchers.IO) { recents.mapNotNull { recent -> runCatching { DriveRules.item(root, recent.relativePath) }.getOrNull()?.let { DriveItem(it, recent.relativePath, false) } } }.also { lastRecentItems = it }
+    }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             FilesPageHeader("Recent files", R.drawable.ic_home, home)
@@ -2342,10 +2400,14 @@ private fun DriveFiles(
     title: String? = null,
     emptyMessage: String = "This folder is empty.",
     emptyTrash: (() -> Unit)? = null,
+    metadataVersion: Int = 0,
 ) {
     val context = LocalContext.current
     var moreItem by remember { mutableStateOf<DriveItem?>(null) }
     val isTrash = folder == "Trash"
+    // read once for the whole list, not for each row as it scrolls in (a folder of thousands)
+    val colors = remember(metadataVersion) { metadata.colorMap() }
+    val tags = remember(metadataVersion) { metadata.tagMap() }
     val topPadding = if (isTrash) 206.dp else 132.dp
     PullToRefreshBox(isRefreshing = state is DriveListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
@@ -2356,7 +2418,7 @@ private fun DriveFiles(
                     val entries = remember(state.entries, sort) {
                         when (sort) {
                             DriveSort.Name -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
-                            DriveSort.Modified -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }).thenByDescending { it.file.lastModified() }.thenBy { it.file.name.lowercase(Locale.ROOT) })
+                            DriveSort.Modified -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }).thenByDescending { it.lastModified }.thenBy { it.file.name.lowercase(Locale.ROOT) })
                         }
                     }
                     if (state.entries.isEmpty()) TimelineMessage(emptyMessage)
@@ -2368,7 +2430,7 @@ private fun DriveFiles(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         items(entries, key = { it.relativePath }) { item -> DriveGridItem(
-                            item, metadata.color(item.relativePath), metadata.tags(item.relativePath), openFolder, openFile,
+                            item, colors[item.relativePath], tags[item.relativePath].orEmpty(), openFolder, openFile,
                             selected = item.relativePath in selected, selecting = selected.isNotEmpty(),
                             toggle = { setSelected(if (item.relativePath in selected) selected - item.relativePath else selected + item.relativePath) },
                         ) { moreItem = item } }
@@ -2378,7 +2440,7 @@ private fun DriveFiles(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         items(entries, key = { it.relativePath }) { item -> DriveRowItem(
-                            item, metadata.color(item.relativePath), metadata.tags(item.relativePath), openFolder, openFile,
+                            item, colors[item.relativePath], tags[item.relativePath].orEmpty(), openFolder, openFile,
                             selected = item.relativePath in selected, selecting = selected.isNotEmpty(),
                             toggle = { setSelected(if (item.relativePath in selected) selected - item.relativePath else selected + item.relativePath) },
                         ) { moreItem = item } }
@@ -2698,7 +2760,7 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
 ) {
     Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (item.isDirectory || selected) DriveItemIcon(item, folderColor, selected, 32.dp)
-        else FileThumb(item.file, Modifier.size(36.dp).clip(MaterialTheme.shapes.small)) { DriveItemIcon(item, folderColor, false, 32.dp) }
+        else FileThumb(item.file, Modifier.size(36.dp).clip(MaterialTheme.shapes.small), item.lastModified, item.length) { DriveItemIcon(item, folderColor, false, 32.dp) }
         Column(Modifier.weight(1f)) {
             Text(item.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
             Text(driveItemTypeLabel(item) + if (tags.isEmpty()) "" else " · ${tags.joinToString(" ") { "#$it" }}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2725,7 +2787,7 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
             // a file's own picture fills the tile above its name (a document its first page, Office's glyph on it)
             val thumb = !item.isDirectory && !selected && FileThumbs.kind(item.file.name) != null
             if (!thumb) DriveItemIcon(item, folderColor, selected, 64.dp)
-            else FileThumb(item.file, Modifier.matchParentSize().clip(MaterialTheme.shapes.medium)) { DriveItemIcon(item, folderColor, false, 64.dp) }
+            else FileThumb(item.file, Modifier.matchParentSize().clip(MaterialTheme.shapes.medium), item.lastModified, item.length) { DriveItemIcon(item, folderColor, false, 64.dp) }
             Surface(color = if (thumb) islandColor().copy(alpha = 0.7f) else Color.Transparent, contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.align(Alignment.TopEnd)) {
                 IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
             }
@@ -3242,40 +3304,31 @@ private fun PhotoTab(
         )
     } }
     val metadataRevision = metadataVersion + analysisVersion
-    val metadata = remember(allEntries, metadataRevision) { metadataStore.states(allEntries.map { it.photoKey }) }
-    // A collection counts what is on this device: after a Move its other photos are on the computer, and a tile that
-    // said 52 over an empty grid read as a broken library (25 September).
-    val collections = remember(metadataRevision, allEntries) {
-        val onDevice = allEntries.mapTo(HashSet()) { it.photoKey }
-        metadataStore.collections().map { c ->
-            val keys = metadataStore.collectionKeys(c.id)
-            val here = keys.count { it in onDevice }
-            c.copy(here = here, elsewhere = keys.size - here)
-        }
+    var hiddenAlbums by remember { mutableStateOf(metadataStore.albumsHiddenFromGallery()) }
+    // What the photo database says of these photos, read together off the screen's thread (25 Oct: ten queries over every
+    // photo's key ran on it as the timeline arrived); the timeline waits for it, so nothing hidden shows for a moment.
+    val meta by produceState<PhotoMeta?>(null, allEntries, metadataRevision, hiddenAlbums) {
+        value = withContext(Dispatchers.IO) { PhotoMeta.read(context, metadataStore, allEntries, hiddenAlbums) }
     }
-    val collectionPreviews = remember(allEntries, collections, metadataRevision) {
-        val entriesByKey = allEntries.associateBy(Entry::photoKey)
-        collections.associate { collection -> collection.id to metadataStore.collectionKeys(collection.id).firstNotNullOfOrNull(entriesByKey::get) }
+    OpenTiming("Photos", state is ListState.Items && meta != null)
+    val metadata = meta?.states.orEmpty()
+    val collections = meta?.collections.orEmpty()
+    val collectionPreviews = meta?.previews.orEmpty()
+    val documentKeys = meta?.documentKeys.orEmpty()
+    val peopleKeys = meta?.peopleKeys.orEmpty()
+    val labelsByPhoto = meta?.labels.orEmpty()
+    val peopleNamesByPhoto = meta?.peopleNames.orEmpty()
+    val locationsByPhoto by produceState(emptyMap<String, PhotoLocation?>(), allEntries, locationVersion) {
+        value = withContext(Dispatchers.IO) { metadataStore.locations(allEntries.map(Entry::photoKey)) }
     }
-    val documentKeys = remember(metadataRevision) { metadataStore.classifiedKeys("document") }
-    val peopleKeys = remember(metadataRevision) { metadataStore.peopleKeys() }
-    val labelsByPhoto = remember(allEntries, metadataRevision) { metadataStore.labelsByPhoto(allEntries.map(Entry::photoKey)) }
-    val peopleNamesByPhoto = remember(allEntries, metadataRevision) { metadataStore.peopleNamesByPhoto(allEntries.map(Entry::photoKey)) }
-    val locationsByPhoto = remember(allEntries, locationVersion) { metadataStore.locations(allEntries.map(Entry::photoKey)) }
-    // Only people who still have a photo here: delete or move every photo of someone and they stop being listed.
-    val faceGroups = remember(allEntries, metadataRevision) {
-        metadataStore.faceGroups(allEntries.mapTo(HashSet(), Entry::photoKey), onComputer = SyncStore(context.applicationContext).use { it.receiptKeys() })
-    }
-    val reviewKeys = remember(metadataRevision) { metadataStore.reviewKeys() }
+    val faceGroups = meta?.faceGroups.orEmpty()
+    val reviewKeys = meta?.reviewKeys.orEmpty()
     val pendingReviews = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.pendingReviews() else emptyList() }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }
     var motionMode by remember { mutableStateOf(metadataStore.motionPhotos()) }
     var motionAutoplay by remember { mutableStateOf(metadataStore.motionPlays()) }
     var hideDocuments by remember { mutableStateOf(metadataStore.hidesDocumentsFromGallery()) }
-    var hiddenAlbums by remember { mutableStateOf(metadataStore.albumsHiddenFromGallery()) }
-    val hiddenAlbumKeys = remember(collections, hiddenAlbums, metadataRevision) {
-        collections.filter { it.uuid in hiddenAlbums }.flatMapTo(mutableSetOf()) { metadataStore.collectionKeys(it.id) }
-    }
+    val hiddenAlbumKeys = meta?.hiddenAlbumKeys.orEmpty()
     var hidePeopleFromCollections by remember { mutableStateOf(metadataStore.hidesPeopleFromCollections()) }
     var hideDocumentsFromCollections by remember { mutableStateOf(metadataStore.hidesDocumentsFromCollections()) }
     val activeCollection = (filter as? PhotoFilter.Collection)?.let { chosen -> collections.firstOrNull { it.id == chosen.id } }
@@ -3621,7 +3674,7 @@ private fun PhotoTab(
                     authenticateVault(context as Activity, success = { vaultUnlocked = true }, failure = { actionError = it })
                 }
                 else -> PhotoTimeline(
-                if (state is ListState.Items) ListState.Items(entries) else state,
+                if (state is ListState.Items) (if (meta == null) ListState.Loading else ListState.Items(entries)) else state,
                 scale, { scale = it }, timelineState, selectedUris,
                 { entry -> entry.contentUri?.let { selectedUris = selectedUris + it } },
                 { entry -> entry.contentUri?.let { uri -> selectedUris = if (uri in selectedUris) selectedUris - uri else selectedUris + uri } },
@@ -5101,6 +5154,35 @@ private fun Modifier.timelinePinch(scale: TimelineScale, setScale: (TimelineScal
         val start = firstDistance
         if (start != null && start > 0f && lastDistance / start > 1.15f) setScale(scale.finer())
         if (start != null && start > 0f && lastDistance / start < 0.85f) setScale(scale.broader())
+    }
+}
+
+/** What the photo database says of the photos on the device, read in one go off the screen's thread ([PhotoTab]). */
+private class PhotoMeta(
+    val states: Map<String, PhotoState>, val collections: List<PhotoCollection>, val previews: Map<Long, Entry?>, val documentKeys: Set<String>,
+    val peopleKeys: Set<String>, val labels: Map<String, List<String>>, val peopleNames: Map<String, List<String>>, val faceGroups: List<FaceGroup>,
+    val reviewKeys: Set<String>, val hiddenAlbumKeys: Set<String>,
+) {
+    companion object {
+        fun read(context: Context, store: PhotoMetadataStore, all: List<Entry>, hiddenAlbums: Set<String>): PhotoMeta {
+            val keys = all.map(Entry::photoKey)
+            val onDevice = keys.toHashSet()
+            val byKey = all.associateBy(Entry::photoKey)
+            val keysOf = store.collections().associateWith { store.collectionKeys(it.id) }
+            // A collection counts what is on this device: after a Move its other photos are on the computer, and a tile that
+            // said 52 over an empty grid read as a broken library (25 September).
+            val collections = keysOf.map { (c, k) -> val here = k.count { it in onDevice }; c.copy(here = here, elsewhere = k.size - here) }
+            return PhotoMeta(
+                states = store.states(keys), collections = collections,
+                previews = keysOf.entries.associate { (c, k) -> c.id to k.firstNotNullOfOrNull(byKey::get) },
+                documentKeys = store.classifiedKeys("document"), peopleKeys = store.peopleKeys(),
+                labels = store.labelsByPhoto(keys), peopleNames = store.peopleNamesByPhoto(keys),
+                // Only people who still have a photo here: delete or move every photo of someone and they stop being listed.
+                faceGroups = store.faceGroups(onDevice, onComputer = SyncStore(context.applicationContext).use { it.receiptKeys() }),
+                reviewKeys = store.reviewKeys(),
+                hiddenAlbumKeys = keysOf.filterKeys { it.uuid in hiddenAlbums }.values.flatMapTo(mutableSetOf()) { it },
+            )
+        }
     }
 }
 

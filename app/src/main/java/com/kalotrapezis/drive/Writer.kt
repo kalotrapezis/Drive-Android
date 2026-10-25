@@ -1037,6 +1037,20 @@ private const val OFFICE_RECENT = 10 // of each kind, newest first (asked 17 Oct
 
 private fun isOfficeFile(name: String) = (OfficeKind.of(name) != null || LegacyDocs.isLegacy(name) || Sheets.isSheet(name) || Slides.isSlides(name) || Pdf.isPdf(name)) && !name.startsWith("~$")
 
+private fun officeFile(root: File, f: File) = OfficeFile(f, runCatching { f.relativeTo(root).path }.getOrNull()?.takeIf { !it.startsWith("..") } ?: f.absolutePath)
+private fun newestOfEach(files: List<OfficeFile>, n: Int) = files.groupBy { if (Pdf.isPdf(it.file.name)) 3 else if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }
+    .values.flatMap { it.take(n) }
+
+/** What the Office home's last look found: the newest of each kind and how many in all, in the app's cache (never synced). */
+private object OfficeHomeCache {
+    private fun file(c: Context) = File(c.cacheDir, "office-home.txt")
+    fun read(c: Context, root: File): Pair<List<OfficeFile>, Int>? = runCatching {
+        val lines = file(c).readLines()
+        lines.drop(1).map(::File).filter { it.isFile }.map { officeFile(root, it) }.sortedByDescending { it.modified } to lines.first().toInt()
+    }.getOrNull()
+    fun write(c: Context, files: List<OfficeFile>, total: Int) = runCatching { file(c).writeText((listOf("$total") + files.map { it.file.absolutePath }).joinToString("\n")) }
+}
+
 internal fun officeFiles(root: File): List<OfficeFile> = root.walkTopDown()
     .onEnter { it == root || (!it.name.startsWith(".") && it.name != "Trash") }
     .filter { isOfficeFile(it.name) && it.isFile } // the name first: most files are not Office ones, and isFile asks the disk
@@ -1049,6 +1063,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     val root = remember { TetraFolder.root(Environment.getExternalStorageDirectory()) }
     val context = LocalContext.current
     var files by remember { mutableStateOf<List<OfficeFile>?>(null) }
+    OpenTiming("Office", files != null)
     var total by remember { mutableIntStateOf(0) }
     // Only the newest ones (asked 2026-09-28: all of them made the page heavy); the rest are in Files.
     // read again whenever the home shows (back from a document, Files or another app) and when something opens (the user, 18 Oct:
@@ -1059,12 +1074,23 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         val watch = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) shown++ }
         lifecycle.addObserver(watch); onDispose { lifecycle.removeObserver(watch) }
     }
-    LaunchedEffect(hasAccess, shown, OfficeRecents.changes) { if (hasAccess) withContext(Dispatchers.IO) { officeFiles(root) to OfficeRecents.list(context) }.let { (all, opened) -> total = all.size
-        // the files opened first, newest first (however they were opened), then the newest of each kind, one list again by date
-        val first = opened.filter { isOfficeFile(it.name) }.take(OFFICE_RECENT).map { f -> OfficeFile(f, runCatching { f.relativeTo(root).path }.getOrNull()?.takeIf { !it.startsWith("..") } ?: f.absolutePath) }
+    // the files opened first, newest first (however they were opened), then the newest of each kind, one list again by date
+    fun shownOf(all: List<OfficeFile>, opened: List<File>): List<OfficeFile> {
+        val first = opened.filter { isOfficeFile(it.name) }.take(OFFICE_RECENT).map { officeFile(root, it) }
         val seen = first.map { it.file.absolutePath }.toSet()
-        files = first + all.filter { it.file.absolutePath !in seen }.groupBy { if (Pdf.isPdf(it.file.name)) 3 else if (Slides.isSlides(it.file.name)) 2 else if (Sheets.isSheet(it.file.name)) 1 else 0 }
-            .values.flatMap { it.take(OFFICE_RECENT) }.sortedByDescending { it.modified } } }
+        return first + newestOfEach(all.filter { it.file.absolutePath !in seen }, OFFICE_RECENT).sortedByDescending { it.modified }
+    }
+    LaunchedEffect(hasAccess, shown, OfficeRecents.changes) {
+        if (!hasAccess) return@LaunchedEffect
+        // at once from what the last look found (the walk of the whole library took 2–3 s on the tablet, 25 Oct), then looked again
+        if (files == null) withContext(Dispatchers.IO) { OfficeHomeCache.read(context, root)?.let { (kept, n) -> Triple(kept, n, OfficeRecents.list(context)) } }
+            ?.let { (kept, n, opened) -> if (files == null) { files = shownOf(kept, opened); total = n } }
+        withContext(Dispatchers.IO) { officeFiles(root) to OfficeRecents.list(context) }.let { (all, opened) ->
+            total = all.size
+            files = shownOf(all, opened)
+            withContext(Dispatchers.IO) { OfficeHomeCache.write(context, newestOfEach(all, 2 * OFFICE_RECENT), all.size) }
+        }
+    }
     BackHandler { back() }
     var choosingTemplate by remember { mutableStateOf(false) }
     // each card's Open: Android's picker for that kind only (asked 17 Oct); what is chosen opens in its own app
@@ -1321,6 +1347,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var styleEdits by remember { mutableIntStateOf(0) } // counted, so the draft is kept after a style (or a picture: its wrap, size, place) changes
     var meta by remember { mutableStateOf(OfficeDoc(emptyList())) }
     var loaded by remember { mutableStateOf(false) }
+    OpenTiming("Words", loaded)
     var failed by remember { mutableStateOf<String?>(null) }
     var dirty by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(WriterTab.Home) }

@@ -251,6 +251,7 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
     var hasCamera by remember { mutableStateOf(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     var capture by remember { mutableStateOf<ImageCapture?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
+    OpenTiming("Scanner", camera != null)
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var cameraError by remember { mutableStateOf<String?>(null) }
     val scannerPreferences = remember(context) { context.getSharedPreferences("scanner", Context.MODE_PRIVATE) }

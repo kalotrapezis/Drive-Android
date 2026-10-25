@@ -102,7 +102,7 @@ Tick each leaf; a failing one: note what you saw beside it.
 ~/Android/Sdk/platform-tools/adb -s 208c8192 install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 ```
 
-Writer's log while testing: `adb shell run-as com.kalotrapezis.drive cat files/logs/writer.log`.
+Writer's log while testing: `adb shell cat /sdcard/Android/data/com.kalotrapezis.drive/files/logs/writer.log` (since 25 Oct the installed build is not debuggable: no run-as; `./gradlew assembleDebug -Pdebuggable` for one that is).
 
 - **1. Citation tapped** (References)
   - [ ] Insert a citation; tap inside "(Smith, 2020)" → a "Citation" bar over the ribbon

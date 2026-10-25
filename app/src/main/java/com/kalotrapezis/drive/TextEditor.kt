@@ -309,6 +309,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
     val undo = remember { HashMap<String, NoteUndo<String>>() }
     var undoTick by remember { mutableIntStateOf(0) }
     var loaded by remember { mutableStateOf(false) }
+    OpenTiming("Text editor", loaded)
     var wrap by remember { mutableStateOf(store.wordWrap) }
     var tools by remember { mutableStateOf(false) }
     var symbols by remember { mutableStateOf(false) } // the bar shows the symbols row instead of the controls

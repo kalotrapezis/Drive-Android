@@ -21,7 +21,11 @@ private const val OPENERS_PREFS = "drive_openers"
 const val FILE_OPENER_CHOSEN = "com.kalotrapezis.drive.FILE_OPENER_CHOSEN"
 const val FILE_OPENER_PATH = "drive_opener_path"
 
-data class DriveItem(val file: File, val relativePath: String, val isDirectory: Boolean)
+data class DriveItem(val file: File, val relativePath: String, val isDirectory: Boolean, val modified: Long = -1, val size: Long = -1) {
+    /** From the folder's listing ([listDriveFolder]) when it has them, else asked of the file. */
+    val lastModified get() = if (modified >= 0) modified else file.lastModified()
+    val length get() = if (size >= 0) size else file.length()
+}
 data class DriveRecent(val relativePath: String, val openedAt: Long)
 enum class DriveFolderColor { Blue, Green, Yellow, Red, Purple }
 data class DriveSpaceUsage(val bytesByType: Map<String, Long>) {
@@ -345,13 +349,20 @@ internal object JustMade {
 }
 
 fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
-    val folder = DriveRules.folder(root, relativePath)
+    val folder = DriveRules.folder(root, relativePath) // its real path, inside Tetra
+    val prefix = DriveRules.relative(root, folder).let { if (it.isEmpty()) "" else "$it/" }
     return folder.listFiles().orEmpty()
         // Dot folders (.notes, .templates) are the apps' own, hidden as in file managers and on the desktop.
-        .filter { DriveRules.inside(root, it) && !it.name.startsWith(".") }
+        .filter { !it.name.startsWith(".") }
         // Trash has its own way in; as a folder in the list it is just something to open by accident.
         .filterNot { relativePath.isEmpty() && (it.name == TRASH_FOLDER || DriveRules.isAppFolder(it.name)) }
-        .map { file -> DriveItem(file.canonicalFile, DriveRules.relative(root, file), file.isDirectory) }
+        // one look at each (25 Oct: each one's real path asked four times made a folder of thousands slow); a link is
+        // followed and checked to stay inside Tetra, as every item was before
+        .mapNotNull { file ->
+            val a = runCatching { Files.readAttributes(file.toPath(), java.nio.file.attribute.BasicFileAttributes::class.java, java.nio.file.LinkOption.NOFOLLOW_LINKS) }.getOrNull()
+            if (a == null || a.isSymbolicLink) file.takeIf { DriveRules.inside(root, it) }?.let { DriveItem(it.canonicalFile, DriveRules.relative(root, it), it.isDirectory) }
+            else DriveItem(file, prefix + file.name, a.isDirectory, a.lastModifiedTime().toMillis(), a.size())
+        }
         .sortedWith(compareBy<DriveItem>({ !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
 }
 
@@ -582,6 +593,10 @@ class DriveMetadata(context: Context) {
         colors.forEach { (path, color) -> json.put(path, color) }
         preferences.edit().putString("colors", json.toString()).apply()
     }
+
+    /** Every folder's colour and every item's tags at once: one read for a whole list, not one per row. */
+    fun colorMap(): Map<String, DriveFolderColor> = colors().mapNotNull { (k, v) -> runCatching { k to DriveFolderColor.valueOf(v) }.getOrNull() }.toMap()
+    fun tagMap(): Map<String, Set<String>> = tagsByPath()
 
     private fun tagsByPath(): Map<String, Set<String>> = runCatching {
         val json = JSONObject(preferences.getString("tags", "{}") ?: "{}")

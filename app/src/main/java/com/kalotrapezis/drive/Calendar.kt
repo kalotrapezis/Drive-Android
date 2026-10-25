@@ -197,8 +197,13 @@ data class CalEvent(
     val sequence: Int = 0,
 )
 
-/** An event file: the event, its changed days, and the parsed file kept for writing it back. */
-class CalFile(val file: File, val comps: List<ICalComp>, val master: CalEvent?, val overrides: List<CalEvent>) {
+/**
+ * An event file: the event, its changed days, and the parsed file. The calendar's list keeps only the events (thousands
+ * of them, CalendarIndex): the whole file is read again the first time something asks for it (export, a birthday's
+ * contact and year); writing always reads the file afresh.
+ */
+class CalFile(val file: File, parsed: List<ICalComp>?, val master: CalEvent?, val overrides: List<CalEvent>) {
+    val comps: List<ICalComp> by lazy { parsed ?: runCatching { ICal.parse(file.readText()) }.getOrDefault(emptyList()) }
     val uid get() = master?.uid ?: overrides.firstOrNull()?.uid ?: file.nameWithoutExtension
     val modified: Instant get() = (listOfNotNull(master) + overrides).mapNotNull { it.modified }.maxOrNull() ?: Instant.ofEpochMilli(file.lastModified())
     val sequence: Int get() = (listOfNotNull(master) + overrides).maxOfOrNull { it.sequence } ?: 0
@@ -248,17 +253,27 @@ object CalendarFiles {
 
     private val cache = HashMap<String, Triple<Long, Long, CalFile>>()
 
-    /** Every event file of a calendar; a file is read again only when its size or time changed. */
-    fun files(cal: CalendarInfo): List<CalFile> {
-        val all = (cal.dir.listFiles() ?: emptyArray()).filter { it.isFile && it.name.endsWith(".ics", true) && !it.name.startsWith(".") }
-        val read = all.map { f ->
-            synchronized(cache) {
-                cache[f.path]?.takeIf { it.first == f.length() && it.second == f.lastModified() }?.third
-            } ?: read(f).also { synchronized(cache) { cache[f.path] = Triple(f.length(), f.lastModified(), it) } }
+    /**
+     * Every event file of a calendar; a file is read again only when its size or time changed, one look at each (a calendar
+     * of thousands of events), one reader at a time (the reminders and the screen read the same files at start), and
+     * what is kept follows the folder (Tetra left open for months holds no deleted event).
+     */
+    fun files(cal: CalendarInfo): List<CalFile> = synchronized(cache) {
+        CalendarIndex.load(cal.dir, cache)
+        val all = (cal.dir.listFiles() ?: emptyArray()).filter { it.name.endsWith(".ics", true) && !it.name.startsWith(".") }
+            .mapNotNull { f -> runCatching { java.nio.file.Files.readAttributes(f.toPath(), java.nio.file.attribute.BasicFileAttributes::class.java) }.getOrNull()?.takeIf { it.isRegularFile }?.let { f to it } }
+        var fresh = false
+        val read = all.map { (f, a) ->
+            val size = a.size(); val time = a.lastModifiedTime().toMillis()
+            cache[f.path]?.takeIf { it.first == size && it.second == time }?.third
+                ?: read(f).let { CalFile(f, null, it.master, it.overrides) }.also { cache[f.path] = Triple(size, time, it); fresh = true }
         }
+        val here = all.mapTo(HashSet()) { it.first.path }
+        if (cache.keys.removeAll { File(it).parentFile?.path == cal.dir.path && it !in here }) fresh = true
+        if (fresh) CalendarIndex.save(cal.dir, cache)
         // The same event twice (a conflict in sync): the higher SEQUENCE, then the newer, is shown and says so (RFC 5545's
         // own order, the user 23 Oct); the other stays on disk.
-        return read.groupBy { it.uid }.values.map { same -> same.maxWith(compareBy<CalFile>({ it.sequence }, { it.modified })).also { it.versions = same.size } }
+        read.groupBy { it.uid }.values.map { same -> same.maxWith(compareBy<CalFile>({ it.sequence }, { it.modified })).also { it.versions = same.size } }
     }
 
     fun read(f: File): CalFile = parse(f, runCatching { f.readText() }.getOrDefault(""))
@@ -690,5 +705,84 @@ object CalendarPlace {
         val m = COORDS.find(link)
         val lat = m?.groupValues?.get(1)?.toDoubleOrNull(); val lng = m?.groupValues?.get(2)?.toDoubleOrNull()
         return if (lat != null && lng != null && lat in -90.0..90.0 && lng in -180.0..180.0) "geo:$lat,$lng?q=$lat,$lng" else link
+    }
+}
+
+/**
+ * Each calendar's events as last read (not their whole files: title, times, repeat, reminders), one file per calendar in
+ * the app's cache (the user, 25 Oct: "the calendar does not change that often… keep it on disk"): after a restart the
+ * events come from here, and only an event file whose size or time changed since — a change here, from sync, from
+ * Claude's skill — is read again. Without [dir] (the unit tests) every start reads the files.
+ */
+object CalendarIndex {
+    @Volatile var dir: File? = null
+    private val loaded = HashSet<String>()
+    // a plain line per file and per event: org.json and ZonedDateTime.parse took 1.3 s for one calendar on the tablet
+    private const val HEAD = "tetra-calendar-index 3"
+
+    private fun file(calDir: File) = dir?.let { File(it, "calendar-" + Integer.toHexString(calDir.path.hashCode()) + ".txt") }
+
+    /** Into [cache] (path → size, time, events), once per calendar and run; times in this device's zone, or none. */
+    fun load(calDir: File, cache: MutableMap<String, Triple<Long, Long, CalFile>>) {
+        if (!loaded.add(calDir.path)) return
+        val f = file(calDir)?.takeIf { it.isFile } ?: return
+        runCatching {
+            f.bufferedReader().useLines { seq ->
+                val lines = seq.iterator()
+                if (!lines.hasNext() || lines.next() != "$HEAD\t${ZoneId.systemDefault().id}") return
+                var path: String? = null; var size = 0L; var time = 0L; val events = mutableListOf<CalEvent>()
+                fun flush() { path?.let { p -> cache.putIfAbsent(p, Triple(size, time, CalFile(File(p), null, events.firstOrNull { it.recurrenceId == null }, events.filter { it.recurrenceId != null }))) }; events.clear() }
+                for (line in lines) {
+                    val c = line.split('\t')
+                    if (c[0] == "F") { flush(); path = unescape(c[1]); size = c[2].toLong(); time = c[3].toLong() } else events += event(line)
+                }
+                flush()
+            }
+        }
+    }
+
+    fun save(calDir: File, cache: Map<String, Triple<Long, Long, CalFile>>) {
+        val f = file(calDir) ?: return
+        runCatching {
+            val tmp = File(f.path + ".tmp")
+            tmp.bufferedWriter().use { w ->
+                w.write("$HEAD\t${ZoneId.systemDefault().id}\n")
+                cache.forEach { (path, v) -> if (File(path).parentFile?.path == calDir.path) {
+                    w.write("F\t${escape(path)}\t${v.first}\t${v.second}\n")
+                    (listOfNotNull(v.third.master) + v.third.overrides).forEach { w.write(line(it)); w.write("\n") }
+                } }
+            }
+            tmp.renameTo(f)
+        }
+    }
+
+    private fun escape(s: String) = s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
+    private fun unescape(s: String): String = if ('\\' !in s) s else buildString {
+        var i = 0
+        while (i < s.length) { val ch = s[i++]; if (ch != '\\' || i == s.length) append(ch) else when (val n = s[i++]) { 't' -> append('\t'); 'n' -> append('\n'); 'r' -> append('\r'); else -> append(n) } }
+    }
+    private val zones = java.util.concurrent.ConcurrentHashMap<String, ZoneId>()
+    private fun t(z: ZonedDateTime?) = z?.let { "${it.toEpochSecond()}@${it.zone.id}" }.orEmpty()
+    private fun z(s: String) = s.takeIf { it.isNotEmpty() }?.let {
+        val at = it.indexOf('@')
+        ZonedDateTime.ofInstant(Instant.ofEpochSecond(it.substring(0, at).toLong()), zones.getOrPut(it.substring(at + 1)) { ZoneId.of(it.substring(at + 1)) })
+    }
+
+    /** One event as one line (tabs between its fields; [event] reads it back). */
+    fun line(e: CalEvent): String = listOf("E", escape(e.uid), escape(e.title), escape(e.place), escape(e.notes), if (e.allDay) "1" else "0", t(e.start), t(e.end),
+        e.rrule?.let(::escape) ?: "", e.exdates.joinToString(",") { t(it) }, t(e.recurrenceId), if (e.cancelled) "1" else "0",
+        e.modified?.toEpochMilli()?.toString() ?: "", "${e.sequence}",
+        e.alarms.joinToString(";") { "${it.days},${it.seconds},${if (it.fromEnd) 1 else 0},${it.at?.toEpochMilli() ?: ""},${it.repeat},${it.every}" }).joinToString("\t")
+
+    fun event(line: String): CalEvent {
+        val c = line.split('\t')
+        return CalEvent(
+            uid = unescape(c[1]), title = unescape(c[2]), place = unescape(c[3]), notes = unescape(c[4]), allDay = c[5] == "1",
+            start = z(c[6])!!, end = z(c[7])!!, rrule = c[8].ifEmpty { null }?.let(::unescape),
+            exdates = c[9].split(',').mapNotNull { z(it) }, recurrenceId = z(c[10]), cancelled = c[11] == "1",
+            modified = c[12].ifEmpty { null }?.let { Instant.ofEpochMilli(it.toLong()) }, sequence = c[13].toInt(),
+            alarms = c[14].split(';').filter { it.isNotEmpty() }.map { a -> a.split(',').let { p ->
+                CalAlarm(p[0].toLong(), p[1].toLong(), p[2] == "1", p[3].ifEmpty { null }?.let { Instant.ofEpochMilli(it.toLong()) }, p[4].toInt(), p[5].toLong()) } },
+        )
     }
 }

@@ -121,6 +121,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     RememberOpened(file) // the Office home's Recents
     val odp = file?.extension.equals("odp", true)
     var deck by remember { mutableStateOf<Deck?>(null) }
+    OpenTiming("Slides", deck != null)
     var failed by remember { mutableStateOf<String?>(null) }
     var notes by remember { mutableStateOf(false) }
     var presenting by remember { mutableStateOf<Int?>(null) }

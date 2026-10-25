@@ -138,6 +138,18 @@ class DriveFilesTest {
         assertFalse(DriveRules.subfolders(root, "").any { it.startsWith(".") })
     }
 
+    @Test fun aFolderIsListedWithOneLookAtEachFileAndALinkOutsideStaysOut() {
+        val root = Files.createTempDirectory("drive-root").toFile()
+        val outside = Files.createTempDirectory("outside").toFile().also { File(it, "secret.txt").writeText("no") }
+        File(root, "Work/Sub").mkdirs(); File(root, "Work/a.txt").writeText("hello")
+        Files.createSymbolicLink(File(root, "Work/out").toPath(), outside.toPath())
+        Files.createSymbolicLink(File(root, "Work/in").toPath(), File(root, "Work/Sub").toPath())
+        val items = listDriveFolder(root, "Work")
+        assertEquals(listOf("Work/Sub" to true, "Work/Sub" to true, "Work/a.txt" to false), items.map { it.relativePath to it.isDirectory })
+        val a = items.single { it.file.name == "a.txt" }
+        assertEquals(5L, a.length); assertEquals(File(root, "Work/a.txt").lastModified(), a.lastModified)
+    }
+
     @Test fun moveOffersOneLevelAtATime() {
         // asked 17 Oct: Move listed every folder of every level; now the ones right inside the folder you are in
         val root = Files.createTempDirectory("drive-root").toFile()

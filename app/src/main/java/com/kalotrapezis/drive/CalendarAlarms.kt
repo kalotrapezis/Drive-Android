@@ -65,6 +65,7 @@ internal object CalendarAlarms {
 
     /** Shows what is due since the last look and sets the alarm for the next one. Off the main thread. */
     @Synchronized fun plan(c: Context) {
+        CalendarIndex.dir = c.applicationContext.cacheDir // an alarm may start Tetra without its window: the events from the index all the same
         val am = c.getSystemService(AlarmManager::class.java) ?: return
         val ring = PendingIntent.getBroadcast(c, 0, Intent(c, CalendarAlarmReceiver::class.java).setAction(ACTION_RING), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val root = calendarRoot()

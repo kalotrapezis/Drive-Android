@@ -136,7 +136,35 @@ private fun saveAll(f: CalFile, m: CalEvent?, o: Occurrence, e: CalEvent, moveTo
     if (moveTo != null) CalendarFiles.move(f.file, moveTo)
 }
 
-private class CalData(val cals: List<CalendarInfo>, val occ: List<Occurrence>)
+/** The calendars, their events from a year before [anchor] to a year after, and by day without the [hidden] calendars. */
+internal class CalData(val cals: List<CalendarInfo>, val occ: List<Occurrence>, val anchor: Int, val hidden: Set<String>, val days: Map<LocalDate, List<Occurrence>>, val made: Long = System.nanoTime())
+
+/**
+ * The Calendar's events read ahead when Tetra starts (25 Oct): it opened empty, composed, then read and composed again
+ * with the events. One read at a time; the last one kept (a three-year window, so it does not grow with the years).
+ */
+internal object CalendarPreload {
+    @Volatile var last: CalData? = null
+        private set
+    fun load(root: File, anchor: Int, hidden: Set<String>, zone: ZoneId = ZoneId.systemDefault()): CalData {
+        val asked = System.nanoTime()
+        synchronized(this) {
+            // the read-ahead finished while this waited for it: that read is as new as this one would be
+            last?.takeIf { it.made >= asked && it.anchor == anchor && it.hidden == hidden }?.let { return it }
+            val cals = CalendarFiles.calendars(root)
+            val from = LocalDate.of(anchor - 1, 1, 1).atStartOfDay(zone).toInstant()
+            val to = LocalDate.of(anchor + 2, 1, 1).atStartOfDay(zone).toInstant()
+            val occ = CalendarFiles.occurrences(cals, from, to)
+            // nothing changed: the same data, so an open Calendar is not composed all over again
+            val same = last?.takeIf { it.anchor == anchor && it.hidden == hidden && it.cals == cals && it.occ == occ }
+            return (same ?: CalData(cals, occ, anchor, hidden, byDay(occ.filter { it.calendar.dir.name !in hidden }, zone))).also { last = it }
+        }
+    }
+    fun warm(c: Context) { val app = c.applicationContext; Thread {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) // Home's first frames come first
+        if (Environment.isExternalStorageManager()) runCatching { load(calendarRoot(), LocalDate.now().year, CalendarPrefs.hidden(app)) }
+    }.start() }
+}
 
 /** The days an occurrence covers on this device's clock: an all-day trip each of its days, a late party the next too. */
 internal fun daysOf(o: Occurrence, zone: ZoneId): List<LocalDate> {
@@ -281,16 +309,14 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         onDispose { watcher.stop() }
     }
     val anchor = selected.year
-    val data by produceState<CalData?>(null, version, anchor) {
-        value = withContext(Dispatchers.IO) {
-            val cals = CalendarFiles.calendars(root)
-            val from = LocalDate.of(anchor - 1, 1, 1).atStartOfDay(zone).toInstant()
-            val to = LocalDate.of(anchor + 2, 1, 1).atStartOfDay(zone).toInstant()
-            CalData(cals, CalendarFiles.occurrences(cals, from, to))
-        }
+    // read ahead (CalendarPreload): the first frame has the events; read again behind it
+    val data by produceState(CalendarPreload.last?.takeIf { it.anchor == anchor }, version, anchor) {
+        value = withContext(Dispatchers.IO) { CalendarPreload.load(root, anchor, hidden, zone) }
     }
+    OpenTiming("Calendar", data != null)
     val cals = data?.cals.orEmpty()
-    val days = remember(data, hidden) { byDay(data?.occ.orEmpty().filter { it.calendar.dir.name !in hidden }, zone) }
+    // by day off the screen's thread; made again here only when a calendar is hidden or shown
+    val days = remember(data, hidden) { data?.takeIf { it.hidden == hidden }?.days ?: byDay(data?.occ.orEmpty().filter { it.calendar.dir.name !in hidden }, zone) }
     fun toggle(c: CalendarInfo) {
         hidden = if (c.dir.name in hidden) hidden - c.dir.name else hidden + c.dir.name
         CalendarPrefs.setHidden(context, hidden)

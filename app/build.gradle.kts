@@ -37,6 +37,11 @@ android {
         }
     }
     buildTypes {
+        // What goes on the phone and the tablet is not debuggable (the user, 25 Oct): Android runs a debuggable app's
+        // Compose several times slower (Notes 435 → 90 ms, Calendar 780 → 111 on the tablet). Same debug key, so it
+        // installs over the app as it is. Logs: adb reads them in /sdcard/Android/data/<package>/files/logs (WriterLog.dir);
+        // `./gradlew assembleDebug -Pdebuggable` for a build that run-as and a debugger can reach.
+        debug { isDebuggable = project.hasProperty("debuggable") }
         release {
             isMinifyEnabled = false
             signing?.let { signingConfig = signingConfigs.getByName("release") }

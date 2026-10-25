@@ -398,7 +398,7 @@ How to write here:
 - [x] (data-plan session, 25 Oct, branch claude/data-plan; Drive branch `data`) **Data** planned and built, steps 2–8 (§ Data); not merged; on the phone, the tablet and the computer (details in § Data). Planned: Setup, usage and the plan (fair use, roaming
       day pass), live speed, three devices and the hotspot, Wi-Fi meter with Spots, signal drops; other apps checked; the house
       map explained, not built; battery set aside by the user; the user answered most questions 25 Oct.
-- [x] (optimise session, 25 Oct; branch claude/optimise-applets, not merged; on the phone) **Every applet opens fast** (the user, 25 Oct: "optimise all
+- [x] (optimise session, 25 Oct; merged into main 4e669ea; on the phone) **Every applet opens fast** (the user, 25 Oct: "optimise all
       the rest of the apps. Notes needs optimisation; it's kind of slow to show the notes"), one by one with Contacts' recipe.
       Each applet writes its opening to writer.log ("Notes: opened → first notes … ms", ScreenTiming/OpenTiming). Measured on
       the tablet (971f6b37, debug build; the phone not connected): first content shown when tapped on Home, Tetra ready /

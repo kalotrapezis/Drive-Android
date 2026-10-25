@@ -1,97 +1,122 @@
-# Tetra for Android
+<h1 align="center">Tetra for Android</h1>
 
-![Tetra on the desktop and on a phone: Photos, Home and Notes](Assets/screenshots/tetra-card.png)
+<p align="center"><b>One private super app for your phone, tablet and computer.</b><br>
+Photos, files, notes, Office, calendar, timers, maps, contacts, calls and data, in one app that keeps everything on your own devices.</p>
 
-**Your photos, files and notes, kept on your own devices.** Tetra is a gallery, a file manager, a notes app, a
-document scanner and an Office suite in one Android app. It pairs with [Tetra for the desktop](https://github.com/kalotrapezis/Drive)
-over your own Wi-Fi. Nothing is uploaded anywhere, and every bit of analysis (faces, documents, search labels) runs
-on the device.
+<p align="center">
+  <a href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.1/Tetra-0.6.0-beta.1-arm64.apk"><img src="Assets/buttons/download-android.png" alt="Download Tetra for Android (APK)" width="440"></a>
+  <a href="https://github.com/kalotrapezis/Drive"><img src="Assets/buttons/get-desktop.png" alt="Tetra for the desktop" width="440"></a>
+</p>
 
-**Current release: 0.3.0 Beta 1.** It is the first beta: in daily use by its author, but keep your own backups.
+![Tetra on a computer, a tablet and a phone](Assets/cards/tetra-hero.jpg)
 
-<table>
-  <tr>
-    <td><img src="Assets/screenshots/android-home.png" alt="Home" width="200"></td>
-    <td><img src="Assets/screenshots/android-photos.png" alt="Photos" width="200"></td>
-    <td><img src="Assets/screenshots/android-files.png" alt="Files" width="200"></td>
-    <td><img src="Assets/screenshots/android-notes.png" alt="Notes" width="200"></td>
-  </tr>
-  <tr align="center"><td>Home</td><td>Photos</td><td>Files</td><td>Notes</td></tr>
-  <tr>
-    <td><img src="Assets/screenshots/android-scanner.png" alt="Scanner finding a page" width="200"></td>
-    <td><img src="Assets/screenshots/android-scanner-filters.png" alt="Scanner filters" width="200"></td>
-    <td><img src="Assets/screenshots/android-codes.png" alt="Codes reading text" width="200"></td>
-    <td><img src="Assets/screenshots/android-text-editor.png" alt="Text editor" width="200"></td>
-  </tr>
-  <tr align="center"><td>Scanner</td><td>Scanner filters</td><td>Codes (text)</td><td>Text editor</td></tr>
-</table>
+Tetra replaces a dozen apps with one. Each **applet** (Photos, Files, Notes, Office, Calendar, Timer, Maps,
+Contacts, Phone, Data, Scanner, Codes, Text editor) opens from Home and shares the same folder, `/sdcard/Tetra`.
+[Tetra for the desktop](https://github.com/kalotrapezis/Drive) has the same applets on Linux. The two **sync over
+your own Wi-Fi**, with no server, no account and no cloud. Faces, labels, text recognition, maps and routes are all
+worked out on the device.
 
-<sub>Screenshots use demo content, not a real library; the scanned page and the label are blurred.</sub>
+**Current release: 0.6.0 Beta 1.** A beta: in daily use by its author, but keep your own backups.
 
-## Office
+<sub>Every screenshot here uses invented sample data: made-up people, generated pictures, sample documents.</sub>
 
-![Tetra Office: Words on a tablet with the ribbon on top, the Office home and Slides on a phone](Assets/screenshots/office-card.png)
+## New in 0.6 beta
 
-**Word, Excel, PowerPoint and PDF files, opened and edited on the device.** Words, Tables and Slides read and save
-Microsoft's and LibreOffice's files as they are, and the PDF viewer shows, searches, shares and prints. On a tablet
-each is laid out like the desktop programs: a real page with rulers, the slides in a sidebar, and the ribbon at the
-top while a mouse is in use (at the bottom for a finger). A phone gets the same tools in a layout of its own.
+- **Contacts**: your contacts as vCard files that sync, with faces from Photos, favourites, labels, birthdays in the
+  Calendar, duplicates merged, imports from the phone or Google.
+- **Phone**: Tetra can be the phone app. A keypad with search as you type, Recents, the call screen, hold, merge,
+  block and spam lookup, and calls from the computer through the phone, with a call bubble on the PC.
+- **Data**: what each app uses on mobile data and Wi-Fi, your plan's alerts and forecast, the hotspot, and Wi-Fi
+  signal, spots and drops, for the phone, tablet and computer together.
+- **Maps**: offline maps of Greece, search, places, routes by car, on foot and by bike, "Main roads" or "Shortest",
+  voice guidance and Android Auto.
+- **PDF editing**: notes, highlights, ink, stamps, forms, signatures, pages, passwords, true redaction and text
+  recognition (Greek and English).
+- **Settings** redesigned into categories with search; **Home edit mode** with three sizes per applet; an **icon for
+  every kind of file** and thumbnails for pictures and video.
+- **Every applet opens fast** (below).
 
-<table>
-  <tr>
-    <td><img src="Assets/screenshots/tablet-office.png" alt="The Office home on a tablet" width="400"></td>
-    <td><img src="Assets/screenshots/tablet-tables.png" alt="Tables editing a spreadsheet with a chart" width="400"></td>
-  </tr>
-  <tr align="center"><td>Office home: Favourites beside the recent documents</td><td>Tables, a formula and its chart</td></tr>
-  <tr>
-    <td><img src="Assets/screenshots/tablet-slides-notes.png" alt="Slides with the speaker notes under the slide" width="400"></td>
-    <td><img src="Assets/screenshots/tablet-pdf.png" alt="The PDF viewer" width="400"></td>
-  </tr>
-  <tr align="center"><td>Slides, the speaker notes under the slide</td><td>The PDF viewer</td></tr>
-</table>
+## The applets
 
-<table>
-  <tr>
-    <td><img src="Assets/screenshots/android-office.png" alt="The Office home on a phone" width="200"></td>
-    <td><img src="Assets/screenshots/android-words.png" alt="Words editing on a phone" width="200"></td>
-    <td><img src="Assets/screenshots/android-slides.png" alt="Slides editing on a phone" width="200"></td>
-    <td><img src="Assets/screenshots/android-system-folders.png" alt="System folders in Files" width="200"></td>
-  </tr>
-  <tr align="center"><td>Office (phone)</td><td>Words (phone)</td><td>Slides (phone)</td><td>System folders</td></tr>
-</table>
-
-![Presenting: the presenter view on the tablet, the slide on a second screen](Assets/screenshots/present-card.png)
-
-**Present to a TV or a projector** (HDMI or a cast screen). The slide goes to the second screen with its
-transitions, animations, ink and laser; the tablet shows the presenter view, with your notes in full or as a
-teleprompter that scrolls by itself, and pause. Speaker notes are written under each slide in Edit.
-
-<table>
-  <tr>
-    <td><img src="Assets/screenshots/tablet-system-folders.png" alt="System folders in Files on a tablet" width="400"></td>
-    <td><img src="Assets/screenshots/tablet-system-folders-choose.png" alt="Choosing the system folders" width="400"></td>
-  </tr>
-  <tr align="center"><td>System folders in Files</td><td>Files tools › System folders</td></tr>
-</table>
-
-## What it does
+![Office: Words, Tables, Slides and PDF](Assets/cards/card-office.jpg)
+![Photos](Assets/cards/card-photos.jpg)
+![Notes](Assets/cards/card-notes.jpg)
+![Calendar and Timer](Assets/cards/card-calendar.jpg)
+![Contacts and Phone](Assets/cards/card-people.jpg)
+![Maps](Assets/cards/card-maps.jpg)
+![Files](Assets/cards/card-files.jpg)
+![Data](Assets/cards/card-data.jpg)
 
 | | |
 |---|---|
-| **Photos** | Your camera photos and videos by week, month or year, with collections, favorites and folder albums. **People** (faces grouped on the phone), **Documents** (receipts and papers found for you), a map, search by place, date or label, an editor, and a **Hidden** vault that is encrypted. It can be the phone's default gallery. |
-| **Files** | A file manager for `/sdcard/Tetra`, with search, tags, favorites, folder colours, copy, move, rename and share. **System folders** (Music, Videos, Finance, Work, Travel, Books and more), each with its own picture, chosen in Files tools and kept the same on the computer. Move and Copy go one folder level at a time. Deleting goes to a Trash you can restore from. |
-| **Notes** | Text notes and checklists, with colours, labels, pins and a short history of each note. They sync with the desktop. |
-| **Scanner** | Scan paper documents to PDF. The page is found live in the camera (with an optional **auto capture**), straightened and cropped for you, with the letters deciding where each edge is cut. Then retake, crop and rotate, filters (fix lighting, sharpen ink, black and white, match pages), reorder, and paint over marks. Saves one multi-page PDF at 300 or 200 dpi into *Scanned Documents*. |
-| **Codes** | Point at a **QR code or barcode**: open it, copy it or share it. **Text** mode reads the text in a photo so you can copy it. Greek **RF payment codes** are recognised and checked, ready to paste into your bank's app. |
-| **Text editor** | A notepad for any text file: `.txt`, `.md`, `.html`, code. **Tabs** for the files open at once, which come back with their unsaved text. A **symbols row** for the characters a phone keyboard hides, and `</>` closes the last open HTML tag. Word wrap, and Windows line endings kept. Other apps can open text files in it with *Open with*. |
-| **Words** | Word documents (`.docx`; also `.doc`, `.odt` and `.rtf`) on a real page with rulers: the file's own styles, lists, tables, pictures, shapes and WordArt, headers and footers, footnotes, a table of contents, comments and tracked changes, and APA 7 citations with a reference list. Documents open view-only, with Edit to change them. A picture dragged in from another app goes in at the cursor. |
-| **Tables** | Spreadsheets (`.xlsx`, `.xls`, `.ods`, `.csv`) with their charts, pictures, comments, conditional formatting and Excel Tables. About 80 of Excel's functions are worked out. Editing has the fill handle, rows and columns, cut, copy and paste, and the Sum, Average and Count of the chosen cells. |
-| **Slides** | PowerPoint and Impress decks (`.pptx`, `.odp`) with their themes, transitions and animations. New slides from the deck's layouts, pictures and shapes moved with a finger, Design › Themes and your own templates, and speaker notes. **Presenting** fits the slide to any screen; with a second screen the tablet becomes the presenter view. A picture dragged in from another app lands on the slide it is dropped on. |
-| **PDF** | A viewer: the pages with thumbnails, search, share and print. |
-| **Office** | One home for all four: the newest documents of each kind, and Favourites (the same hearts as in Files). With a mouse and a keyboard the ribbon moves to the top and gets smaller, the right button opens a menu, and the usual shortcuts work. Other apps can open documents in Tetra with *Open with*. |
-| **Sync** | Pair once with the desktop by QR code. Each photo and file is checked by SHA-256 on arrival. Favorites, collections, people, tags and notes travel both ways. Rules per device: send only, both ways, or **Move** (keep a month on the phone, the rest lives on the computer). |
+| **Photos** | Timeline by week, month or year; collections, favourites and folder albums; **People** (faces grouped on the device), **Documents** (receipts and papers found for you), a map, search by place, date or label, an editor, and an encrypted **Hidden** vault. It can be the default gallery. |
+| **Files** | A file manager for `/sdcard/Tetra`: search, tags, favourites, folder colours, copy, move, rename, share, Trash, system folders, an icon for every kind of file. |
+| **Notes** | Notes and checklists with colours, labels, pins, history and keyboard shortcuts. |
+| **Office** | **Words** (`.docx`, `.doc`, `.odt`, `.rtf`) on a real page with rulers, styles, tables, pictures, comments, tracked changes and APA 7 citations. **Tables** (`.xlsx`, `.xls`, `.ods`, `.csv`) with charts and about 80 functions. **Slides** (`.pptx`, `.odp`) with themes, transitions, animations and a presenter view on a second screen. **PDF** with editing. Files open and save as themselves. |
+| **Calendar** | Plain iCalendar (`.ics`) files: day, week, month and agenda, repeats, reminders, birthdays, import and export. |
+| **Timer** | Timers that ring on every device, pinned on Home. |
+| **Maps** | OpenStreetMap on the device, search, saved places, lists and trips, routes and guidance, Android Auto. |
+| **Contacts** | vCard files with faces, favourites, labels and history. |
+| **Phone** | The dialer, Recents, the call screen, blocking and spam lookup, and calls from the computer. |
+| **Data** | Usage per app, plan alerts, the hotspot, Wi-Fi signal and drops. |
+| **Scanner** | Scan paper to PDF: the page found live, straightened and cropped, filters, reorder, 300 or 200 dpi. |
+| **Codes** | QR codes and barcodes, text in a photo, and Greek RF payment codes. |
+| **Text editor** | Tabs for any text file, a symbols row, word wrap, Windows line endings kept. |
 
-The full, authoritative list is in [FEATURES.md](FEATURES.md).
+The full list is in [FEATURES.md](FEATURES.md).
+
+## Phone, tablet and a big screen
+
+Every applet has a phone layout and a tablet layout. On a tablet, Office is laid out like the desktop programs:
+a real page with rulers and the ribbon, the slides in a sidebar, a mouse menu and the usual shortcuts.
+
+<table>
+  <tr>
+    <td><img src="Assets/cards/shot-phone-home.jpg" alt="Home on a phone" width="190"></td>
+    <td><img src="Assets/cards/shot-phone-calendar.jpg" alt="Calendar agenda on a phone" width="190"></td>
+    <td><img src="Assets/cards/shot-phone-contacts.jpg" alt="Contacts on a phone" width="190"></td>
+    <td><img src="Assets/cards/shot-phone-timer.jpg" alt="Timer on a phone" width="190"></td>
+  </tr>
+</table>
+
+![Calendar month view on a large screen](Assets/cards/shot-big-calendar.jpg)
+
+## Fast
+
+![Every applet opens in a blink](Assets/cards/card-speed.jpg)
+
+This release went through every applet, one by one, with the same recipe: nothing is read or worked out on the
+screen's thread while it draws; the list shows first and side work comes after; read-ahead starts after Home's first
+frame; small indexes in the app's cache mean a restart does not read every file again; and lists are made for
+thousands of items, so Tetra left open for months does not grow. The build installed on devices is no longer
+debuggable, which alone made Compose several times faster.
+
+| On a Xiaomi 15, until the screen shows its content | before | now |
+|---|---|---|
+| Contacts, opened right after Tetra starts | 3.3 s | 0.19 s |
+| Phone, opened right after Tetra starts | 2.3–2.8 s | 0.25 s |
+| Tetra's start to its first frame | 924 ms | 157–253 ms |
+| Home's first frame | 519–586 ms | 83–100 ms |
+| Data | 2353–2426 ms | 157–194 ms |
+| Notes | 348–407 ms | 45–66 ms |
+| Calendar | 268–291 ms | 32–35 ms |
+| Photos (tapped at once) | 619–667 ms | 266–375 ms |
+| Office home | 711–881 ms | 59–65 ms |
+| Files | 159–173 ms | 37–49 ms |
+| Timer | 226–246 ms | 38–52 ms |
+| Contacts | 157–218 ms | 32–38 ms |
+
+On a tablet with 218 notes, Notes opened in about 450 ms instead of 1000 ms before the build change, and in about
+90 ms after it.
+
+## Sync with your computer
+
+![Sync without a server](Assets/cards/card-sync.jpg)
+
+Pair once with [Tetra for the desktop](https://github.com/kalotrapezis/Drive) by QR code. Photos, files, notes,
+calendars, contacts, places, timers and the phone's calls travel over your own network. Each file is checked by
+SHA-256 on arrival. Rules per device: send only, both ways, or **Move** (keep a month on the phone, the rest lives on
+the computer). The design and every rule's reason are in [SYNC_PLAN.md](SYNC_PLAN.md).
 
 ## Safety rules
 
@@ -102,12 +127,18 @@ The full, authoritative list is in [FEATURES.md](FEATURES.md).
 - **A copy counts only once it is verified.** A photo can leave the phone (Move) only after the computer has
   confirmed it holds the same bytes.
 - **Files never leave `/sdcard/Tetra`.** Every path is checked against it.
-- Camera, media and location permissions are asked for only where they are used.
+- **Nothing is sent to anyone else.** No account, no analytics, no ads. Permissions are asked for only where they
+  are used.
 
 ## Install
 
-Download the APK from [Releases](https://github.com/kalotrapezis/Drive-Android/releases) (`arm64-v8a` for nearly
-every recent phone). Android 11 or newer.
+<a href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.1/Tetra-0.6.0-beta.1-arm64.apk"><img src="Assets/buttons/download-android.png" alt="Download Tetra for Android (APK)" width="440"></a>
+
+Download the APK from [Releases](https://github.com/kalotrapezis/Drive-Android/releases) (`arm64` for nearly every
+phone from the last few years) and open it; Android asks once to allow installs from your browser. Android 11 or
+newer. Updates install over the old version and keep everything.
+
+For your computer: [Tetra for the desktop](https://github.com/kalotrapezis/Drive) (AppImage or .deb).
 
 ## Build
 
@@ -129,13 +160,11 @@ name on purpose: changing it would make every existing install a different app.
 |---|---|
 | [FEATURES.md](FEATURES.md) | What is implemented now, per module |
 | [SYNC_PLAN.md](SYNC_PLAN.md) | Sync design and every rule's reason (the same file in both repos) |
-| [HANDOFF.md](HANDOFF.md) | Where work stands, newest first |
-| [DOCUMENT_SCANNER.md](DOCUMENT_SCANNER.md) | Scanner pipeline and rules |
-| [AI_COLLECTIONS_ARCHITECTURE.md](AI_COLLECTIONS_ARCHITECTURE.md) | People and Documents analysis on the device |
-| [MANUAL_CHECKLIST.md](MANUAL_CHECKLIST.md) | Acceptance steps on a real device |
+| [Plan.md](Plan.md) | The work plan and its measurements |
+| [HANDOFF.md](HANDOFF.md) | Where work stands |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Bundled models and library licences |
 
-## Branches
+## Licence
 
-- `main`: releases.
-- `alpha`, `bidirectional-sync`: development.
+Tetra is free software, and will stay free. See [LICENSE](LICENSE) and, for the libraries it bundles (MuPDF under
+the AGPL 3.0 among them), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

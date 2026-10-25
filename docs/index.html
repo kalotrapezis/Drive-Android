@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tetra</title>
+<meta name="description" content="Tetra: one private super app for your phone, tablet and computer. Photos, files, notes, Office, calendar, maps, contacts, calls and data, synced over your own Wi-Fi. Free software.">
+<meta property="og:title" content="Tetra">
+<meta property="og:description" content="One private super app for your phone, tablet and computer. Nothing leaves your devices.">
+<meta property="og:image" content="img/tetra-hero.jpg">
+<link rel="icon" href="img/tetra.png">
+<style>
+  :root { --bg: #0f1113; --card: #191c20; --line: #2a2e34; --text: #f4f6f8; --muted: #b0b7c0;
+          --teal: #04d5cc; --phone: #02505b; --violet: #822ad1; --blue: #177bfc; --pink: #f41879; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 system-ui, "Noto Sans", "Segoe UI", sans-serif; }
+  a { color: var(--teal); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  header { padding: 56px 0 24px; text-align: center;
+           background: radial-gradient(900px 420px at 80% -10%, #0d4d6b 0%, transparent 70%), radial-gradient(700px 400px at 0% 110%, #4a1030 0%, transparent 70%); }
+  header img.logo { width: 88px; height: 88px; }
+  h1 { font-size: clamp(40px, 7vw, 72px); margin: 8px 0 4px; letter-spacing: -1px; }
+  .lead { font-size: clamp(18px, 2.4vw, 22px); color: var(--muted); max-width: 760px; margin: 0 auto 28px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin: 0 0 32px; }
+  .btn { display: flex; align-items: center; gap: 14px; padding: 14px 22px 14px 14px; border-radius: 22px; color: #fff;
+         text-decoration: none; min-width: 270px; transition: transform .15s, filter .15s; }
+  .btn:hover { transform: translateY(-2px); filter: brightness(1.12); }
+  .btn img { width: 52px; height: 52px; border-radius: 13px; }
+  .btn b { display: block; font-size: 20px; } .btn span { font-size: 14px; opacity: .85; }
+  .android { background: var(--phone); } .appimage { background: var(--violet); } .deb { background: var(--blue); }
+  .hero { width: 100%; border-radius: 22px; display: block; border: 1px solid var(--line); }
+  section { padding: 48px 0 8px; }
+  h2 { font-size: clamp(28px, 4vw, 40px); margin: 0 0 8px; }
+  section > .wrap > p { color: var(--muted); max-width: 780px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 18px; margin-top: 22px; }
+  .grid img, .wide { width: 100%; border-radius: 18px; display: block; border: 1px solid var(--line); }
+  .pills { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; padding: 0; list-style: none; }
+  .pills li { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 15px; }
+  table { border-collapse: collapse; width: 100%; max-width: 720px; margin-top: 18px; font-size: 15px; }
+  td, th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; } td:last-child { color: var(--teal); font-weight: 700; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; margin-top: 22px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px; }
+  .panel h3 { margin: 0 0 6px; font-size: 24px; } .panel p { color: var(--muted); margin: 0 0 16px; }
+  .panel .btn { min-width: 0; margin-top: 10px; }
+  footer { color: #7d858f; font-size: 14px; padding: 48px 0 40px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <img class="logo" src="img/tetra.png" alt="">
+    <h1>Tetra</h1>
+    <p class="lead">One private super app for your phone, tablet and computer. Photos, files, notes, Office, calendar,
+      timers, maps, contacts, calls and data, synced over your own Wi-Fi. Nothing leaves your devices.</p>
+    <div class="buttons">
+      <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.1/Tetra-0.6.0-beta.1-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Download for Android</b><span>APK · 0.6.0 beta 1 · Android 11+</span></div></a>
+      <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.21/Tetra-0.6.0-beta.21.AppImage"><img src="img/tetra.png" alt=""><div><b>Linux AppImage</b><span>0.6.0 beta 21 · any distro</span></div></a>
+      <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.21/local-drive-desktop_0.6.0-beta.21_amd64.deb"><img src="img/tetra.png" alt=""><div><b>Linux .deb</b><span>Debian, Ubuntu, Mint</span></div></a>
+    </div>
+    <img class="hero" src="img/tetra-hero.jpg" alt="Tetra on a computer, a tablet and a phone">
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>A dozen apps, one place, your devices</h2>
+    <p>Each applet opens from Home and shares one folder. The same applets run on Android phones and tablets and on
+      Linux. Faces, labels, text recognition, maps and routes are worked out on the device: no account, no server,
+      no analytics, no ads. Tetra is free software and will stay free.</p>
+    <ul class="pills"><li>Photos</li><li>Files</li><li>Notes</li><li>Words</li><li>Tables</li><li>Slides</li><li>PDF</li><li>Calendar</li><li>Timer</li><li>Maps</li><li>Contacts</li><li>Phone</li><li>Data</li><li>Scanner</li><li>Codes</li><li>Text editor</li></ul>
+    <div class="grid">
+      <img src="img/card-office.jpg" alt="Office: Word, Excel, PowerPoint and PDF" loading="lazy">
+      <img src="img/card-photos.jpg" alt="Photos" loading="lazy">
+      <img src="img/card-calendar.jpg" alt="Calendar and timers" loading="lazy">
+      <img src="img/card-people.jpg" alt="Contacts and calls" loading="lazy">
+      <img src="img/card-maps.jpg" alt="Offline maps" loading="lazy">
+      <img src="img/card-notes.jpg" alt="Notes and checklists" loading="lazy">
+      <img src="img/card-files.jpg" alt="Files" loading="lazy">
+      <img src="img/card-data.jpg" alt="Data, Wi-Fi and signal" loading="lazy">
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Fast, on purpose</h2>
+    <p>Every applet was measured and reworked: nothing is read while a screen draws, small indexes in the cache,
+      read-ahead after Home's first frame, lists made for thousands of items.</p>
+    <img class="wide" src="img/card-speed.jpg" alt="Every applet opens in a blink" loading="lazy">
+    <table>
+      <tr><th>On a Xiaomi 15</th><th>before</th><th>now</th></tr>
+      <tr><td>Contacts, right after start</td><td>3.3 s</td><td>0.19 s</td></tr>
+      <tr><td>Phone, right after start</td><td>2.3–2.8 s</td><td>0.25 s</td></tr>
+      <tr><td>Data</td><td>2.4 s</td><td>0.16–0.19 s</td></tr>
+      <tr><td>Notes (218 notes, tablet)</td><td>~1000 ms</td><td>~450 ms, then ~90 ms</td></tr>
+      <tr><td>Desktop Photos, opened again</td><td>741 ms</td><td>71 ms</td></tr>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Sync without a server</h2>
+    <img class="wide" src="img/card-sync.jpg" alt="Sync without a server" loading="lazy">
+    <div class="two">
+      <div class="panel">
+        <h3>Tetra for Android</h3>
+        <p>Phone and tablet, with a layout for each. Office on a tablet looks like the desktop programs.</p>
+        <a href="https://github.com/kalotrapezis/Drive-Android">Read more on GitHub</a>
+        <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.1/Tetra-0.6.0-beta.1-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Download APK</b><span>0.6.0 beta 1</span></div></a>
+      </div>
+      <div class="panel">
+        <h3>Tetra for the desktop</h3>
+        <p>Linux, in the tray, always ready for your phone. Photos, files, notes, calendar, maps, contacts and calls.</p>
+        <a href="https://github.com/kalotrapezis/Drive">Read more on GitHub</a>
+        <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.21/Tetra-0.6.0-beta.21.AppImage"><img src="img/tetra.png" alt=""><div><b>AppImage</b><span>0.6.0 beta 21</span></div></a>
+        <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.21/local-drive-desktop_0.6.0-beta.21_amd64.deb"><img src="img/tetra.png" alt=""><div><b>.deb</b><span>0.6.0 beta 21</span></div></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">Tetra is free software. Screenshots use invented sample data.
+    Source: <a href="https://github.com/kalotrapezis/Drive-Android">Android</a> · <a href="https://github.com/kalotrapezis/Drive">desktop</a></div>
+</footer>
+</body>
+</html>

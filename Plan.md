@@ -12,6 +12,15 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [x] (github session, 25 Oct) **Tetra on GitHub** (the user: "make new cards … a nice landing page with a download
+      button … the same for the desktop app … a GitHub page"). Before the push, the unpushed history of both repos
+      (261 + 78 commits) was rewritten so no personal data goes public: the house's address and position, the village,
+      the schools, a nephew's birthday, a name from Photos and a few real fixes became invented ones (in files and
+      commit messages; the old history is only local, `refs/backup/pre-scrub-main-20261025`). Three Maps tests that
+      drive on the user's own map data (and one desktop test) are skipped now; put real places back locally to run them.
+      READMEs of both repos are landing pages with cards (Assets/cards, made on a fresh emulator `tetra_shots` and the
+      desktop from source, all sample data invented), download buttons, the speed tables; docs/ is the Pages site.
+      Releases: Android v0.6.0-beta.1 (release key), desktop desktop-v0.6.0-beta.21.
 - [x] (contacts-lazy session, 25 Oct; merged 440a754 / Drive f5b008c) Contacts and
       the Phone open at once (the user: "slow, taps don't answer until it's all ready"). Read ahead when Tetra opens: the
       favourites and the first screenful first (their faces made small at once, ContactThumbs), then everyone; sorting,

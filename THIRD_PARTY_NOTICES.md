@@ -54,3 +54,30 @@ Camera capture uses AndroidX CameraX, licensed under Apache License 2.0.
 in LibreOffice's custom-shape notation. LibreOffice is licensed under the Mozilla Public License 2.0, which allows
 this file to be combined with GPL 2.0 or later code: https://www.mozilla.org/MPL/2.0/ — source:
 https://git.libreoffice.org/core/+/refs/heads/master/oox/source/drawingml/customshapes/
+
+## MuPDF
+
+The PDF applet draws, edits and saves PDFs with MuPDF 1.28.5 (`com.artifex.mupdf:fitz`), © Artifex Software,
+licensed under the GNU Affero General Public License 3.0: https://mupdf.com/licensing — Tetra's source is published
+here, as that licence asks.
+
+## Tesseract
+
+PDF › Recognize text uses Tesseract through Tesseract4Android 4.8.0, with the Greek and English `tessdata` models
+in `app/src/main/assets/tessdata`, all under the Apache License 2.0: https://github.com/adaptech-cz/Tesseract4Android,
+https://github.com/tesseract-ocr/tessdata_fast
+
+## GraphHopper
+
+Maps' car, walk and bike routes are worked out on the device with GraphHopper 10.2 (`com.graphhopper:graphhopper-core`),
+Apache License 2.0: https://github.com/graphhopper/graphhopper
+
+## ZXing and TensorFlow Lite
+
+QR codes are drawn with ZXing 3.5.3 and on-device models run on TensorFlow Lite 2.16.1 (with the Task Vision
+library 0.4.4), all under the Apache License 2.0: https://github.com/zxing/zxing, https://github.com/tensorflow/tensorflow
+
+## Noto Sans (map labels)
+
+`app/src/main/assets/maps/fonts` holds Noto Sans glyphs for the map's labels, under the SIL Open Font License 1.1
+(`app/src/main/assets/maps/fonts-OFL.txt`).

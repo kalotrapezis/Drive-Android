@@ -114,6 +114,7 @@ internal object TimerFiles {
         val part = File(dir, ".${to.name}.part")
         part.writeText(r.json())
         check(part.renameTo(to)) { "Could not save the timer." }
+        to.setLastModified(System.currentTimeMillis()) // its time is now: the phone's storage keeps a renamed-over file's first date, and sync's hash cache goes by size and date
         return r.copy(file = to)
     }
 

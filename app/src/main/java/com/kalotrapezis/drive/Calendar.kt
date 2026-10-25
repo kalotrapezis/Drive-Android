@@ -404,6 +404,7 @@ object CalendarFiles {
         val tmp = File(file.parentFile, ".${file.name}.part")
         tmp.writeText(ICal.write(all))
         if (!tmp.renameTo(file)) { file.writeText(tmp.readText()); tmp.delete() }
+        file.setLastModified(System.currentTimeMillis()) // its time is now: the phone's storage keeps a renamed-over file's first date, and sync's hash cache goes by size and date
         return read(file)
     }
 
@@ -440,6 +441,7 @@ object CalendarFiles {
         val tmp = File(file.parentFile, ".${file.name}.part")
         tmp.writeText(ICal.write(comps))
         if (!tmp.renameTo(file)) { file.writeText(tmp.readText()); tmp.delete() }
+        file.setLastModified(System.currentTimeMillis()) // its time is now: the phone's storage keeps a renamed-over file's first date, and sync's hash cache goes by size and date
         return read(file)
     }
 

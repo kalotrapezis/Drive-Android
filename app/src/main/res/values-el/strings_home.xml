@@ -280,7 +280,7 @@
     <string name="settings_shortest">Συντομότερη</string>
     <string name="settings_directions">Οδηγίες</string>
     <string name="settings_directions_note">Η φωνή είναι η μετατροπή κειμένου σε ομιλία του Android· οι φωνές της βρίσκονται στις ρυθμίσεις του Android.</string>
-    <string name="settings_directions_in_summary">Οι λέξεις στην οθόνη και η φωνή</string>
+    <string name="settings_directions_in_summary">Οι οδηγίες στις στροφές και η φωνή</string>
     <string name="settings_greek">Ελληνικά</string>
     <string name="settings_english">Αγγλικά</string>
     <string name="settings_no_english_voice">Δεν υπάρχει αγγλική φωνή: προσθέστε τη στις ρυθμίσεις φωνής του Android.</string>

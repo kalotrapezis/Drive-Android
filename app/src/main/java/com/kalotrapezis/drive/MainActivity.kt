@@ -1106,7 +1106,7 @@ private fun Home(
                     // four tiles as Office's (the user, 18 Oct: "New : Shedule : burthday : reminder"), each the editor for its kind
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         listOf(listOf(NewKind.Event, NewKind.Schedule), listOf(NewKind.Birthday, NewKind.Reminder)).forEach { row ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeTile(k.label, k.icon, lookTint(Color(0xFFF77FB3), Color(0xFFC2185B)), Modifier.weight(1f)) { newEvent(k) } } }
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { k -> HomeTile(stringResource(k.text), k.icon, lookTint(Color(0xFFF77FB3), Color(0xFFC2185B)), Modifier.weight(1f)) { newEvent(k) } } }
                         }
                     }
                 }

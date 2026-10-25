@@ -200,4 +200,8 @@
         <item quantity="one">%1$d διόδιο</item>
         <item quantity="other">%1$d διόδια</item>
     </plurals>
+    <string name="maps_installed_map">Χάρτης της Ελλάδας</string>
+    <string name="maps_installed_routing">Διαδρομές (αυτοκίνητο, πόδια, ποδήλατο)</string>
+    <string name="maps_installed_places">Αποθηκευμένα μέρη</string>
+    <string name="maps_installed_not_yet">δεν υπάρχει ακόμα</string>
 </resources>

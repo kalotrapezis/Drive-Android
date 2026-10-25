@@ -200,4 +200,8 @@
         <item quantity="one">%1$d toll</item>
         <item quantity="other">%1$d tolls</item>
     </plurals>
+    <string name="maps_installed_map">Map of Greece</string>
+    <string name="maps_installed_routing">Routing (car, walk, bike)</string>
+    <string name="maps_installed_places">Saved places</string>
+    <string name="maps_installed_not_yet">not here yet</string>
 </resources>

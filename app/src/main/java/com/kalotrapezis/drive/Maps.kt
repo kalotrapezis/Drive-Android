@@ -172,14 +172,14 @@ internal object MapsFiles {
     fun delete(root: File, p: Place) = files(root, p.id).forEach { trash(root, it) }
 
     /** What is in Tetra/Maps, for Settings: the map and the routing, each with its size and date. */
-    fun installed(root: File): List<Pair<String, String>> {
-        val day = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.ENGLISH)
-        fun about(f: File, size: Long) = if (!f.exists()) "not here yet" else
+    fun installed(context: android.content.Context, root: File): List<Pair<String, String>> {
+        val day = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.getDefault())
+        fun about(f: File, size: Long) = if (!f.exists()) context.getString(R.string.maps_installed_not_yet) else
             "${size / 1_000_000} MB, ${java.time.Instant.ofEpochMilli(f.lastModified()).atZone(java.time.ZoneId.systemDefault()).format(day)}"
         val g = graph(root)
-        return listOf("Map of Greece" to about(map(root), map(root).length()),
-            "Routing (car, walk, bike)" to about(File(g, "properties"), g.listFiles().orEmpty().sumOf { it.length() }),
-            "Saved places" to "${places(root).size}")
+        return listOf(context.getString(R.string.maps_installed_map) to about(map(root), map(root).length()),
+            context.getString(R.string.maps_installed_routing) to about(File(g, "properties"), g.listFiles().orEmpty().sumOf { it.length() }),
+            context.getString(R.string.maps_installed_places) to "${places(root).size}")
     }
 
     fun lists(root: File): List<PlaceList> = File(root, LISTS).listFiles().orEmpty()

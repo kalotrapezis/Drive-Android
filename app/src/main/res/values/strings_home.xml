@@ -280,7 +280,7 @@
     <string name="settings_shortest">Shortest</string>
     <string name="settings_directions">Directions</string>
     <string name="settings_directions_note">The voice is Android\'s text-to-speech; its voices are in Android\'s settings.</string>
-    <string name="settings_directions_in_summary">The words on the screen and the voice</string>
+    <string name="settings_directions_in_summary">The turn-by-turn words and the voice</string>
     <string name="settings_greek">Greek</string>
     <string name="settings_english">English</string>
     <string name="settings_no_english_voice">No English voice: add it in Android\'s voice settings.</string>

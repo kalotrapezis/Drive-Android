@@ -383,9 +383,9 @@ How to write here:
       (~160 km; farther, the shortest way), phone, Android Auto (⚙ › Roads) and desktop (beside Car). MapsMainRoadsTest:
       Σκάλα 11.7 km/17 min no track, My Market 11.1 km on secondary. Road surface and slope are not in the graph (a rebuild
       would add them). Default Main roads (the user: yes). On the phone 24 Oct (phone-install.sh, Android Auto re-approved); not merged.
-- [x] (data-plan session, 25 Oct, branch claude/data-plan) **Data** planned (§ Data): Setup, usage and the plan (fair use, roaming
+- [x] (data-plan session, 25 Oct, branch claude/data-plan; Drive branch `data`) **Data** planned and built, steps 2–8 (§ Data); not merged, not on the devices yet. Planned: Setup, usage and the plan (fair use, roaming
       day pass), live speed, three devices and the hotspot, Wi-Fi meter with Spots, signal drops; other apps checked; the house
-      map explained, not built; battery set aside by the user. Nothing built; the user answered most questions 25 Oct.
+      map explained, not built; battery set aside by the user; the user answered most questions 25 Oct.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode
@@ -3041,17 +3041,42 @@ Send log.
 ### Steps (each a commit; checked on the emulator as built, the real phone and tablet at the end)
 - [ ] 1. Look on the real devices first (read-only, adb): how many days of history the Xiaomi keeps, Usage access's page on
    HyperOS, `UID_TETHERING` while the hotspot is on, the telephony callbacks' values (4G/5G, levels), RTT support
-   (`FEATURE_WIFI_RTT`) and whether the router answers RTT.
-- [ ] 2. Setup and usage: the Setup pages, Usage access with its disclosure, the plan (three kinds), the numbers, the chart,
-   per app, Settings › Data, the warnings (callback + hourly look), roaming (day pass, turn-off reminders), carrier offset,
-   stopwatch.
-- [ ] 3. Live speed (status-bar icon, screen on only, in the listening notification when it runs).
-- [ ] 4. The files and sync: Tetra/Data, scope `data`, the tablet's own counts and its hotspot hours.
-- [ ] 5. Desktop: counters, the hourly file, the Data page with the three devices; the hotspot box.
-- [ ] 6. Signal: the meter, sound mode, Spots and rounds, phone-as-hotspot reports, Around + channel rating, speed to the PC.
-- [ ] 7. Drops: phone (mobile and Wi-Fi), tablet (Wi-Fi), PC (Wi-Fi, the hotspot); the list and the marks under the chart.
-- [ ] 8. Home's Data group and the icon (Assets/DataMeter.png, the mask above).
-- [ ] 9. On the real phone, tablet and PC (tools/phone-install.sh), a cycle's numbers next to Nova's.
+   (`FEATURE_WIFI_RTT`) and whether the router answers RTT. — no device was connected (25 Oct); with step 9.
+- [x] 2. (data-plan session, 25 Oct; Drive-Android branch claude/data-plan) Setup and usage: `Data.kt` (plan, cycles, status,
+   files), `DataStats.kt` (NetworkStats → Tetra/Data/usage/<month>.<device>.jsonl hourly through SyncJob's job 4150, the
+   first look back over the months Android kept; warnings 50/80/100 % and the day's budget; roaming notices with Android's
+   data-roaming page; the 50 MB usage callback while Tetra lives), `DataScreen.kt` (DataActivity: Setup's ten pages, Usage
+   with the ring, Day/Week/Cycle/Month/Year charts whose axis is a round step over the tallest bar, ‹ › through time, tap a
+   bar for its apps, an app's page with foreground/background and Android's settings for it; Devices; ⋯ = Setup, live
+   speed, stopwatch, Android's data settings), Settings › Data. Emulator: Setup walked through (Usage access's page opened
+   and ticked itself on return), Android's own counts read back to 16 Oct, the charts, "Data: 50 % used" with a 100 KB test
+   plan. **Not on the emulator**: the roaming notices (`gsm data roaming` did not make it roaming) — on the phone, abroad.
+   Android's Data usage said 424 kB mobile for 16 Oct–; Tetra 439 KB (Tetra counts every UID, tethering included).
+- [x] 3. Live speed (`DataSpeed.kt`): the status bar's icon (↓ big, ↑ small) once a second while the screen is on. **Its own
+   low notification**: the listening one is "min", and Android shows no status-bar icon for those, so they could not be
+   one. Emulator: the icon drawn and updating (↑59B seen).
+- [x] 4. The files and sync: scope `data` (DriveScope, its waiting job 4151, desktop files.js SCOPES and APP_FOLDERS), Data
+   hidden in Files on both. **The hotspot's share without logging intervals**: Android marks a Wi-Fi that is a phone's
+   hotspot as metered (the hotspot says so over DHCP), and its statistics keep that: the tablet's `via` = its metered Wi-Fi
+   bytes. NetworkManager does the same on the PC (seen 25 Oct: `GENERAL.METERED: yes (guessed)` on "Xiaomi 15").
+   Shortcut: Tetra's own sync over the hotspot is not subtracted yet (it is in the clients' counts).
+- [x] 5. (Drive branch `data`) Desktop: `datacount.js` (each minute /sys/class/net counters → this computer's month file,
+   written every ten minutes and only once plan.json exists; Wi-Fi from `iw`; drops and "off the phone's hotspot"; sync's
+   /data/wifi and /data/speed), `src/Data.tsx` (the plan, 30 days of all devices, this cycle by device, the hotspot box with
+   who used most and the difference, this computer's Wi-Fi now, the drops). `test/datacount.test.js`; desktop 139/139, tsc
+   clean; the page rendered with sample files (scripts/shot.js, a separate profile). The devices show by model code
+   (25010PN30G) — friendly names later.
+- [x] 6. Signal (`DataSignal.kt`): the meter (dBm, words, the 2-minute line, sound mode), Spots with rounds and the best round,
+   speed to the computer, "Phone as hotspot" (the computer's own reading every 2 s; **the tablet cannot report to the phone**:
+   it is paired only with the computer, and the hotspot keeps the computer and the tablet apart — the tablet shows its own),
+   Around (scan, the least crowded channel, your own network left out, RTT marked). Emulator: the meter, a scan, a spot saved.
+- [x] 7. Drops: Android's callbacks (mobile data lost, no service, no signal ≥ 30 s, a fall to 3G/2G; Wi-Fi lost and back
+   within 10 min, very weak ≥ 30 s), the PC's own; listed in Signal and on the desktop page; a daily summary (off). Not
+   marked under the chart (yet). Nothing to see on the emulator (no drops); the real phone will show.
+- [x] 8. Home's Data group (the art, the plan at a glance, Devices, Signal, Drops) and the icon: tools/applet-icons.py cuts
+   Data.png's dark corners with a rounded-square mask; launcher background #17191D; Settings › App icons: Tetra Data.
+   Emulator: light and dark, phone and tablet width. Unit suite 644, 0 failing, 9 skipped (DataTest, DataSignalTest).
+- [ ] 9. On the real phone, tablet and PC (tools/phone-install.sh), a cycle's numbers next to Nova's. Waits for the user.
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

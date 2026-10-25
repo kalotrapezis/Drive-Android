@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.MANAGE_MEDIA" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Calendar reminders on time: a calendar app's own exact alarms (Android 13+), the asked-for kind before -->
@@ -37,6 +37,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Data: how much each app used (the user turns on Usage access in Android's settings; Plan.md § Data) -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <!-- Data names the apps by their icons in the launcher; not QUERY_ALL_PACKAGES (Play restricts it) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
     <application android:allowBackup="false" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:largeHeap="true" android:label="@string/app_name" android:supportsRtl="true" android:theme="@style/Theme.LocalDrive">
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -80,6 +89,7 @@
             <!-- the call log: what Android opens from a missed-call notification -->
             <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="vnd.android.cursor.dir/calls" /></intent-filter>
         </activity>
+        <activity android:name=".DataActivity" android:exported="false" android:label="Tetra Data" android:taskAffinity="com.kalotrapezis.drive.data" />
         <receiver android:name=".PhoneCallReceiver" android:exported="false" />
         <receiver android:name=".PhoneRelayReceiver" android:exported="false" />
         <!-- Android's missed-call notice, handed to the phone app; only Telecom (it holds MODIFY_PHONE_STATE) may send it -->
@@ -95,6 +105,10 @@
         <!-- The Timer while one runs: its countdown notification, the alarm at the end, the 30 s look at the other devices -->
         <service android:name=".TimerService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Countdown timer the user started, kept in step with their other devices" />
+        </service>
+        <!-- Data's live speed in the status bar, while the user has it on (Plan.md § Data) -->
+        <service android:name=".DataSpeedService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Shows the network speed in the status bar, which the user switched on" />
         </service>
         <!-- Listening for the paired computer with the app closed: its syncs, and desktop Maps asking where the phone is -->
         <service android:name=".SyncListenService" android:exported="false" android:foregroundServiceType="specialUse|location">
@@ -160,6 +174,9 @@
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
         <activity-alias android:name=".AppPhone" android:targetActivity=".PhoneActivity" android:enabled="false" android:exported="true" android:label="Tetra Phone" android:icon="@mipmap/applet_phone" android:roundIcon="@mipmap/applet_phone">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".AppData" android:targetActivity=".DataActivity" android:enabled="false" android:exported="true" android:label="Tetra Data" android:icon="@mipmap/applet_data" android:roundIcon="@mipmap/applet_data">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
         <!-- Calendar: an .ics from any app (Open with › Tetra Calendar) is imported -->

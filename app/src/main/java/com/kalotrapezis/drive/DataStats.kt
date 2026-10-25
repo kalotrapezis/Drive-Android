@@ -1,0 +1,296 @@
+package com.kalotrapezis.drive
+
+import android.app.AppOpsManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.job.JobInfo
+import android.app.job.JobScheduler
+import android.app.usage.NetworkStats
+import android.app.usage.NetworkStatsManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.os.Process
+import android.provider.Settings
+import android.telephony.TelephonyManager
+import androidx.core.app.NotificationCompat
+import java.io.File
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+
+/**
+ * Data's counts (Plan.md § Data): Android's own per-app network statistics (NetworkStatsManager, with the user's Usage
+ * access) copied hourly into this device's files in Tetra/Data/usage, so the history outlives Android's ~90 days and the
+ * computer and the tablet see it; then the plan's warnings and the roaming notices.
+ */
+internal object DataStats {
+    const val JOB = 4150
+    private const val CHANNEL = "data_warnings"
+    private const val BUCKET = 2 * 3600_000L // Android keeps per-app counts in 2-hour buckets
+    private const val KEEP_DAYS = 85L // older days are kept as the files have them: Android has forgotten them
+    private val HOUR = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH")
+
+    fun hasAccess(c: Context): Boolean {
+        val ops = c.getSystemService(AppOpsManager::class.java) ?: return false
+        val mode = ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), c.packageName)
+        return if (mode == AppOpsManager.MODE_DEFAULT) c.checkSelfPermission(android.Manifest.permission.PACKAGE_USAGE_STATS) == PackageManager.PERMISSION_GRANTED
+            else mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    /** Data is in use here once it is set up or may count: only then does Tetra watch, look hourly, and write Tetra/Data. */
+    fun inUse(c: Context) = hasAccess(c) || DataFiles.plan() != null
+
+    /** Everything Data runs in the background, started when Tetra opens or its listening service starts. */
+    fun startAll(c: Context) {
+        if (!inUse(c)) return
+        schedule(c); watchUsage(c); DataSignal.watch(c); DataSpeed.start(c)
+    }
+
+    fun accessIntent(c: Context) = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, android.net.Uri.fromParts("package", c.packageName, null))
+
+    private fun prefs(c: Context) = c.getSharedPreferences("data", Context.MODE_PRIVATE)
+
+    /** The hourly look, every hour Android lets it run (no network needed). */
+    fun schedule(c: Context) {
+        val jobs = c.getSystemService(JobScheduler::class.java) ?: return
+        if (jobs.getPendingJob(JOB) != null) return
+        jobs.schedule(JobInfo.Builder(JOB, ComponentName(c, SyncJob::class.java)).setPeriodic(3600_000L).setPersisted(true).build())
+    }
+
+    private fun floorBucket(t: Long) = t - Math.floorMod(t, BUCKET)
+    private fun at(d: LocalDate, zone: ZoneId) = d.atStartOfDay(zone).toInstant().toEpochMilli()
+
+    private data class Uid(var fg: Long = 0, var bg: Long = 0, var roam: Long = 0, var metered: Long = 0)
+
+    /** A query's buckets: each one's UID, bytes, foreground and roaming. */
+    private inline fun each(s: NetworkStats?, f: (NetworkStats.Bucket) -> Unit) {
+        s ?: return
+        val b = NetworkStats.Bucket()
+        try { while (s.hasNextBucket()) { s.getNextBucket(b); f(b) } } finally { s.close() }
+    }
+
+    private fun name(c: Context, uid: Int): Pair<String, String> = when (uid) {
+        NetworkStats.Bucket.UID_TETHERING -> "hotspot" to "Hotspot"
+        NetworkStats.Bucket.UID_REMOVED -> "removed" to "Removed apps"
+        Process.SYSTEM_UID, 0 -> "android" to "Android system"
+        else -> {
+            val pm = c.packageManager
+            val pkg = pm.getPackagesForUid(uid)?.firstOrNull()
+            // an app with no icon in the launcher is hidden from Tetra (no QUERY_ALL_PACKAGES): Android may still say its name
+            if (pkg == null) (if (uid < Process.FIRST_APPLICATION_UID) "android" to "Android system" else pm.getNameForUid(uid)?.let { it.substringBefore(':') to it.substringBefore(':') } ?: ("uid:$uid" to "Other apps"))
+            else pkg to (runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg))
+        }
+    }
+
+    /** Roaming countries this device saw, by day (the events), for the day pass. */
+    private fun roamingOutsideEu(events: List<DataEvent>, zone: ZoneId): Set<LocalDate> = events.filter { it.kind == "roaming" && it.note.isNotEmpty() && !DataRules.inEu(it.note) }
+        .mapNotNull { runCatching { java.time.OffsetDateTime.parse(it.at).atZoneSameInstant(zone).toLocalDate() }.getOrNull() }.toSet()
+
+    /** One day from Android's counts: [s]..[e] snapped to its buckets, so none is lost between two days. */
+    private fun day(c: Context, nsm: NetworkStatsManager, d: LocalDate, zone: ZoneId, now: Long, outsideEu: Set<LocalDate>): Pair<DataDay, List<DataApp>> {
+        val s = floorBucket(at(d, zone))
+        val e = minOf(floorBucket(at(d.plusDays(1), zone)), floorBucket(now) + BUCKET)
+        val apps = mutableListOf<DataApp>()
+        var mobile = 0L; var wifi = 0L; var roam = 0L; var hotspot = 0L; var via = 0L
+        for ((type, net) in listOf(ConnectivityManager.TYPE_MOBILE to "mobile", ConnectivityManager.TYPE_WIFI to "wifi")) {
+            val byUid = HashMap<Int, Uid>()
+            each(runCatching { nsm.querySummary(type, null, s, e) }.getOrNull()) { b ->
+                val n = b.rxBytes + b.txBytes
+                val u = byUid.getOrPut(b.uid) { Uid() }
+                if (b.state == NetworkStats.Bucket.STATE_FOREGROUND) u.fg += n else u.bg += n
+                if (b.roaming == NetworkStats.Bucket.ROAMING_YES) u.roam += n
+                if (b.metered == NetworkStats.Bucket.METERED_YES) u.metered += n // a metered Wi-Fi: a phone's hotspot (Android's hotspots say so)
+            }
+            byUid.forEach { (uid, u) ->
+                val total = u.fg + u.bg
+                if (net == "mobile") { mobile += total; roam += u.roam; if (uid == NetworkStats.Bucket.UID_TETHERING) hotspot += total } else { wifi += total; via += u.metered }
+                if (total > 0) { val (app, label) = name(c, uid); apps += DataApp(d, app, label, net, u.fg, u.bg, u.roam) }
+            }
+        }
+        // two UIDs of one package (or several system ones) are one row
+        val merged = apps.groupBy { it.app to it.net }.map { (_, l) -> l.reduce { a, b -> a.copy(fg = a.fg + b.fg, bg = a.bg + b.bg, roaming = a.roaming + b.roaming) } }
+        return DataDay(d, mobile, wifi, roam, hotspot, via, d in outsideEu) to merged
+    }
+
+    /** The day's hours (Android's 2-hour buckets), all apps together. */
+    private fun hours(nsm: NetworkStatsManager, s: Long, e: Long, zone: ZoneId): List<DataHour> {
+        val out = HashMap<Pair<String, String>, Long>()
+        for ((type, net) in listOf(ConnectivityManager.TYPE_MOBILE to "mobile", ConnectivityManager.TYPE_WIFI to "wifi"))
+            each(runCatching { nsm.queryDetails(type, null, s, e) }.getOrNull()) { b ->
+                val h = Instant.ofEpochMilli(b.startTimeStamp).atZone(zone).format(HOUR)
+                out.merge(h to net, b.rxBytes + b.txBytes, Long::plus)
+            }
+        return out.filter { it.value > 0 }.map { (k, v) -> DataHour(k.first, k.second, v) }
+    }
+
+    /** Tetra's own notes (drops, roaming countries, Tetra's sync over the hotspot), kept until written into a month. */
+    private fun eventsFile(c: Context) = File(c.filesDir, "data-events.jsonl")
+
+    fun note(c: Context, e: DataEvent) = synchronized(this) { runCatching { eventsFile(c).appendText(DataFiles.line(e) + "\n") } }
+
+    private fun events(c: Context) = runCatching { DataFiles.parse("", eventsFile(c).readText()).events }.getOrDefault(emptyList())
+
+    /**
+     * The look: this month's file (and, the first time, the months Android still has) written again from Android's counts;
+     * days older than Android keeps stay as they were. Then the warnings. Returns this device's months.
+     */
+    @Synchronized fun record(c: Context): List<DataMonth> {
+        val zone = ZoneId.systemDefault()
+        val now = System.currentTimeMillis()
+        val today = LocalDate.now(zone)
+        val device = DataFiles.device()
+        val nsm = c.getSystemService(NetworkStatsManager::class.java)
+        val events = events(c)
+        val outsideEu = roamingOutsideEu(events, zone)
+        val first = !DataFiles.monthFile(today.toString().take(7)).exists()
+        val months = (if (first) (0L..3L) else (0L..(if (today.dayOfMonth <= 1) 1L else 0L))).map { today.minusMonths(it).withDayOfMonth(1) }
+        var changed = false
+        val written = months.mapNotNull { m ->
+            val file = DataFiles.monthFile(m.toString().take(7))
+            val old = runCatching { DataFiles.parse(device, file.readText()) }.getOrNull()
+            val keepBefore = today.minusDays(KEEP_DAYS)
+            val days = mutableListOf<DataDay>(); val apps = mutableListOf<DataApp>()
+            var d = m
+            while (d.month == m.month && !d.isAfter(today)) {
+                if (d.isBefore(keepBefore) && old != null) { days += old.days.filter { it.day == d }; apps += old.apps.filter { it.day == d } }
+                else if (hasAccess(c)) day(c, nsm, d, zone, now, outsideEu).let { (dd, aa) -> if (dd.mobile + dd.wifi > 0 || old?.days?.any { it.day == d } == true) { days += dd; apps += aa } }
+                d = d.plusDays(1)
+            }
+            val s = floorBucket(at(maxOf(m, keepBefore), zone)); val e = floorBucket(now) + BUCKET
+            val hrs = (old?.hours.orEmpty().filter { it.hour < Instant.ofEpochMilli(s).atZone(zone).format(HOUR) }) + if (hasAccess(c)) hours(nsm, s, e, zone) else emptyList()
+            val ev = (old?.events.orEmpty() + events.filter { it.at.startsWith(m.toString().take(7)) }).distinct()
+            val month = DataMonth(device, days, apps, hrs.filter { it.hour.startsWith(m.toString().take(7)) }, ev)
+            if (month.days.isEmpty() && month.events.isEmpty() && old == null) return@mapNotNull null
+            if (DataFiles.write(file, DataFiles.text(month))) changed = true
+            month
+        }
+        // the events now in their months' files
+        if (events.isNotEmpty()) runCatching { eventsFile(c).delete() }
+        if (changed) ScopedSync.soon(c, "data")
+        runCatching { warn(c, written + DataFiles.all()[device].orEmpty()) }.onFailure { WriterLog.w("Data: warnings not checked (${it.message})") }
+        runCatching { DataSignal.daily(c, DataFiles.all()) }
+        return written
+    }
+
+    // ---- the warnings ----
+
+    private fun channel(c: Context): NotificationManager {
+        val nm = c.getSystemService(NotificationManager::class.java)
+        if (nm.getNotificationChannel(CHANNEL) == null)
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Data warnings", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "Your plan's limits and roaming" })
+        return nm
+    }
+
+    private fun open(c: Context, req: Int) = PendingIntent.getActivity(c, req, Intent(c, DataActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    private fun settings(c: Context, action: String, req: Int) = PendingIntent.getActivity(c, req, Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+    fun notify(c: Context, id: Int, title: String, text: String, button: Pair<String, PendingIntent>? = null) {
+        val n = NotificationCompat.Builder(c, CHANNEL.also { channel(c) }).setSmallIcon(R.drawable.ic_data_usage).setContentTitle(title).setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text)).setContentIntent(open(c, id)).setAutoCancel(true)
+            .apply { button?.let { (label, pi) -> addAction(0, label, pi) } }.build()
+        runCatching { c.getSystemService(NotificationManager::class.java).notify(id, n) }
+    }
+
+    private fun warn(c: Context, months: List<DataMonth>) {
+        val plan = DataFiles.plan() ?: return
+        val today = LocalDate.now()
+        val st = DataRules.status(plan, DataFiles.days(months), today)
+        val p = prefs(c)
+        val key = "warned.${st.cycle.start}"
+        val given = p.getStringSet(key, emptySet())!!.mapNotNull { it.toIntOrNull() }.toSet()
+        val due = DataRules.due(plan, st.used, st.size, given)
+        due.lastOrNull()?.let { w ->
+            val of = if (plan.kind == DataPlan.FAIR_USE) "of the ${DataRules.bytes(st.size)} fair-use limit" else "of your ${DataRules.bytes(st.size)}"
+            val text = if (w >= 100) "All $of is used, ${st.daysLeft} days before the plan renews." else "${DataRules.bytes(st.used)} used $of · ${DataRules.bytes(st.left)} left for ${st.daysLeft} days."
+            notify(c, 0xDA70 + w, "Data: $w % used", text, if (w >= 80) "Android's data settings" to settings(c, Settings.ACTION_DATA_USAGE_SETTINGS, 0xDA01) else null)
+            p.edit().putStringSet(key, (given + due).map { it.toString() }.toSet()).apply()
+        }
+        if (p.getBoolean("warnBudget", false) && plan.limited && st.today > st.budget && p.getString("budgetDay", "") != today.toString()) {
+            notify(c, 0xDA02, "Data: today's budget passed", "${DataRules.bytes(st.today)} today, the budget was ${DataRules.bytes(st.budget)}.")
+            p.edit().putString("budgetDay", today.toString()).apply()
+        }
+        roamingPass(c, plan, months.flatMap { it.days }.firstOrNull { it.day == today })
+    }
+
+    // ---- roaming (the user, 25 Oct: "I roam with a day pass, €15 for 300 MB; it could notify to turn roaming off") ----
+
+    /** Where the phone is now: the network's country, and whether it is roaming (no permission needed). */
+    fun roaming(c: Context): String? {
+        val tm = c.getSystemService(TelephonyManager::class.java) ?: return null
+        return if (runCatching { tm.isNetworkRoaming }.getOrDefault(false)) tm.networkCountryIso.orEmpty().ifEmpty { "?" } else null
+    }
+
+    private fun dataRoamingOn(c: Context) = runCatching { c.getSystemService(TelephonyManager::class.java).isDataRoamingEnabled }.getOrDefault(true)
+
+    private fun country(iso: String) = java.util.Locale("", iso.uppercase()).getDisplayCountry(java.util.Locale.ENGLISH).ifEmpty { iso.uppercase() }
+
+    /** A look at roaming (the network watch calls it on every change, the hourly look too): its notices, once each. */
+    fun checkRoaming(c: Context) {
+        val p = prefs(c)
+        val now = roaming(c)
+        val was = p.getString("roamingIn", null)
+        if (now == was) return
+        p.edit().putString("roamingIn", now).apply()
+        val stamp = ZonedDateTime.now().toOffsetDateTime().withNano(0).toString()
+        val plan = DataFiles.plan()
+        val turnOff = "Turn off data roaming" to settings(c, Settings.ACTION_DATA_ROAMING_SETTINGS, 0xDA03)
+        if (now != null) {
+            note(c, DataEvent(stamp, "roaming", note = now))
+            if (DataRules.inEu(now)) notify(c, 0xDA10, "Roaming in ${country(now)}", "In the EU: as at home" + if (plan?.euCounts == false) ", but your plan does not count it." else ", counted against your plan.")
+            else {
+                val pass = plan?.takeIf { it.passPrice > 0 }?.let { " Your day pass: ${it.currency}${"%.0f".format(it.passPrice)} for ${DataRules.bytes(it.passSize)} a day." } ?: " Roaming here may cost extra."
+                notify(c, 0xDA10, "Roaming in ${country(now)} — outside the EU", pass + if (dataRoamingOn(c)) " Data roaming is ON." else " Data roaming is off.", if (dataRoamingOn(c)) turnOff else null)
+            }
+        } else if (was != null) {
+            note(c, DataEvent(stamp, "home"))
+            notify(c, 0xDA10, "Roaming ended", if (dataRoamingOn(c) && !DataRules.inEu(was)) "Back home. Data roaming is still ON — turn it off for the next trip?" else "Back home.",
+                if (dataRoamingOn(c) && !DataRules.inEu(was)) turnOff else null)
+        }
+    }
+
+    /** Outside the EU with a day pass: the day's first MB (that day costs the pass), then 80 % and 100 % of it. */
+    private fun roamingPass(c: Context, plan: DataPlan, today: DataDay?) {
+        val where = roaming(c) ?: return
+        if (DataRules.inEu(where) || plan.passPrice <= 0 || today == null || today.roaming <= 0) return
+        val p = prefs(c); val key = "pass.${today.day}"
+        val given = p.getStringSet(key, emptySet())!!
+        val turnOff = "Turn off data roaming" to settings(c, Settings.ACTION_DATA_ROAMING_SETTINGS, 0xDA03)
+        val price = "${plan.currency}${"%.0f".format(plan.passPrice)}"
+        val steps = listOf("first" to 0L, "80" to plan.passSize * 8 / 10, "100" to plan.passSize).filter { (k, at) -> k !in given && today.roaming > at }
+        steps.lastOrNull()?.let { (k, _) ->
+            when (k) {
+                "first" -> notify(c, 0xDA11, "Roaming data today: $price", "The first roaming data today — today counts as a day of your pass ($price for ${DataRules.bytes(plan.passSize)}).", turnOff)
+                else -> notify(c, 0xDA11, "Day pass: $k % used", "${DataRules.bytes(today.roaming)} of today's ${DataRules.bytes(plan.passSize)}." +
+                    if (k == "100") " More may cost extra or be slow." else "", turnOff)
+            }
+            p.edit().putStringSet(key, given + steps.map { it.first }).apply()
+        }
+    }
+
+    // ---- a warning on time: Android calls back when mobile data passes the next threshold (while Tetra lives) ----
+
+    private var callback: NetworkStatsManager.UsageCallback? = null
+
+    fun watchUsage(c: Context) {
+        val app = c.applicationContext
+        if (!hasAccess(app) || callback != null) return
+        val nsm = app.getSystemService(NetworkStatsManager::class.java)
+        val cb = object : NetworkStatsManager.UsageCallback() {
+            override fun onThresholdReached(networkType: Int, subscriberId: String?) {
+                // registered again from here, so the next 50 MB count from now
+                runCatching { nsm.unregisterUsageCallback(this) }; callback = null
+                Thread { runCatching { record(app); checkRoaming(app) }; watchUsage(app) }.start()
+            }
+        }
+        // shortcut: one fixed step (Android's least is 2 MiB); a look at every 50 MB is enough to warn within that of a threshold
+        runCatching { nsm.registerUsageCallback(ConnectivityManager.TYPE_MOBILE, null, 50_000_000L, cb) }.onSuccess { callback = cb }
+    }
+}

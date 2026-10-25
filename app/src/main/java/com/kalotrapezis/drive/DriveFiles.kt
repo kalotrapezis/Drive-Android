@@ -90,7 +90,7 @@ object DriveRules {
      * lists, search and Move (the user, 18 Oct: "can we hide the folders of the calendar and the timer"). The computer hides the
      * same.
      */
-    private val APP_FOLDERS = listOf(CalendarFiles.FOLDER, TimerFiles.FOLDER, MapsFiles.FOLDER, ContactsFiles.FOLDER, PhoneHistory.FOLDER)
+    private val APP_FOLDERS = listOf(CalendarFiles.FOLDER, TimerFiles.FOLDER, MapsFiles.FOLDER, ContactsFiles.FOLDER, PhoneHistory.FOLDER, DataFiles.FOLDER)
     fun isAppFolder(relativePath: String) = APP_FOLDERS.any { relativePath == it || relativePath.startsWith("$it/") }
     /**
      * Sync of the choice, folder by folder (the computer has the same rule): the later answer wins, and on a tie (a
@@ -615,7 +615,7 @@ data class DriveFileEntry(val relativePath: String, val sizeBytes: Long, val mod
  */
 internal object DriveScope {
     private val scopes = mapOf("calendar" to (listOf("Calendar") to listOf(".ics")), "timer" to (listOf(TimerFiles.FOLDER) to emptyList<String>()),
-        "contacts" to (listOf(ContactsFiles.FOLDER) to listOf(".vcf")), "phone" to (listOf(PhoneHistory.FOLDER) to emptyList<String>()))
+        "contacts" to (listOf(ContactsFiles.FOLDER) to listOf(".vcf")), "phone" to (listOf(PhoneHistory.FOLDER) to emptyList<String>()), "data" to (listOf(DataFiles.FOLDER) to emptyList<String>()))
     fun contains(scope: String, relative: String): Boolean {
         val (dirs, trashExts) = scopes[scope] ?: return false
         return dirs.any { relative.startsWith("$it/") } || (relative.startsWith("Trash/") && trashExts.any { relative.lowercase().endsWith(it) })

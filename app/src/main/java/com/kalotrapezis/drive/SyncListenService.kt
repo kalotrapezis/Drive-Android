@@ -66,6 +66,7 @@ internal class SyncListenService : Service() {
         withLocation = placed
         if (!listening) listening = runCatching { SyncServer.acquire(applicationContext, SyncStore(applicationContext)) }.isSuccess
         PhoneCall.Watcher.start(applicationContext) // the phone's calls shown on the computer (its call bubble)
+        runCatching { DataStats.startAll(applicationContext) } // Data's drops, roaming and warnings while Tetra lives
         return START_STICKY
     }
 

@@ -2951,11 +2951,16 @@ tablet without a phone paired: its own Wi-Fi and the meter.
 Roaming, Count from (the carrier offset), Wi-Fi scans (Location state), Live speed (later), Send log.
 
 ### Fit with Tetra
-- **Icon**: the user makes it with ChatGPT (question 2) → `Assets/<name>.png` → `tools/applet-icons.py` (art, launcher,
-  `applet_colors.xml`), Settings › App icons: Tetra Data.
-- **Colour** (taken: green ×2, blue, yellow, red ×2, orange ×2, purple, pink, brown, dark teal, sky blue, turquoise): free are
-  **indigo** (#4F5BD5 — but Maps' inner accents are indigo), **lime** (#9CCC1A — near Photos' light green), **slate**
-  (#546E7A). The icon's own edge decides, as for every applet; question 3.
+- **Icon** (the user's, 25 Oct: `Assets/DataMeter.png`, 1254 px): a lime gauge with a needle over three rising bars on a
+  near-black rounded tile → `tools/applet-icons.py` (art, launcher, `applet_colors.xml`), Settings › App icons: Tetra Data.
+  **Unlike the other tiles its corners are dark, not white** (#232629 outside, #1F2226 just inside the tile, with a soft
+  shadow): the script's flood fill from the corners (thresh 60) would eat the tile too — Data's corners are cut with a
+  rounded-square mask instead (the tile ≈ 30…1224 px, corner radius ≈ 190 px; measured when built). Copy it into
+  Assets/Icons/Applets/Data.png first, as the others.
+- **Colour** (from the icon): **lime #A1F81A** (the arcs run #85F31D–#BFFB30) for Home's group and Category.Data; the
+  launcher background the tile's own charcoal ≈ #1C1F22 (as Phone's is its tile's dark teal). No applet is lime yet; Photos'
+  #95DF6B is a softer green beside it. On the light theme lime on white is too faint: text and lines a darker lime (≈ #4E8A0A)
+  — `lookTint(light, dark)` as the others.
 - Notifications: a "Data warnings" channel (50/80/100 %, budget, roaming, new app); "Data meter" (the sound mode, while on).
 - Reuse: Contacts' island and pills, Settings' rows, Office's strip for the House tools, `ScopedSync`, SyncServer for the
   hotspot reports and the speed test, Home's group card.
@@ -2980,7 +2985,7 @@ Roaming, Count from (the carrier offset), Wi-Fi scans (Location state), Live spe
 - [ ] 5. Wi-Fi meter: connected strength, sound mode, Around + channel rating, speed to the PC, phone-as-hotspot reports.
 - [ ] 6. The house map: draw, measure, walk a line, heat map (tablet first, then phone and desktop).
 - [ ] 7. Best spot (the model) and the RTT bonus if step 1 found it.
-- [ ] 8. Home's Data group and the icon (when the user has made it).
+- [ ] 8. Home's Data group and the icon (Assets/DataMeter.png, the mask above).
 - [ ] 9. On the real phone, tablet and PC (tools/phone-install.sh), a cycle's numbers next to Nova's.
 
 ### Later / maybe
@@ -2990,8 +2995,8 @@ Roaming, Count from (the carrier offset), Wi-Fi scans (Location state), Live spe
 
 ### Questions for the user
 1. The old F-Droid app: Data Monitor (drnoob)? Anything in it to keep that is not above?
-2. The icon: make one with ChatGPT (a tile like the others; e.g. a gauge or arrows up/down over a ring) — its colour?
-3. Colour: indigo, lime or slate (or what the icon brings)?
+2. The icon — the user made it, 25 Oct: `Assets/DataMeter.png` (a lime gauge and bars on near-black).
+3. Colour — from the icon: lime #A1F81A, the launcher background its charcoal (unless the user says otherwise).
 4. The plan: Nova's size, renewal day, and is there a roaming allowance or apps Nova does not count?
 5. Live speed in the notification (costs a little battery): wanted?
 6. The house map: which floor(s); a plan on paper to photograph, or draw from scratch? Which router (model) — for RTT?

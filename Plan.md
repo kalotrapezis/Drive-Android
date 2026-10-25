@@ -3117,6 +3117,12 @@ Send log.
    channel, 2.4 vs 5 GHz, how good it is here and what weakens it, busy air — information only), **Spots** (cards with bars),
    **Drops** (by day). Explanations behind (i). The computer: an Ethernet cable is recognised (`ethernet-on/off` lines), counted
    apart (`eth`), and reported to the phone. DataMeterTest; unit 649, desktop 140. Emulator: the gauges and the graph.
+   **On the devices (25 Oct 10:17)**: the phone installed (tools/phone-install.sh, Android Auto approved again; data backed up to
+   Coding/backups/phone-20261025-1016); the computer on beta.15 (the user's apt install), restarted. The phone's Meter: Mobile 5G (with
+   4G) −115 dBm, Fair, NOVA · B3, RSRQ −17; Wi-Fi "not on Wi-Fi" (it is the hotspot); the computer "Wi-Fi −26 dBm · Xiaomi 15"; Test
+   speed and loss ↓ 40 · ↑ 46 Mb/s · 63 ms · 0 % lost. Fixed after it (with the next install): the phone said "this one: Mobile" (now
+   "its own hotspot") and the computer once "Wi-Fi 12 dBm" (a driver's positive reading right beside the phone: now just "Wi-Fi").
+   The tablet was not on USB (only one device is seen at a time).
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

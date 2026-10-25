@@ -16,6 +16,7 @@ class DataMeterTest {
     @Test fun `the computer's link in words`() {
         assertEquals("Ethernet 1000 Mb/s", DataMeter.computerLink(JSONObject("""{"ethernet":{"iface":"enp3s0","speed":1000},"rssi":-50}""")))
         assertEquals("Wi-Fi -58 dBm", DataMeter.computerLink(JSONObject("""{"rssi":-58,"speed":433,"ssid":"Home"}""")))
+        assertEquals("Wi-Fi", DataMeter.computerLink(JSONObject("""{"rssi":12}"""))) // a driver's positive reading beside the router
     }
 
     @Test fun `advice, a quieter channel, the band and the signal here`() {

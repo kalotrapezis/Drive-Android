@@ -70,7 +70,8 @@ internal object DataMeter {
     fun computerLink(o: JSONObject?): String = when {
         o == null -> "?"
         o.optJSONObject("ethernet") != null -> "Ethernet" + (o.optJSONObject("ethernet")!!.optInt("speed").takeIf { it > 0 }?.let { " $it Mb/s" } ?: "")
-        o.has("rssi") -> "Wi-Fi ${o.optInt("rssi")} dBm"
+        // right beside the router a driver may say a positive dBm: then just Wi-Fi
+        o.has("rssi") -> "Wi-Fi" + (o.optInt("rssi").takeIf { it < 0 }?.let { " $it dBm" } ?: "")
         else -> "?"
     }
 

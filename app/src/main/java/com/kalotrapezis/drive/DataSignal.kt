@@ -389,7 +389,9 @@ private fun mobileColor(level: Int) = when { level >= 3 -> Color(0xFF7CC417); le
                                         val client = SyncClient(context, SyncStore(context))
                                         val (down, up, ms) = client.speedTest()
                                         val loss = DataMeter.ping(client.computerHost())
-                                        SpeedTest(ZonedDateTime.now().toOffsetDateTime().withNano(0).toString(), DataMeter.link(context) + (DataSignal.wifi(context)?.let { w -> if (DataMeter.link(context) != "Ethernet") " ${w.rssi} dBm" else "" } ?: ""),
+                                        // a phone on mobile data that reaches the computer reaches it over its own hotspot
+                                        val here = DataMeter.link(context).let { if (it == "Mobile") "its own hotspot" else it + (DataSignal.wifi(context)?.let { w -> if (it != "Ethernet") " ${w.rssi} dBm" else "" } ?: "") }
+                                        SpeedTest(ZonedDateTime.now().toOffsetDateTime().withNano(0).toString(), here,
                                             DataMeter.computerLink(computer), down, up, loss?.second?.let { Math.round(it) } ?: ms, loss?.first)
                                     }
                                 }

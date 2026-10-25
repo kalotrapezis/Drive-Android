@@ -3169,6 +3169,11 @@ Send log.
    name. **The computer's page as the phone's**: the ring, Kinds | Apps with the faint forecast and the average, the cycle chart,
    the numbers, the tips, the apps (top ten, all, the Hotspot ▾ by device and app), the devices, the connection, the drops; (i) on
    each. Drive 3139ff3, beta.18 built; Android not installed (another session is using the phone).
+- [x] 14. (25 Oct 12:58) main (Contacts' lazy loading, call history) merged into claude/data-plan, then installed on the phone (backed up;
+   Android Auto approved). Found: the usage access had been taken away at ~11:27 (Android's own record), and **without it the hourly look
+   rewrote this month's file without its days** — fixed: with no access the files are left exactly as they are (events wait). Nothing was
+   lost: the access back (12:59), Android's counts wrote October again; the phone removed its 3 sync copies. The computer still had
+   "(2)…(7)" (beta.16 does not clean): beta.18 removes them on start. Old desktop builds (beta.14–17) and older phone backups removed.
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

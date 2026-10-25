@@ -197,6 +197,9 @@ internal object DataStats {
      * days older than Android keeps stay as they were. Then the warnings. Returns this device's months.
      */
     @Synchronized fun record(c: Context): List<DataMonth> {
+        // without the access Android gives no counts: the files are left exactly as they are (25 Oct: once rewritten without their
+        // days when the access was taken away); the drops and roaming notes wait in the events file until it comes back
+        if (!hasAccess(c)) { runCatching { clean(c) }; return DataFiles.all()[DataFiles.device()].orEmpty() }
         val zone = ZoneId.systemDefault()
         val now = System.currentTimeMillis()
         val today = LocalDate.now(zone)

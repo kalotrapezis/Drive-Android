@@ -351,6 +351,30 @@ How to write here:
       tile sits as large as the others'; Home's card draws it at 76 dp as the others (it was 100 for the bare page). Home's
       Notes yellow (#F2B705) kept. Desktop: no Notes applet icon (public/notes.png is unused). Checked on the emulator, light,
       dark and Edit Home. Not merged until the user says.
+- [x] (settings-redesign session, 24 Oct, branch claude/bold-nash-ef4aa6; not merged) **Settings re-arranged** (the user:
+      "re-arrange it, modernise it … it does not separate a setting from text … The General category I think can go away"):
+      SettingsScreen.kt. A list of categories (Tetra: Sync, Appearance · Apps: Gallery … Phone), each its own page — tablet
+      (≥700 dp): list left 380 dp, page right; phone: one at a time, Back returns to the list. Contacts' island pills at the
+      top (back + "Search settings", which finds a setting by its title and opens its page). In a page: quiet section headers,
+      one row per setting (title, a line, the control at the end: switch, value ▾ menu, button or ›), the long explanations
+      under their section. One accent (the theme's own black/white); an applet's colour only on its icon in the list.
+      Same keys, defaults and actions; Choices' button rows became ▾ menus, Contacts' Turn on/off a switch, Calendar's
+      messages toasts. **Before → after** (there was no "General" card: the uncoloured Storage locations, Permissions,
+      Home, App icons and Appearance cards read as one, and are spread out):
+      Storage locations → Files › Storage · Permissions: Photos → Gallery › Access, Files → Files › Access ·
+      Gallery: Photo on Home → Appearance › Home; Search quality → Gallery › Search; Folders → Gallery › Folders ·
+      Sync → Sync › Computer (paired, Forget, Open Sync) and › Automatic (Sync automatically, Listen in the background) ·
+      PDF scanner → PDF scanner › Saved pages · Office → Office › Open from Files (4), › Editing (AutoSave, Lengths in, Read
+      aloud speed), › Ribbon (The ribbon, Its tools, Tab marker) · Text editor → › Open from Files, › Editing ·
+      Calendar → › Reminders (switch, test), › What reminders need (5 permissions), › Your calendars (Import, Export all),
+      › Claude · Timer → › Claude · Maps → › Map (Map, On foot), › Directions (Directions in, Test voice, Voice settings,
+      Warn of sharp bends), › Parking (Save where I park, Open the map at my car, ΑμεΑ radius), › Your places (Export, Import,
+      Import from Google Maps), › Installed maps, › Problems (Send log) · Contacts: Calls on the computer → **Phone › With the
+      computer**; In the phone's contacts and Birthdays go into stay in Contacts · Phone → › Phone app, › Calls ·
+      App icons → Appearance › App icons · Home (hidden parts) → Appearance › Home · Appearance (Theme) → Appearance.
+      PhoneSettings (the Phone's own menu) and Office's File › Settings dialog unchanged. Checked on a read-only emulator of
+      my own (tetra_check, port 5580): phone size light/dark, tablet size (2560×1600) light/dark, every page opened, search.
+      **Not on the tablet yet** (not connected; the user's OK first). Not done: search knows titles only ("dark" finds nothing).
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

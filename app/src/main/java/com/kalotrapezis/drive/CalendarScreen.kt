@@ -704,26 +704,30 @@ private fun viewIcon(v: CalView) = when (v) {
  */
 @Composable internal fun ShareWithClaude(skill: String = "tetra-calendar", part: String = "Calendar", what: String = "Lets Claude read and change this calendar by editing its files.") {
     val context = LocalContext.current
-    fun zip() = context.assets.open("$skill.zip").use { it.readBytes() }
     val save = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        if (uri != null) runCatching { context.contentResolver.openOutputStream(uri)!!.use { it.write(zip()) } }
+        if (uri != null) runCatching { context.contentResolver.openOutputStream(uri)!!.use { it.write(skillZip(context, skill)) } }
     }
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Text("Share with Claude", style = MaterialTheme.typography.titleSmall)
         Text(what, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = {
-                runCatching {
-                    val file = java.io.File(context.cacheDir, "share/$skill.zip").apply { parentFile?.mkdirs(); writeBytes(zip()) }
-                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-                    context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/zip")
-                        .putExtra(android.content.Intent.EXTRA_STREAM, uri).putExtra(android.content.Intent.EXTRA_SUBJECT, "Tetra $part skill for Claude")
-                        .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share the skill"))
-                }.onFailure { WriterLog.e("$part: sharing the skill failed", it) }
-            }) { Text("Share") }
+            TextButton(onClick = { shareSkill(context, skill, part) }) { Text("Share") }
             TextButton(onClick = { save.launch("$skill.zip") }) { Text("Save to Files") }
         }
     }
+}
+
+internal fun skillZip(context: android.content.Context, skill: String) = context.assets.open("$skill.zip").use { it.readBytes() }
+
+/** The skill to the share sheet: the Claude app, mail or Drive. */
+internal fun shareSkill(context: android.content.Context, skill: String, part: String) {
+    runCatching {
+        val file = java.io.File(context.cacheDir, "share/$skill.zip").apply { parentFile?.mkdirs(); writeBytes(skillZip(context, skill)) }
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/zip")
+            .putExtra(android.content.Intent.EXTRA_STREAM, uri).putExtra(android.content.Intent.EXTRA_SUBJECT, "Tetra $part skill for Claude")
+            .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share the skill"))
+    }.onFailure { WriterLog.e("$part: sharing the skill failed", it) }
 }
 
 /** A reminder rung while Tetra is in front pops up here, as HyperOS shows none for the app in front (the user, 24 Oct). */
@@ -1143,74 +1147,6 @@ internal fun importCalendars(context: Context, uri: android.net.Uri): String {
     runCatching { CalendarAlarms.plan(context) }
     ScopedSync.soon(context, "calendar", 0, orWhole = true)
     return "Imported: $added new" + if (updated > 0) ", $updated updated" else ""
-}
-
-/**
- * Settings › Calendar (the user, 18 Oct: "We need more permisions in the settings. A calendar section with the import
- * expot"): each permission reminders need, its state and a button to it; the reminders switch; Import and Export all.
- */
-@Composable internal fun CalendarSettings() {
-    val context = LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var version by remember { mutableIntStateOf(0) }
-    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(lifecycle) { // back from Android's settings: read the states again
-        val o = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) version++ }
-        lifecycle.lifecycle.addObserver(o); onDispose { lifecycle.lifecycle.removeObserver(o) }
-    }
-    var said by remember { mutableStateOf<String?>(null) }
-    fun open(i: android.content.Intent) = runCatching { context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
-    val pkg = android.net.Uri.parse("package:${context.packageName}")
-    val appDetails = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)
-    val notificationSettings = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
-    val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { version++ }
-    @Suppress("UNUSED_EXPRESSION") version // read again on each change
-    val notifications = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
-    val exact = android.os.Build.VERSION.SDK_INT < 31 || context.getSystemService(android.app.AlarmManager::class.java).canScheduleExactAlarms()
-    val battery = context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
-    val xiaomi = android.os.Build.MANUFACTURER.equals("Xiaomi", true)
-    val island = remember(version) { HyperIsland.isSupported(context) }
-    @Composable fun row(title: String, state: String, ok: Boolean, action: String?, act: () -> Unit) =
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
-                Text(state, style = MaterialTheme.typography.bodySmall, color = if (ok) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error)
-            }
-            if (action != null) TextButton(onClick = act) { Text(action) }
-        }
-    Text("Your calendars are the folders in Tetra/Calendar: they sync with the computer, and Claude can manage them there.", style = MaterialTheme.typography.bodySmall)
-    row("Notifications", if (notifications) "Allowed: reminders show" else "Off: reminders will not show", notifications, if (notifications) "Settings" else "Allow") {
-        if (!notifications && android.os.Build.VERSION.SDK_INT >= 33) ask.launch(android.Manifest.permission.POST_NOTIFICATIONS) else open(notificationSettings)
-    }
-    row("Alarms on time", if (exact) "Allowed: reminders ring at their minute" else "Not allowed: reminders may come a few minutes late", exact, if (exact) null else "Allow") {
-        if (android.os.Build.VERSION.SDK_INT >= 31) open(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, pkg))
-    }
-    row("Battery", if (battery) "No restrictions: reminders ring on time" else "Restricted: a reminder can be held back", battery, "Settings") {
-        open(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) || open(appDetails)
-    }
-    if (xiaomi) {
-        row("Hyper Island", if (island) "On: a reminder shows in the island, with ✕ for done" else "Off: turn on Tetra's focus notifications", island, "Settings") { open(notificationSettings) }
-        row("Autostart", "Needed for reminders after a restart (Xiaomi; Android does not tell apps whether it is on)", true, "Settings") {
-            open(android.content.Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")) || open(appDetails)
-        }
-    }
-    RemindersSwitch()
-    ShareWithClaude()
-    TextButton(onClick = { CalendarAlarms.test(context); said = "A test reminder comes in 5 seconds: here it pops up over Tetra; on the home screen, in the island." }) { Text("Send a test reminder") }
-    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch { said = withContext(Dispatchers.IO) { runCatching { importCalendars(context, uri) }.getOrElse { "Not imported: ${it.message}" } } }
-    }
-    val save = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        if (uri != null) scope.launch { said = withContext(Dispatchers.IO) { runCatching {
-            context.contentResolver.openOutputStream(uri)!!.use { it.write(CalendarTransfer.exportAll(CalendarFiles.calendars(calendarRoot()))) }; "Exported"
-        }.getOrElse { "Not exported: ${it.message}" } } }
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        androidx.compose.material3.Button(onClick = { pick.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) }) { Text("Import") }
-        androidx.compose.material3.Button(onClick = { save.launch("Tetra calendars.zip") }) { Text("Export all") }
-    }
-    Text("Import: an .ics file or Google Takeout's zip; each calendar goes into the one of its name, an event already there is updated. Export: every calendar as an .ics, in a zip.", style = MaterialTheme.typography.bodySmall)
-    said?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 }
 
 @Composable private fun Note(text: String, vararg actions: Pair<String, () -> Unit>) {

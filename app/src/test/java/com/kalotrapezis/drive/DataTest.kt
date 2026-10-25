@@ -86,8 +86,9 @@ class DataTest {
 
     @Test fun `a month's file reads back as written, and the plan too`() {
         val m = DataMonth("X", listOf(DataDay(d(10, 25), 1, 2, 3, 4, 5, true)), listOf(DataApp(d(10, 25), "org.a", "A \"quoted\"", "mobile", 7, 8, 9)),
-            listOf(DataHour("2026-10-25T14", "wifi", 10)), listOf(DataEvent("2026-10-25T14:02:11+03:00", "drop-mobile", 40, "4G")))
+            listOf(DataHour("2026-10-25T14", "wifi", 10)), listOf(DataEvent("2026-10-25T14:02:11+03:00", "drop-mobile", 40, "4G")), "Xiaomi 15")
         assertEquals(m, DataFiles.parse("X", DataFiles.text(m)))
+        assertEquals("Xiaomi 15", DataFiles.label(mapOf("X" to listOf(m)), "X")); assertEquals("Y", DataFiles.label(emptyMap(), "Y"))
         val p = DataPlan(kind = DataPlan.FAIR_USE, size = 300_000_000_000, every = DataPlan.DAYS, days = 28, from = d(10, 1), passPrice = 15.0, passSize = 300_000_000,
             offsetStart = d(10, 1), offset = -5, warn = listOf(50, 90), rev = 3, by = "phone")
         assertEquals(p, DataPlan.parse(p.toJson()))

@@ -315,7 +315,7 @@ internal fun DataSignalTab(pad: PaddingValues) {
         item { SectionTitle("Drops", "Lost or very weak signal, from Android's own callbacks, on every device, recorded while Tetra runs; hours it was not running are gaps, not \"no drops\". Today's arrive with the next hourly look.") }
         val drops = DataSignal.drops(all).take(50)
         if (drops.isEmpty()) item { Text("None recorded yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        drops.forEach { (device, e) -> item { Text((if (device == DataFiles.device()) "" else "$device · ") + DataSignal.describe(e), style = MaterialTheme.typography.bodySmall) } }
+        drops.forEach { (device, e) -> item { Text((if (device == DataFiles.device()) "" else "${DataFiles.label(all, device)} · ") + DataSignal.describe(e), style = MaterialTheme.typography.bodySmall) } }
     }
     if (saving) SaveSpot(reading, round, close = { saving = false; version++ })
 }

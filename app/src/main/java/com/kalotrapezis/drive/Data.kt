@@ -176,13 +176,18 @@ internal data class DataHour(val hour: String, val net: String, val bytes: Long)
 internal data class DataEvent(val at: String, val kind: String, val secs: Long = 0, val note: String = "") // a drop, a roaming country, Tetra's own sync
 
 /** A device's month of counts: the lines of Tetra/Data/usage/<yyyy-mm>.<device>.jsonl. */
-internal data class DataMonth(val device: String, val days: List<DataDay>, val apps: List<DataApp>, val hours: List<DataHour>, val events: List<DataEvent>)
+internal data class DataMonth(val device: String, val days: List<DataDay>, val apps: List<DataApp>, val hours: List<DataHour>, val events: List<DataEvent>, val name: String = "")
 
 /** Tetra/Data: the plan, and each device's counts in files of its own (Timer's rule: nobody writes another's file). */
 internal object DataFiles {
     const val FOLDER = "Data"
     fun root() = File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), FOLDER)
     fun device() = (Build.MODEL ?: "Android").filter { it.isLetterOrDigit() || it == '-' || it == '_' }.ifEmpty { "Android" }
+    /** The name the user gave this device ("Xiaomi 15"), for the others' screens; the file names keep [device]. */
+    fun deviceName(c: Context): String = listOf(android.provider.Settings.Global.getString(c.contentResolver, android.provider.Settings.Global.DEVICE_NAME),
+        runCatching { android.provider.Settings.Secure.getString(c.contentResolver, "bluetooth_name") }.getOrNull(), Build.MODEL).firstOrNull { !it.isNullOrBlank() }.orEmpty()
+    /** A device's name as it wrote it in its files, else its id. */
+    fun label(all: Map<String, List<DataMonth>>, id: String) = all[id]?.firstNotNullOfOrNull { it.name.ifEmpty { null } } ?: id
     private val NAME = Regex("""(\d{4}-\d{2})\.(.+)\.jsonl""")
 
     fun plan(root: File = root()): DataPlan? = File(root, "plan.json").takeIf { it.isFile }?.let { DataPlan.parse(it.readText()) }
@@ -209,6 +214,7 @@ internal object DataFiles {
     fun line(e: DataEvent) = "{\"at\":\"${e.at}\",\"event\":\"${e.kind}\",\"secs\":${e.secs}" + (if (e.note.isNotEmpty()) ",\"note\":${JSONObject.quote(e.note)}" else "") + "}"
 
     fun text(m: DataMonth) = buildString {
+        if (m.name.isNotEmpty()) append("{\"deviceName\":${JSONObject.quote(m.name)}}\n")
         m.days.sortedBy { it.day }.forEach { append(line(it)).append('\n') }
         m.hours.sortedWith(compareBy({ it.hour }, { it.net })).forEach { append(line(it)).append('\n') }
         m.apps.sortedWith(compareBy({ it.day }, { -it.total }, { it.app })).forEach { append(line(it)).append('\n') }
@@ -217,16 +223,18 @@ internal object DataFiles {
 
     fun parse(device: String, text: String): DataMonth {
         val days = mutableListOf<DataDay>(); val apps = mutableListOf<DataApp>(); val hours = mutableListOf<DataHour>(); val events = mutableListOf<DataEvent>()
+        var name = ""
         text.lineSequence().filter { it.isNotBlank() }.forEach { l ->
             val o = runCatching { JSONObject(l) }.getOrNull() ?: return@forEach
             when {
+                o.has("deviceName") -> name = o.optString("deviceName")
                 o.has("event") -> events += DataEvent(o.optString("at"), o.optString("event"), o.optLong("secs"), o.optString("note"))
                 o.has("h") -> hours += DataHour(o.optString("h"), o.optString("net"), o.optLong("bytes"))
                 o.has("app") -> apps += DataApp(LocalDate.parse(o.getString("d")), o.optString("app"), o.optString("name"), o.optString("net"), o.optLong("fg"), o.optLong("bg"), o.optLong("roam"))
                 o.has("d") -> days += DataDay(LocalDate.parse(o.getString("d")), o.optLong("mobile"), o.optLong("wifi"), o.optLong("roam"), o.optLong("hotspot"), o.optLong("via"), o.optBoolean("outsideEu"))
             }
         }
-        return DataMonth(device, days, apps, hours, events)
+        return DataMonth(device, days, apps, hours, events, name)
     }
 
     fun monthFile(month: String, device: String = device(), root: File = root()) = File(File(root, "usage"), "$month.$device.jsonl")

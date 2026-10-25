@@ -109,7 +109,7 @@ internal object DataStats {
             }
             byUid.forEach { (uid, u) ->
                 val total = u.fg + u.bg
-                if (net == "mobile") { mobile += total; roam += u.roam; if (uid == NetworkStats.Bucket.UID_TETHERING) hotspot += total } else { wifi += total; via += u.metered }
+                if (net == "mobile") { mobile += total; roam += u.roam; if (uid == NetworkStats.Bucket.UID_TETHERING) hotspot += total } else { wifi += total; if (uid != Process.myUid()) via += u.metered } // Tetra's own: its sync with the phone itself, never on the mobile network
                 if (total > 0) { val (app, label) = name(c, uid); apps += DataApp(d, app, label, net, u.fg, u.bg, u.roam) }
             }
         }
@@ -165,7 +165,7 @@ internal object DataStats {
             val s = floorBucket(at(maxOf(m, keepBefore), zone)); val e = floorBucket(now) + BUCKET
             val hrs = (old?.hours.orEmpty().filter { it.hour < Instant.ofEpochMilli(s).atZone(zone).format(HOUR) }) + if (hasAccess(c)) hours(nsm, s, e, zone) else emptyList()
             val ev = (old?.events.orEmpty() + events.filter { it.at.startsWith(m.toString().take(7)) }).distinct()
-            val month = DataMonth(device, days, apps, hrs.filter { it.hour.startsWith(m.toString().take(7)) }, ev)
+            val month = DataMonth(device, days, apps, hrs.filter { it.hour.startsWith(m.toString().take(7)) }, ev, DataFiles.deviceName(c))
             if (month.days.isEmpty() && month.events.isEmpty() && old == null) return@mapNotNull null
             if (DataFiles.write(file, DataFiles.text(month))) changed = true
             month

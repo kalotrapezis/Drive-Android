@@ -3059,20 +3059,21 @@ Send log.
    hidden in Files on both. **The hotspot's share without logging intervals**: Android marks a Wi-Fi that is a phone's
    hotspot as metered (the hotspot says so over DHCP), and its statistics keep that: the tablet's `via` = its metered Wi-Fi
    bytes. NetworkManager does the same on the PC (seen 25 Oct: `GENERAL.METERED: yes (guessed)` on "Xiaomi 15").
-   Shortcut: Tetra's own sync over the hotspot is not subtracted yet (it is in the clients' counts).
+   Tetra's own sync with the phone is left out (25 Oct, the user: "do these too"): on Android its own UID's bytes, on the
+   computer each sync connection's bytes (sync.js → datacount.js `own`).
 - [x] 5. (Drive 414f43d, branch `data`) Desktop: `datacount.js` (each minute /sys/class/net counters → this computer's month file,
    written every ten minutes and only once plan.json exists; Wi-Fi from `iw`; drops and "off the phone's hotspot"; sync's
    /data/wifi and /data/speed), `src/Data.tsx` (the plan, 30 days of all devices, this cycle by device, the hotspot box with
    who used most and the difference, this computer's Wi-Fi now, the drops). `test/datacount.test.js`; desktop 139/139, tsc
-   clean; the page rendered with sample files (scripts/shot.js, a separate profile). The devices show by model code
-   (25010PN30G) — friendly names later.
+   clean; the page rendered with sample files (scripts/shot.js, a separate profile). Each month file starts with its device's
+   name ({"deviceName":"Xiaomi 15"}, Android's own device name; the computer's host name), shown instead of the model code.
 - [x] 6. Signal (`DataSignal.kt`): the meter (dBm, words, the 2-minute line, sound mode), Spots with rounds and the best round,
    speed to the computer, "Phone as hotspot" (the computer's own reading every 2 s; **the tablet cannot report to the phone**:
    it is paired only with the computer, and the hotspot keeps the computer and the tablet apart — the tablet shows its own),
    Around (scan, the least crowded channel, your own network left out, RTT marked). Emulator: the meter, a scan, a spot saved.
 - [x] 7. Drops: Android's callbacks (mobile data lost, no service, no signal ≥ 30 s, a fall to 3G/2G; Wi-Fi lost and back
-   within 10 min, very weak ≥ 30 s), the PC's own; listed in Signal and on the desktop page; a daily summary (off). Not
-   marked under the chart (yet). Nothing to see on the emulator (no drops); the real phone will show.
+   within 10 min, very weak ≥ 30 s), the PC's own; listed in Signal and on the desktop page; a daily summary (off); red
+   marks under the chart's bars (every device's). Nothing to see on the emulator (no drops); the real phone will show.
 - [x] 8. Home's Data group (the art, the plan at a glance, Devices, Signal, Drops) and the icon: tools/applet-icons.py cuts
    Data.png's dark corners with a rounded-square mask; launcher background #17191D; Settings › App icons: Tetra Data.
    Emulator: light and dark, phone and tablet width. Unit suite 644, 0 failing, 9 skipped (DataTest, DataSignalTest).

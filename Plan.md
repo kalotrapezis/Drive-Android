@@ -386,8 +386,10 @@ How to write here:
 - [ ] **Next, in this order** (the user, 25 Oct): (1) wait for the two agents now running — sync's clean-up of what Data
       leaves behind, and Contacts' call history with recordings — then merge everything; (2) one agent optimises every
       other applet one by one with Contacts' speed recipe (Notes is slow to show its notes; Files, Scanner, Timer, Calendar
-      should be fast; Office may stay slower), measured before → after on the phone; (3) translations for every applet
-      (string files; the UI is English-only until then); (4) then push to GitHub as a fuller product.
+      should be fast; Office may stay slower), measured before → after on the phone; (3) translations for every applet:
+      **Greek first, then the EU languages, one string file per language** (Android values-<lang>/strings.xml; the desktop
+      one file per language); short words preferred, and what still doesn't fit ends with "…" (no wrapping, no shrinking);
+      (4) then push to GitHub as a fuller product.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

@@ -105,6 +105,8 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
         onDispose { lifecycle.lifecycle.removeObserver(o); context.contentResolver.unregisterContentObserver(log) }
     }
     var tab by tabState
+    var shownAt by remember { mutableStateOf<Long?>(null) } // how long the Phone takes to open (ContactsTiming): first calls drawn
+    remember { android.os.SystemClock.uptimeMillis().also { t -> ContactsTiming.watch(t, "Calls") { shownAt } } }
     var query by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf(emptySet<CallGroup>()) }
     val tablet = remember { PhoneRelay.noCalls(context) } // no calls of its own: the phone's, through the computer (PhoneRelay)
@@ -117,6 +119,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     val calls by produceState(emptyList<LoggedCall>(), version) {
         value = withContext(Dispatchers.IO) { if (tablet) PhoneRelay.calls() else PhoneLog.read(context).also { PhoneHistory.write(context) } }
     }
+    LaunchedEffect(calls.isNotEmpty()) { if (calls.isNotEmpty() && shownAt == null) { androidx.compose.runtime.withFrameMillis {}; shownAt = android.os.SystemClock.uptimeMillis() } }
     val spam by produceState(PhoneSpam.read(), version) { value = withContext(Dispatchers.IO) { PhoneSpam.read() } }
     val byKey = remember(contacts) { contacts.flatMap { c -> c.phones.map { ContactsWays.key(it.value) to c } }.filter { it.first.length >= 5 }.toMap() }
     fun who(n: String) = byKey[ContactsWays.key(n)]

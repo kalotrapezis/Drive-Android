@@ -155,7 +155,7 @@ internal object ContactThumbs {
  * over 100 ms, i.e. a tap waited) within five seconds, and the longest frame.
  */
 internal object ContactsTiming {
-    fun watch(opened: Long, shown: () -> Long?) {
+    fun watch(opened: Long, what: String = "Contacts", shown: () -> Long?) {
         var last = opened; var stuckUntil = 0L; var longest = 0L
         val choreographer = android.view.Choreographer.getInstance()
         choreographer.postFrameCallback(object : android.view.Choreographer.FrameCallback {
@@ -165,7 +165,7 @@ internal object ContactsTiming {
                 longest = maxOf(longest, now - last)
                 last = now
                 if (now - opened < 5000) choreographer.postFrameCallback(this)
-                else WriterLog.i("Contacts: opened → first contacts ${shown()?.let { "${it - opened} ms" } ?: "not yet"}, taps answered from ${if (stuckUntil == 0L) 0 else stuckUntil - opened} ms, longest frame $longest ms")
+                else WriterLog.i("$what: opened → first ${what.lowercase()} ${shown()?.let { "${it - opened} ms" } ?: "not yet"}, taps answered from ${if (stuckUntil == 0L) 0 else stuckUntil - opened} ms, longest frame $longest ms")
             }
         })
     }

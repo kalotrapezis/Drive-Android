@@ -35,6 +35,26 @@ class NotesTest {
         assertEquals("Three", NotesStore(s.root).list().single().title)
     }
 
+    @Test fun `the list holds cards, a tap reads the whole note, and an index file keeps the cards for the next start`() {
+        val s = store()
+        val long = (1..40).joinToString("\n") { "line $it " + "x".repeat(500) }
+        val n = s.create(checklist = false)
+        s.setText(n.id, "Long", long, null)
+        val c = s.create(checklist = true)
+        s.setText(c.id, "List", "", (1..20).map { CheckItem("i$it", "item $it", it % 3 == 0, it) })
+        NotesStore.indexDir = Files.createTempDirectory("index").toFile()
+        try {
+            val cards = s.list().associateBy { it.id }
+            assertEquals(long, s.get(n.id)!!.content)
+            assertTrue(cards.getValue(n.id).content.length < 8 * 401)
+            // what a card shows (three lines of each, ~120 characters) is the same as the whole note's
+            for (id in listOf(n.id, c.id)) assertEquals(NoteFormat.preview(s.get(id)!!).map { it.take(300) }, NoteFormat.preview(cards.getValue(id)).map { it.take(300) })
+            assertEquals(long, s.whole(listOf(n.id)).single().content)
+            val index = JSONArray(NotesStore.indexDir!!.listFiles()!!.single().readText())
+            assertEquals(cards.values.toSet(), (0 until index.length()).map { NotesStore.parse(index.getJSONObject(it).getJSONObject("note")) }.toSet())
+        } finally { NotesStore.indexDir = null }
+    }
+
     @Test fun `a failed replacement reports failure and preserves the obstructing target`() {
         val s = store()
         val target = File(s.root, "blocked.json").apply { mkdirs() }

@@ -246,6 +246,7 @@ class MainActivity : ComponentActivity() {
         CalendarAlarms.planSoon(this) // the Calendar's next reminder, from the files as they are now
         ContactsPreload.warm(this) // Contacts open full, not "no contacts" for a second
         PhoneLog.warm(this) // and the Phone's Recents
+        NotesStore.indexDir = cacheDir
         Thread { if (Environment.isExternalStorageManager()) runCatching { notesStore().list() } }.start() // and Notes
         Thread { runCatching { TimerService.check(this) } }.start() // a timer running (here or started elsewhere): its notification
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).

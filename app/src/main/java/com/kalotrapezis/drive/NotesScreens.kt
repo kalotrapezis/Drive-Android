@@ -105,9 +105,9 @@ private fun inView(n: Note, v: NotesView) = when (v) {
     NotesView.Archived -> n.trashedAt == null && n.archivedAt != null
     NotesView.Home -> n.trashedAt == null && n.archivedAt == null
 }
-private const val FIRST_NOTES = 24 // a tablet's first screenful of cards and more
 private val accents = Regex("\\p{M}")
 private fun fold(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(accents, "").lowercase()
+private fun searchText(n: Note) = fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" "))
 
 /** `start`: true opens a new checklist, false a new note, null the list (the home card's three doors). */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -116,7 +116,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     val store = remember { notesStore() }
     val scope = rememberCoroutineScope()
     var version by remember { mutableIntStateOf(0) }
-    var notes by remember { mutableStateOf(store.lastList()) } // read ahead when Tetra started
+    var notes by remember { mutableStateOf(store.lastList()) } // read ahead when Tetra started; cards only (NotesStore.summary)
     OpenTiming("Notes", notes != null)
     var view by remember { mutableStateOf(NotesView.Home) }
     var label by remember { mutableStateOf<String?>(null) }
@@ -128,19 +128,18 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     var selected by remember { mutableStateOf(emptySet<String>()) }
     val remote by NotesSync.changed.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val first = remember { File(context.cacheDir, "notes-first.txt") } // the notes Home showed first last time
     LaunchedEffect(version, remote, hasAccess) {
         if (!hasAccess) return@LaunchedEffect
-        // opened before the read-ahead finished: the pinned and the first screenful at once, then everything
-        if (notes == null) withContext(Dispatchers.IO) { runCatching { store.some(first.readLines()) }.getOrNull() }?.takeIf { it.isNotEmpty() }?.let { if (notes == null) notes = it }
+        // opened before the read-ahead finished: the list as the index file has it (one file), then the folder's
+        if (notes == null) withContext(Dispatchers.IO) { runCatching { store.indexed() }.getOrNull() }?.let { if (notes == null) notes = it }
         val got = withContext(Dispatchers.IO) { store.list() }
         notes = got
         if (withContext(Dispatchers.IO) { store.sweep(notes = got) } > 0) notes = withContext(Dispatchers.IO) { store.list() } // after the list shows
-        withContext(Dispatchers.IO) { runCatching { first.writeText(got.filter { inView(it, NotesView.Home) }.sortedByDescending { it.updatedAt }.let { h -> h.filter { it.pinned } + h.filterNot { it.pinned }.take(FIRST_NOTES) }.joinToString("\n") { it.id }) } }
     }
-    // search's index: each note's words without accents, made once off this thread, not on every key typed
-    val index by produceState(emptyMap<String, String>(), notes) {
-        value = withContext(Dispatchers.Default) { notes.orEmpty().associate { n -> n.id to fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" ")) } }
+    // search's index: each note's whole text without accents, read from the files while search is open and let go after
+    // (thousands of notes stay out of memory); until it is ready, what the cards hold
+    val index by produceState(emptyMap<String, String>(), searching, notes) {
+        value = if (!searching) emptyMap() else withContext(Dispatchers.IO) { store.whole(notes.orEmpty().map { it.id }).associate { n -> n.id to searchText(n) } }
     }
     LaunchedEffect(version) { if (version > 0) NotesSync.soon(context) } // a change made here, in the list or an editor
     // Opening Notes is the moment to catch up — the whole sync may have been skipped (asked 2026-09-26).
@@ -183,7 +182,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     val everywhere = q.isNotEmpty() || label != null
     val trash = view == NotesView.Trash && !everywhere
     val shown = remember(all, view, label, q, index) { all.filter { n -> (if (everywhere) n.trashedAt == null else inView(n, view)) && (label == null || label in n.labels) &&
-        (q.isEmpty() || (index[n.id] ?: fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" "))).contains(q)) }
+        (q.isEmpty() || (index[n.id] ?: searchText(n)).contains(q)) }
         .sortedWith(if (trash) compareByDescending { it.trashedAt } else compareByDescending { it.updatedAt }) }
     // Pinned on top of Home, the rest below them (asked 2026-09-26).
     val pinned = remember(shown, view, everywhere) { if (view == NotesView.Home || everywhere) shown.filter { it.pinned } else emptyList() }
@@ -201,7 +200,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     }
     val card: @Composable (Note) -> Unit = { n ->
         NoteCard(n, selected = n.id in selected, selecting = selected.isNotEmpty(), longPress = { selected = if (n.id in selected) selected - n.id else selected + n.id }) {
-            if (selected.isEmpty()) open = n else selected = if (n.id in selected) selected - n.id else selected + n.id
+            if (selected.isEmpty()) scope.launch { withContext(Dispatchers.IO) { store.get(n.id) }?.let { open = it } } // the whole note: the list holds its card else selected = if (n.id in selected) selected - n.id else selected + n.id
         }
     }
     val header: @Composable (String) -> Unit = { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 8.dp)) }

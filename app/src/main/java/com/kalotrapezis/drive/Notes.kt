@@ -54,28 +54,55 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     }
     fun get(id: String): Note? = json(id)?.let(::parse)
 
+    /**
+     * Every note as its card shows it ([summary]; [get] reads one whole). A file is read again only when it changed
+     * since the last look (the index file keeps that across starts): a list of thousands costs a look at the folder.
+     */
     fun list(): List<Note> = synchronized(lock) {
+        indexed()
         val deleted = deletedIds()
-        root.listFiles { f -> f.isFile && f.name.endsWith(".json") && f.name != "deletions.json" }.orEmpty()
-            .mapNotNull(::read)
-            .filterNot { it.id in deleted }
-            .also { lists[root.path] = it }
+        val files = root.listFiles { f -> f.isFile && f.name.endsWith(".json") && f.name != "deletions.json" }.orEmpty()
+        var fresh = false
+        val notes = files.mapNotNull { f -> read(f) { fresh = true } }.filterNot { it.id in deleted }
+        // what is kept follows the folder as it is now: Tetra left open for months holds no note deleted since
+        val here = files.mapTo(HashSet()) { it.path }
+        seen.keys.removeIf { File(it).parentFile?.path == root.path && it !in here }
+        lists[root.path] = notes
+        if (fresh || files.size != indexedCount) saveIndex(files)
+        notes
     }
 
-    /** These notes only, without waiting for a whole read under way: what Notes shows first (NotesTab). */
-    fun some(ids: List<String>): List<Note> {
-        val deleted = deletedIds()
-        return ids.filter { isId(it) && it !in deleted }.mapNotNull { read(file(it)) }
-    }
-
-    /** The list as [list] last read it (Tetra reads it ahead at start): the screen's first frame. */
+    /** The list as it was last read (Tetra reads it ahead at start): the screen's first frame, without reading anything. */
     fun lastList(): List<Note>? = lists[root.path]
 
-    // A note's file is read again only when it changed: opening Notes read and parsed every one each time (25 Oct).
-    private fun read(f: File): Note? {
+    /** The list as the index file has it — one file, however many notes — before the folder is looked at; null without one. */
+    fun indexed(): List<Note>? = lists[root.path] ?: synchronized(seen) {
+        val f = indexFile() ?: return null
+        val a = runCatching { JSONArray(f.readText()) }.getOrNull() ?: return null
+        for (i in 0 until a.length()) runCatching { a.getJSONObject(i).let { o -> seen.putIfAbsent(o.getString("path"), (o.getLong("mod") to o.getLong("len")) to parse(o.getJSONObject("note"))) } }
+        indexedCount = a.length()
+        val deleted = deletedIds()
+        a.let { (0 until it.length()).mapNotNull { i -> seen[it.getJSONObject(i).optString("path")]?.second }.filterNot { n -> n.id in deleted } }
+            .also { lists.putIfAbsent(root.path, it) }
+    }
+
+    /** The whole of these notes, for search: read from their files, not kept (NotesTab's index while searching). */
+    fun whole(ids: List<String>): List<Note> = ids.filter(::isId).mapNotNull { id -> runCatching { parse(JSONObject(file(id).readText())) }.getOrNull() }
+
+    @Volatile private var indexedCount = -1
+    private fun indexFile() = indexDir?.let { File(it, "notes-" + Integer.toHexString(root.path.hashCode()) + ".json") }
+    private fun saveIndex(files: Array<out File>) {
+        val f = indexFile() ?: return
+        val a = JSONArray()
+        files.forEach { file -> seen[file.path]?.let { (s, n) -> a.put(JSONObject().put("path", file.path).put("mod", s.first).put("len", s.second).put("note", cardJson(n))) } }
+        runCatching { File(f.path + ".tmp").apply { writeText(a.toString()) }.renameTo(f) }
+        indexedCount = files.size
+    }
+
+    private fun read(f: File, fresh: () -> Unit): Note? {
         val stamp = f.lastModified() to f.length()
         seen[f.path]?.let { (s, n) -> if (s == stamp) return n }
-        return runCatching { parse(JSONObject(f.readText())) }.getOrNull()?.also { seen[f.path] = stamp to it }
+        return runCatching { summary(parse(JSONObject(f.readText()))) }.getOrNull()?.also { seen[f.path] = stamp to it; fresh() }
     }
 
     /** Whole, through a temporary file, so a crash never leaves half a note. */
@@ -219,6 +246,23 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
         private val locks = ConcurrentHashMap<String, Any>()
         private val seen = ConcurrentHashMap<String, Pair<Pair<Long, Long>, Note>>()
         private val lists = ConcurrentHashMap<String, List<Note>>()
+        /** Where the list's index files go (the app's cache, set at start); none: every start reads the folder. */
+        @Volatile var indexDir: File? = null
+        private const val PREVIEW = 8 // lines a card shows at most (NoteFormat.preview)
+        private const val LINE = 400 // characters of a line kept for a card, which shows three lines of it
+
+        /** A card's worth of a note: what the list keeps in memory (the user, 25 Oct: some have thousands of notes). */
+        fun summary(n: Note) = n.copy(
+            content = n.content.lineSequence().filter { it.isNotBlank() }.take(PREVIEW).joinToString("\n") { it.take(LINE) },
+            items = n.items.sortedForList().take(PREVIEW).map { it.copy(text = it.text.take(LINE)) },
+        )
+
+        /** [parse] reads it back. */
+        private fun cardJson(n: Note): JSONObject = JSONObject().put("id", n.id).put("title", n.title).put("content", n.content)
+            .put("noteType", if (n.checklist) "CHECKLIST" else "TEXT").put("labels", JSONArray(n.labels)).put("color", n.color ?: "")
+            .put("isPinned", n.pinned).put("archivedAt", n.archivedAt ?: 0).put("trashedAt", n.trashedAt ?: 0)
+            .put("createdAt", n.createdAt).put("updatedAt", n.updatedAt)
+            .put("checklistItems", JSONArray(n.items.map { JSONObject().put("id", it.id).put("text", it.text).put("isChecked", it.checked).put("order", it.order) }))
         const val KEEP = 3 // copies of a note in its history
         fun safeTitle(t: String) = t.replace(Regex("[/\\\\\u0000:*?\"<>|]"), " ").replace(Regex("\\s+"), " ").trim().take(80).ifEmpty { "Untitled" }
 

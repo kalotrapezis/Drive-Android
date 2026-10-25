@@ -148,6 +148,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -248,6 +249,7 @@ class MainActivity : ComponentActivity() {
         PhoneLog.warm(this) // and the Phone's Recents
         NotesStore.indexDir = cacheDir
         Thread { if (Environment.isExternalStorageManager()) runCatching { notesStore().list() } }.start() // and Notes
+        HomeArt.warm(this) // Home's pictures made small before Home is drawn
         Thread { runCatching { TimerService.check(this) } }.start() // a timer running (here or started elsewhere): its notification
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false
@@ -1016,7 +1018,8 @@ private fun Home(
     // A tablet shows the groups two by two (asked 2026-09-26); a phone one under another.
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val context = LocalContext.current
-    val syncSummary = remember(context) { SyncStore(context.applicationContext).summary() }
+    // its database read off the screen's thread; the last line said until it answers
+    val syncSummary by produceState(homeSyncSummary, context) { value = withContext(Dispatchers.IO) { SyncStore(context.applicationContext).summary() }.also { homeSyncSummary = it } }
     OpenTiming("Home", true)
     // each part's group, as Home has always shown them
     val large: @Composable (String) -> Unit = { id -> when (id) {
@@ -1306,8 +1309,38 @@ private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
 }
 
 // the user's art is itself a tile, Sync's and Settings' too (24 Oct)
-@Composable private fun HomeIconArt(icon: HomeIcon, size: androidx.compose.ui.unit.Dp) =
-    Image(painterResource(icon.art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(size))
+@Composable private fun HomeIconArt(icon: HomeIcon, size: androidx.compose.ui.unit.Dp) = ArtImage(icon.art, size)
+
+/**
+ * The applets' art (627 px PNGs, shown at 34–112 dp) decoded once, off the screen's thread: fifteen decoded full size on
+ * the UI thread held Home's first frame ~300 ms (25 Oct). One bitmap per picture, so a Tetra left open for months holds
+ * no more than these fifteen.
+ */
+internal object HomeArt {
+    private val cache = java.util.concurrent.ConcurrentHashMap<Int, ImageBitmap>()
+    fun cached(art: Int) = cache[art]
+    /** Made for the largest it is shown (a medium part's 112 dp), a power-of-two step of the file. */
+    fun get(res: android.content.res.Resources, art: Int): ImageBitmap? = cache[art] ?: runCatching {
+        val px = 112 * res.displayMetrics.density
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeResource(res, art, bounds)
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= px) sample *= 2
+        BitmapFactory.decodeResource(res, art, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+    }.getOrNull()?.also { cache[art] = it }
+    /** Home's pictures ready before Home is drawn. */
+    fun warm(c: Context) {
+        val res = c.applicationContext.resources
+        Thread { (Applet.entries.map { it.art } + R.drawable.sync_art + R.drawable.settings_art).forEach { get(res, it) } }.start()
+    }
+}
+
+/** An applet's art ([HomeArt]); the space it takes until it is decoded. */
+@Composable internal fun ArtImage(art: Int, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val res = LocalContext.current.resources
+    val bitmap by produceState(HomeArt.cached(art), art) { if (value == null) value = withContext(Dispatchers.Default) { HomeArt.get(res, art) } }
+    bitmap?.let { Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = modifier.size(size)) } ?: Spacer(modifier.size(size))
+}
 
 /**
  * Maps (21 Oct): saved places beside the map, each one tap to directions there (the user, 21 Oct: "favorite locations
@@ -1347,14 +1380,22 @@ private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
     }
 }
 
+private var homeSyncSummary = ""
+
+/** Four favourites for Home, from Contacts' read-ahead (ContactsPreload): no second read of every contact's file. */
+private fun homeFavourites(all: List<Contact>?, phones: Boolean) =
+    all.orEmpty().map { it.info }.filter { it.favourite && (!phones || it.phones.isNotEmpty()) }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4)
+private suspend fun homeFavourites(context: Context, phones: Boolean, or: List<ContactInfo>) = withContext(Dispatchers.IO) {
+    runCatching { homeFavourites(ContactsPreload.load(context.applicationContext, ContactsPrefs.byLast(context)), phones) }.getOrDefault(or)
+}
+
 /**
  * Contacts (23 Oct): the icon's brown; four favourites' faces beside it, one tap opens that person (the plan's question 7,
  * its recommended answer), an empty one "Add" opening Contacts.
  */
 @Composable private fun HomeContactsGroup(open: (String?) -> Unit) {
-    val favs by produceState(emptyList<ContactInfo>()) {
-        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).map { it.info }.filter { it.favourite }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4) }.getOrDefault(emptyList()) }
-    }
+    val context = LocalContext.current
+    val favs by produceState(remember { homeFavourites(ContactsPreload.all, false) }) { value = homeFavourites(context, false, value) }
     HomeGroup(Category.Contacts.color) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeArtCard("Contacts", R.drawable.contacts_art, { open(null) }, Modifier.weight(1f), artSize = 76)
@@ -1380,9 +1421,7 @@ internal fun openPhone(c: Context, tab: String? = null) = c.startActivity(Intent
 /** The Phone on Home: its art, and four favourites to call with one tap (the plan's question 7, its recommended answer). */
 @Composable private fun HomePhoneGroup() {
     val context = LocalContext.current
-    val favs by produceState(emptyList<ContactInfo>()) {
-        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).map { it.info }.filter { it.favourite && it.phones.isNotEmpty() }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4) }.getOrDefault(emptyList()) }
-    }
+    val favs by produceState(remember { homeFavourites(ContactsPreload.all, true) }) { value = homeFavourites(context, true, value) }
     val scope = rememberCoroutineScope()
     fun call(f: ContactInfo) {
         val n = f.defaultPhone ?: f.phones.first().value
@@ -1464,7 +1503,7 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
             if (hasBackdrop) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)))
             // Laid out like HomeArtCard: the Gallery tile top-right (only without the photo backdrop), the title at the bottom.
             Box(Modifier.fillMaxSize().padding(18.dp)) {
-                if (!hasBackdrop) Image(painterResource(R.drawable.gallery_art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.align(Alignment.TopEnd).size(76.dp))
+                if (!hasBackdrop) ArtImage(R.drawable.gallery_art, 76.dp, Modifier.align(Alignment.TopEnd))
                 Text("Photos", color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
             }
         }
@@ -1517,10 +1556,7 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
     modifier = modifier.height(156.dp).clickable(onClick = click),
 ) { Box(Modifier.fillMaxSize().padding(18.dp)) {
-    Image(
-        painter = painterResource(art), contentDescription = null, contentScale = ContentScale.Fit,
-        modifier = Modifier.align(Alignment.TopEnd).size(artSize.dp),
-    )
+    ArtImage(art, artSize.dp, Modifier.align(Alignment.TopEnd))
     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
 } }
 
@@ -1539,7 +1575,7 @@ private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, 
     modifier = modifier.height(156.dp).then(if (click == null) Modifier else Modifier.clickable(onClick = click)),
 ) {
     Box(Modifier.fillMaxSize().padding(18.dp)) {
-        Image(painterResource(art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.align(Alignment.TopEnd).size(76.dp))
+        ArtImage(art, 76.dp, Modifier.align(Alignment.TopEnd))
         Text(label, style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.align(Alignment.BottomStart))
     }
 }
@@ -1549,7 +1585,7 @@ private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, 
     shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant,
     modifier = modifier.fillMaxWidth().heightIn(min = 78.dp).clickable(onClick = click),
 ) { Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-    Image(painterResource(art), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(44.dp))
+    ArtImage(art, 44.dp)
     Column {
         Text(label, style = MaterialTheme.typography.titleMedium)
         Text(detail, style = MaterialTheme.typography.bodySmall)
@@ -2001,7 +2037,7 @@ internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home") }
                 Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                art?.let { Image(painterResource(it), contentDescription = null, modifier = Modifier.size(34.dp)) }
+                art?.let { ArtImage(it, 34.dp) }
                 actions()
             }
             Box(Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 1.dp, max = 1.dp).background(on.copy(alpha = 0.35f)))

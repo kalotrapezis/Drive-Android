@@ -203,7 +203,8 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                     runCatching { context.startActivity(DataStats.accessIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                         .onFailure { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 }
-                if (plan == null) Notice("Tell Data your plan: its size and when it renews, for warnings and a daily budget.", "Setup", openSetup)
+                if (plan == null) Notice(if (PhoneRelay.noCalls(context)) "Your phone's plan comes here with Local Sync once Data is set up on the phone (or set it up here)."
+                    else "Tell Data your plan: its size and when it renews, for warnings and a daily budget.", "Setup", openSetup)
                 else if (status != null) PlanHead(plan, status)
                 SpanChips(span) { span = it }
                 Chart(shown, span, plan, status, picked, shift, { shift += it }, drops) { picked = if (picked == it) null else it }

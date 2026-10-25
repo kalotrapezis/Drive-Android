@@ -415,7 +415,26 @@ How to write here:
       is read when opened, search indexes live only while searching, and what was deleted leaves memory (Tetra left open
       for months does not grow). Measured and left as they are (already quick, the camera or the map is the wait): Scanner
       341 / 142 / 397 ms, Codes 310 / 99 / 388, Text editor 200 / 116 / 224, Maps 376 / 246 / 364. Office and PDF
-      documents measured (below; left as they are). Still to do: Photos on the phone (not connected; the tablet has none). Unit suite 655, 0 failing.
+      documents measured (below; left as they are). Photos measured on the phone (below). Unit suite 655, 0 failing.
+
+      **On the phone (Xiaomi 15, 208c8192, debug build; installed with tools/phone-install.sh, 25 Oct 15:20–15:50)** — first
+      content in ms, Tetra ready; tapped at once after start; "taps" where the UI thread stayed busy after it:
+
+      | Applet | before | after |
+      |---|---|---|
+      | Data | 2353–2426; at once 4917 and over 5 s | 425–555; 758–912 — the last counts at once, today's from Android ~2 s later, the ring, numbers and bars growing to them (the user's idea) |
+      | Notes | 348–407; 399–496 | 134–169; 184–245 |
+      | Calendar | 268–291; 340–391 | 155–246; 224–442 |
+      | Photos (taps answered) | 341–394, taps from 693–1895; 619–667 | 411–462, taps from 113–130; 513–680 — the photo database's ten queries off the UI thread; the timeline waits for them so nothing hidden shows |
+      | Office home | 711–881; 1060–1121 | 726–1174; 647–874 (the phone walks the library fast; the gain is the tablet's and a larger library's) |
+      | Timer | 226–246; 242–257 | 168–226; 251–314 |
+      | Files | 159–173; 219–250 | 151–228; 211–298 |
+      | Contacts (taps, at once) | 157–218; taps from ~0.2 s | 176–250; taps from ~0.2 s |
+      | Home's first frame | 519–586 | 506–584 |
+
+      Found on the phone and fixed (6b12e1d): the Calendar's and Notes' read-aheads started with Tetra slowed Home's first frame
+      (683–781 ms) and Home's Contacts and Phone groups reading through Contacts' read-ahead published its list again to an open
+      Contacts (taps waiting ~1.3 s); now the read-aheads start after Home's first frame and Home reads the files itself.
 
       **The biggest lever is the build, not the code:** the phone and the tablet run a debuggable build, and Android runs a
       debuggable app's Compose several times slower. The same code built not debuggable, signed with the same debug key

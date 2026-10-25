@@ -9,7 +9,7 @@ object ScanFiles {
 
     fun outputName(value: String): String {
         val stem = value.trim().removeSuffix(".pdf").trim()
-        require(stem.isNotEmpty() && stem.length <= 120 && '/' !in stem && '\\' !in stem && stem !in setOf(".", "..")) { "Enter a valid file name." }
+        need(stem.isNotEmpty() && stem.length <= 120 && '/' !in stem && '\\' !in stem && stem !in setOf(".", ".."), R.string.scanner_error_name) { "Enter a valid file name." }
         return "$stem.pdf"
     }
 
@@ -22,11 +22,11 @@ object ScanFiles {
 
     /** Writes [pageCount] pages rendered one at a time (bounded memory) as A4-width PDF pages. */
     fun savePdf(root: File, name: String, pageCount: Int, into: String = FOLDER, render: (Int) -> Bitmap): String {
-        require(pageCount > 0) { "There are no pages to save." }
+        need(pageCount > 0, R.string.scanner_error_no_pages) { "There are no pages to save." }
         val folder = File(root, into).canonicalFile
-        require(DriveRules.inside(root, folder) && (folder.exists() || folder.mkdirs())) { "Could not create Scans." }
+        need(DriveRules.inside(root, folder) && (folder.exists() || folder.mkdirs()), R.string.scanner_error_folder) { "Could not create Scans." }
         val target = nextAvailable(folder, outputName(name)).canonicalFile
-        require(DriveRules.inside(root, target) && target.createNewFile()) { "Could not create the scan file." }
+        need(DriveRules.inside(root, target) && target.createNewFile(), R.string.scanner_error_file) { "Could not create the scan file." }
         val document = PdfDocument()
         try {
             for (index in 0 until pageCount) {

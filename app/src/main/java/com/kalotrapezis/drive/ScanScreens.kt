@@ -281,7 +281,7 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
     val requestCamera = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasCamera = granted
-        if (!granted) cameraError = "Camera access is needed only to scan a page."
+        if (!granted) cameraError = context.getString(R.string.scanner_camera_needed)
     }
 
     LaunchedEffect(hasCamera, lifecycleOwner) {
@@ -351,7 +351,7 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
                                 }
                             }
                         }
-                        val viewPort = checkNotNull(previewView.viewPort) { "Camera preview is not ready." }
+                        val viewPort = previewView.viewPort ?: throw DriveProblem("Camera preview is not ready.", R.string.scanner_preview_not_ready)
                         val useCases = UseCaseGroup.Builder()
                             .setViewPort(viewPort)
                             .addUseCase(preview)
@@ -362,9 +362,9 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
                         provider.unbindAll()
                         camera = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, useCases)
                         capture = imageCapture
-                    }.onFailure { cameraError = it.message ?: "Could not start the camera." }
+                    }.onFailure { cameraError = it.shownMessage(context) ?: context.getString(R.string.scanner_camera_failed) }
                 }
-            }.onFailure { cameraError = it.message ?: "Could not start the camera." }
+            }.onFailure { cameraError = it.shownMessage(context) ?: context.getString(R.string.scanner_camera_failed) }
         }, ContextCompat.getMainExecutor(context))
     }
     androidx.compose.runtime.DisposableEffect(cameraProvider) {
@@ -400,7 +400,7 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
                 }
                 override fun onError(exception: ImageCaptureException) {
                     captureInProgress = false
-                    cameraError = exception.message ?: "Could not capture the page."
+                    cameraError = exception.message ?: context.getString(R.string.scanner_capture_failed)
                 }
             },
         )
@@ -434,10 +434,10 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
             modifier = Modifier.fillMaxWidth(),
         ) { Column(Modifier.statusBarsPadding().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-                Text("Scan page", style = MaterialTheme.typography.titleLarge)
+                IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
+                Text(stringResource(R.string.scanner_scan_page), style = MaterialTheme.typography.titleLarge)
             }
-            Text("Keep the page inside the frame, then capture it to edit.", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.scanner_frame_hint), style = MaterialTheme.typography.bodyMedium)
         } }
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
             // 3:4 upright is the sensor's own shape; anything else would be the preview throwing pixels away.
@@ -450,14 +450,14 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
             color = Color.Black, contentColor = Color.White,
             modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
         ) { Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (!hasCamera) Button(onClick = { requestCamera.launch(Manifest.permission.CAMERA) }) { Text("Allow camera") }
+            if (!hasCamera) Button(onClick = { requestCamera.launch(Manifest.permission.CAMERA) }) { Text(stringResource(R.string.scanner_allow_camera), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = {
                         torchEnabled = !torchEnabled
                         camera?.cameraControl?.enableTorch(torchEnabled)
                     }, enabled = camera?.cameraInfo?.hasFlashUnit() == true) {
-                        Icon(painterResource(if (torchEnabled) R.drawable.ic_flash_on else R.drawable.ic_flash_off), contentDescription = if (torchEnabled) "Flash on" else "Flash off", tint = Color.White)
+                        Icon(painterResource(if (torchEnabled) R.drawable.ic_flash_on else R.drawable.ic_flash_off), contentDescription = stringResource(if (torchEnabled) R.string.scanner_flash_on else R.string.scanner_flash_off), tint = Color.White)
                     }
                     ScannerShutter(
                         autoEnabled = autoCaptureEnabled,
@@ -477,13 +477,13 @@ internal fun CameraScanTab(back: () -> Unit, error: String?, pages: List<Capture
                         autoCaptureEnabled = !autoCaptureEnabled
                         scannerPreferences.edit().putBoolean(SCANNER_AUTO_CAPTURE, autoCaptureEnabled).apply()
                     },
-                ) { Text(if (autoCaptureEnabled) "Auto capture on" else "Auto capture off", modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
+                ) { Text(stringResource(if (autoCaptureEnabled) R.string.scanner_auto_on else R.string.scanner_auto_off), modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 if (autoCaptureEnabled) Text(
                     when {
-                        waitingForNextPage -> "Move to the next page"
-                        pageStable -> "Page stable — hold steady"
-                        pageFound -> "Page found — hold steady"
-                        else -> "Point at a page"
+                        waitingForNextPage -> stringResource(R.string.scanner_next_page)
+                        pageStable -> stringResource(R.string.scanner_page_stable)
+                        pageFound -> stringResource(R.string.scanner_page_found)
+                        else -> stringResource(R.string.scanner_point_at_page)
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -543,7 +543,7 @@ private fun ScanPagesButton(page: CapturedPage, count: Int, open: () -> Unit) {
     val bitmap = rememberScanRender(page, SCAN_THUMBNAIL_SAMPLE, SCAN_THUMBNAIL_EDGE)
     Surface(shape = MaterialTheme.shapes.medium, color = Color.White.copy(alpha = 0.14f), modifier = Modifier.size(52.dp, 68.dp).clickable(onClick = open)) {
         Box(Modifier.fillMaxSize()) {
-            bitmap?.let { Image(it.asImageBitmap(), contentDescription = "$count captured pages", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+            bitmap?.let { Image(it.asImageBitmap(), contentDescription = pluralStringResource(R.plurals.scanner_captured, count, count), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
             Surface(shape = CircleShape, color = Color(0xFF1976D2), contentColor = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp)) {
                 Text(count.toString(), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
             }
@@ -554,8 +554,9 @@ private fun ScanPagesButton(page: CapturedPage, count: Int, open: () -> Unit) {
 @Composable
 private fun ScannerShutter(autoEnabled: Boolean, documentDetected: Boolean, progress: Float, enabled: Boolean, capture: () -> Unit) {
     val ring = if (autoEnabled && documentDetected) Color(0xFF2196F3) else Color(0xFF90A4AE)
+    val captureWords = stringResource(R.string.scanner_capture)
     Canvas(
-        modifier = Modifier.size(86.dp).semantics { contentDescription = "Capture page" }.clickable(enabled = enabled, onClick = capture),
+        modifier = Modifier.size(86.dp).semantics { contentDescription = captureWords }.clickable(enabled = enabled, onClick = capture),
     ) {
         val stroke = 5.dp.toPx()
         val radius = size.minDimension / 2f - stroke
@@ -785,19 +786,19 @@ internal fun ScanDocumentTab(
         // Gallery-style header: separate floating islands for Back, title and the auto-fix toggle.
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                IconButton(onClick = { discardOpen = true }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                IconButton(onClick = { discardOpen = true }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
             }
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.weight(1f)) {
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Page ${current + 1} of ${pages.size}", style = MaterialTheme.typography.titleSmall)
-                    Text(if (page.autoFix) page.filter.label else "${page.filter.label} · Auto fix off", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    Text(stringResource(R.string.scanner_page_of, current + 1, pages.size), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(if (page.autoFix) stringResource(page.filter.label) else stringResource(R.string.scanner_auto_fix_off_after, stringResource(page.filter.label)), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                 IconButton(onClick = { update(current, page.copy(autoFix = !page.autoFix)) }) {
                     Icon(
                         painterResource(R.drawable.ic_auto_fix),
-                        contentDescription = if (page.autoFix) "Auto fix on for this page" else "Auto fix off for this page",
+                        contentDescription = stringResource(if (page.autoFix) R.string.scanner_auto_fix_on else R.string.scanner_auto_fix_off),
                         tint = islandContentColor().copy(alpha = if (page.autoFix) 1f else 0.35f),
                     )
                 }
@@ -844,7 +845,7 @@ internal fun ScanDocumentTab(
                     },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Image(bitmap.asImageBitmap(), contentDescription = "Page ${index + 1}", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                    Image(bitmap.asImageBitmap(), contentDescription = stringResource(R.string.scanner_page_n, index + 1), contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                     ScanStrokeLayer(bitmap.width, bitmap.height, item.strokes, panel == ScanPanel.Paint && index == current, paintColor, brushWidth) { stroke ->
                         update(index, item.copy(strokes = item.strokes + stroke))
                     }
@@ -861,7 +862,7 @@ internal fun ScanDocumentTab(
             }
             item {
                 Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(48.dp, 64.dp).clickable(onClick = addPage)) {
-                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_add), contentDescription = "Add page") }
+                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.scanner_add_page)) }
                 }
             }
         }
@@ -896,24 +897,24 @@ internal fun ScanDocumentTab(
         var name by remember { mutableStateOf("Scan ${DateTimeFormatter.ofPattern("yyyy-MM-dd HH.mm").withZone(ZoneId.systemDefault()).format(Instant.now())}") }
         AlertDialog(
             onDismissRequest = { if (!saving) saveOpen = false },
-            title = { Text("Save PDF in Files") },
+            title = { Text(stringResource(R.string.scanner_save_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("File name") }, singleLine = true, enabled = !saving)
-                    Text("${pages.size} ${if (pages.size == 1) "page" else "pages"} · Documents › Scanned Documents", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.scanner_file_name)) }, singleLine = true, enabled = !saving)
+                    Text(pluralStringResource(R.plurals.scanner_pages_where, pages.size, pages.size), style = MaterialTheme.typography.bodySmall)
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
             },
-            confirmButton = { TextButton(onClick = { save(name) }, enabled = !saving && name.isNotBlank()) { Text(if (saving) "Saving…" else "Save") } },
-            dismissButton = { TextButton(onClick = { saveOpen = false }, enabled = !saving) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { save(name) }, enabled = !saving && name.isNotBlank()) { Text(stringResource(if (saving) R.string.scanner_saving else R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            dismissButton = { TextButton(onClick = { saveOpen = false }, enabled = !saving) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         )
     }
     if (discardOpen) AlertDialog(
         onDismissRequest = { discardOpen = false },
-        title = { Text("Discard this scan?") },
-        text = { Text("${pages.size} unsaved ${if (pages.size == 1) "page" else "pages"} will be removed.") },
-        confirmButton = { TextButton(onClick = { discardOpen = false; discard() }) { Text("Discard") } },
-        dismissButton = { TextButton(onClick = { discardOpen = false }) { Text("Keep editing") } },
+        title = { Text(stringResource(R.string.scanner_discard_ask)) },
+        text = { Text(pluralStringResource(R.plurals.scanner_discard_body, pages.size, pages.size)) },
+        confirmButton = { TextButton(onClick = { discardOpen = false; discard() }) { Text(stringResource(R.string.common_discard), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { TextButton(onClick = { discardOpen = false }) { Text(stringResource(R.string.photos_keep_editing), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
     )
 }
 
@@ -948,28 +949,28 @@ private fun ScanActionsIsland(
                 Column {
                     AnimatedVisibility(panel == ScanPanel.Adjust) {
                         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            item { ScanPill("Crop", R.drawable.ic_crop, false, crop) }
-                            item { ScanPill("Left", R.drawable.ic_rotate_left, false) { update(page.rotatedBy(270)) } }
-                            item { ScanPill("Right", R.drawable.ic_rotate_right, false) { update(page.rotatedBy(90)) } }
-                            item { ScanPill("Reset", R.drawable.ic_refresh, false) { update(page.rotatedBy(-page.rotation).copy(quad = page.autoQuad)) } }
+                            item { ScanPill(stringResource(R.string.scanner_crop), R.drawable.ic_crop, false, crop) }
+                            item { ScanPill(stringResource(R.string.scanner_left), R.drawable.ic_rotate_left, false) { update(page.rotatedBy(270)) } }
+                            item { ScanPill(stringResource(R.string.scanner_right), R.drawable.ic_rotate_right, false) { update(page.rotatedBy(90)) } }
+                            item { ScanPill(stringResource(R.string.photos_reset), R.drawable.ic_refresh, false) { update(page.rotatedBy(-page.rotation).copy(quad = page.autoQuad)) } }
                         }
                     }
                     AnimatedVisibility(panel == ScanPanel.Filters) {
                         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            item { ScanPill("Match pages", R.drawable.ic_contrast, page.filter == ScanFilter.SamePaper, matchPages) }
-                            items(ScanFilter.entries.filter { it != ScanFilter.SamePaper }) { filter -> ScanPill(filter.label, null, page.filter == filter) { update(page.copy(filter = filter)) } }
-                            item { ScanPill("Apply to all", R.drawable.ic_check, false) { applyFilterToAll(page.filter) } }
+                            item { ScanPill(stringResource(R.string.scanner_match_pages), R.drawable.ic_contrast, page.filter == ScanFilter.SamePaper, matchPages) }
+                            items(ScanFilter.entries.filter { it != ScanFilter.SamePaper }) { filter -> ScanPill(stringResource(filter.label), null, page.filter == filter) { update(page.copy(filter = filter)) } }
+                            item { ScanPill(stringResource(R.string.scanner_apply_all), R.drawable.ic_check, false) { applyFilterToAll(page.filter) } }
                         }
                     }
                     AnimatedVisibility(panel == ScanPanel.Paint) {
                         ScanPaintPanel(page, paintColor, setPaintColor, brushWidth, setBrushWidth, undo = { update(page.copy(strokes = page.strokes.dropLast(1))) })
                     }
                     Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        IconButton(onClick = retake) { Icon(painterResource(R.drawable.ic_retake), contentDescription = "Retake this page") }
-                        ScanIslandToggle(R.drawable.ic_tune, "Adjust", panel == ScanPanel.Adjust) { toggle(ScanPanel.Adjust) }
-                        ScanIslandToggle(R.drawable.ic_contrast, "Filters", panel == ScanPanel.Filters) { toggle(ScanPanel.Filters) }
-                        IconButton(onClick = reorder) { Icon(painterResource(R.drawable.ic_view_grid), contentDescription = "Reorder pages") }
-                        IconButton(onClick = save) { Icon(painterResource(R.drawable.ic_save), contentDescription = "Save PDF") }
+                        IconButton(onClick = retake) { Icon(painterResource(R.drawable.ic_retake), contentDescription = stringResource(R.string.scanner_retake)) }
+                        ScanIslandToggle(R.drawable.ic_tune, stringResource(R.string.photos_adjust), panel == ScanPanel.Adjust) { toggle(ScanPanel.Adjust) }
+                        ScanIslandToggle(R.drawable.ic_contrast, stringResource(R.string.scanner_filters), panel == ScanPanel.Filters) { toggle(ScanPanel.Filters) }
+                        IconButton(onClick = reorder) { Icon(painterResource(R.drawable.ic_view_grid), contentDescription = stringResource(R.string.scanner_reorder)) }
+                        IconButton(onClick = save) { Icon(painterResource(R.drawable.ic_save), contentDescription = stringResource(R.string.scanner_save_pdf)) }
                     }
                 }
             }
@@ -992,7 +993,7 @@ internal fun ScanPill(label: String, icon: Int?, selected: Boolean, click: () ->
 ) {
     Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         icon?.let { Icon(painterResource(it), contentDescription = null, modifier = Modifier.size(18.dp)) }
-        Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -1013,7 +1014,7 @@ private fun ScanReorderGrid(pages: List<CapturedPage>, move: (Int, Int) -> Unit,
  * (Pages › Organize): [keys] one per page, [thumb] draws page i.
  */
 @Composable
-internal fun ReorderGrid(keys: List<String>, move: (Int, Int) -> Unit, open: (Int) -> Unit, back: () -> Unit, title: String = "Pages",
+internal fun ReorderGrid(keys: List<String>, move: (Int, Int) -> Unit, open: (Int) -> Unit, back: () -> Unit, title: String = stringResource(R.string.scanner_pages),
     actions: @Composable () -> Unit = {}, thumb: @Composable (Int, Modifier) -> Unit) {
     val gridState = rememberLazyGridState()
     var draggingKey by remember { mutableStateOf<String?>(null) }
@@ -1023,7 +1024,7 @@ internal fun ReorderGrid(keys: List<String>, move: (Int, Int) -> Unit, open: (In
         point.x >= offset.x && point.x < offset.x + size.width && point.y >= offset.y && point.y < offset.y + size.height
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         ModuleHeader(title, back) { actions() }
-        Text("Long-press a page and drag it to reorder.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+        Text(stringResource(R.string.scanner_reorder_hint), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
         LazyVerticalGrid(
             columns = gridColumns(3),
             state = gridState,
@@ -1075,7 +1076,7 @@ internal fun ReorderGrid(keys: List<String>, move: (Int, Int) -> Unit, open: (In
 @Composable
 private fun ScanCornerEditor(page: CapturedPage, done: (DocumentQuad) -> Unit, cancel: () -> Unit) {
     val source by produceState<Bitmap?>(null, page.file) { value = withContext(Dispatchers.IO) { decodeCapturedScan(page.file, 2) } }
-    CornerEditor(source, page.quad ?: DocumentQuad.fullFrame(), page.autoQuad ?: DocumentQuad.fullFrame(), "Auto detect", done, cancel)
+    CornerEditor(source, page.quad ?: DocumentQuad.fullFrame(), page.autoQuad ?: DocumentQuad.fullFrame(), stringResource(R.string.scanner_auto_detect), done, cancel)
 }
 
 /**
@@ -1177,16 +1178,16 @@ internal fun CornerEditor(source: Bitmap?, initial: DocumentQuad, reset: Documen
                 }
             }
             if (straightOption) Row(Modifier.fillMaxWidth().clickable { straight = !straight; if (straight) crop = boxAround(crop) }, verticalAlignment = Alignment.CenterVertically) {
-                Text("Straight cuts (90°)", Modifier.weight(1f))
+                Text(stringResource(R.string.scanner_straight_cuts), Modifier.weight(1f))
                 Switch(straight, { straight = it; if (it) crop = boxAround(crop) })
             }
-            else Text("Drag each blue corner onto a corner of the page.", style = MaterialTheme.typography.bodySmall)
+            else Text(stringResource(R.string.scanner_corners_hint), style = MaterialTheme.typography.bodySmall)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { crop = reset }, modifier = Modifier.weight(1f)) { Text(resetLabel) }
-                Button(onClick = { done(crop) }, enabled = crop.isValidCrop(), modifier = Modifier.weight(1f)) { Text("Done") }
+                OutlinedButton(onClick = { crop = reset }, modifier = Modifier.weight(1f)) { Text(resetLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                Button(onClick = { done(crop) }, enabled = crop.isValidCrop(), modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_done), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
-        ModuleHeader(if (straightOption) "Crop" else "Crop & straighten", cancel, Modifier.align(Alignment.TopCenter))
+        ModuleHeader(stringResource(if (straightOption) R.string.scanner_crop else R.string.scanner_crop_straighten), cancel, Modifier.align(Alignment.TopCenter))
     }
 }
 
@@ -1201,7 +1202,7 @@ private fun paperSwatchesOf(bitmap: Bitmap): List<Int> {
 private fun ScanPaintPanel(page: CapturedPage, color: Int, setColor: (Int) -> Unit, width: Float, setWidth: (Float) -> Unit, undo: () -> Unit) {
     val thumbnail = rememberScanRender(page.copy(strokes = emptyList()), SCAN_THUMBNAIL_SAMPLE, SCAN_THUMBNAIL_EDGE)
     val paper = remember(thumbnail) { thumbnail?.let(::paperSwatchesOf).orEmpty() }
-    PaintPanel(paper + listOf(android.graphics.Color.WHITE, android.graphics.Color.BLACK), "Draw on the page to paint over marks.", color, setColor, width, setWidth, undo)
+    PaintPanel(paper + listOf(android.graphics.Color.WHITE, android.graphics.Color.BLACK), stringResource(R.string.scanner_paint_hint), color, setColor, width, setWidth, undo)
 }
 
 /** Swatches, a custom colour picker, brush size and Undo. Shared by the scanner and the photo editor. */
@@ -1221,7 +1222,7 @@ internal fun PaintPanel(swatches: List<Int>, hint: String, color: Int, setColor:
             }
             item {
                 Surface(shape = CircleShape, color = islandContentColor().copy(alpha = 0.1f), modifier = Modifier.size(36.dp).clickable { pickerOpen = true }) {
-                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_palette), contentDescription = "Pick a colour", modifier = Modifier.size(20.dp)) }
+                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_palette), contentDescription = stringResource(R.string.scanner_pick_colour), modifier = Modifier.size(20.dp)) }
                 }
             }
         }
@@ -1230,7 +1231,7 @@ internal fun PaintPanel(swatches: List<Int>, hint: String, color: Int, setColor:
                 Box(Modifier.size((6 + width * 280).dp.coerceAtMost(28.dp)).clip(CircleShape).background(Color(color)).border(1.dp, islandContentColor().copy(alpha = 0.4f), CircleShape))
             }
             Slider(value = width, onValueChange = setWidth, valueRange = 0.005f..0.08f, modifier = Modifier.weight(1f))
-            ScanPill("Undo", R.drawable.ic_restore, false, undo)
+            ScanPill(stringResource(R.string.common_undo), R.drawable.ic_restore, false, undo)
         }
     }
     if (pickerOpen) ScanColorPicker(color, cancel = { pickerOpen = false }) { picked -> custom = picked; setColor(picked); pickerOpen = false }
@@ -1245,20 +1246,20 @@ private fun ScanColorPicker(initial: Int, cancel: () -> Unit, pick: (Int) -> Uni
     val picked = android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, value))
     AlertDialog(
         onDismissRequest = cancel,
-        title = { Text("Brush colour") },
+        title = { Text(stringResource(R.string.scanner_brush_colour)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Box(Modifier.fillMaxWidth().height(48.dp).clip(MaterialTheme.shapes.medium).background(Color(picked)))
                 Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Brush.horizontalGradient((0..6).map { Color.hsv(it * 60f % 360f, 1f, 1f) })))
                 Slider(value = hue, onValueChange = { hue = it }, valueRange = 0f..360f)
-                Text("Saturation", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.scanner_saturation), style = MaterialTheme.typography.labelSmall)
                 Slider(value = saturation, onValueChange = { saturation = it })
-                Text("Brightness", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.scanner_brightness), style = MaterialTheme.typography.labelSmall)
                 Slider(value = value, onValueChange = { value = it })
             }
         },
-        confirmButton = { TextButton(onClick = { pick(picked) }) { Text("Use colour") } },
-        dismissButton = { TextButton(onClick = cancel) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { pick(picked) }) { Text(stringResource(R.string.scanner_use_colour), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { TextButton(onClick = cancel) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
     )
 }
 

@@ -408,4 +408,74 @@
         <item quantity="one">Μετακίνηση %d βίντεο κίνησης στον Κάδο</item>
         <item quantity="other">Μετακίνηση %d βίντεο κίνησης στον Κάδο</item>
     </plurals>
+    <!-- Scanner -->
+    <string name="scanner_filter_original">Πρωτότυπο</string>
+    <string name="scanner_filter_lighting">Διόρθωση φωτισμού</string>
+    <string name="scanner_filter_ink">Όξυνση μελανιού</string>
+    <string name="scanner_filter_bw">Α/Μ</string>
+    <string name="scanner_filter_matched">Ίδιο χαρτί</string>
+    <string name="scanner_error_name">Δώστε ένα έγκυρο όνομα αρχείου.</string>
+    <string name="scanner_error_no_pages">Δεν υπάρχουν σελίδες για αποθήκευση.</string>
+    <string name="scanner_error_folder">Δεν ήταν δυνατή η δημιουργία του φακέλου σαρώσεων.</string>
+    <string name="scanner_error_file">Δεν ήταν δυνατή η δημιουργία του αρχείου σάρωσης.</string>
+    <string name="scanner_error_ocr">Η ανάγνωση κειμένου δεν μπόρεσε να ξεκινήσει.</string>
+    <string name="scanner_camera_needed">Η πρόσβαση στην κάμερα χρειάζεται μόνο για τη σάρωση σελίδας.</string>
+    <string name="scanner_preview_not_ready">Η προεπισκόπηση της κάμερας δεν είναι έτοιμη.</string>
+    <string name="scanner_camera_failed">Δεν ήταν δυνατή η εκκίνηση της κάμερας.</string>
+    <string name="scanner_capture_failed">Δεν ήταν δυνατή η λήψη της σελίδας.</string>
+    <string name="scanner_scan_page">Σάρωση σελίδας</string>
+    <string name="scanner_frame_hint">Κρατήστε τη σελίδα μέσα στο πλαίσιο και τραβήξτε τη για επεξεργασία.</string>
+    <string name="scanner_allow_camera">Πρόσβαση στην κάμερα</string>
+    <string name="scanner_flash_on">Φλας ενεργό</string>
+    <string name="scanner_flash_off">Φλας ανενεργό</string>
+    <string name="scanner_auto_on">Αυτόματη λήψη: ναι</string>
+    <string name="scanner_auto_off">Αυτόματη λήψη: όχι</string>
+    <string name="scanner_next_page">Πηγαίνετε στην επόμενη σελίδα</string>
+    <string name="scanner_page_stable">Η σελίδα σταθεροποιήθηκε — μην κουνιέστε</string>
+    <string name="scanner_page_found">Βρέθηκε σελίδα — μην κουνιέστε</string>
+    <string name="scanner_point_at_page">Στρέψτε την κάμερα σε μια σελίδα</string>
+    <string name="scanner_capture">Λήψη σελίδας</string>
+    <string name="scanner_page_of">Σελίδα %1$d από %2$d</string>
+    <string name="scanner_auto_fix_off_after">%1$s · Χωρίς αυτόματη διόρθωση</string>
+    <string name="scanner_auto_fix_on">Αυτόματη διόρθωση ενεργή για αυτή τη σελίδα</string>
+    <string name="scanner_auto_fix_off">Αυτόματη διόρθωση ανενεργή για αυτή τη σελίδα</string>
+    <string name="scanner_page_n">Σελίδα %1$d</string>
+    <string name="scanner_add_page">Προσθήκη σελίδας</string>
+    <string name="scanner_save_title">Αποθήκευση PDF στα Αρχεία</string>
+    <string name="scanner_file_name">Όνομα αρχείου</string>
+    <string name="scanner_saving">Αποθήκευση…</string>
+    <string name="scanner_discard_ask">Απόρριψη αυτής της σάρωσης;</string>
+    <string name="scanner_crop">Περικοπή</string>
+    <string name="scanner_left">Αριστερά</string>
+    <string name="scanner_right">Δεξιά</string>
+    <string name="scanner_match_pages">Ίδιες σελίδες</string>
+    <string name="scanner_apply_all">Εφαρμογή σε όλες</string>
+    <string name="scanner_retake">Νέα λήψη αυτής της σελίδας</string>
+    <string name="scanner_filters">Φίλτρα</string>
+    <string name="scanner_reorder">Αναδιάταξη σελίδων</string>
+    <string name="scanner_save_pdf">Αποθήκευση PDF</string>
+    <string name="scanner_pages">Σελίδες</string>
+    <string name="scanner_reorder_hint">Πατήστε παρατεταμένα μια σελίδα και σύρετέ τη για αναδιάταξη.</string>
+    <string name="scanner_auto_detect">Αυτόματος εντοπισμός</string>
+    <string name="scanner_straight_cuts">Ίσιες τομές (90°)</string>
+    <string name="scanner_corners_hint">Σύρετε κάθε μπλε γωνία πάνω σε μια γωνία της σελίδας.</string>
+    <string name="scanner_crop_straighten">Περικοπή και ίσιωμα</string>
+    <string name="scanner_paint_hint">Σχεδιάστε πάνω στη σελίδα για να καλύψετε σημάδια.</string>
+    <string name="scanner_pick_colour">Επιλογή χρώματος</string>
+    <string name="scanner_brush_colour">Χρώμα πινέλου</string>
+    <string name="scanner_saturation">Κορεσμός</string>
+    <string name="scanner_brightness">Φωτεινότητα</string>
+    <string name="scanner_use_colour">Χρήση χρώματος</string>
+    <plurals name="scanner_captured">
+        <item quantity="one">%d σελίδα που τραβήχτηκε</item>
+        <item quantity="other">%d σελίδες που τραβήχτηκαν</item>
+    </plurals>
+    <plurals name="scanner_pages_where">
+        <item quantity="one">%d σελίδα · Documents › Scanned Documents</item>
+        <item quantity="other">%d σελίδες · Documents › Scanned Documents</item>
+    </plurals>
+    <plurals name="scanner_discard_body">
+        <item quantity="one">%d σελίδα που δεν αποθηκεύτηκε θα αφαιρεθεί.</item>
+        <item quantity="other">%d σελίδες που δεν αποθηκεύτηκαν θα αφαιρεθούν.</item>
+    </plurals>
 </resources>

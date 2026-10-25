@@ -408,4 +408,74 @@
         <item quantity="one">Move %d motion video to Trash</item>
         <item quantity="other">Move %d motion videos to Trash</item>
     </plurals>
+    <!-- Scanner -->
+    <string name="scanner_filter_original">Original</string>
+    <string name="scanner_filter_lighting">Fix lighting</string>
+    <string name="scanner_filter_ink">Sharpen ink</string>
+    <string name="scanner_filter_bw">B&amp;W</string>
+    <string name="scanner_filter_matched">Matched paper</string>
+    <string name="scanner_error_name">Enter a valid file name.</string>
+    <string name="scanner_error_no_pages">There are no pages to save.</string>
+    <string name="scanner_error_folder">Could not create Scans.</string>
+    <string name="scanner_error_file">Could not create the scan file.</string>
+    <string name="scanner_error_ocr">The text reader could not start.</string>
+    <string name="scanner_camera_needed">Camera access is needed only to scan a page.</string>
+    <string name="scanner_preview_not_ready">Camera preview is not ready.</string>
+    <string name="scanner_camera_failed">Could not start the camera.</string>
+    <string name="scanner_capture_failed">Could not capture the page.</string>
+    <string name="scanner_scan_page">Scan page</string>
+    <string name="scanner_frame_hint">Keep the page inside the frame, then capture it to edit.</string>
+    <string name="scanner_allow_camera">Allow camera</string>
+    <string name="scanner_flash_on">Flash on</string>
+    <string name="scanner_flash_off">Flash off</string>
+    <string name="scanner_auto_on">Auto capture on</string>
+    <string name="scanner_auto_off">Auto capture off</string>
+    <string name="scanner_next_page">Move to the next page</string>
+    <string name="scanner_page_stable">Page stable — hold steady</string>
+    <string name="scanner_page_found">Page found — hold steady</string>
+    <string name="scanner_point_at_page">Point at a page</string>
+    <string name="scanner_capture">Capture page</string>
+    <string name="scanner_page_of">Page %1$d of %2$d</string>
+    <string name="scanner_auto_fix_off_after">%1$s · Auto fix off</string>
+    <string name="scanner_auto_fix_on">Auto fix on for this page</string>
+    <string name="scanner_auto_fix_off">Auto fix off for this page</string>
+    <string name="scanner_page_n">Page %1$d</string>
+    <string name="scanner_add_page">Add page</string>
+    <string name="scanner_save_title">Save PDF in Files</string>
+    <string name="scanner_file_name">File name</string>
+    <string name="scanner_saving">Saving…</string>
+    <string name="scanner_discard_ask">Discard this scan?</string>
+    <string name="scanner_crop">Crop</string>
+    <string name="scanner_left">Left</string>
+    <string name="scanner_right">Right</string>
+    <string name="scanner_match_pages">Match pages</string>
+    <string name="scanner_apply_all">Apply to all</string>
+    <string name="scanner_retake">Retake this page</string>
+    <string name="scanner_filters">Filters</string>
+    <string name="scanner_reorder">Reorder pages</string>
+    <string name="scanner_save_pdf">Save PDF</string>
+    <string name="scanner_pages">Pages</string>
+    <string name="scanner_reorder_hint">Long-press a page and drag it to reorder.</string>
+    <string name="scanner_auto_detect">Auto detect</string>
+    <string name="scanner_straight_cuts">Straight cuts (90°)</string>
+    <string name="scanner_corners_hint">Drag each blue corner onto a corner of the page.</string>
+    <string name="scanner_crop_straighten">Crop &amp; straighten</string>
+    <string name="scanner_paint_hint">Draw on the page to paint over marks.</string>
+    <string name="scanner_pick_colour">Pick a colour</string>
+    <string name="scanner_brush_colour">Brush colour</string>
+    <string name="scanner_saturation">Saturation</string>
+    <string name="scanner_brightness">Brightness</string>
+    <string name="scanner_use_colour">Use colour</string>
+    <plurals name="scanner_captured">
+        <item quantity="one">%d captured pages</item>
+        <item quantity="other">%d captured pages</item>
+    </plurals>
+    <plurals name="scanner_pages_where">
+        <item quantity="one">%d page · Documents › Scanned Documents</item>
+        <item quantity="other">%d pages · Documents › Scanned Documents</item>
+    </plurals>
+    <plurals name="scanner_discard_body">
+        <item quantity="one">%d unsaved page will be removed.</item>
+        <item quantity="other">%d unsaved pages will be removed.</item>
+    </plurals>
 </resources>

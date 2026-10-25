@@ -8,13 +8,13 @@ import kotlin.math.pow
  * Four ways to look at a page, which is as many as anyone chooses between. There were seven, and the extra
  * three were shades of the same two ideas — keep the colours, or throw them away.
  */
-enum class ScanFilter(val label: String) {
-    Original("Original"),
-    Lighting("Fix lighting"),
-    SharpInk("Sharpen ink"),
-    BlackWhite("B&W"),
+enum class ScanFilter(@androidx.annotation.StringRes val label: Int) {
+    Original(R.string.scanner_filter_original),
+    Lighting(R.string.scanner_filter_lighting),
+    SharpInk(R.string.scanner_filter_ink),
+    BlackWhite(R.string.scanner_filter_bw),
     /** Set by "Match pages": lighting flattened, then every page tinted to one shared paper tone. */
-    SamePaper("Matched paper"),
+    SamePaper(R.string.scanner_filter_matched),
 }
 
 /** Pure ARGB pixel filters. Every filter except Original first divides out uneven lighting (shadows, lamp gradients). */

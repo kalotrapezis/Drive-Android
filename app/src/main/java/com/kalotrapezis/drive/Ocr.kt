@@ -28,7 +28,7 @@ internal object Ocr {
     }
 
     private fun engine(context: Context) = api ?: TessBaseAPI().also {
-        check(it.init(dataDir(context).path, "ell+eng")) { "The text reader could not start." }
+        need(it.init(dataDir(context).path, "ell+eng"), R.string.scanner_error_ocr) { "The text reader could not start." }
         api = it
     }
 

@@ -51,17 +51,15 @@ internal data class SyncConnection(val content: String, val direction: String, v
     val sends: Boolean get() = direction == "send" || direction == "both"
     val receives: Boolean get() = direction == "receive" || direction == "both"
 
-    /** The sentence the phone shows for this row: the computer configures, the phone says what it was told. */
-    fun sentence(computer: String): String {
-        val what = if (content == "files") "Files" else "Photos"
-        if (direction == "off") return "$what · not synced"
-        val arrow = when (direction) {
-            "send" -> "→ $computer"
-            "receive" -> "← $computer"
-            else -> "⇄ $computer"
-        }
-        return "$what $arrow · ${if (keep == "nothing") "Move, keeping ${SyncRules.span(keepDays)}" else "Copy"}"
+    /** The way this row goes, as the phone shows it before the computer's name: → send, ← receive, ⇄ both; null when off. */
+    val arrow: String? get() = when (direction) {
+        "off" -> null
+        "send" -> "→"
+        "receive" -> "←"
+        else -> "⇄"
     }
+    /** A Move (the source lets its copy go after [keepDays]), not a Copy. */
+    val moves: Boolean get() = keep == "nothing"
 
     companion object {
         val defaults = listOf(SyncConnection("photos", "both", "everything"), SyncConnection("files", "both", "everything"))
@@ -112,11 +110,10 @@ internal object SyncRules {
         return Triple(Math.round(125 + f * 190).toFloat(), 0.75f, 0.52f)
     }
 
-    /** "3 months", "1 year", "10 days": a Move's window, in the largest unit it divides into (as the computer shows it). */
-    fun span(days: Int): String {
-        val (unit, per) = listOf("year" to 365, "month" to 30, "week" to 7, "day" to 1).first { (_, n) -> days % n == 0 }
-        val n = days / per
-        return "$n $unit${if (n > 1) "s" else ""}"
+    /** 3 months, 1 year, 10 days: a Move's window, in the largest unit it divides into (as the computer shows it); the count and its plural. */
+    fun span(days: Int): Pair<Int, Int> {
+        val (unit, per) = listOf(R.plurals.sync_span_year to 365, R.plurals.sync_span_month to 30, R.plurals.sync_span_week to 7, R.plurals.sync_span_day to 1).first { (_, n) -> days % n == 0 }
+        return days / per to unit
     }
 
     /**
@@ -242,7 +239,7 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
     fun setLastBackup(at: Long) = prefs.edit().putLong("last_backup", at).apply()
 
     /** One line for the Home card. */
-    fun summary(): String = pairing()?.let { "Paired with ${it.name} · ${receiptCount()} photos on the computer" } ?: "No computer paired yet"
+    fun summary(): String = pairing()?.let { receiptCount().let { n -> context.resources.getQuantityString(R.plurals.sync_summary, n, it.name, n) } } ?: context.getString(R.string.sync_no_computer_yet)
 
     fun cachedHash(photoKey: String): String? = readableDatabase.rawQuery("SELECT sha256 FROM identity WHERE photo_key = ?", arrayOf(photoKey)).use { if (it.moveToFirst()) it.getString(0) else null }
     fun saveHash(photoKey: String, sha256: String) { writableDatabase.insertWithOnConflict("identity", null, ContentValues().apply { put("photo_key", photoKey); put("sha256", sha256) }, SQLiteDatabase.CONFLICT_REPLACE) }
@@ -301,7 +298,8 @@ internal class SyncStore(private val context: Context) : SQLiteOpenHelper(contex
     }
 }
 
-internal class SyncException(message: String) : Exception(message)
+/** [unreachable]: the computer did not answer at any address (the Sync page says so). */
+internal class SyncException(message: String, val unreachable: Boolean = false) : Exception(message)
 
 /** Talks only to the paired computer: HTTPS whose certificate must match the QR's SHA-256 fingerprint. */
 /**
@@ -328,11 +326,14 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     // A sync can run with Tetra's window closed: a Move must still know the chosen System folders, or it could remove one left empty.
     init { SystemFolderChoice.load(context) }
 
+    /** One line of a sync's failures: what went wrong, then why ("Notes: …"; the Sync page splits it there). */
+    private fun fail(@androidx.annotation.StringRes what: Int, why: String?) = context.getString(R.string.sync_failure, context.getString(what), why.orEmpty())
+
     private fun open(host: String, port: Int, fingerprint: String, path: String, method: String, token: String?): HttpsURLConnection {
         val pinned = object : X509TrustManager {
             override fun checkServerTrusted(chain: Array<out X509Certificate>, authType: String) {
                 val actual = SyncRules.hex(MessageDigest.getInstance("SHA-256").digest(chain.first().encoded))
-                if (actual != fingerprint) throw CertificateException("This is not the paired computer.")
+                if (actual != fingerprint) throw CertificateException(context.getString(R.string.sync_not_paired_computer))
             }
             override fun checkClientTrusted(chain: Array<out X509Certificate>, authType: String) = throw CertificateException("Not a server.")
             override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
@@ -352,7 +353,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val ok = responseCode in 200..299
         val text = (if (ok) inputStream else errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
         val body = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
-        if (!ok) throw SyncException(body.optString("error", "The computer answered $responseCode."))
+        if (!ok) throw SyncException(body.optString("error", context.getString(R.string.sync_computer_answered, responseCode)))
         return body
     }
 
@@ -365,17 +366,17 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         }
 
     /** The tablet's Phone (PhoneRelay): a call placed, or a button pressed, by the phone through the computer. */
-    fun phoneViaComputer(path: String): JSONObject { val p = reach(store.pairing() ?: throw SyncException("Not paired with a computer.")); return postJson(p.hosts.first(), p, path, JSONObject()) }
+    fun phoneViaComputer(path: String): JSONObject { val p = reach(store.pairing() ?: throw SyncException(context.getString(R.string.sync_not_paired))); return postJson(p.hosts.first(), p, path, JSONObject()) }
 
     /** Data › Signal: what the computer sees of its Wi-Fi now (signal, speed, network), for "Phone as hotspot". */
-    fun computerWifi(): JSONObject { val p = reach(store.pairing() ?: throw SyncException("Not paired with a computer.")); return postJson(p.hosts.first(), p, "/data/wifi", JSONObject()) }
+    fun computerWifi(): JSONObject { val p = reach(store.pairing() ?: throw SyncException(context.getString(R.string.sync_not_paired))); return postJson(p.hosts.first(), p, "/data/wifi", JSONObject()) }
 
     /** The computer's address now, for Data's loss test (a ping to it). */
-    fun computerHost(): String = reach(store.pairing() ?: throw SyncException("Not paired with a computer.")).hosts.first()
+    fun computerHost(): String = reach(store.pairing() ?: throw SyncException(context.getString(R.string.sync_not_paired))).hosts.first()
 
     /** Data › Signal: the Wi-Fi's real speed to the computer — [bytes] down from it, then up to it; Mb/s down, up, and the ping in ms. */
     fun speedTest(bytes: Int = 20_000_000): Triple<Double, Double, Long> {
-        val p = reach(store.pairing() ?: throw SyncException("Not paired with a computer."))
+        val p = reach(store.pairing() ?: throw SyncException(context.getString(R.string.sync_not_paired)))
         val host = p.hosts.first()
         val t0 = System.nanoTime(); postJson(host, p, "/data/wifi", JSONObject()); val ping = (System.nanoTime() - t0) / 1_000_000
         val d0 = System.nanoTime()
@@ -398,7 +399,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     private fun <T> anyHost(hosts: List<String>, call: (String) -> T): T {
         var last: Exception? = null
         for (host in hosts) try { return call(host) } catch (e: SyncException) { throw e } catch (e: Exception) { last = e }
-        throw SyncException("Could not reach the computer (${last?.message ?: "no address"}). Is Tetra open on it, on the same Wi-Fi?")
+        throw SyncException(context.getString(R.string.sync_unreachable, last?.message ?: context.getString(R.string.sync_no_address)), unreachable = true)
     }
 
     /**
@@ -418,7 +419,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         for ((host, port) in SyncDiscovery.find(p.fingerprint)) {
             tryHost(p.copy(hosts = listOf(host) + (p.hosts - host), port = port))?.let { store.savePairing(it); return it }
         }
-        throw SyncException("Could not reach the computer (${last?.message ?: "no address"}). Is Tetra open on it, on the same Wi-Fi?")
+        throw SyncException(context.getString(R.string.sync_unreachable, last?.message ?: context.getString(R.string.sync_no_address)), unreachable = true)
     }
 
     /**
@@ -516,7 +517,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     private fun sha256(entry: Entry): String {
         store.cachedHash(entry.photoKey)?.let { return it }
         val digest = MessageDigest.getInstance("SHA-256")
-        checkNotNull(context.contentResolver.openInputStream(checkNotNull(entry.contentUri))) { "Cannot read ${entry.name}." }.use { input ->
+        checkNotNull(context.contentResolver.openInputStream(checkNotNull(entry.contentUri))) { context.getString(R.string.sync_cannot_read, entry.name) }.use { input ->
             val buffer = ByteArray(256 * 1024)
             while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
         }
@@ -575,7 +576,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 when (sendToPurgatory(host, p, sha, "photo", origin, size) { checkNotNull(resolver.openInputStream(uri)) }) {
                     200 -> store.markHandedOver(uri.toString())
                     503 -> { noDrive = true; retrash(uri) }
-                    else -> failed += "$origin: not taken by the purgatory"
+                    else -> failed += context.getString(R.string.sync_not_taken, origin)
                 }
             }
         }
@@ -593,7 +594,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                 if (code == 503) noDrive = true
                 code == 200
             }
-            if (ok) item.deleteRecursively() else if (noDrive) break else failed += "Files Trash/${item.name}: not taken by the purgatory"
+            if (ok) item.deleteRecursively() else if (noDrive) break else failed += context.getString(R.string.sync_not_taken, "Files Trash/${item.name}")
         }
     }
 
@@ -621,7 +622,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         c.setRequestProperty("Content-Type", "application/octet-stream")
         c.outputStream.use { out -> checkNotNull(context.contentResolver.openInputStream(e.contentUri!!)).use { pump(it, out) } }
         val receipt = c.jsonResult().also { c.disconnect() }
-        if (receipt.optString("sha256") != sha || !receipt.optBoolean("verified")) throw SyncException("No verified receipt.")
+        if (receipt.optString("sha256") != sha || !receipt.optBoolean("verified")) throw SyncException(context.getString(R.string.sync_no_receipt_plain))
         store.saveReceipt(e.photoKey, sha, receipt.getString("path"))
     }
 
@@ -633,7 +634,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
      * not. Nothing is deleted on either side by either half; a Copy adds, and that is all it does.
      */
     suspend fun backUp(entries: List<Entry>, checkpoint: suspend () -> Unit = {}, progress: (BackupProgress) -> Unit): BackupResult {
-        val paired = store.pairing() ?: throw SyncException("Pair with a computer first.")
+        val paired = store.pairing() ?: throw SyncException(context.getString(R.string.sync_pair_first))
         val p = reach(paired)
         val host = p.hosts.first()
         if (Outbox.waiting(context).isNotEmpty()) Outbox.soon(context) // the computer is there: Send to computer's waiting files go
@@ -642,7 +643,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         entries.forEachIndexed { i, e ->
             coroutineContext.ensureActive()
             checkpoint() // Pause waits here, between files, so a half-sent photo is never left behind
-            if (i % 10 == 0) progress(BackupProgress("Checking photos", i, entries.size))
+            if (i % 10 == 0) progress(BackupProgress(context.getString(R.string.sync_stage_checking), i, entries.size))
             runCatching { bySha.putIfAbsent(sha256(e), e) }.onFailure { failed += "${e.name}: ${it.message}" }
         }
         // What this device holds, in words rather than in hashes (SYNC_PLAN.md 6ae). The computer can name and
@@ -675,7 +676,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             (0 until r.length()).map(r::getString)
         }
         val alreadyThere = if (photos.sends) bySha.size - missing.size - declined.size else 0
-        val sent = eachInParallel(missing, "Sending", checkpoint, progress, failed, { bySha.getValue(it).name }) { sha ->
+        val sent = eachInParallel(missing, context.getString(R.string.sync_stage_sending), checkpoint, progress, failed, { bySha.getValue(it).name }) { sha ->
             uploadOne(host, p, sha, bySha.getValue(sha))
         }
         // A Move keeps a window here — the last keepDays days, and favorites unless told otherwise — and offers the
@@ -698,7 +699,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             runCatching {
                 val mine = listTrashedPhotos(context).mapNotNull { store.cachedHash(it.photoKey) }.distinct()
                 if (mine.isNotEmpty()) mine.chunked(500).forEach { postJson(host, p, "/trashed", JSONObject().put("hashes", JSONArray(it))) }
-            }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Trash to the computer: ${it.message}" }
+            }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += fail(R.string.sync_fail_trash_computer, it.message) }
         }
         if (photos.sends && photos.keep == "nothing") {
             val onComputer = (bySha.keys - missing.toSet() - declined) + (store.receiptShas() - declined)
@@ -720,30 +721,30 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // and fetching it again because it is not shown would write a duplicate on every sync.
         val alsoHere = listDeviceMedia(context).mapNotNullTo(HashSet()) { store.cachedHash(it.photoKey) }
         if (photos.receives) runCatching { received += pullPhotos(host, p, bySha.keys + alsoHere, failed, checkpoint, progress) }
-            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Photos from the computer: ${it.message}" }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += fail(R.string.sync_fail_photos_from, it.message) }
         // Files (the Drive folder) go over the same connection, by path rather than by gallery entry.
         runCatching { received += syncFiles(host, p, files, failed, checkpoint, progress) }
-            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Drive files: ${it.message}" }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += fail(R.string.sync_fail_drive_files, it.message) }
         runCatching { CalendarAlarms.plan(context) } // an event that arrived, or changed, rings on time
         TimerService.check(context)
         // Notes: every note both ways, the newer edit of each kept (Notes.kt). Small, so all of them each time.
         runCatching { received += syncNotes(host, p) }
-            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Notes: ${it.message}" }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += fail(R.string.app_notes, it.message) }
         // The text editor's open tabs (6al), after Files so a file opened elsewhere is already here to open.
         runCatching { postJson(host, p, "/editor-tabs", TextEditorStore(context).syncPayload()).optJSONArray("tabs")?.let(TextEditorStore(context)::applySynced) }
-            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else if (it.message != "Unknown request.") failed += "Editor tabs: ${it.message}" } // a computer too old for them
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else if (it.message != "Unknown request.") failed += fail(R.string.sync_fail_editor_tabs, it.message) } // a computer too old for them
         // Trash items about to be deleted by Android (or past their days in Files' Trash) go to the purgatory on the
         // computer's drive instead (SYNC_PLAN.md D6).
         runCatching { handOverTrash(host, p, failed) }
-            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += "Trash to the purgatory: ${it.message}" }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else failed += fail(R.string.sync_fail_purgatory, it.message) }
         // The library, and where it is, as the computer sees it now — for this device's Sync page.
         runCatching { store.saveOverview(open(host, p.port, p.fingerprint, "/overview", "GET", p.token).jsonResult().toString()) }
-        progress(BackupProgress("Done", missing.size, missing.size))
+        progress(BackupProgress(context.getString(R.string.common_done), missing.size, missing.size))
         store.setLastBackup(System.currentTimeMillis())
         // Best-effort — photos that did cross should not be reported as failed over this — but never silent:
         // a metadata sync that fails looks exactly like one that had nothing to say, and on 2026-09-23 that hid
         // a whole library's names failing to come back.
-        runCatching { syncMetadata(host, p, listPhotos(context)) }.onFailure { failed += "Names, people and tags: ${it.message ?: "failed"}" }
+        runCatching { syncMetadata(host, p, listPhotos(context)) }.onFailure { failed += fail(R.string.sync_fail_metadata, it.message ?: context.getString(R.string.sync_failed_word)) }
         return BackupResult(bySha.size, sent, alreadyThere, failed, received)
     }
 
@@ -766,7 +767,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         // that never ran. Resurrection is the same sin as deletion, read backwards.
         val sentFromHere = store.receiptShas()
         val wanted = (0 until send.length()).map(send::getJSONObject).filter { it.optString("sha256") !in sentFromHere }
-        return eachInParallel(wanted, "Receiving photos", checkpoint, progress, failed, { it.optString("name") }) { item ->
+        return eachInParallel(wanted, context.getString(R.string.sync_stage_receiving_photos), checkpoint, progress, failed, { it.optString("name") }) { item ->
             receivePhoto(host, p, item)
         }
     }
@@ -798,7 +799,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     private suspend fun receivePhoto(host: String, p: Pairing, item: JSONObject) {
         val sha = item.getString("sha256")
         val name = item.optString("name").takeIf { it.isNotBlank() && '/' !in it && it != "." && it != ".." }
-            ?: throw SyncException("The computer sent a photo with no usable name.")
+            ?: throw SyncException(context.getString(R.string.sync_no_usable_name))
         val video = name.substringAfterLast('.', "").lowercase(Locale.ROOT) in setOf("mp4", "mkv", "mov", "3gp", "webm", "avi")
         val folder = SyncRules.incomingFolder(item.optString("path"), video)
         val taken = item.optLong("modified").takeIf { it > 0 }
@@ -811,15 +812,15 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
             taken?.let { put(android.provider.MediaStore.MediaColumns.DATE_TAKEN, it) }
         }
-        val uri = resolver.insert(collection, values) ?: throw SyncException("Android would not make room for $name.")
+        val uri = resolver.insert(collection, values) ?: throw SyncException(context.getString(R.string.sync_no_room, name))
         try {
             val digest = MessageDigest.getInstance("SHA-256")
             val connection = open(host, p.port, p.fingerprint, "/blob/$sha", "GET", p.token)
             connection.inputStream.use { input ->
-                checkNotNull(resolver.openOutputStream(uri)) { "Cannot write $name." }.use { output -> pump(input, output, digest) }
+                checkNotNull(resolver.openOutputStream(uri)) { context.getString(R.string.sync_cannot_write, name) }.use { output -> pump(input, output, digest) }
             }
             connection.disconnect()
-            if (SyncRules.hex(digest.digest()) != sha) throw SyncException("It changed on the way; nothing was kept.")
+            if (SyncRules.hex(digest.digest()) != sha) throw SyncException(context.getString(R.string.sync_changed_on_way))
             publishReceivedPhoto(resolver, uri, taken)
         } catch (e: Exception) {
             runCatching { resolver.delete(uri, null, null) }
@@ -977,7 +978,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     fun sendOutbox(): Int = synchronized(Outbox) { // a share, a sync and the job may all try at once: one sends
         val files = Outbox.waiting(context)
         if (files.isEmpty()) return@synchronized 0
-        val p = reach(store.pairing() ?: throw SyncException("No computer is paired."))
+        val p = reach(store.pairing() ?: throw SyncException(context.getString(R.string.sync_no_computer_paired)))
         val host = p.hosts.first()
         for (f in files) {
             val sha = f.parentFile!!.name
@@ -987,7 +988,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             c.setRequestProperty("Content-Type", "application/octet-stream")
             c.outputStream.use { out -> f.inputStream().use { it.copyTo(out, 256 * 1024) } }
             val receipt = c.jsonResult().also { c.disconnect() }
-            if (receipt.optString("sha256") != sha || !receipt.optBoolean("verified")) throw SyncException("No verified receipt.")
+            if (receipt.optString("sha256") != sha || !receipt.optBoolean("verified")) throw SyncException(context.getString(R.string.sync_no_receipt_plain))
             f.parentFile!!.deleteRecursively()
         }
         files.size
@@ -1032,7 +1033,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             val byPath = entries.associateBy { it.relativePath }
             val mine = (0 until want.length()).mapNotNull { byPath[want.getString(it)] }
             val sent = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-            eachInParallel(mine, "Sending files", checkpoint, progress, failed, { it.relativePath }) { entry ->
+            eachInParallel(mine, context.getString(R.string.sync_stage_sending_files), checkpoint, progress, failed, { it.relativePath }) { entry ->
                 uploadFile(host, p, entry, File(root, entry.relativePath))
                 sent += entry.relativePath
             }
@@ -1049,7 +1050,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
                         e.modified in 1 until cutoff && e.relativePath !in favorites
                 }.also { going ->
                     // Deleted, not trashed: the computer holds each one (asked 2026-09-25 — a Trash only keeps the room).
-                    going.forEach { e -> runCatching { check(DriveRules.file(root, e.relativePath).delete()) { "could not delete it" } }.onFailure { failed += "${e.relativePath}: ${it.message}" } }
+                    going.forEach { e -> runCatching { check(DriveRules.file(root, e.relativePath).delete()) { context.getString(R.string.sync_not_deleted) } }.onFailure { failed += "${e.relativePath}: ${it.message}" } }
                     DriveRules.removeEmptyFolders(root, going.map { DriveRules.parent(it.relativePath) }.toSet())
                 }
             }
@@ -1061,11 +1062,11 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         for (i in 0 until moveTo.length()) runCatching {
             val move = moveTo.getJSONObject(i)
             moveFile(root, move.getString("from"), move.getString("to"))
-        }.onFailure { failed += "Moving a file: ${it.message}" }
+        }.onFailure { failed += fail(R.string.sync_fail_moving, it.message) }
 
         val have = answer.optJSONArray("have") ?: JSONArray()
         val incoming = (0 until have.length()).map(have::getJSONObject)
-        return eachInParallel(incoming, "Receiving files", checkpoint, progress, failed, { it.optString("path") }) { file ->
+        return eachInParallel(incoming, context.getString(R.string.sync_stage_receiving_files), checkpoint, progress, failed, { it.optString("path") }) { file ->
             receiveFile(host, p, root, file)
         }
     }
@@ -1093,12 +1094,12 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             val connection = open(host, p.port, p.fingerprint, "/file/$sha?path=${URLEncoder.encode(rel, "UTF-8")}", "GET", p.token)
             connection.inputStream.use { input -> part.outputStream().use { output -> pump(input, output, digest) } }
             connection.disconnect()
-            if (SyncRules.hex(digest.digest()) != sha) throw SyncException("It changed on the way; nothing was kept.")
+            if (SyncRules.hex(digest.digest()) != sha) throw SyncException(context.getString(R.string.sync_changed_on_way))
             if (update) File(context.filesDir, "Files history/${System.currentTimeMillis()}/$rel").let { old ->
                 old.parentFile?.mkdirs()
                 target.copyTo(old, overwrite = true)
             }
-            if (!part.renameTo(target)) throw SyncException("Could not put it in place.")
+            if (!part.renameTo(target)) throw SyncException(context.getString(R.string.sync_not_in_place))
             file.optLong("modified").takeIf { it > 0 }?.let { target.setLastModified(it) }
             driveManifest.remember(DriveRules.relative(root, target), target, sha)
         } finally {
@@ -1140,12 +1141,12 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         val source = DriveRules.file(root, from)
         val there = runCatching { DriveRules.file(root, to) }.getOrNull() // null: nothing there yet
         if (from != to && there != null && there.length() == source.length() && sha256(there) == sha256(source)) {
-            if (!source.delete()) throw SyncException("Could not move ${from} to ${to}.")
+            if (!source.delete()) throw SyncException(context.getString(R.string.sync_not_moved, from, to))
             return
         }
         val target = DriveRules.newFile(root, to)
         target.parentFile?.mkdirs()
-        if (!source.renameTo(target)) throw SyncException("Could not move ${from} to ${to}.")
+        if (!source.renameTo(target)) throw SyncException(context.getString(R.string.sync_not_moved, from, to))
     }
 
     private suspend fun uploadFile(host: String, p: Pairing, entry: DriveFileEntry, file: File) {
@@ -1156,7 +1157,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
         c.setRequestProperty("Content-Type", "application/octet-stream")
         c.outputStream.use { out -> file.inputStream().use { pump(it, out) } }
         val receipt = c.jsonResult().also { c.disconnect() }
-        if (!receipt.optBoolean("verified")) throw SyncException("No verified receipt for ${entry.relativePath}.")
+        if (!receipt.optBoolean("verified")) throw SyncException(context.getString(R.string.sync_no_receipt, entry.relativePath))
     }
 
     /** Boxes travel as fractions of the upright photo, so the two apps' different decode sizes cancel out. */

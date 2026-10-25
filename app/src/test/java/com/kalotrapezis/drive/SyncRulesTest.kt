@@ -17,11 +17,11 @@ class SyncRulesTest {
     }
 
     @Test fun aMoveWindowIsSaidInItsLargestUnit() {
-        assertEquals("1 month", SyncRules.span(30))
-        assertEquals("1 year", SyncRules.span(365))
-        assertEquals("2 weeks", SyncRules.span(14))
-        assertEquals("10 days", SyncRules.span(10))
-        assertEquals("Photos → pc · Move, keeping 3 months", SyncConnection("photos", "send", "nothing", 90).sentence("pc"))
+        assertEquals(1 to R.plurals.sync_span_month, SyncRules.span(30))
+        assertEquals(1 to R.plurals.sync_span_year, SyncRules.span(365))
+        assertEquals(2 to R.plurals.sync_span_week, SyncRules.span(14))
+        assertEquals(10 to R.plurals.sync_span_day, SyncRules.span(10))
+        assertEquals(3 to R.plurals.sync_span_month, SyncRules.span(SyncConnection("photos", "send", "nothing", 90).keepDays))
     }
 
     @Test fun parsesTheDesktopPairingQr() {
@@ -84,11 +84,13 @@ class SyncConnectionTest {
     }
 
     @Test
-    fun `the sentence names the other device and what happens to this one's copy`() {
-        assertEquals("Photos → Desk · Copy", SyncConnection("photos", "send", "everything").sentence("Desk"))
-        assertEquals("Photos ← Desk · Copy", SyncConnection("photos", "receive", "everything").sentence("Desk"))
-        assertEquals("Files ⇄ Desk · Copy", SyncConnection("files", "both", "everything").sentence("Desk"))
-        assertEquals("Files → Desk · Move, keeping 1 month", SyncConnection("files", "send", "nothing").sentence("Desk"))
+    fun `the sentence's arrow says the way it goes, and Move what happens to this one's copy`() {
+        assertEquals("→", SyncConnection("photos", "send", "everything").arrow)
+        assertEquals("←", SyncConnection("photos", "receive", "everything").arrow)
+        assertEquals("⇄", SyncConnection("files", "both", "everything").arrow)
+        assertFalse(SyncConnection("files", "both", "everything").moves)
+        assertTrue(SyncConnection("files", "send", "nothing").moves)
+        assertEquals(1 to R.plurals.sync_span_month, SyncRules.span(SyncConnection("files", "send", "nothing").keepDays))
     }
 
     @Test
@@ -155,6 +157,6 @@ class SyncConnectionOffTest {
         val off = SyncConnection("photos", "off", "everything")
         assertFalse(off.sends)
         assertFalse(off.receives)
-        assertEquals("Photos · not synced", off.sentence("Desk"))
+        assertNull(off.arrow) // said "Photos · not synced"
     }
 }

@@ -80,16 +80,16 @@ internal class SyncListenService : Service() {
 
     private fun notification(): android.app.Notification {
         val nm = getSystemService(NotificationManager::class.java)
-        if (nm.getNotificationChannel(CHANNEL) == null)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Listening for the computer", NotificationManager.IMPORTANCE_MIN).apply { description = "Tetra answers the paired computer with the app closed" })
+        // made again when its name is not the one in the language now shown (an existing channel keeps its first name otherwise)
+        if (nm.getNotificationChannel(CHANNEL)?.name != getString(R.string.sync_listen_channel)) nm.createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.sync_listen_channel), NotificationManager.IMPORTANCE_MIN).apply { description = getString(R.string.sync_listen_channel_about) })
         val open = PendingIntent.getActivity(this, ID, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val stop = PendingIntent.getService(this, ID, Intent(this, SyncListenService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-        val computer = SyncStore(applicationContext).pairing()?.name ?: "the computer"
+        val computer = SyncStore(applicationContext).pairing()?.name
         return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_sync)
-            .setContentTitle("Listening for $computer")
-            .setContentText("Its syncs and Maps reach this phone with Tetra closed")
+            .setContentTitle(computer?.let { getString(R.string.sync_listening_for, it) } ?: getString(R.string.sync_listening_computer))
+            .setContentText(getString(R.string.sync_listening_text))
             .setOngoing(true).setSilent(true).setPriority(NotificationCompat.PRIORITY_MIN)
-            .setContentIntent(open).addAction(0, "Stop", stop).build()
+            .setContentIntent(open).addAction(0, getString(R.string.common_stop), stop).build()
     }
 }

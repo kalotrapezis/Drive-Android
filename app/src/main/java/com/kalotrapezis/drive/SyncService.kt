@@ -26,7 +26,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-internal data class BackupState(val progress: BackupProgress?, val result: BackupResult?, val error: String?, val paused: Boolean = false)
+/** [unreachable]: the sync ended because the computer did not answer ([SyncException.unreachable]). */
+internal data class BackupState(val progress: BackupProgress?, val result: BackupResult?, val error: String?, val paused: Boolean = false, val unreachable: Boolean = false)
 
 /**
  * Runs the backup outside the Activity's lifecycle so it survives the app being closed or backgrounded.
@@ -121,7 +122,7 @@ internal class SyncService : Service() {
         val client = SyncClient(applicationContext, store)
         announced = false
         paused.value = false
-        startForeground(NOTIFICATION_ID, notification("Checking photos…", 0, 0))
+        startForeground(NOTIFICATION_ID, notification(getString(R.string.sync_checking_photos), 0, 0))
         _state.value = BackupState(null, null, null)
         // Pause can come from the app, the notification or the island; all three end up here.
         scope.launch { paused.collect { value ->
@@ -133,7 +134,7 @@ internal class SyncService : Service() {
             val result = runCatching { client.backUp(listPhotos(applicationContext), checkpoint = { paused.first { !it } }) { p -> onProgress(p) } }
             _state.value = result.fold(
                 { r -> BackupState(null, r, null) },
-                { e -> BackupState(null, null, if (e is kotlinx.coroutines.CancellationException) "Stopped. Photos already sent are safe on the computer." else e.message ?: "Backup failed.") },
+                { e -> BackupState(null, null, if (e is kotlinx.coroutines.CancellationException) getString(R.string.sync_stopped) else e.message ?: getString(R.string.sync_backup_failed), unreachable = (e as? SyncException)?.unreachable == true) },
             )
             job = null
             // A sync is the other moment photos appear here without anyone taking them.
@@ -153,7 +154,7 @@ internal class SyncService : Service() {
     private fun waitForNetwork() {
         val networks = getSystemService(ConnectivityManager::class.java)
         if (networks == null) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return }
-        show("Waiting for Wi-Fi", 0, 0)
+        show(getString(R.string.sync_waiting_wifi), 0, 0)
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 scope.launch { delay(5_000); if (job == null) startBackup() }
@@ -185,7 +186,7 @@ internal class SyncService : Service() {
         // The in-app screen follows every file; the notification does not need to, and re-posting it per file
         // makes the Dynamic Island flash open again each time.
         val last = p.done >= p.total
-        if (last || System.currentTimeMillis() - lastShown >= 1_000) show("${p.stage} · ${p.done} of ${p.total}", p.done, p.total)
+        if (last || System.currentTimeMillis() - lastShown >= 1_000) show(getString(R.string.sync_stage_progress, p.stage, p.done, p.total), p.done, p.total)
     }
 
     private fun show(text: String, done: Int, total: Int) {
@@ -195,17 +196,17 @@ internal class SyncService : Service() {
 
     private fun notification(text: String, done: Int, total: Int): Notification {
         val nm = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL_ID) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Sync", NotificationManager.IMPORTANCE_LOW))
-        }
+        // made again when its name is not the one in the language now shown (an existing channel keeps its first name otherwise)
+        val channel = getString(R.string.app_sync)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL_ID)?.name != channel) nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, channel, NotificationManager.IMPORTANCE_LOW))
         val isPaused = paused.value
         val stopPending = service(1, ACTION_STOP)
         val pausePending = android.app.PendingIntent.getBroadcast(
             this, 2, Intent(ACTION_PAUSE).setPackage(packageName),
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val pauseLabel = if (isPaused) "Resume" else "Pause"
-        val title = if (isPaused) "Backup paused" else "Backing up to computer"
+        val pauseLabel = getString(if (isPaused) R.string.common_resume else R.string.common_pause)
+        val title = getString(if (isPaused) R.string.sync_backup_paused else R.string.sync_backing_up)
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_sync)
             .setContentTitle(title)
@@ -213,7 +214,7 @@ internal class SyncService : Service() {
             .setProgress(total, done, total == 0 && !isPaused)
             .setOngoing(true)
             .addAction(0, pauseLabel, pausePending)
-            .addAction(0, "Stop", stopPending)
+            .addAction(0, getString(R.string.common_stop), stopPending)
         // Additive: on a Xiaomi with focus notifications this also puts the backup in the Dynamic Island,
         // and everywhere else the extra is ignored and this is the same notification as before.
         if (islandSupported) {

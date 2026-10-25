@@ -374,4 +374,163 @@
         <item quantity="one">Into %d list.</item>
         <item quantity="other">Into %d lists.</item>
     </plurals>
+    <string name="sync_no_computer_yet">No computer paired yet</string>
+    <string name="sync_not_paired_computer">This is not the paired computer.</string>
+    <string name="sync_computer_answered">The computer answered %1$d.</string>
+    <string name="sync_not_paired">Not paired with a computer.</string>
+    <string name="sync_unreachable">Could not reach the computer (%1$s). Is Tetra open on it, on the same Wi-Fi?</string>
+    <string name="sync_no_address">no address</string>
+    <string name="sync_cannot_read">Cannot read %1$s.</string>
+    <string name="sync_not_taken">%1$s: not taken by the purgatory</string>
+    <string name="sync_pair_first">Pair with a computer first.</string>
+    <string name="sync_stage_checking">Checking photos</string>
+    <string name="sync_stage_sending">Sending</string>
+    <string name="sync_stage_receiving_photos">Receiving photos</string>
+    <string name="sync_stage_sending_files">Sending files</string>
+    <string name="sync_stage_receiving_files">Receiving files</string>
+    <string name="sync_failure">%1$s: %2$s</string>
+    <string name="sync_fail_trash_computer">Trash to the computer</string>
+    <string name="sync_fail_photos_from">Photos from the computer</string>
+    <string name="sync_fail_drive_files">Drive files</string>
+    <string name="sync_fail_editor_tabs">Editor tabs</string>
+    <string name="sync_fail_purgatory">Trash to the purgatory</string>
+    <string name="sync_fail_metadata">Names, people and tags</string>
+    <string name="sync_failed_word">failed</string>
+    <string name="sync_fail_moving">Moving a file</string>
+    <string name="sync_no_usable_name">The computer sent a photo with no usable name.</string>
+    <string name="sync_no_room">Android would not make room for %1$s.</string>
+    <string name="sync_cannot_write">Cannot write %1$s.</string>
+    <string name="sync_changed_on_way">It changed on the way; nothing was kept.</string>
+    <string name="sync_no_computer_paired">No computer is paired.</string>
+    <string name="sync_not_deleted">could not delete it</string>
+    <string name="sync_not_in_place">Could not put it in place.</string>
+    <string name="sync_not_moved">Could not move %1$s to %2$s.</string>
+    <string name="sync_no_receipt">No verified receipt for %1$s.</string>
+    <string name="sync_checking_photos">Checking photos…</string>
+    <string name="sync_stopped">Stopped. Photos already sent are safe on the computer.</string>
+    <string name="sync_backup_failed">Backup failed.</string>
+    <string name="sync_waiting_wifi">Waiting for Wi-Fi</string>
+    <string name="sync_stage_progress">%1$s · %2$d of %3$d</string>
+    <string name="sync_backup_paused">Backup paused</string>
+    <string name="sync_backing_up">Backing up to computer</string>
+    <string name="sync_listen_channel">Listening for the computer</string>
+    <string name="sync_listen_channel_about">Tetra answers the paired computer with the app closed</string>
+    <string name="sync_listening_for">Listening for %1$s</string>
+    <string name="sync_listening_computer">Listening for the computer</string>
+    <string name="sync_listening_text">Its syncs and Maps reach this phone with Tetra closed</string>
+    <string name="sync_send_no_computer">No computer is paired. Pair one in Tetra › Settings › Sync.</string>
+    <string name="sync_send_nothing">Nothing to send: only files can go to the computer.</string>
+    <string name="sync_send_unreadable">%1$d of %2$d could not be read</string>
+    <string name="sync_send_too_old">The computer needs the new Tetra to take these.</string>
+    <string name="sync_from_channel">Files from the computer</string>
+    <string name="sync_from_channel_about">Files the computer sends with Send to phone</string>
+    <string name="sync_files_in">In Files › %1$s: %2$s</string>
+    <string name="sync_request_refused">Android would not take the request.</string>
+    <string name="sync_pairing_with">Pairing with %1$s…</string>
+    <string name="sync_paired_back_up">Paired with %1$s. You can back up now.</string>
+    <string name="sync_pairing_failed">Pairing failed.</string>
+    <string name="sync_result">Checked %1$d: sent %2$d, %3$d were already there.</string>
+    <string name="sync_result_received">Checked %1$d: sent %2$d, %3$d were already there, received %4$d from the computer.</string>
+    <string name="sync_paused">Paused</string>
+    <string name="sync_scan_code">Scan a code</string>
+    <string name="sync_show_device">Show this device</string>
+    <string name="sync_back_up_now">Back up now</string>
+    <string name="sync_move_explained">This connection is a Move, so these can leave this device: %1$s holds each one, checked in the last sync. They are deleted here, not put in the Trash, so the room is free at once; %1$s keeps them.</string>
+    <string name="sync_free_room">Free the room on this device</string>
+    <string name="sync_trash_explained">This connection goes both ways, so they go to this phone\'s Trash too, where they stay 30 days. Android asks first; with Media management allowed, they go by themselves.</string>
+    <string name="sync_trash_here">Move to Trash here</string>
+    <string name="sync_allow_media">Allow Media management</string>
+    <string name="sync_what_it_does">What this sync does</string>
+    <string name="sync_set_on_computer">Set on the computer, in Tetra › Devices.</string>
+    <string name="sync_photos_in_library">Photos in the library</string>
+    <string name="sync_last_backup">Last backup</string>
+    <string name="sync_never">Never</string>
+    <string name="sync_how_to_pair">On the computer open Tetra › Phone sync › Pair a phone, then scan the code it shows. The connection is checked against that code every time.</string>
+    <string name="sync_what_a_sync_does">A sync copies each photo, video and file the other device does not have yet, in whichever directions the computer\'s rules allow, into the same folders. Both sides check every file by SHA-256 before keeping it, and nothing is ever deleted on either side because of a sync.</string>
+    <string name="sync_not_synced">%1$s · not synced</string>
+    <string name="sync_move_keeping">Move, keeping %1$s</string>
+    <string name="sync_copy">Copy</string>
+    <string name="sync_connection">%1$s %2$s %3$s · %4$s</string>
+    <string name="sync_no_code">This device cannot show a code right now.</string>
+    <string name="sync_pair_this_device">Pair this device</string>
+    <string name="sync_pairing_code">Pairing code for this device</string>
+    <string name="sync_paired_with">Paired with %1$s.</string>
+    <string name="sync_point_here">Open Sync on the other device, tap Pair, and point it here.</string>
+    <string name="sync_code_once">The code works once, and only while this screen is open.</string>
+    <string name="sync_paired_devices">Paired devices</string>
+    <string name="sync_this_phone">This phone</string>
+    <string name="sync_no_computer">No computer</string>
+    <string name="sync_no_computer_yet_short">No computer yet</string>
+    <string name="sync_pair_once">Pair once, then back up whenever you like</string>
+    <string name="sync_not_reachable">Not reachable right now</string>
+    <string name="sync_paired">Paired</string>
+    <string name="sync_copies_1">One copy</string>
+    <string name="sync_copies_2">Two places</string>
+    <string name="sync_copies_3">Three places</string>
+    <string name="sync_copies_4">Four places</string>
+    <string name="sync_copies_5">Five places</string>
+    <string name="sync_copies_6">Six places</string>
+    <string name="sync_copies_n">%1$d places</string>
+    <string name="sync_library">The library, and where it is</string>
+    <string name="sync_on_device">%1$s on %2$s</string>
+    <string name="sync_only_on_a_device">%1$s only on a device</string>
+    <string name="sync_one_place">in one place in the world</string>
+    <string name="sync_one_could_fail">one machine could fail</string>
+    <string name="sync_safe">safe</string>
+    <string name="sync_devices_header">Device · holds · also in the library · only there</string>
+    <string name="sync_this_device_name">%1$s (this device)</string>
+    <string name="sync_as_seen">As the computer saw it at the end of the last sync.</string>
+    <plurals name="sync_span_year">
+        <item quantity="one">%d year</item>
+        <item quantity="other">%d years</item>
+    </plurals>
+    <plurals name="sync_span_month">
+        <item quantity="one">%d month</item>
+        <item quantity="other">%d months</item>
+    </plurals>
+    <plurals name="sync_span_week">
+        <item quantity="one">%d week</item>
+        <item quantity="other">%d weeks</item>
+    </plurals>
+    <plurals name="sync_span_day">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+    <plurals name="sync_summary">
+        <item quantity="one">Paired with %1$s · %2$d photo on the computer</item>
+        <item quantity="other">Paired with %1$s · %2$d photos on the computer</item>
+    </plurals>
+    <plurals name="sync_sent_to">
+        <item quantity="one">Sent %1$d file to %2$s</item>
+        <item quantity="other">Sent %1$d files to %2$s</item>
+    </plurals>
+    <plurals name="sync_sent">
+        <item quantity="one">Sent %d file to the computer</item>
+        <item quantity="other">Sent %d files to the computer</item>
+    </plurals>
+    <plurals name="sync_send_waiting_for">
+        <item quantity="one">%2$s is not reachable now: %1$d file will go when it is.</item>
+        <item quantity="other">%2$s is not reachable now: %1$d files will go when it is.</item>
+    </plurals>
+    <plurals name="sync_send_waiting">
+        <item quantity="one">The computer is not reachable now: %d file will go when it is.</item>
+        <item quantity="other">The computer is not reachable now: %d files will go when it is.</item>
+    </plurals>
+    <plurals name="sync_files_from">
+        <item quantity="one">%1$d file from %2$s</item>
+        <item quantity="other">%1$d files from %2$s</item>
+    </plurals>
+    <plurals name="sync_to_move">
+        <item quantity="one">%1$d photo is on %2$s</item>
+        <item quantity="other">%1$d photos are on %2$s</item>
+    </plurals>
+    <plurals name="sync_to_trash">
+        <item quantity="one">%1$d photo you deleted on %2$s</item>
+        <item quantity="other">%1$d photos you deleted on %2$s</item>
+    </plurals>
+    <plurals name="sync_known">
+        <item quantity="one">%1$s photo known</item>
+        <item quantity="other">%1$s photos known</item>
+    </plurals>
+    <string name="sync_no_receipt_plain">No verified receipt.</string>
 </resources>

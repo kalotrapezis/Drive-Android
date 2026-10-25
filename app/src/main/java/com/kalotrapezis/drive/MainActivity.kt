@@ -1652,7 +1652,7 @@ private fun SyncTab(back: () -> Unit) {
                 // keep the room for 30 days — the room the Move is for (asked 2026-09-25).
                 runCatching { MediaStore.createDeleteRequest(context.contentResolver, next.map { it.value }) }
                     .onSuccess { removeRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
-                    .onFailure { batch = emptySet(); moveError = it.message ?: "Android would not take the request." }
+                    .onFailure { batch = emptySet(); moveError = it.message ?: context.getString(R.string.sync_request_refused) }
             }
         }
     }
@@ -1674,7 +1674,7 @@ private fun SyncTab(back: () -> Unit) {
                 trashBatch = next.mapTo(HashSet()) { it.key }
                 runCatching { MediaStore.createTrashRequest(context.contentResolver, next.map { it.value }, true) }
                     .onSuccess { trashRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
-                    .onFailure { trashBatch = emptySet(); moveError = it.message ?: "Android would not take the request." }
+                    .onFailure { trashBatch = emptySet(); moveError = it.message ?: context.getString(R.string.sync_request_refused) }
             }
         }
     }
@@ -1699,10 +1699,10 @@ private fun SyncTab(back: () -> Unit) {
             val qr = SyncRules.parseQr(value) ?: return@CodeScannerTab false
             if (!scanning || busy != null) return@CodeScannerTab true // the next camera frames see the same code: send it once
             scanning = false
-            busy = "Pairing with ${qr.name}…"
+            busy = context.getString(R.string.sync_pairing_with, qr.name)
             scope.launch {
                 pairMessage = runCatching { withContext(Dispatchers.IO) { client.pair(qr) } }
-                    .fold({ pairing = it; "Paired with ${it.name}. You can back up now." }, { it.message ?: "Pairing failed." })
+                    .fold({ pairing = it; context.getString(R.string.sync_paired_back_up, it.name) }, { it.message ?: context.getString(R.string.sync_pairing_failed) })
                 busy = null
             }
             true
@@ -1713,8 +1713,8 @@ private fun SyncTab(back: () -> Unit) {
     val p = pairing
     val result = backup?.result
     val summary = result?.let { r ->
-        "Checked ${r.checked}: sent ${r.sent}, ${r.alreadyThere} were already there" +
-            if (r.received > 0) ", received ${r.received} from the computer." else "."
+        if (r.received > 0) stringResource(R.string.sync_result_received, r.checked, r.sent, r.alreadyThere, r.received)
+        else stringResource(R.string.sync_result, r.checked, r.sent, r.alreadyThere)
     }
     val message = backup?.error ?: summary ?: pairMessage
     LazyColumn(
@@ -1722,29 +1722,29 @@ private fun SyncTab(back: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(bottom = 32.dp),
     ) {
-        item { FilesPageHeader("Sync", R.drawable.ic_sync, back) }
+        item { FilesPageHeader(stringResource(R.string.app_sync), R.drawable.ic_sync, back) }
         item {
             Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    ConnectionCard(paired = p != null, deviceName = p?.name, reachable = backup?.error?.contains("reach the computer") != true)
+                    ConnectionCard(paired = p != null, deviceName = p?.name, reachable = backup?.unreachable != true)
                     backup?.progress?.let { pr ->
                         val isPaused = backup?.paused == true
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             LinearProgressIndicator(progress = { if (pr.total == 0) 0f else pr.done / pr.total.toFloat() }, trackColor = Color.Black, modifier = Modifier.weight(1f))
                             IconButton(onClick = { pauseSync(context) }) {
-                                Icon(painterResource(if (isPaused) R.drawable.ic_sync else R.drawable.ic_pause), contentDescription = if (isPaused) "Resume" else "Pause")
+                                Icon(painterResource(if (isPaused) R.drawable.ic_sync else R.drawable.ic_pause), contentDescription = stringResource(if (isPaused) R.string.common_resume else R.string.common_pause))
                             }
                         }
-                        Text(if (isPaused) "Paused · ${pr.done} of ${pr.total}" else "${pr.stage} · ${pr.done} of ${pr.total}", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.sync_stage_progress, if (isPaused) stringResource(R.string.sync_paused) else pr.stage, pr.done, pr.total), style = MaterialTheme.typography.bodyMedium)
                     }
                     // Pairing goes both ways now: this device can scan another, or be scanned by it. The two
                     // read as one choice stacked, and carry different symbols — scanning is a camera pointed at
                     // a code, showing one is this device's own identity card.
                     Button(onClick = { scanning = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
-                        Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Scan a code")
+                        Icon(painterResource(R.drawable.ic_qr_code), contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.sync_scan_code), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Button(onClick = { showing = true }, enabled = busy == null, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
-                        Icon(painterResource(R.drawable.ic_id_card), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Show this device")
+                        Icon(painterResource(R.drawable.ic_id_card), contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.sync_show_device), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     when {
                         p == null -> Unit // the two buttons above are the whole offer until something is paired
@@ -1754,7 +1754,7 @@ private fun SyncTab(back: () -> Unit) {
                             }
                             startSync(context)
                         }, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
-                            Icon(painterResource(R.drawable.ic_sync), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Back up now")
+                            Icon(painterResource(R.drawable.ic_sync), contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.sync_back_up_now), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         else -> Button(
                             onClick = { stopSync(context) },
@@ -1762,7 +1762,7 @@ private fun SyncTab(back: () -> Unit) {
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Icon(painterResource(R.drawable.ic_cancel), contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Stop")
+                            Icon(painterResource(R.drawable.ic_cancel), contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.common_stop), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -1773,16 +1773,15 @@ private fun SyncTab(back: () -> Unit) {
         if (p != null && waitingToMove.isNotEmpty()) item {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("${waitingToMove.size} ${if (waitingToMove.size == 1) "photo is" else "photos are"} on ${p.name}", style = MaterialTheme.typography.titleMedium)
+                    Text(pluralStringResource(R.plurals.sync_to_move, waitingToMove.size, waitingToMove.size, p.name), style = MaterialTheme.typography.titleMedium)
                     Text(
-"This connection is a Move, so these can leave this device: ${p.name} holds each one, checked in the last " +
-                            "sync. They are deleted here, not put in the Trash, so the room is free at once; ${p.name} keeps them.",
+                        stringResource(R.string.sync_move_explained, p.name),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Button(onClick = { moveError = null; removeNext() }, enabled = batch.isEmpty(), colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
                         Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Free the room on this device")
+                        Text(stringResource(R.string.sync_free_room), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     moveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
@@ -1791,17 +1790,16 @@ private fun SyncTab(back: () -> Unit) {
         if (p != null && waitingToTrash.isNotEmpty()) item {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("${waitingToTrash.size} ${if (waitingToTrash.size == 1) "photo" else "photos"} you deleted on ${p.name}", style = MaterialTheme.typography.titleMedium)
-                    Text("This connection goes both ways, so they go to this phone's Trash too, where they stay 30 days. Android asks first; " +
-                        "with Media management allowed, they go by themselves.", style = MaterialTheme.typography.bodyMedium)
+                    Text(pluralStringResource(R.plurals.sync_to_trash, waitingToTrash.size, waitingToTrash.size, p.name), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.sync_trash_explained), style = MaterialTheme.typography.bodyMedium)
                     Button(onClick = { moveError = null; trashNext() }, enabled = trashBatch.isEmpty(), colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
                         Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Move to Trash here")
+                        Text(stringResource(R.string.sync_trash_here), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (!MediaStore.canManageMedia(context)) TextButton(onClick = {
                         runCatching { context.startActivity(Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA, Uri.parse("package:${context.packageName}"))) }
-                    }) { Text("Allow Media management") }
+                    }) { Text(stringResource(R.string.sync_allow_media), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         }
@@ -1809,9 +1807,9 @@ private fun SyncTab(back: () -> Unit) {
         if (p != null) item {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("What this sync does", style = MaterialTheme.typography.labelLarge)
-                    connections.forEach { row -> Text(row.sentence(p.name), style = MaterialTheme.typography.bodyMedium) }
-                    Text("Set on the computer, in Tetra › Devices.", style = MaterialTheme.typography.bodySmall,
+                    Text(stringResource(R.string.sync_what_it_does), style = MaterialTheme.typography.labelLarge)
+                    connections.forEach { row -> Text(connectionSentence(row, p.name), style = MaterialTheme.typography.bodyMedium) }
+                    Text(stringResource(R.string.sync_set_on_computer), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f))
                 }
             }
@@ -1819,8 +1817,8 @@ private fun SyncTab(back: () -> Unit) {
         overview?.let { o -> if (p != null) item { LibraryOverview(o) } }
         if (p != null) item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SyncStat("Photos in the library", overview?.optInt("known")?.toString() ?: "—", Modifier.weight(1f))
-                SyncStat("Last backup", if (lastBackup == 0L) "Never" else DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(lastBackup)), Modifier.weight(1f))
+                SyncStat(stringResource(R.string.sync_photos_in_library), overview?.optInt("known")?.toString() ?: "—", Modifier.weight(1f))
+                SyncStat(stringResource(R.string.sync_last_backup), if (lastBackup == 0L) stringResource(R.string.sync_never) else DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(lastBackup)), Modifier.weight(1f))
             }
         }
         message?.let { m -> item {
@@ -1831,8 +1829,8 @@ private fun SyncTab(back: () -> Unit) {
         result?.failed?.let { failures -> items(failures) { f -> SyncFailureCard(f) } }
         item {
             Text(
-                if (p == null) "On the computer open Tetra › Phone sync › Pair a phone, then scan the code it shows. The connection is checked against that code every time."
-                else "A sync copies each photo, video and file the other device does not have yet, in whichever directions the computer's rules allow, into the same folders. Both sides check every file by SHA-256 before keeping it, and nothing is ever deleted on either side because of a sync.",
+                if (p == null) stringResource(R.string.sync_how_to_pair)
+                else stringResource(R.string.sync_what_a_sync_does),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
                 modifier = Modifier.padding(horizontal = 4.dp),
@@ -1849,6 +1847,16 @@ private fun SyncTab(back: () -> Unit) {
 /** Every photo on this device, shown or not, by key: a queued photo in a hidden folder is still on this device. */
 private fun photoUrisByKey(context: android.content.Context, keys: Set<String>): Map<String, Uri> =
     listDeviceMedia(context).filter { it.photoKey in keys }.mapNotNull { e -> e.contentUri?.let { e.photoKey to it } }.toMap()
+
+/** A connection row as the Sync page says it: "Photos ⇄ Desk · Copy"; the computer configures, the phone says what it was told. */
+@Composable
+private fun connectionSentence(row: SyncConnection, computer: String): String {
+    val what = stringResource(if (row.content == "files") R.string.app_files else R.string.app_photos)
+    val arrow = row.arrow ?: return stringResource(R.string.sync_not_synced, what)
+    val keep = if (row.moves) SyncRules.span(row.keepDays).let { (n, unit) -> stringResource(R.string.sync_move_keeping, pluralStringResource(unit, n, n)) }
+        else stringResource(R.string.sync_copy)
+    return stringResource(R.string.sync_connection, what, arrow, computer, keep)
+}
 
 /** Android's limit on how many items one MediaStore request may name. */
 private const val MAX_MEDIA_REQUEST = 2000
@@ -1885,7 +1893,7 @@ private fun PairingQrScreen(store: SyncStore, back: () -> Unit) {
             server = SyncServer.acquire(context.applicationContext, store)
             server.onPaired = { peer -> pairedWith = peer.name }
             qr = server.pairingQr(server.startPairing())
-        }.onFailure { failure = it.message ?: "This device cannot show a code right now." }
+        }.onFailure { failure = it.message ?: context.getString(R.string.sync_no_code) }
         onDispose {
             server?.let { it.onPaired = {} }
             if (server != null) runCatching { SyncServer.release() }
@@ -1896,30 +1904,30 @@ private fun PairingQrScreen(store: SyncStore, back: () -> Unit) {
         Modifier.fillMaxSize().padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        FilesPageHeader("Pair this device", R.drawable.ic_id_card, back)
+        FilesPageHeader(stringResource(R.string.sync_pair_this_device), R.drawable.ic_id_card, back)
         Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 when {
                     failure != null -> Text(failure!!, style = MaterialTheme.typography.bodyMedium)
                     bitmap != null -> Image(
                         bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Pairing code for this device",
+                        contentDescription = stringResource(R.string.sync_pairing_code),
                         filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
                         modifier = Modifier.fillMaxWidth(0.8f).aspectRatio(1f).background(Color.White).padding(12.dp),
                     )
                     else -> CircularProgressIndicator()
                 }
                 Text(
-                    pairedWith?.let { "Paired with $it." } ?: "Open Sync on the other device, tap Pair, and point it here.",
+                    pairedWith?.let { stringResource(R.string.sync_paired_with, it) } ?: stringResource(R.string.sync_point_here),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text("The code works once, and only while this screen is open.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.sync_code_once), style = MaterialTheme.typography.bodySmall)
             }
         }
         val peers = remember(pairedWith) { runCatching { store.peers() }.getOrDefault(emptyList()) }
         if (peers.isNotEmpty()) Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Paired devices", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.sync_paired_devices), style = MaterialTheme.typography.titleMedium)
                 peers.forEach { peer ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(painterResource(R.drawable.ic_phone), contentDescription = null, modifier = Modifier.size(20.dp))
@@ -1948,19 +1956,19 @@ internal fun qrBitmap(text: String, size: Int = 640, utf8: Boolean = false): and
 private fun ConnectionCard(paired: Boolean, deviceName: String?, reachable: Boolean) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Surface(shape = CircleShape, color = islandColor(), contentColor = islandContentColor()) {
-            Icon(painterResource(R.drawable.ic_phone), contentDescription = "This phone", modifier = Modifier.padding(12.dp).size(22.dp))
+            Icon(painterResource(R.drawable.ic_phone), contentDescription = stringResource(R.string.sync_this_phone), modifier = Modifier.padding(12.dp).size(22.dp))
         }
         Icon(painterResource(R.drawable.ic_sync), contentDescription = null, modifier = Modifier.size(16.dp).alpha(if (paired) 1f else 0.4f))
         Surface(shape = CircleShape, color = if (paired) driveNavigationSelectedColor() else islandColor(), contentColor = if (paired) driveNavigationSelectedContentColor() else islandContentColor()) {
-            Icon(painterResource(R.drawable.ic_computer), contentDescription = deviceName ?: "No computer", modifier = Modifier.padding(12.dp).size(22.dp))
+            Icon(painterResource(R.drawable.ic_computer), contentDescription = deviceName ?: stringResource(R.string.sync_no_computer), modifier = Modifier.padding(12.dp).size(22.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(deviceName ?: "No computer yet", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(deviceName ?: stringResource(R.string.sync_no_computer_yet_short), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 when {
-                    !paired -> "Pair once, then back up whenever you like"
-                    !reachable -> "Not reachable right now"
-                    else -> "Paired"
+                    !paired -> stringResource(R.string.sync_pair_once)
+                    !reachable -> stringResource(R.string.sync_not_reachable)
+                    else -> stringResource(R.string.sync_paired)
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -1996,15 +2004,13 @@ private fun LibraryOverview(o: org.json.JSONObject) {
     val devices = o.optJSONArray("devices")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }.orEmpty()
     val you = o.optString("you")
     val color = { n: Int -> SyncRules.copiesColor(n).let { (h, s, l) -> Color.hsl(h, s, l) } }
-    val words = listOf("", "One copy", "Two places", "Three places", "Four places", "Five places", "Six places")
+    val words = listOf(0, R.string.sync_copies_1, R.string.sync_copies_2, R.string.sync_copies_3, R.string.sync_copies_4, R.string.sync_copies_5, R.string.sync_copies_6)
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("The library, and where it is", style = MaterialTheme.typography.titleMedium)
-            Text(buildString {
-                append("${"%,d".format(known)} photos known · ${"%,d".format(here)} on ${o.optString("name")}")
-                stored.forEach { append(" · ${"%,d".format(it.optInt("files"))} on ${it.optString("name")}") }
-                if (onlyDevice > 0) append(" · ${"%,d".format(onlyDevice)} only on a device")
-            }, style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.sync_library), style = MaterialTheme.typography.titleMedium)
+            Text((listOf(pluralStringResource(R.plurals.sync_known, known, "%,d".format(known)), stringResource(R.string.sync_on_device, "%,d".format(here), o.optString("name"))) +
+                stored.map { stringResource(R.string.sync_on_device, "%,d".format(it.optInt("files")), it.optString("name")) } +
+                listOfNotNull(if (onlyDevice > 0) stringResource(R.string.sync_only_on_a_device, "%,d".format(onlyDevice)) else null)).joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
             if (known > 0) Row(Modifier.fillMaxWidth().height(12.dp).clip(CircleShape)) {
                 copies.forEach { c -> Box(Modifier.weight(c.optInt("files").coerceAtLeast(1).toFloat()).fillMaxHeight().background(color(c.optInt("copies")))) }
             }
@@ -2012,22 +2018,22 @@ private fun LibraryOverview(o: org.json.JSONObject) {
                 val n = c.optInt("copies")
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(color(n)))
-                    Text(words.getOrElse(n) { "$n places" }, style = MaterialTheme.typography.bodyMedium)
-                    Text("${"%,d".format(c.optInt("files"))} · ${if (n == 1) "in one place in the world" else if (n == 2) "one machine could fail" else "safe"}",
+                    Text(words.getOrNull(n)?.takeIf { it != 0 }?.let { stringResource(it) } ?: stringResource(R.string.sync_copies_n, n), style = MaterialTheme.typography.bodyMedium)
+                    Text("%,d".format(c.optInt("files")) + " · " + stringResource(if (n == 1) R.string.sync_one_place else if (n == 2) R.string.sync_one_could_fail else R.string.sync_safe),
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Text("Device · holds · also in the library · only there", style = MaterialTheme.typography.labelMedium)
+            Text(stringResource(R.string.sync_devices_header), style = MaterialTheme.typography.labelMedium)
             devices.forEach { d ->
                 val only = d.optInt("onlyThere")
                 Text(
-                    "${d.optString("name")}${if (d.optString("id") == you) " (this device)" else ""} · ${"%,d".format(d.optInt("holds"))} · " +
+                    "${if (d.optString("id") == you) stringResource(R.string.sync_this_device_name, d.optString("name")) else d.optString("name")} · ${"%,d".format(d.optInt("holds"))} · " +
                         "${"%,d".format(d.optInt("alsoHere"))} · ${"%,d".format(only)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (only > 0) MaterialTheme.colorScheme.error else Color.Unspecified,
                 )
             }
-            Text("As the computer saw it at the end of the last sync.", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.sync_as_seen), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

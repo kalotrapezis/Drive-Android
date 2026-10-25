@@ -374,4 +374,163 @@
         <item quantity="one">Σε %d λίστα.</item>
         <item quantity="other">Σε %d λίστες.</item>
     </plurals>
+    <string name="sync_no_computer_yet">Δεν υπάρχει ακόμη συνδεδεμένος υπολογιστής</string>
+    <string name="sync_not_paired_computer">Αυτός δεν είναι ο συνδεδεμένος υπολογιστής.</string>
+    <string name="sync_computer_answered">Ο υπολογιστής απάντησε %1$d.</string>
+    <string name="sync_not_paired">Δεν υπάρχει σύζευξη με υπολογιστή.</string>
+    <string name="sync_unreachable">Δεν ήταν δυνατή η σύνδεση με τον υπολογιστή (%1$s). Είναι ανοιχτό το Tetra σε αυτόν, στο ίδιο Wi-Fi;</string>
+    <string name="sync_no_address">καμία διεύθυνση</string>
+    <string name="sync_cannot_read">Δεν είναι δυνατή η ανάγνωση του %1$s.</string>
+    <string name="sync_not_taken">%1$s: δεν το δέχτηκε το καθαρτήριο</string>
+    <string name="sync_pair_first">Κάντε πρώτα σύζευξη με έναν υπολογιστή.</string>
+    <string name="sync_stage_checking">Έλεγχος φωτογραφιών</string>
+    <string name="sync_stage_sending">Αποστολή</string>
+    <string name="sync_stage_receiving_photos">Λήψη φωτογραφιών</string>
+    <string name="sync_stage_sending_files">Αποστολή αρχείων</string>
+    <string name="sync_stage_receiving_files">Λήψη αρχείων</string>
+    <string name="sync_failure">%1$s: %2$s</string>
+    <string name="sync_fail_trash_computer">Κάδος προς τον υπολογιστή</string>
+    <string name="sync_fail_photos_from">Φωτογραφίες από τον υπολογιστή</string>
+    <string name="sync_fail_drive_files">Αρχεία Drive</string>
+    <string name="sync_fail_editor_tabs">Καρτέλες του Κειμένου</string>
+    <string name="sync_fail_purgatory">Κάδος προς το καθαρτήριο</string>
+    <string name="sync_fail_metadata">Ονόματα, άτομα και ετικέτες</string>
+    <string name="sync_failed_word">απέτυχε</string>
+    <string name="sync_fail_moving">Μετακίνηση αρχείου</string>
+    <string name="sync_no_usable_name">Ο υπολογιστής έστειλε φωτογραφία χωρίς χρήσιμο όνομα.</string>
+    <string name="sync_no_room">Το Android δεν έκανε χώρο για το %1$s.</string>
+    <string name="sync_cannot_write">Δεν είναι δυνατή η εγγραφή του %1$s.</string>
+    <string name="sync_changed_on_way">Άλλαξε στη διαδρομή· δεν κρατήθηκε τίποτα.</string>
+    <string name="sync_no_computer_paired">Δεν υπάρχει συνδεδεμένος υπολογιστής.</string>
+    <string name="sync_not_deleted">δεν ήταν δυνατή η διαγραφή του</string>
+    <string name="sync_not_in_place">Δεν ήταν δυνατό να μπει στη θέση του.</string>
+    <string name="sync_not_moved">Δεν ήταν δυνατή η μετακίνηση του %1$s στο %2$s.</string>
+    <string name="sync_no_receipt">Δεν υπάρχει επιβεβαιωμένη απόδειξη για το %1$s.</string>
+    <string name="sync_checking_photos">Έλεγχος φωτογραφιών…</string>
+    <string name="sync_stopped">Σταμάτησε. Οι φωτογραφίες που στάλθηκαν ήδη είναι ασφαλείς στον υπολογιστή.</string>
+    <string name="sync_backup_failed">Η δημιουργία αντιγράφου ασφαλείας απέτυχε.</string>
+    <string name="sync_waiting_wifi">Αναμονή για Wi-Fi</string>
+    <string name="sync_stage_progress">%1$s · %2$d από %3$d</string>
+    <string name="sync_backup_paused">Το αντίγραφο ασφαλείας σε παύση</string>
+    <string name="sync_backing_up">Αντίγραφο ασφαλείας στον υπολογιστή</string>
+    <string name="sync_listen_channel">Ακρόαση για τον υπολογιστή</string>
+    <string name="sync_listen_channel_about">Το Tetra απαντά στον συνδεδεμένο υπολογιστή και με την εφαρμογή κλειστή</string>
+    <string name="sync_listening_for">Ακρόαση για %1$s</string>
+    <string name="sync_listening_computer">Ακρόαση για τον υπολογιστή</string>
+    <string name="sync_listening_text">Οι συγχρονισμοί και οι Χάρτες του φτάνουν σε αυτό το τηλέφωνο με το Tetra κλειστό</string>
+    <string name="sync_send_no_computer">Δεν υπάρχει συνδεδεμένος υπολογιστής. Κάντε σύζευξη στο Tetra › Ρυθμίσεις › Συγχρονισμός.</string>
+    <string name="sync_send_nothing">Τίποτα για αποστολή: στον υπολογιστή μπορούν να πάνε μόνο αρχεία.</string>
+    <string name="sync_send_unreadable">%1$d από %2$d δεν ήταν δυνατό να διαβαστούν</string>
+    <string name="sync_send_too_old">Ο υπολογιστής χρειάζεται το νέο Tetra για να τα δεχτεί.</string>
+    <string name="sync_from_channel">Αρχεία από τον υπολογιστή</string>
+    <string name="sync_from_channel_about">Αρχεία που στέλνει ο υπολογιστής με την Αποστολή στο τηλέφωνο</string>
+    <string name="sync_files_in">Στα Αρχεία › %1$s: %2$s</string>
+    <string name="sync_request_refused">Το Android δεν δέχτηκε το αίτημα.</string>
+    <string name="sync_pairing_with">Σύζευξη με %1$s…</string>
+    <string name="sync_paired_back_up">Έγινε σύζευξη με %1$s. Μπορείτε τώρα να κάνετε αντίγραφο ασφαλείας.</string>
+    <string name="sync_pairing_failed">Η σύζευξη απέτυχε.</string>
+    <string name="sync_result">Ελέγχθηκαν %1$d: στάλθηκαν %2$d, %3$d υπήρχαν ήδη.</string>
+    <string name="sync_result_received">Ελέγχθηκαν %1$d: στάλθηκαν %2$d, %3$d υπήρχαν ήδη, ήρθαν %4$d από τον υπολογιστή.</string>
+    <string name="sync_paused">Σε παύση</string>
+    <string name="sync_scan_code">Σάρωση κωδικού</string>
+    <string name="sync_show_device">Εμφάνιση αυτής της συσκευής</string>
+    <string name="sync_back_up_now">Αντίγραφο ασφαλείας τώρα</string>
+    <string name="sync_move_explained">Αυτή η σύνδεση είναι Μετακίνηση, οπότε μπορούν να φύγουν από αυτή τη συσκευή: το %1$s έχει την καθεμία, ελεγμένη στον τελευταίο συγχρονισμό. Διαγράφονται εδώ, δεν μπαίνουν στον Κάδο, ώστε ο χώρος να ελευθερωθεί αμέσως· το %1$s τις κρατά.</string>
+    <string name="sync_free_room">Ελευθέρωση χώρου σε αυτή τη συσκευή</string>
+    <string name="sync_trash_explained">Αυτή η σύνδεση πάει και προς τις δύο κατευθύνσεις, οπότε πηγαίνουν και στον Κάδο αυτού του τηλεφώνου, όπου μένουν 30 ημέρες. Το Android ρωτά πρώτα· με τη Διαχείριση πολυμέσων να επιτρέπεται, πηγαίνουν μόνες τους.</string>
+    <string name="sync_trash_here">Μεταφορά στον Κάδο εδώ</string>
+    <string name="sync_allow_media">Να επιτρέπεται η Διαχείριση πολυμέσων</string>
+    <string name="sync_what_it_does">Τι κάνει αυτός ο συγχρονισμός</string>
+    <string name="sync_set_on_computer">Ρυθμίζεται στον υπολογιστή, στο Tetra › Συσκευές.</string>
+    <string name="sync_photos_in_library">Φωτογραφίες στη βιβλιοθήκη</string>
+    <string name="sync_last_backup">Τελευταίο αντίγραφο</string>
+    <string name="sync_never">Ποτέ</string>
+    <string name="sync_how_to_pair">Στον υπολογιστή ανοίξτε Tetra › Συγχρονισμός τηλεφώνου › Σύζευξη τηλεφώνου και σαρώστε τον κωδικό που δείχνει. Η σύνδεση ελέγχεται με αυτόν τον κωδικό κάθε φορά.</string>
+    <string name="sync_what_a_sync_does">Ένας συγχρονισμός αντιγράφει κάθε φωτογραφία, βίντεο και αρχείο που δεν έχει ακόμη η άλλη συσκευή, προς όποιες κατευθύνσεις επιτρέπουν οι κανόνες του υπολογιστή, στους ίδιους φακέλους. Και οι δύο πλευρές ελέγχουν κάθε αρχείο με SHA-256 πριν το κρατήσουν, και τίποτα δεν διαγράφεται ποτέ σε καμία πλευρά εξαιτίας ενός συγχρονισμού.</string>
+    <string name="sync_not_synced">%1$s · χωρίς συγχρονισμό</string>
+    <string name="sync_move_keeping">Μετακίνηση, κρατώντας %1$s</string>
+    <string name="sync_copy">Αντιγραφή</string>
+    <string name="sync_connection">%1$s %2$s %3$s · %4$s</string>
+    <string name="sync_no_code">Αυτή η συσκευή δεν μπορεί να δείξει κωδικό αυτή τη στιγμή.</string>
+    <string name="sync_pair_this_device">Σύζευξη αυτής της συσκευής</string>
+    <string name="sync_pairing_code">Κωδικός σύζευξης αυτής της συσκευής</string>
+    <string name="sync_paired_with">Έγινε σύζευξη με %1$s.</string>
+    <string name="sync_point_here">Ανοίξτε τον Συγχρονισμό στην άλλη συσκευή, πατήστε Σύζευξη και στρέψτε την εδώ.</string>
+    <string name="sync_code_once">Ο κωδικός λειτουργεί μία φορά, και μόνο όσο είναι ανοιχτή αυτή η οθόνη.</string>
+    <string name="sync_paired_devices">Συνδεδεμένες συσκευές</string>
+    <string name="sync_this_phone">Αυτό το τηλέφωνο</string>
+    <string name="sync_no_computer">Κανένας υπολογιστής</string>
+    <string name="sync_no_computer_yet_short">Ακόμη κανένας υπολογιστής</string>
+    <string name="sync_pair_once">Κάντε σύζευξη μία φορά και μετά αντίγραφα ασφαλείας όποτε θέλετε</string>
+    <string name="sync_not_reachable">Δεν είναι προσβάσιμος αυτή τη στιγμή</string>
+    <string name="sync_paired">Συνδεδεμένο</string>
+    <string name="sync_copies_1">Ένα αντίγραφο</string>
+    <string name="sync_copies_2">Δύο μέρη</string>
+    <string name="sync_copies_3">Τρία μέρη</string>
+    <string name="sync_copies_4">Τέσσερα μέρη</string>
+    <string name="sync_copies_5">Πέντε μέρη</string>
+    <string name="sync_copies_6">Έξι μέρη</string>
+    <string name="sync_copies_n">%1$d μέρη</string>
+    <string name="sync_library">Η βιβλιοθήκη, και πού βρίσκεται</string>
+    <string name="sync_on_device">%1$s στο %2$s</string>
+    <string name="sync_only_on_a_device">%1$s μόνο σε μια συσκευή</string>
+    <string name="sync_one_place">σε ένα μόνο μέρος στον κόσμο</string>
+    <string name="sync_one_could_fail">ένα μηχάνημα μπορεί να χαλάσει</string>
+    <string name="sync_safe">ασφαλή</string>
+    <string name="sync_devices_header">Συσκευή · έχει · και στη βιβλιοθήκη · μόνο εκεί</string>
+    <string name="sync_this_device_name">%1$s (αυτή η συσκευή)</string>
+    <string name="sync_as_seen">Όπως το είδε ο υπολογιστής στο τέλος του τελευταίου συγχρονισμού.</string>
+    <plurals name="sync_span_year">
+        <item quantity="one">%d έτος</item>
+        <item quantity="other">%d έτη</item>
+    </plurals>
+    <plurals name="sync_span_month">
+        <item quantity="one">%d μήνα</item>
+        <item quantity="other">%d μήνες</item>
+    </plurals>
+    <plurals name="sync_span_week">
+        <item quantity="one">%d εβδομάδα</item>
+        <item quantity="other">%d εβδομάδες</item>
+    </plurals>
+    <plurals name="sync_span_day">
+        <item quantity="one">%d ημέρα</item>
+        <item quantity="other">%d ημέρες</item>
+    </plurals>
+    <plurals name="sync_summary">
+        <item quantity="one">Σύζευξη με %1$s · %2$d φωτογραφία στον υπολογιστή</item>
+        <item quantity="other">Σύζευξη με %1$s · %2$d φωτογραφίες στον υπολογιστή</item>
+    </plurals>
+    <plurals name="sync_sent_to">
+        <item quantity="one">Στάλθηκε %1$d αρχείο στο %2$s</item>
+        <item quantity="other">Στάλθηκαν %1$d αρχεία στο %2$s</item>
+    </plurals>
+    <plurals name="sync_sent">
+        <item quantity="one">Στάλθηκε %d αρχείο στον υπολογιστή</item>
+        <item quantity="other">Στάλθηκαν %d αρχεία στον υπολογιστή</item>
+    </plurals>
+    <plurals name="sync_send_waiting_for">
+        <item quantity="one">Το %2$s δεν είναι προσβάσιμο τώρα: %1$d αρχείο θα σταλεί όταν γίνει.</item>
+        <item quantity="other">Το %2$s δεν είναι προσβάσιμο τώρα: %1$d αρχεία θα σταλούν όταν γίνει.</item>
+    </plurals>
+    <plurals name="sync_send_waiting">
+        <item quantity="one">Ο υπολογιστής δεν είναι προσβάσιμος τώρα: %d αρχείο θα σταλεί όταν γίνει.</item>
+        <item quantity="other">Ο υπολογιστής δεν είναι προσβάσιμος τώρα: %d αρχεία θα σταλούν όταν γίνει.</item>
+    </plurals>
+    <plurals name="sync_files_from">
+        <item quantity="one">%1$d αρχείο από %2$s</item>
+        <item quantity="other">%1$d αρχεία από %2$s</item>
+    </plurals>
+    <plurals name="sync_to_move">
+        <item quantity="one">%1$d φωτογραφία βρίσκεται στο %2$s</item>
+        <item quantity="other">%1$d φωτογραφίες βρίσκονται στο %2$s</item>
+    </plurals>
+    <plurals name="sync_to_trash">
+        <item quantity="one">%1$d φωτογραφία που διαγράψατε στο %2$s</item>
+        <item quantity="other">%1$d φωτογραφίες που διαγράψατε στο %2$s</item>
+    </plurals>
+    <plurals name="sync_known">
+        <item quantity="one">%1$s γνωστή φωτογραφία</item>
+        <item quantity="other">%1$s γνωστές φωτογραφίες</item>
+    </plurals>
+    <string name="sync_no_receipt_plain">Δεν υπάρχει επιβεβαιωμένη απόδειξη.</string>
 </resources>

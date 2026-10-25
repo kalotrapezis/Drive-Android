@@ -44,14 +44,14 @@ class SendToComputer : Activity() {
         }
         val computer = SyncStore(this).pairing()?.name
         when {
-            computer == null -> { Toast.makeText(this, "No computer is paired. Pair one in Tetra › Settings › Sync.", Toast.LENGTH_LONG).show(); return finish() }
-            uris.isEmpty() -> { Toast.makeText(this, "Nothing to send: only files can go to the computer.", Toast.LENGTH_LONG).show(); return finish() }
+            computer == null -> { Toast.makeText(this, getString(R.string.sync_send_no_computer), Toast.LENGTH_LONG).show(); return finish() }
+            uris.isEmpty() -> { Toast.makeText(this, getString(R.string.sync_send_nothing), Toast.LENGTH_LONG).show(); return finish() }
         }
         val app = applicationContext
         thread(name = "tetra-send") {
             val failed = uris.count { uri -> runCatching { val (name, modified) = describe(uri); Outbox.add(app, contentResolver.openInputStream(uri)!!, name, modified) }.onFailure { WriterLog.w("Send to computer: $uri: ${it.message}") }.isFailure }
             runOnUiThread {
-                if (failed > 0) Toast.makeText(this, "$failed of ${uris.size} could not be read", Toast.LENGTH_LONG).show()
+                if (failed > 0) Toast.makeText(this, getString(R.string.sync_send_unreadable, failed, uris.size), Toast.LENGTH_LONG).show()
                 finish()
             }
             Outbox.soon(app, say = true)
@@ -122,11 +122,11 @@ internal object Outbox {
             if (waiting(app).isEmpty()) return@launch
             val store = SyncStore(app)
             runCatching { SyncClient(app, store).sendOutbox() }
-                .onSuccess { n -> if (say && n > 0) toast(app, "Sent ${files(n)} to ${store.pairing()?.name ?: "the computer"}") }
+                .onSuccess { n -> if (say && n > 0) toast(app, store.pairing()?.name?.let { app.resources.getQuantityString(R.plurals.sync_sent_to, n, n, it) } ?: app.resources.getQuantityString(R.plurals.sync_sent, n, n)) }
                 .onFailure {
                     WriterLog.w("Send to computer: waiting (${it.message})")
                     val old = ScopedSync.tooOld(it)
-                    if (say) toast(app, if (old) "The computer needs the new Tetra to take these." else "${store.pairing()?.name ?: "The computer"} is not reachable now: ${files(waiting(app).size)} will go when it is.")
+                    if (say) toast(app, if (old) app.getString(R.string.sync_send_too_old) else waiting(app).size.let { w -> store.pairing()?.name?.let { app.resources.getQuantityString(R.plurals.sync_send_waiting_for, w, w, it) } ?: app.resources.getQuantityString(R.plurals.sync_send_waiting, w, w) })
                     if (!old) wait(app)
                 }
         }
@@ -143,7 +143,6 @@ internal object Outbox {
             .build())
     }
 
-    private fun files(n: Int) = if (n == 1) "1 file" else "$n files"
     private fun toast(context: Context, text: String) = Handler(Looper.getMainLooper()).post { Toast.makeText(context, text, Toast.LENGTH_LONG).show() }
 }
 
@@ -211,13 +210,13 @@ internal object FromComputer {
     private fun notify(context: Context, files: List<String>, from: String) {
         val nm = context.getSystemService(NotificationManager::class.java)?.takeIf { it.areNotificationsEnabled() } ?: return
         nm.deleteNotificationChannel("from_computer") // the first build's, default importance
-        if (nm.getNotificationChannel(CHANNEL) == null)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Files from the computer", NotificationManager.IMPORTANCE_HIGH).apply { description = "Files the computer sends with Send to phone" })
+        // made again when its name is not the one in the language now shown (an existing channel keeps its first name otherwise)
+        if (nm.getNotificationChannel(CHANNEL)?.name != context.getString(R.string.sync_from_channel)) nm.createNotificationChannel(NotificationChannel(CHANNEL, context.getString(R.string.sync_from_channel), NotificationManager.IMPORTANCE_HIGH).apply { description = context.getString(R.string.sync_from_channel_about) })
         val open = PendingIntent.getActivity(context, NOTE, Intent(context, MainActivity::class.java).putExtra(Applet.EXTRA, SCREEN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         nm.notify(NOTE, NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_computer)
-            .setContentTitle("${if (files.size == 1) "1 file" else "${files.size} files"} from $from")
-            .setContentText("In Files › $FOLDER: ${files.distinct().joinToString(", ")}")
+            .setContentTitle(context.resources.getQuantityString(R.plurals.sync_files_from, files.size, files.size, from))
+            .setContentText(context.getString(R.string.sync_files_in, FOLDER, files.distinct().joinToString(", ")))
             .setPriority(NotificationCompat.PRIORITY_HIGH).setGroup(CHANNEL)
             .setContentIntent(open).setAutoCancel(true).build())
     }

@@ -3177,6 +3177,8 @@ Send log.
    13:06: Drive main (Contacts' latest) merged into `data` (c9b52f2), 0.6.0-beta.19 built (143 tests, tsc clean; both sides' code in the
    package), installed by the user over main's beta.14 and restarted: the "(2)…(7)" copies gone on start; the computer holds the phone's
    restored October (25 days, 128.5 GB mobile, 119.3 GB hotspot); its per-program lines go on (today's adb/head-unit rows from beta.16 stay).
+   The user: "empty space, no scroll, content out of reach" → the page scrolls (the app's page-scroll) and fills the window, two columns
+   when wide, one when not; checked at 1920, 1400, ~1000 and ~780, top and end; beta.20 (Drive 16923df) installed 13:13 and restarted.
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,14 +93,15 @@ private fun DataApp(start: String?, back: () -> Unit) {
     val firstPlan = remember { DataFiles.plan() } // read once, not on every recomposition
     val plan by produceState(firstPlan, version) { value = withContext(Dispatchers.IO) { DataFiles.plan() } }
     var setup by remember { mutableStateOf(start == "setup" || (firstPlan == null && !PhoneRelay.noCalls(context))) }
-    val all by produceState(emptyMap<String, List<DataMonth>>(), version) {
-        // what is written shows first; today's counts from Android (a second and more) are added behind it
-        value = withContext(Dispatchers.IO) { DataFiles.all() }
+    // the counts as last shown at once (opened again), else as written; today's from Android (a second and more on the phone)
+    // follow, and the bars and numbers grow to them (the user, 25 Oct: "use the old data… then update with animations")
+    val all by produceState(lastData, version) {
+        if (value.isEmpty()) value = withContext(Dispatchers.IO) { DataFiles.all() }
         value = withContext(Dispatchers.IO) {
             runCatching { DataStats.record(context); DataStats.checkRoaming(context) }.onFailure { WriterLog.w("Data: ${it.message}") }
             DataStats.schedule(context); DataStats.watchUsage(context); DataSignal.watch(context)
             DataFiles.all()
-        }
+        }.also { lastData = it }
     }
     OpenTiming("Data", all.isNotEmpty())
     // the plan and the other devices' counts fetched from the computer now, not at the next sync (the tablet has no plan of its own)
@@ -154,6 +157,14 @@ private fun DataApp(start: String?, back: () -> Unit) {
 private enum class Span { Day, Week, Cycle, Month, Year }
 
 /** A bar of the chart: its label, the days it covers ([hour] for a day's hours), and its bytes. */
+/** [a] on its way to [b] ([t] from 0 to 1): each count between the two. */
+private fun mix(a: Bar, b: Bar, t: Float): Bar {
+    if (t >= 1f || a == b) return b
+    fun m(x: Long, y: Long) = x + ((y - x) * t).toLong()
+    return b.copy(mobile = m(a.mobile, b.mobile), wifi = m(a.wifi, b.wifi), hotspot = m(a.hotspot, b.hotspot), car = m(a.car, b.car),
+        parts = if (a.parts.size == b.parts.size) a.parts.zip(b.parts) { x, y -> m(x, y) } else b.parts)
+}
+
 private data class Bar(val label: String, val from: LocalDate, val until: LocalDate, val mobile: Long, val wifi: Long, val hotspot: Long = 0, val hour: String? = null, val forecast: Boolean = false,
     val parts: List<Long> = emptyList(), val car: Long = 0) { // by app (the Apps view), in the series' order; Android Auto's link
     val total get() = if (parts.isNotEmpty()) parts.sum() else mobile + wifi + hotspot + car
@@ -308,6 +319,15 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
     if (allApps) AllApps(apps, { allApps = false }) { app = it }
 }
 
+/** The counts last shown: Data opened again starts from them (a few months of one file per device: small). */
+private var lastData = emptyMap<String, List<DataMonth>>()
+
+/** [v] counting to its new value when it changes (0.7 s), exact once there. */
+@Composable private fun animated(v: Long): Long {
+    val f by animateFloatAsState(v.toFloat(), tween(700), label = "count")
+    return if (f == v.toFloat()) v else f.toLong()
+}
+
 @Composable private fun Notice(text: String, action: String, act: () -> Unit) =
     Surface(color = dataColor().copy(alpha = 0.16f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -319,8 +339,9 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
 /** The ring (used of the plan) and the numbers beside it. */
 @Composable private fun PlanHead(plan: DataPlan, s: DataStatus) {
     val c = dataColor(); val track = MaterialTheme.colorScheme.surfaceContainerHighest
-    val share = if (plan.limited && s.size > 0) (s.used.toFloat() / s.size).coerceIn(0f, 1f) else 0f
-    val over = plan.limited && s.used > s.size
+    val used = animated(s.used); val today = animated(s.today)
+    val share = if (plan.limited && s.size > 0) (used.toFloat() / s.size).coerceIn(0f, 1f) else 0f
+    val over = plan.limited && used > s.size
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
         Box(Modifier.size(112.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
@@ -328,17 +349,17 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                 drawArc(track, 0f, 360f, false, Offset(inset, inset), Size(size.width - w, size.height - w), style = Stroke(w))
                 drawArc(if (over) Color(0xFFE53935) else c, -90f, 360f * share, false, Offset(inset, inset), Size(size.width - w, size.height - w), style = Stroke(w, cap = StrokeCap.Round))
             }
-            Text(if (plan.limited) "${(s.used * 100 / s.size.coerceAtLeast(1))} %" else "∞", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(if (plan.limited) "${(used * 100 / s.size.coerceAtLeast(1))} %" else "∞", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             val of = when (plan.kind) { DataPlan.FAIR_USE -> " of ${DataRules.bytes(s.size)} fair use"; DataPlan.LIMITED -> " of ${DataRules.bytes(s.size)}"; else -> " this cycle" }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(DataRules.bytes(s.used) + of, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                Text(DataRules.bytes(used) + of, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
                 Info("Your plan", "The ring: how much of the limit the cycle has used (counting from what you typed from the carrier, if you did). Budget: what is left " +
                     "shared over the days left, today included — staying under it, the plan lasts. Forecast: where your usual days take you by the renewal.")
             }
             Text("${s.daysLeft} days left · renews ${s.cycle.end.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))}", style = MaterialTheme.typography.bodyMedium)
-            Text("Today ${DataRules.bytes(s.today)}" + if (plan.limited) " · budget ${DataRules.bytes(s.budget)}/day" else " · average ${DataRules.bytes(s.average)}/day", style = MaterialTheme.typography.bodyMedium)
+            Text("Today ${DataRules.bytes(today)}" + if (plan.limited) " · budget ${DataRules.bytes(s.budget)}/day" else " · average ${DataRules.bytes(s.average)}/day", style = MaterialTheme.typography.bodyMedium)
             if (plan.limited) {
                 val runsOut = s.projection > s.size
                 Text("Forecast: ${DataRules.bytes(s.projection)} by ${s.cycle.end.minusDays(1).format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))} " + if (runsOut) "⚠" else "✓",
@@ -366,6 +387,18 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
 @Composable private fun Chart(bars: List<Bar>, span: Span, plan: DataPlan?, status: DataStatus?, picked: Bar?, shift: Int, move: (Int) -> Unit, drops: List<java.time.LocalDateTime> = emptyList(),
                               series: List<Pair<String, Color>>? = null, pick: (Bar) -> Unit) {
     val lime = dataColor(); val ink = MaterialTheme.colorScheme.onSurface; val quiet = MaterialTheme.colorScheme.onSurfaceVariant
+    // the same bars with new counts (today's from Android after the written ones) grow to them; another span or time is drawn at once
+    val grow = remember { androidx.compose.animation.core.Animatable(1f) }
+    var was by remember { mutableStateOf(bars) }
+    var now by remember { mutableStateOf(bars) }
+    LaunchedEffect(bars) {
+        val same = now.size == bars.size && now.zip(bars).all { (a, b) -> a.label == b.label && a.from == b.from && a.parts.size == b.parts.size } && now.any { it.total > 0 }
+        was = if (same) now.mapIndexed { i, a -> mix(was.getOrElse(i) { a }, a, grow.value) } else bars
+        now = bars
+        grow.snapTo(if (same) 0f else 1f)
+        if (same) grow.animateTo(1f, tween(700))
+    }
+    val drawn = now.mapIndexed { i, b -> mix(was.getOrElse(i) { b }, b, grow.value) }
     val step = DataRules.axisStep(bars.maxOf { it.total })
     val lines = DataRules.axisLines(bars.maxOf { it.total }); val top = step * lines
     // the dashed line: the average of the days used so far (not today's, still running), on the bars' own scale
@@ -403,9 +436,9 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                 for (i in 0..lines) { val y = size.height * i / lines; drawLine(grid, Offset(0f, y), Offset(size.width, y), 1f) }
                 val slot = size.width / bars.size; val w = slot * 0.7f
                 fun y(v: Long) = size.height - size.height * (v.toDouble() / top).toFloat()
-                bars.forEachIndexed { i, b ->
+                drawn.forEachIndexed { i, b ->
                     val x = i * slot + (slot - w) / 2
-                    val dim = picked != null && picked != b
+                    val dim = picked != null && picked != bars.getOrNull(i)
                     // stacked from the bottom: mobile, the hotspot, Wi-Fi; a forecast day faint, outlined
                     var base = 0L
                     for ((v, color) in if (series != null) b.parts.zip(series.map { it.second }) else listOf(b.mobile to lime, b.hotspot to HOTSPOT_COLOR, b.wifi to WIFI_COLOR, b.car to CAR_COLOR)) {

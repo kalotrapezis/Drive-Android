@@ -49,6 +49,27 @@ internal object MapsRouting {
     /** What turning back on the road costs a route (GraphHopper's 300 s had it say "turn back" all the way, 23 Oct). */
     private const val TURN_BACK_SECONDS = 1200
 
+    /**
+     * Main roads (the user, 24 Oct: "it always chooses the shorter path … even if that means a road that falls off a cliff"):
+     * the car's way without car.json's pull towards the shorter one (distance_influence 90, a second and a half a kilometre),
+     * a smaller road counting slower. A request hint on the car profile, so no new graph; the graph's shortcuts are made
+     * for car.json, so it searches without them, up to [MAX_MAIN_NODES].
+     */
+    const val MAIN_ROADS = "tetra.main_roads"
+    // shortcut: past this (a drive across Greece) the shortest way is taken, mostly on motorways anyway; a car_main CH profile in maps-graph.yml (a rebuild) would lift it
+    private const val MAX_MAIN_NODES = 500_000
+
+    /** How much slower a road of [c] counts on Main roads: the big ones as they are, a track ten times slower. */
+    fun mainPriority(c: com.graphhopper.routing.ev.RoadClass): Double = when (c) {
+        com.graphhopper.routing.ev.RoadClass.MOTORWAY, com.graphhopper.routing.ev.RoadClass.TRUNK,
+        com.graphhopper.routing.ev.RoadClass.PRIMARY, com.graphhopper.routing.ev.RoadClass.SECONDARY -> 1.0
+        com.graphhopper.routing.ev.RoadClass.TERTIARY -> 0.8
+        com.graphhopper.routing.ev.RoadClass.RESIDENTIAL, com.graphhopper.routing.ev.RoadClass.LIVING_STREET -> 0.6
+        com.graphhopper.routing.ev.RoadClass.UNCLASSIFIED -> 0.4
+        com.graphhopper.routing.ev.RoadClass.TRACK -> 0.1
+        else -> 0.3
+    }
+
     /** maps-graph.yml's profiles, as Jackson reads them there: GraphHopper compares their hash with the graph's. */
     private val PROFILES = linkedMapOf(
         "car" to """{"name":"car","turn_costs":{"vehicle_types":["motorcar","motor_vehicle"]},"custom_model_files":["car.json"]}""",
@@ -87,8 +108,9 @@ internal object MapsRouting {
     }
 
     /** A route by [mode] (car, foot, bike), its directions in [lang] (el or en: GraphHopper's own translations). */
-    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el", heading: Double = Double.NaN): Route =
-        routes(dir, fromLat, fromLng, toLat, toLng, mode, lang, heading).first()
+    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el", heading: Double = Double.NaN,
+              main: Boolean = false): Route =
+        routes(dir, fromLat, fromLng, toLat, toLng, mode, lang, heading, main).first()
 
     /**
      * Up to three ways there, the fastest first (the user, 21 Oct, beside Google Maps: "can our map have alternative routs with
@@ -96,31 +118,37 @@ internal object MapsRouting {
      * runs a tenth of its way on tracks.
      */
     fun routes(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el",
-               heading: Double = Double.NaN): List<Route> {
+               heading: Double = Double.NaN, main: Boolean = false): List<Route> {
         val gh = open(dir)
+        val main = main && mode == "car"
         val locale = Locale.forLanguageTag(lang)
         val mode = if (mode == "wheelchair" && "wheelchair" !in profiles(dir)) "foot" else mode // a graph from before Rolling
         val req = GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale).setAlgorithm(Parameters.Algorithms.ALT_ROUTE)
             .setPathDetails(listOf("street_name", "street_ref", "road_environment", "road_class"))
         req.hints.putObject("alternative_route.max_paths", 3)
+        if (main) req.hints.putObject(MAIN_ROADS, true).putObject(Parameters.CH.DISABLE, true).putObject(Parameters.Routing.MAX_VISITED_NODES, MAX_MAIN_NODES)
         // a moving car goes on the way it faces (the user, 23 Oct: each new route said "turn back" for kilometres): one way,
         // without the graph's shortcuts, which take no heading; where that search grows too big, the shortcuts without it
         if (heading.isFinite()) {
             val ahead = GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale).setHeadings(listOf(heading, Double.NaN))
                 .setAlgorithm(Parameters.Algorithms.ASTAR_BI).setPathDetails(req.pathDetails)
             ahead.hints.putObject(Parameters.CH.DISABLE, true).putObject(Parameters.Routing.MAX_VISITED_NODES, MAX_HEADED_NODES)
-                .putObject(Parameters.Routing.HEADING_PENALTY, TURN_BACK_SECONDS)
+                .putObject(Parameters.Routing.HEADING_PENALTY, TURN_BACK_SECONDS).putObject(MAIN_ROADS, main)
             val r = gh.route(ahead)
             if (!r.hasErrors()) return listOf(MapsLanes.on(build(gh, r.best, gh.translationMap.getWithFallBack(locale), lang, mode), dir.absoluteFile.parentFile))
         }
         val t0 = System.nanoTime()
         var rsp = gh.route(req)
         if (rsp.hasErrors()) rsp = gh.route(req.setAlgorithm(""))
+        if (rsp.hasErrors() && main) { // too far to search without the shortcuts: today's way
+            WriterLog.i("Maps: main roads too far to search (${rsp.errors.firstOrNull()?.message}), the shortest way instead")
+            return routes(dir, fromLat, fromLng, toLat, toLng, mode, lang, heading, false)
+        }
         val t1 = System.nanoTime() // alternatives not to be had here: the one way
         check(!rsp.hasErrors()) { words(rsp.errors.firstOrNull(), lang) }
         val tr = gh.translationMap.getWithFallBack(locale)
         val all = rsp.all.map { MapsLanes.on(build(gh, it, tr, lang, mode), dir.absoluteFile.parentFile) }
-        WriterLog.i("Maps: route found in ${(t1 - t0) / 1_000_000} ms, its crossings and lanes in ${(System.nanoTime() - t1) / 1_000_000} ms")
+        WriterLog.i("Maps: route found in ${(t1 - t0) / 1_000_000} ms${if (main) " on main roads" else ""}, its crossings and lanes in ${(System.nanoTime() - t1) / 1_000_000} ms")
         val usable = all.filter { r -> mode != "car" || r.roads != "track" }.ifEmpty { all }
         return usable.sortedBy { it.millis }
     }
@@ -337,9 +365,12 @@ internal object MapsRouting {
             fun EdgeIteratorState.v(e: DecimalEncodedValue, r: Boolean) = if (r) getReverse(e) else get(e)
             fun EdgeIteratorState.v(e: IntEncodedValue, r: Boolean) = if (r) getReverse(e) else get(e)
             val p = when (profile.name) {
-                "car" -> { // car.json
+                "car" -> { // car.json, or Main roads ([MAIN_ROADS])
                     val access = b("car_access"); val speed = d("car_average_speed")
-                    CustomWeighting.Parameters({ e, r -> minOf(999.0, e.v(speed, r)) }, { speed.maxOrMaxStorableDecimal },
+                    val road = em.getEnumEncodedValue(com.graphhopper.routing.ev.RoadClass.KEY, com.graphhopper.routing.ev.RoadClass::class.java)
+                    if (hints.getBool(MAIN_ROADS, false)) CustomWeighting.Parameters({ e, r -> minOf(999.0, e.v(speed, r)) }, { speed.maxOrMaxStorableDecimal },
+                        { e, r -> if (!e.v(access, r)) 0.0 else mainPriority(e.get(road)) }, { 1.0 }, 0.0, heading)
+                    else CustomWeighting.Parameters({ e, r -> minOf(999.0, e.v(speed, r)) }, { speed.maxOrMaxStorableDecimal },
                         { e, r -> if (!e.v(access, r)) 0.0 else 1.0 }, { 1.0 }, 90.0, heading)
                 }
                 "foot" -> { // foot.json

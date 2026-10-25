@@ -58,7 +58,7 @@ internal enum class SettingsPage(val title: String, val icon: Int, val tint: Col
     Calendar("Calendar", Category.Calendar.icon, Category.Calendar.color, "Reminders, import and export", listOf("Reminders on this device", "Send a test reminder", "Notifications",
         "Alarms on time", "Battery", "Hyper Island", "Autostart", "Import", "Export all", "Share with Claude")),
     Timer("Timer", Category.Timer.icon, Category.Timer.color, "Share with Claude", listOf("Share with Claude")),
-    Maps("Maps", Category.Maps.icon, Category.Maps.color, "Map, directions, parking, places", listOf("Map", "On foot", "Directions in", "Test voice", "Voice settings", "Warn of sharp bends",
+    Maps("Maps", Category.Maps.icon, Category.Maps.color, "Map, directions, parking, places", listOf("Map", "On foot", "By car", "Directions in", "Test voice", "Voice settings", "Warn of sharp bends",
         "Save where I park", "Open the map at my car", "ΑμεΑ parking near the destination", "Export places", "Import places", "Import from Google Maps",
         "Installed maps", "Send log")),
     Contacts("Contacts", Category.Contacts.icon, Category.Contacts.color, "Phone's contacts, birthdays", listOf("In the phone's contacts", "Birthdays go into")),
@@ -436,6 +436,10 @@ internal fun SettingsTab(
         ChoiceRow("Map", "Its own light or dark, apart from Tetra's theme", listOf("light" to "Light", "dark" to "Dark"), mapTheme) { mapTheme = it; MapsPrefs.setMapTheme(mapsContext, it) }
         ChoiceRow("On foot", if (rolling) "Rolling: routes for a wheelchair, without steps or rough paths, and its icon" else "Walking: every footpath and step",
             listOf(false to "Walking", true to "Rolling"), rolling) { rolling = it; MapsPrefs.setRolling(mapsContext, it) }
+        var mainRoads by remember { mutableStateOf(MapsPrefs.mainRoads(mapsContext)) }
+        ChoiceRow("By car", if (mainRoads) "Main roads: the bigger roads; tracks and small country roads only when there is no other way, even if a little longer"
+            else "Shortest: the shorter way, even on tracks and small roads",
+            listOf(true to "Main roads", false to "Shortest"), mainRoads) { mainRoads = it; MapsPrefs.setMainRoads(mapsContext, it) }
     }
     var lang by remember { mutableStateOf(MapsPrefs.lang(mapsContext)) }
     var bends by remember { mutableStateOf(MapsPrefs.bends(mapsContext)) }

@@ -375,6 +375,14 @@ How to write here:
       PhoneSettings (the Phone's own menu) and Office's File › Settings dialog unchanged. Checked on a read-only emulator of
       my own (tetra_check, port 5580): phone size light/dark, tablet size (2560×1600) light/dark, every page opened, search.
       **Not on the tablet yet** (not connected; the user's OK first). Not done: search knows titles only ("dark" finds nothing).
+- [~] (maps-slots session, 24 Oct; branches claude/maps-main-roads + Drive maps-main-roads) Maps: Main roads or Shortest by car
+      (the user, after the drive to the supermarket: "it always chooses the shorter path … even if that means a road that falls
+      off a cliff"). The phone's 13:24 route to Σκάλα's school ran 2 km on a track, the car's to My Market 3.6 km on tertiary:
+      car.json counts each km as 1.5 min more (distance_influence 90), so the shorter small road won. Main roads: no pull to
+      the shorter way, smaller roads slower (tertiary 0.8 … track 0.1), searched without the shortcuts up to 500 000 nodes
+      (~160 km; farther, the shortest way), phone, Android Auto (⚙ › Roads) and desktop (beside Car). MapsMainRoadsTest:
+      Σκάλα 11.7 km/17 min no track, My Market 11.1 km on secondary. Road surface and slope are not in the graph (a rebuild
+      would add them). Default Main roads (the user: yes). On the phone 24 Oct (phone-install.sh, Android Auto re-approved); not merged.
 
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode

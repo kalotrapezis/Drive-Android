@@ -465,7 +465,7 @@ How to write here:
       | Timer | 226–246 | 38–52 |
       | Contacts | 157–218 | 32–38 |
 
-      **The desktop (25 Oct, Drive branch `optimise`, beta.21; merged into Drive main c62fb2f; the .deb built, installed by the user):** measured hidden on a copy of the library
+      **The desktop (25 Oct, Drive branch `optimise`, beta.21; merged into Drive main c62fb2f; the .deb built for the user to install):** measured hidden on a copy of the library
       (Drive/desktop/scripts/measure.js: each page's time until it stops changing, and the longest task that kept the window
       from answering). Already quick and left: Files, Notes, Calendar, Timer, Maps, Contacts, Data, Devices, Settings
       (2–160 ms, no task over ~90 ms). Two froze the window:

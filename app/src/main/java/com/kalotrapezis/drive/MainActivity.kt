@@ -804,7 +804,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     openPhotos = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() },
                     openScreenshots = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Screenshots; loadPhotos() },
                     openDocuments = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Documents; loadPhotos() },
-                    openFiles = { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("") },
+                    // opened again: the list as it was at once, read again behind it
+                    openFiles = { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("", quiet = (driveState as? DriveListState.Items)?.folder == "") },
                     openFavorites = { screen = Screen.Drive; drivePane = DrivePane.Favorites; driveFolder = "" },
                     openRecent = { screen = Screen.Drive; drivePane = DrivePane.Home; driveFolder = "" },
                     openSync = { screen = Screen.Sync },
@@ -2112,8 +2113,9 @@ private fun DriveTab(
     var selectedTag by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var metadataVersion by remember { mutableStateOf(0) }
-    val recentItems = remember(recentsVersion, hasAccess) { if (hasAccess) recents() else emptyList() }
-    val favoriteItems = remember(metadataVersion, hasAccess) { if (hasAccess) metadata.favorites(root) else emptyList() }
+    // each checked on disk (50 recents): off the screen's thread, the last ones shown until then
+    val recentItems by produceState(lastRecents, recentsVersion, hasAccess) { value = if (hasAccess) withContext(Dispatchers.IO) { recents() }.also { lastRecents = it } else emptyList() }
+    val favoriteItems by produceState(lastFavorites, metadataVersion, hasAccess) { value = if (hasAccess) withContext(Dispatchers.IO) { metadata.favorites(root) }.also { lastFavorites = it } else emptyList() }
     val filtering = searchQuery.isNotBlank() || selectedTag != null
     val searchItems by produceState(emptyList<DriveItem>(), searchQuery, selectedTag, metadataVersion, state, hasAccess, diskVersion) {
         value = if (!hasAccess || !filtering) emptyList() else withContext(Dispatchers.IO) {
@@ -2195,10 +2197,10 @@ private fun DriveTab(
                 Text("This reads only Drive in main storage. It is needed to browse and open your local Drive files.")
                 Button(onClick = grant) { Text("Allow all files access") }
             }
-            filtering -> DriveFiles("", DriveListState.Items("", searchItems), grid, sort, metadata, { grid = !grid }, { relative -> searchQuery = ""; selectedTag = null; openFolder(relative) }, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { searchQuery = ""; selectedTag = null }, refresh, ::perform, ::performAll, title = selectedTag?.let { "#$it" } ?: "Search files", emptyMessage = "No matching Drive items.")
+            filtering -> DriveFiles("", DriveListState.Items("", searchItems), grid, sort, metadata, { grid = !grid }, { relative -> searchQuery = ""; selectedTag = null; openFolder(relative) }, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { searchQuery = ""; selectedTag = null }, refresh, ::perform, ::performAll, title = selectedTag?.let { "#$it" } ?: "Search files", emptyMessage = "No matching Drive items.", metadataVersion = metadataVersion)
             pane == DrivePane.Home -> DriveHome(root, recentItems, metadata, metadataVersion, home, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { setPane(DrivePane.Files); refresh() }, ::perform)
             pane == DrivePane.Favorites -> DriveFavorites(favoriteItems, metadata, home, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, openFolder, ::perform)
-            pane == DrivePane.Files -> DriveFiles(folder, state, grid, sort, metadata, { grid = !grid }, openFolder, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, goParent, refresh, ::perform, ::performAll, selection, { selection = it }, emptyTrash = if (folder == "Trash") { { emptyTrashConfirm = true } } else null)
+            pane == DrivePane.Files -> DriveFiles(folder, state, grid, sort, metadata, { grid = !grid }, openFolder, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, goParent, refresh, ::perform, ::performAll, selection, { selection = it }, emptyTrash = if (folder == "Trash") { { emptyTrashConfirm = true } } else null, metadataVersion = metadataVersion)
         }
         Row(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
@@ -2336,10 +2338,16 @@ private fun DriveFavorites(items: List<DriveItem>, metadata: DriveMetadata, home
     moreItem?.let { item -> DriveItemMoreSheet(item, metadata, { if (item.isDirectory) openFolder(item.relativePath) else openFile(item.relativePath) }, { openWith(item.relativePath) }, perform, { moreItem = null }) }
 }
 
+private var lastRecents = emptyList<DriveRecent>()
+private var lastFavorites = emptyList<DriveItem>()
+private var lastRecentItems = emptyList<DriveItem>()
+
 @Composable
 private fun DriveHome(root: File, recents: List<DriveRecent>, metadata: DriveMetadata, metadataVersion: Int, home: () -> Unit, openFile: (String) -> Unit, openWith: (String) -> Unit, openFiles: () -> Unit, perform: (DriveItem, DriveItemAction) -> Unit) {
     var moreItem by remember { mutableStateOf<DriveItem?>(null) }
-    val items = remember(recents, metadataVersion) { recents.mapNotNull { recent -> runCatching { DriveRules.item(root, recent.relativePath) }.getOrNull()?.let { DriveItem(it, recent.relativePath, false) } } }
+    val items by produceState(lastRecentItems, recents, metadataVersion) {
+        value = withContext(Dispatchers.IO) { recents.mapNotNull { recent -> runCatching { DriveRules.item(root, recent.relativePath) }.getOrNull()?.let { DriveItem(it, recent.relativePath, false) } } }.also { lastRecentItems = it }
+    }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             FilesPageHeader("Recent files", R.drawable.ic_home, home)
@@ -2382,10 +2390,14 @@ private fun DriveFiles(
     title: String? = null,
     emptyMessage: String = "This folder is empty.",
     emptyTrash: (() -> Unit)? = null,
+    metadataVersion: Int = 0,
 ) {
     val context = LocalContext.current
     var moreItem by remember { mutableStateOf<DriveItem?>(null) }
     val isTrash = folder == "Trash"
+    // read once for the whole list, not for each row as it scrolls in (a folder of thousands)
+    val colors = remember(metadataVersion) { metadata.colorMap() }
+    val tags = remember(metadataVersion) { metadata.tagMap() }
     val topPadding = if (isTrash) 206.dp else 132.dp
     PullToRefreshBox(isRefreshing = state is DriveListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
@@ -2396,7 +2408,7 @@ private fun DriveFiles(
                     val entries = remember(state.entries, sort) {
                         when (sort) {
                             DriveSort.Name -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }, { it.file.name.lowercase(Locale.ROOT) }))
-                            DriveSort.Modified -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }).thenByDescending { it.file.lastModified() }.thenBy { it.file.name.lowercase(Locale.ROOT) })
+                            DriveSort.Modified -> state.entries.sortedWith(compareBy<DriveItem>({ !DriveRules.isSystem(it.relativePath) }, { !it.isDirectory }).thenByDescending { it.lastModified }.thenBy { it.file.name.lowercase(Locale.ROOT) })
                         }
                     }
                     if (state.entries.isEmpty()) TimelineMessage(emptyMessage)
@@ -2408,7 +2420,7 @@ private fun DriveFiles(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         items(entries, key = { it.relativePath }) { item -> DriveGridItem(
-                            item, metadata.color(item.relativePath), metadata.tags(item.relativePath), openFolder, openFile,
+                            item, colors[item.relativePath], tags[item.relativePath].orEmpty(), openFolder, openFile,
                             selected = item.relativePath in selected, selecting = selected.isNotEmpty(),
                             toggle = { setSelected(if (item.relativePath in selected) selected - item.relativePath else selected + item.relativePath) },
                         ) { moreItem = item } }
@@ -2418,7 +2430,7 @@ private fun DriveFiles(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         items(entries, key = { it.relativePath }) { item -> DriveRowItem(
-                            item, metadata.color(item.relativePath), metadata.tags(item.relativePath), openFolder, openFile,
+                            item, colors[item.relativePath], tags[item.relativePath].orEmpty(), openFolder, openFile,
                             selected = item.relativePath in selected, selecting = selected.isNotEmpty(),
                             toggle = { setSelected(if (item.relativePath in selected) selected - item.relativePath else selected + item.relativePath) },
                         ) { moreItem = item } }
@@ -2738,7 +2750,7 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
 ) {
     Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (item.isDirectory || selected) DriveItemIcon(item, folderColor, selected, 32.dp)
-        else FileThumb(item.file, Modifier.size(36.dp).clip(MaterialTheme.shapes.small)) { DriveItemIcon(item, folderColor, false, 32.dp) }
+        else FileThumb(item.file, Modifier.size(36.dp).clip(MaterialTheme.shapes.small), item.lastModified, item.length) { DriveItemIcon(item, folderColor, false, 32.dp) }
         Column(Modifier.weight(1f)) {
             Text(item.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
             Text(driveItemTypeLabel(item) + if (tags.isEmpty()) "" else " · ${tags.joinToString(" ") { "#$it" }}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2765,7 +2777,7 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
             // a file's own picture fills the tile above its name (a document its first page, Office's glyph on it)
             val thumb = !item.isDirectory && !selected && FileThumbs.kind(item.file.name) != null
             if (!thumb) DriveItemIcon(item, folderColor, selected, 64.dp)
-            else FileThumb(item.file, Modifier.matchParentSize().clip(MaterialTheme.shapes.medium)) { DriveItemIcon(item, folderColor, false, 64.dp) }
+            else FileThumb(item.file, Modifier.matchParentSize().clip(MaterialTheme.shapes.medium), item.lastModified, item.length) { DriveItemIcon(item, folderColor, false, 64.dp) }
             Surface(color = if (thumb) islandColor().copy(alpha = 0.7f) else Color.Transparent, contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.align(Alignment.TopEnd)) {
                 IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
             }

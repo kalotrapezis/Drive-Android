@@ -55,7 +55,7 @@ internal object FileThumbs {
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class) private val quick = Dispatchers.IO.limitedParallelism(3)
     @Volatile private var trimmed = false
 
-    fun remembered(file: File, modified: Long): Bitmap? = memory.get(key(file.path, file.length(), modified))
+    fun remembered(file: File, length: Long, modified: Long): Bitmap? = memory.get(key(file.path, length, modified))
 
     /** The file's thumbnail, made now if it is not in the cache; null when it cannot be drawn (then it is not tried again until it changes). */
     suspend fun load(context: Context, file: File, kind: Kind): Bitmap? {
@@ -84,10 +84,9 @@ internal object FileThumbs {
 
 /** A file's thumbnail in Files' list and grid; [fallback] (its icon) for a file with none, and while one is being made. */
 @Composable
-internal fun FileThumb(file: File, modifier: Modifier, fallback: @Composable () -> Unit) {
+internal fun FileThumb(file: File, modifier: Modifier, modified: Long = file.lastModified(), size: Long = file.length(), fallback: @Composable () -> Unit) {
     val kind = FileThumbs.kind(file.name) ?: return fallback()
     val context = LocalContext.current
-    val modified = file.lastModified()
-    val bitmap = produceState(FileThumbs.remembered(file, modified), file, modified) { value = FileThumbs.load(context, file, kind) }.value ?: return fallback()
+    val bitmap = produceState(FileThumbs.remembered(file, size, modified), file, modified) { value = FileThumbs.load(context, file, kind) }.value ?: return fallback()
     Image(bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
 }

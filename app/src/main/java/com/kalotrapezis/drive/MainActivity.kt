@@ -492,24 +492,18 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         Build.VERSION.SDK_INT == 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
-    fun loadPhotos() {
+    /** [quiet]: the photos already shown stay while they are read again (Photos opened again, back to the app). */
+    fun loadPhotos(quiet: Boolean = false) {
         if (!canReadPhotos()) { photosState = ListState.Error("Allow photos and videos to view DCIM and Screenshots."); return }
         val shown = (photosState as? ListState.Items)?.entries?.mapTo(HashSet(), Entry::photoKey)
-        photosState = ListState.Loading
+        if (!quiet || shown == null) photosState = ListState.Loading
         Thread {
-            val result = runCatching {
+            val read = runCatching {
                 val all = listDeviceMedia(context)
                 val choices = photoMetadata.folderChoices()
-                deviceFolders(all, choices).also { folders ->
-                    // Keep each included folder's album full as new photos land in it.
-                    folders.filter { it.included == true }.forEach { folder ->
-                        photoMetadata.fillFolderAlbum(folder.name, folder.entries.map(Entry::photoKey))
-                        photoMetadata.pruneFolderAlbum(folder.name, all.filter { !FolderRules.albumName(it.relativePath).equals(folder.name, ignoreCase = true) }.map(Entry::photoKey))
-                    }
-                    (context as MainActivity).runOnUiThread { photoFolders = folders }
-                }
-                showMotionAsOne(all.filter { FolderRules.isIncluded(it.relativePath, choices) })
+                Triple(all, choices, showMotionAsOne(all.filter { FolderRules.isIncluded(it.relativePath, choices) }))
             }
+            val result = read.map { it.third }
             (context as MainActivity).runOnUiThread {
                 photosState = result.fold(
                     onSuccess = { ListState.Items(it) },
@@ -521,6 +515,15 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 // only from SyncJob's trigger, which MIUI cancels once the app is in the background.
                 if (shown != null && result.getOrNull().orEmpty().any { it.photoKey !in shown }) Thread { SyncService.syncInBackground(context, gap = 0) }.start()
             }
+            // after the timeline shows (25 Oct: it waited for this): the folders, each included one's album kept full as new photos land in it
+            read.getOrNull()?.let { (all, choices) -> runCatching {
+                val folders = deviceFolders(all, choices)
+                folders.filter { it.included == true }.forEach { folder ->
+                    photoMetadata.fillFolderAlbum(folder.name, folder.entries.map(Entry::photoKey))
+                    photoMetadata.pruneFolderAlbum(folder.name, all.filter { !FolderRules.albumName(it.relativePath).equals(folder.name, ignoreCase = true) }.map(Entry::photoKey))
+                }
+                (context as MainActivity).runOnUiThread { photoFolders = folders }
+            } }
         }.start()
     }
     val requestPhotos = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { loadPhotos() }
@@ -751,7 +754,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) when (currentScreen) {
                 Screen.Drive -> if (currentDrivePane == DrivePane.Files) loadDrive()
-                Screen.Photos -> loadPhotos()
+                Screen.Photos -> loadPhotos(quiet = true)
                 Screen.PhotoSetup -> Unit
                 Screen.Home -> Unit
                 Screen.Sync -> Unit
@@ -804,9 +807,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     showPhotoBackdrop = homePhotoBackdrop,
                     hasPhotoAccess = canReadPhotos(),
                     photoMetadata = photoMetadata,
-                    openPhotos = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() },
-                    openScreenshots = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Screenshots; loadPhotos() },
-                    openDocuments = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Documents; loadPhotos() },
+                    openPhotos = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos(quiet = true) },
+                    openScreenshots = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Screenshots; loadPhotos(quiet = true) },
+                    openDocuments = { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Documents; loadPhotos(quiet = true) },
                     // opened again: the list as it was at once, read again behind it
                     openFiles = { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("", quiet = (driveState as? DriveListState.Items)?.folder == "") },
                     openFavorites = { screen = Screen.Drive; drivePane = DrivePane.Favorites; driveFolder = "" },
@@ -3162,7 +3165,6 @@ private fun PhotoTab(
     val lifecycleOwner = LocalLifecycleOwner.current
     val reviewScope = rememberCoroutineScope()
     val vault = remember(context) { SecureVault(context.applicationContext) }
-    OpenTiming("Photos", state is ListState.Items)
     var vaultVersion by remember { mutableStateOf(0) }
     var vaultUnlocked by remember { mutableStateOf(false) }
     var stagedHide by remember { mutableStateOf<Pair<List<VaultItem>, List<Uri>>?>(null) }
@@ -3298,40 +3300,31 @@ private fun PhotoTab(
         )
     } }
     val metadataRevision = metadataVersion + analysisVersion
-    val metadata = remember(allEntries, metadataRevision) { metadataStore.states(allEntries.map { it.photoKey }) }
-    // A collection counts what is on this device: after a Move its other photos are on the computer, and a tile that
-    // said 52 over an empty grid read as a broken library (25 September).
-    val collections = remember(metadataRevision, allEntries) {
-        val onDevice = allEntries.mapTo(HashSet()) { it.photoKey }
-        metadataStore.collections().map { c ->
-            val keys = metadataStore.collectionKeys(c.id)
-            val here = keys.count { it in onDevice }
-            c.copy(here = here, elsewhere = keys.size - here)
-        }
+    var hiddenAlbums by remember { mutableStateOf(metadataStore.albumsHiddenFromGallery()) }
+    // What the photo database says of these photos, read together off the screen's thread (25 Oct: ten queries over every
+    // photo's key ran on it as the timeline arrived); the timeline waits for it, so nothing hidden shows for a moment.
+    val meta by produceState<PhotoMeta?>(null, allEntries, metadataRevision, hiddenAlbums) {
+        value = withContext(Dispatchers.IO) { PhotoMeta.read(context, metadataStore, allEntries, hiddenAlbums) }
     }
-    val collectionPreviews = remember(allEntries, collections, metadataRevision) {
-        val entriesByKey = allEntries.associateBy(Entry::photoKey)
-        collections.associate { collection -> collection.id to metadataStore.collectionKeys(collection.id).firstNotNullOfOrNull(entriesByKey::get) }
+    OpenTiming("Photos", state is ListState.Items && meta != null)
+    val metadata = meta?.states.orEmpty()
+    val collections = meta?.collections.orEmpty()
+    val collectionPreviews = meta?.previews.orEmpty()
+    val documentKeys = meta?.documentKeys.orEmpty()
+    val peopleKeys = meta?.peopleKeys.orEmpty()
+    val labelsByPhoto = meta?.labels.orEmpty()
+    val peopleNamesByPhoto = meta?.peopleNames.orEmpty()
+    val locationsByPhoto by produceState(emptyMap<String, PhotoLocation?>(), allEntries, locationVersion) {
+        value = withContext(Dispatchers.IO) { metadataStore.locations(allEntries.map(Entry::photoKey)) }
     }
-    val documentKeys = remember(metadataRevision) { metadataStore.classifiedKeys("document") }
-    val peopleKeys = remember(metadataRevision) { metadataStore.peopleKeys() }
-    val labelsByPhoto = remember(allEntries, metadataRevision) { metadataStore.labelsByPhoto(allEntries.map(Entry::photoKey)) }
-    val peopleNamesByPhoto = remember(allEntries, metadataRevision) { metadataStore.peopleNamesByPhoto(allEntries.map(Entry::photoKey)) }
-    val locationsByPhoto = remember(allEntries, locationVersion) { metadataStore.locations(allEntries.map(Entry::photoKey)) }
-    // Only people who still have a photo here: delete or move every photo of someone and they stop being listed.
-    val faceGroups = remember(allEntries, metadataRevision) {
-        metadataStore.faceGroups(allEntries.mapTo(HashSet(), Entry::photoKey), onComputer = SyncStore(context.applicationContext).use { it.receiptKeys() })
-    }
-    val reviewKeys = remember(metadataRevision) { metadataStore.reviewKeys() }
+    val faceGroups = meta?.faceGroups.orEmpty()
+    val reviewKeys = meta?.reviewKeys.orEmpty()
     val pendingReviews = remember(metadataRevision, filter) { if (filter == PhotoFilter.Review) metadataStore.pendingReviews() else emptyList() }
     var hideScreenshots by remember { mutableStateOf(metadataStore.hidesScreenshotsFromGallery()) }
     var motionMode by remember { mutableStateOf(metadataStore.motionPhotos()) }
     var motionAutoplay by remember { mutableStateOf(metadataStore.motionPlays()) }
     var hideDocuments by remember { mutableStateOf(metadataStore.hidesDocumentsFromGallery()) }
-    var hiddenAlbums by remember { mutableStateOf(metadataStore.albumsHiddenFromGallery()) }
-    val hiddenAlbumKeys = remember(collections, hiddenAlbums, metadataRevision) {
-        collections.filter { it.uuid in hiddenAlbums }.flatMapTo(mutableSetOf()) { metadataStore.collectionKeys(it.id) }
-    }
+    val hiddenAlbumKeys = meta?.hiddenAlbumKeys.orEmpty()
     var hidePeopleFromCollections by remember { mutableStateOf(metadataStore.hidesPeopleFromCollections()) }
     var hideDocumentsFromCollections by remember { mutableStateOf(metadataStore.hidesDocumentsFromCollections()) }
     val activeCollection = (filter as? PhotoFilter.Collection)?.let { chosen -> collections.firstOrNull { it.id == chosen.id } }
@@ -3677,7 +3670,7 @@ private fun PhotoTab(
                     authenticateVault(context as Activity, success = { vaultUnlocked = true }, failure = { actionError = it })
                 }
                 else -> PhotoTimeline(
-                if (state is ListState.Items) ListState.Items(entries) else state,
+                if (state is ListState.Items) (if (meta == null) ListState.Loading else ListState.Items(entries)) else state,
                 scale, { scale = it }, timelineState, selectedUris,
                 { entry -> entry.contentUri?.let { selectedUris = selectedUris + it } },
                 { entry -> entry.contentUri?.let { uri -> selectedUris = if (uri in selectedUris) selectedUris - uri else selectedUris + uri } },
@@ -5157,6 +5150,35 @@ private fun Modifier.timelinePinch(scale: TimelineScale, setScale: (TimelineScal
         val start = firstDistance
         if (start != null && start > 0f && lastDistance / start > 1.15f) setScale(scale.finer())
         if (start != null && start > 0f && lastDistance / start < 0.85f) setScale(scale.broader())
+    }
+}
+
+/** What the photo database says of the photos on the device, read in one go off the screen's thread ([PhotoTab]). */
+private class PhotoMeta(
+    val states: Map<String, PhotoState>, val collections: List<PhotoCollection>, val previews: Map<Long, Entry?>, val documentKeys: Set<String>,
+    val peopleKeys: Set<String>, val labels: Map<String, List<String>>, val peopleNames: Map<String, List<String>>, val faceGroups: List<FaceGroup>,
+    val reviewKeys: Set<String>, val hiddenAlbumKeys: Set<String>,
+) {
+    companion object {
+        fun read(context: Context, store: PhotoMetadataStore, all: List<Entry>, hiddenAlbums: Set<String>): PhotoMeta {
+            val keys = all.map(Entry::photoKey)
+            val onDevice = keys.toHashSet()
+            val byKey = all.associateBy(Entry::photoKey)
+            val keysOf = store.collections().associateWith { store.collectionKeys(it.id) }
+            // A collection counts what is on this device: after a Move its other photos are on the computer, and a tile that
+            // said 52 over an empty grid read as a broken library (25 September).
+            val collections = keysOf.map { (c, k) -> val here = k.count { it in onDevice }; c.copy(here = here, elsewhere = k.size - here) }
+            return PhotoMeta(
+                states = store.states(keys), collections = collections,
+                previews = keysOf.entries.associate { (c, k) -> c.id to k.firstNotNullOfOrNull(byKey::get) },
+                documentKeys = store.classifiedKeys("document"), peopleKeys = store.peopleKeys(),
+                labels = store.labelsByPhoto(keys), peopleNames = store.peopleNamesByPhoto(keys),
+                // Only people who still have a photo here: delete or move every photo of someone and they stop being listed.
+                faceGroups = store.faceGroups(onDevice, onComputer = SyncStore(context.applicationContext).use { it.receiptKeys() }),
+                reviewKeys = store.reviewKeys(),
+                hiddenAlbumKeys = keysOf.filterKeys { it.uuid in hiddenAlbums }.values.flatMapTo(mutableSetOf()) { it },
+            )
+        }
     }
 }
 

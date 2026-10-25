@@ -40,6 +40,10 @@ How to write here:
 - [ ] Notes: Export as Markdown (the user, 25 Oct: "add export as markdown"): one note (its menu) or all of them (Notes'
       island), on the phone and on the PC; a note's text is already Markdown, a checklist becomes `- [ ]` / `- [x]` lines,
       the title the file's name and its first heading. Notes stay JSON inside Tetra (the user: "I don't care").
+- [x] (25 Oct) **Small icons only** is Home's default (the user: "change the default home to small icons only"): a new
+      install, a reset Home and a new applet start small; a saved layout stays as it is. Built with the sync fix (SYNC_PLAN 6ar)
+      as Android 0.6.0-beta.2 (release key, versionCode 13) and desktop 0.6.0-beta.23; 658 Android and 148 desktop tests pass;
+      installed on the tablet and the phone.
 - [ ] Home edit: a part made smaller fills the empty cells by itself (the user, 25 Oct: "when you make them small you have
       to rearrange them after because they leave empty space; we could make it just auto fill empty spots"). Today a part
       keeps its cell when it shrinks, so groups made small leave rows of gaps until each icon is dragged up.

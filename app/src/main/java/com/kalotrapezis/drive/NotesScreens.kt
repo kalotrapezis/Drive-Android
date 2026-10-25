@@ -100,7 +100,7 @@ import java.util.UUID
 // labels only; an island for Home / Pinned / Archived / Trash, pulled up for the pins and labels, and an editor with
 // one line of tools whose full set slides up from the bottom.
 
-private enum class NotesView(val label: String) { Home("Home"), Archived("Archived"), Trash("Trash") }
+private enum class NotesView(@androidx.annotation.StringRes val label: Int) { Home(R.string.app_home), Archived(R.string.notes_archived), Trash(R.string.notes_trash) }
 
 // Keep's palette, which the imported notes already use.
 private val NOTE_COLORS = listOf("#F28B82", "#FBBC04", "#FFF475", "#CCFF90", "#A7FFEB", "#CBF0F8", "#AECBFA", "#D7AEFB", "#FDCFE8", "#E6C9A8", "#E8EAED")
@@ -159,7 +159,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
         refreshing = true
         val got = NotesSync.now(context) // what arrives reloads the list through NotesSync.changed
         refreshing = false
-        got.exceptionOrNull()?.let { message = "Notes did not sync: ${it.message ?: it.javaClass.simpleName}" }
+        got.exceptionOrNull()?.let { message = context.getString(R.string.notes_sync_failed, it.message ?: it.javaClass.simpleName) }
     }
     LaunchedEffect(hasAccess) { if (hasAccess) NotesSync.now(context) }
     fun create(checklist: Boolean) = scope.launch {
@@ -170,9 +170,9 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
 
     if (!hasAccess) {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-            Text("Notes live in Tetra's folder, next to Files, so they can sync with the computer. Allow access to all files to use them.")
-            TextButton(onClick = grant) { Text("Allow access") }
+            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
+            Text(stringResource(R.string.notes_access_needed))
+            TextButton(onClick = grant) { Text(stringResource(R.string.notes_allow_access), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         return
     }
@@ -236,29 +236,29 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
             item(span = StaggeredGridItemSpan.FullLine) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-                        Text(label ?: if (everywhere) "All notes" else if (view == NotesView.Home) "Notes" else view.label, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
+                        Text(label ?: if (everywhere) stringResource(R.string.notes_all) else if (view == NotesView.Home) stringResource(R.string.app_notes) else stringResource(view.label), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (trash && shown.isNotEmpty()) TextButton(onClick = {
-                            scope.launch(Dispatchers.IO) { shown.forEach { store.remove(it.id) }; withContext(Dispatchers.Main) { version++; message = "Notes Trash emptied" } }
-                        }) { Text("Empty") }
+                            scope.launch(Dispatchers.IO) { shown.forEach { store.remove(it.id) }; withContext(Dispatchers.Main) { version++; message = context.getString(R.string.notes_trash_emptied) } }
+                        }) { Text(stringResource(R.string.notes_empty_trash), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                    if (searching) NoteField(query, { query = it }, "Search notes", Modifier.fillMaxWidth(), autofocus = true)
+                    if (searching) NoteField(query, { query = it }, stringResource(R.string.notes_search), Modifier.fillMaxWidth(), autofocus = true)
                     if (label != null) Chip("$label  ✕", on = true) { label = null }
                 }
             }
-            if (notes == null) item(span = StaggeredGridItemSpan.FullLine) { Text("Loading…", Modifier.padding(24.dp)) }
+            if (notes == null) item(span = StaggeredGridItemSpan.FullLine) { Text(stringResource(R.string.common_loading), Modifier.padding(24.dp)) }
             else if (shown.isEmpty()) item(span = StaggeredGridItemSpan.FullLine) {
                 Text(when {
-                    q.isNotEmpty() -> "No note matches."
-                    trash -> "The Trash is empty. Notes stay here 30 days."
-                    view == NotesView.Archived -> "Nothing archived."
-                    else -> "No notes yet. Start one below."
+                    q.isNotEmpty() -> stringResource(R.string.notes_no_match)
+                    trash -> stringResource(R.string.notes_trash_empty)
+                    view == NotesView.Archived -> stringResource(R.string.notes_nothing_archived)
+                    else -> stringResource(R.string.notes_none_yet)
                 }, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (pinned.isNotEmpty()) {
-                item(span = StaggeredGridItemSpan.FullLine) { header("Pinned") }
+                item(span = StaggeredGridItemSpan.FullLine) { header(stringResource(R.string.notes_pinned_header)) }
                 items(pinned, key = { it.id }) { card(it) }
-                if (others.isNotEmpty()) item(span = StaggeredGridItemSpan.FullLine) { header("Others") }
+                if (others.isNotEmpty()) item(span = StaggeredGridItemSpan.FullLine) { header(stringResource(R.string.notes_others)) }
             }
             items(others, key = { it.id }) { card(it) }
         }
@@ -270,32 +270,32 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
             if (selected.isNotEmpty()) Surface(shape = MaterialTheme.shapes.extraLarge, color = islandColor(), contentColor = islandContentColor()) {
                 // What you picked: the navigation gives way to what can be done with it.
                 Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { selected = emptySet() }) { Icon(painterResource(R.drawable.ic_cancel), contentDescription = "Clear selection") }
+                    IconButton(onClick = { selected = emptySet() }) { Icon(painterResource(R.drawable.ic_cancel), contentDescription = stringResource(R.string.notes_clear_selection)) }
                     Text("${selected.size}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 8.dp))
                     if (trash) {
-                        IconButton(onClick = { act("Restored") { it.remove("trashedAt") } }) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "Restore") }
-                        IconButton(onClick = { scope.launch(Dispatchers.IO) { picked.forEach { store.remove(it.id) }; withContext(Dispatchers.Main) { selected = emptySet(); version++; message = "Deleted" } } }) {
-                            Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete for good", tint = Color(0xFFE35A4F)) }
+                        IconButton(onClick = { act(context.getString(R.string.notes_did_restore)) { it.remove("trashedAt") } }) { Icon(painterResource(R.drawable.ic_restore), contentDescription = stringResource(R.string.notes_restore)) }
+                        IconButton(onClick = { scope.launch(Dispatchers.IO) { picked.forEach { store.remove(it.id) }; withContext(Dispatchers.Main) { selected = emptySet(); version++; message = context.getString(R.string.notes_did_delete) } } }) {
+                            Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.notes_delete_forever), tint = Color(0xFFE35A4F)) }
                     } else {
                         val allPinned = picked.all { it.pinned }
-                        IconButton(onClick = { act(if (allPinned) "Unpinned" else "Pinned") { it.put("isPinned", !allPinned) } }) { Icon(painterResource(R.drawable.ic_push_pin), contentDescription = if (allPinned) "Unpin" else "Pin") }
-                        if (picked.all { it.archivedAt != null }) IconButton(onClick = { act("Unarchived") { it.remove("archivedAt") } }) { Icon(painterResource(R.drawable.ic_unarchive), contentDescription = "Unarchive") }
-                        else IconButton(onClick = { act("Archived") { it.put("archivedAt", System.currentTimeMillis()) } }) { Icon(painterResource(R.drawable.ic_archive), contentDescription = "Archive") }
-                        IconButton(onClick = { act("Moved to Trash") { it.put("trashedAt", System.currentTimeMillis()) } }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Move to Trash") }
+                        IconButton(onClick = { act(context.getString(if (allPinned) R.string.notes_did_unpin else R.string.notes_did_pin)) { it.put("isPinned", !allPinned) } }) { Icon(painterResource(R.drawable.ic_push_pin), contentDescription = stringResource(if (allPinned) R.string.notes_unpin else R.string.notes_pin)) }
+                        if (picked.all { it.archivedAt != null }) IconButton(onClick = { act(context.getString(R.string.notes_did_unarchive)) { it.remove("archivedAt") } }) { Icon(painterResource(R.drawable.ic_unarchive), contentDescription = stringResource(R.string.notes_unarchive)) }
+                        else IconButton(onClick = { act(context.getString(R.string.notes_did_archive)) { it.put("archivedAt", System.currentTimeMillis()) } }) { Icon(painterResource(R.drawable.ic_archive), contentDescription = stringResource(R.string.notes_archive)) }
+                        IconButton(onClick = { act(context.getString(R.string.notes_did_trash)) { it.put("trashedAt", System.currentTimeMillis()) } }) { Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.notes_move_to_trash)) }
                     }
                 }
             } else IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
                 // Home, then the two ways to start; a tablet has room for Archive and Trash too, a phone keeps them in the drawer.
-                IslandNavigationItem("Home", view == NotesView.Home, R.drawable.ic_home) { go(NotesView.Home) }
-                IslandNavigationItem("New note", false, R.drawable.ic_note_add) { create(false) }
-                IslandNavigationItem("Checklist", false, R.drawable.ic_checklist) { create(true) }
+                IslandNavigationItem(stringResource(R.string.app_home), view == NotesView.Home, R.drawable.ic_home) { go(NotesView.Home) }
+                IslandNavigationItem(stringResource(R.string.notes_new_note), false, R.drawable.ic_note_add) { create(false) }
+                IslandNavigationItem(stringResource(R.string.notes_checklist), false, R.drawable.ic_checklist) { create(true) }
                 if (wide) {
-                    IslandNavigationItem("Archived", view == NotesView.Archived, R.drawable.ic_archive) { go(NotesView.Archived) }
-                    IslandNavigationItem("Trash", view == NotesView.Trash, R.drawable.ic_delete) { go(NotesView.Trash) }
+                    IslandNavigationItem(stringResource(R.string.notes_archived), view == NotesView.Archived, R.drawable.ic_archive) { go(NotesView.Archived) }
+                    IslandNavigationItem(stringResource(R.string.notes_trash), view == NotesView.Trash, R.drawable.ic_delete) { go(NotesView.Trash) }
                 }
             }
             // Search where it is everywhere else in the app: bottom right.
-            if (selected.isEmpty() && !drawer) RoundIsland(R.drawable.ic_search, "Search notes") { searching = !searching; if (!searching) query = "" }
+            if (selected.isEmpty() && !drawer) RoundIsland(R.drawable.ic_search, stringResource(R.string.notes_search)) { searching = !searching; if (!searching) query = "" }
         }
         message?.let { Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp)) { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 10.dp)) } }
@@ -304,13 +304,13 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     if (drawer) ModalBottomSheet(onDismissRequest = { drawer = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!wide) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DrawerButton(R.drawable.ic_archive, "Archived", view == NotesView.Archived, Modifier.weight(1f)) { go(NotesView.Archived) }
-                DrawerButton(R.drawable.ic_delete, "Trash", view == NotesView.Trash, Modifier.weight(1f)) { go(NotesView.Trash) }
+                DrawerButton(R.drawable.ic_archive, stringResource(R.string.notes_archived), view == NotesView.Archived, Modifier.weight(1f)) { go(NotesView.Archived) }
+                DrawerButton(R.drawable.ic_delete, stringResource(R.string.notes_trash), view == NotesView.Trash, Modifier.weight(1f)) { go(NotesView.Trash) }
             }
             // The labels, one under another in their own panel (the user's sketch, 2026-09-26).
             Surface(color = Color.White.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
-                    LabelRow("All notes", null, label == null) { label = null; drawer = false }
+                    LabelRow(stringResource(R.string.notes_all), null, label == null) { label = null; drawer = false }
                     labels.forEach { (l, count) -> LabelRow(l, count, label == l) { label = l; drawer = false } }
                 }
             }
@@ -333,7 +333,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     shape = MaterialTheme.shapes.large, modifier = modifier.clickable(onClick = click),
 ) {
     Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(painterResource(icon), contentDescription = null); Text(label, style = MaterialTheme.typography.titleSmall)
+        Icon(painterResource(icon), contentDescription = null); Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -346,7 +346,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     color = if (on) driveNavigationSelectedColor() else Color.White.copy(alpha = 0.10f),
     contentColor = if (on) driveNavigationSelectedContentColor() else islandContentColor(),
     shape = CircleShape, modifier = Modifier.clickable(onClick = click),
-) { Text(text, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge) }
+) { Text(text, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
 
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable private fun NoteCard(n: Note, small: Boolean = false, selected: Boolean = false, selecting: Boolean = false, longPress: (() -> Unit)? = null, open: () -> Unit) {
@@ -368,7 +368,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                 ) { if (selected) Text("✓", color = Color.Black, style = MaterialTheme.typography.labelMedium) }
                 if (n.title.isNotBlank()) Text(n.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 else Spacer(Modifier.weight(1f))
-                if (n.pinned && !small) Icon(painterResource(R.drawable.ic_push_pin), contentDescription = "Pinned", modifier = Modifier.size(16.dp))
+                if (n.pinned && !small) Icon(painterResource(R.drawable.ic_push_pin), contentDescription = stringResource(R.string.notes_card_pinned), modifier = Modifier.size(16.dp))
             }
             remember(n, small) { NoteFormat.preview(n, if (small) 3 else 8) }.forEach { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis) }
             if (!small && n.labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
@@ -425,10 +425,10 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         if (!trashed) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = modifier) {
             // Solid, so text scrolled under them never shows through (asked 2026-09-27).
             labels.forEach { Text(it, color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clip(CircleShape).background(Color.Black).clickable { tagsOpen = true }.padding(horizontal = 10.dp, vertical = 5.dp)) }
-            Row(Modifier.clip(CircleShape).background(Color.Black).clickable(onClickLabel = "Labels") { tagsOpen = true }.padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+            Row(Modifier.clip(CircleShape).background(Color.Black).clickable(onClickLabel = stringResource(R.string.notes_labels)) { tagsOpen = true }.padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("Label ", color = Color.White, style = MaterialTheme.typography.labelMedium)
-                Icon(painterResource(R.drawable.ic_add), contentDescription = "Labels", tint = Color.White, modifier = Modifier.size(16.dp))
+                Text(stringResource(R.string.notes_label) + " ", color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.notes_labels), tint = Color.White, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -463,8 +463,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         NotesSync.soon(context, 500)
         onClose(saved, said)
     }
-    fun archive() { if (archived) { archived = false; meta { it.remove("archivedAt") } } else leave("Note archived") { it.put("archivedAt", System.currentTimeMillis()) } }
-    fun toTrash() { leave("Note moved to Trash") { it.put("trashedAt", System.currentTimeMillis()) } }
+    fun archive() { if (archived) { archived = false; meta { it.remove("archivedAt") } } else leave(context.getString(R.string.notes_note_archived)) { it.put("archivedAt", System.currentTimeMillis()) } }
+    fun toTrash() { leave(context.getString(R.string.notes_note_trashed)) { it.put("trashedAt", System.currentTimeMillis()) } }
     fun format(f: (NoteFormat.Edit) -> NoteFormat.Edit) {
         val r = f(NoteFormat.Edit(body.text, body.selection.min, body.selection.max))
         edit(b = TextFieldValue(r.text, TextRange(r.start, r.end)), step = true)
@@ -492,7 +492,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             }, readOnly = trashed, singleLine = false, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { if (initial.checklist) toBody++ else bodyFocus.requestFocus() }),
                 textStyle = TextStyle(color = ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold), cursorBrush = SolidColor(ink),
-                decorationBox = { inner -> Box { if (title.isEmpty()) Text("Title", color = ink.copy(alpha = 0.45f), fontSize = 24.sp); inner() } },
+                decorationBox = { inner -> Box { if (title.isEmpty()) Text(stringResource(R.string.notes_title_hint), color = ink.copy(alpha = 0.45f), fontSize = 24.sp); inner() } },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
             when {
                 initial.checklist -> ChecklistEditor(items, ink, trashed, toBody) { next, step -> edit(i = next, step = step) }
@@ -500,7 +500,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                 else -> BasicTextField(body, { edit(b = it) }, readOnly = trashed,
                     textStyle = TextStyle(color = ink, fontSize = 16.sp, lineHeight = 24.sp), cursorBrush = SolidColor(ink),
                     visualTransformation = markdownVisualTransformation(),
-                    decorationBox = { inner -> Box { if (body.text.isEmpty()) Text("Write here. **bold**, - [ ] a checkbox…", color = ink.copy(alpha = 0.45f)); inner() } },
+                    decorationBox = { inner -> Box { if (body.text.isEmpty()) Text(stringResource(R.string.notes_body_hint), color = ink.copy(alpha = 0.45f)); inner() } },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 300.dp).padding(bottom = 80.dp).focusRequester(bodyFocus))
             }
         }
@@ -518,33 +518,34 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         val row: @Composable () -> Unit = {
             undoTick // read, so undo and redo follow the history, which is not state itself
             if (formatting && canFormat) {
-                Tool(R.drawable.ic_title, "Heading", w) { format { NoteFormat.prefix(it, "# ") } }
-                Tool(R.drawable.ic_format_bold, "Bold", w) { format { NoteFormat.wrap(it, "**") } }
-                Tool(R.drawable.ic_format_italic, "Italic", w) { format { NoteFormat.wrap(it, "*") } }
-                Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w) { format { NoteFormat.wrap(it, "~~") } }
-                Tool(R.drawable.ic_format_list_bulleted, "Bulleted list", w) { format { NoteFormat.prefix(it, "- ") } }
-                Tool(R.drawable.ic_format_list_numbered, "Numbered list", w) { format { NoteFormat.prefix(it, "1. ") } }
-                Tool(R.drawable.ic_check_box, "Checkbox list", w) { format { NoteFormat.prefix(it, "- [ ] ") } }
-                Tool(R.drawable.ic_format_quote, "Quote", w) { format { NoteFormat.prefix(it, "> ") } }
-                Tool(R.drawable.ic_code, "Code", w) { format { NoteFormat.wrap(it, "`") } }
-                Tool(R.drawable.ic_link, "Link", w) { format { e -> val t = e.text.substring(e.start, e.end).ifEmpty { "link" }; val md = "[$t](https://)"; NoteFormat.Edit(e.text.substring(0, e.start) + md + e.text.substring(e.end), e.start + t.length + 3, e.start + md.length - 1) } }
-                Tool(R.drawable.ic_horizontal_rule, "Divider", w) { format { e -> NoteFormat.Edit(e.text.substring(0, e.end) + "\n\n---\n" + e.text.substring(e.end), e.end + 6, e.end + 6) } }
-                Tool(R.drawable.ic_format_indent_increase, "Indent", w) { format { NoteFormat.indent(it, false) } }
-                Tool(R.drawable.ic_format_indent_decrease, "Outdent", w) { format { NoteFormat.indent(it, true) } }
+                Tool(R.drawable.ic_title, stringResource(R.string.notes_heading), w) { format { NoteFormat.prefix(it, "# ") } }
+                Tool(R.drawable.ic_format_bold, stringResource(R.string.notes_bold), w) { format { NoteFormat.wrap(it, "**") } }
+                Tool(R.drawable.ic_format_italic, stringResource(R.string.notes_italic), w) { format { NoteFormat.wrap(it, "*") } }
+                Tool(R.drawable.ic_format_strikethrough, stringResource(R.string.notes_strikethrough), w) { format { NoteFormat.wrap(it, "~~") } }
+                Tool(R.drawable.ic_format_list_bulleted, stringResource(R.string.notes_bulleted_list), w) { format { NoteFormat.prefix(it, "- ") } }
+                Tool(R.drawable.ic_format_list_numbered, stringResource(R.string.notes_numbered_list), w) { format { NoteFormat.prefix(it, "1. ") } }
+                Tool(R.drawable.ic_check_box, stringResource(R.string.notes_checkbox_list), w) { format { NoteFormat.prefix(it, "- [ ] ") } }
+                Tool(R.drawable.ic_format_quote, stringResource(R.string.notes_quote), w) { format { NoteFormat.prefix(it, "> ") } }
+                Tool(R.drawable.ic_code, stringResource(R.string.notes_code), w) { format { NoteFormat.wrap(it, "`") } }
+                val linkWord = stringResource(R.string.notes_link_placeholder)
+                Tool(R.drawable.ic_link, stringResource(R.string.notes_link), w) { format { e -> val t = e.text.substring(e.start, e.end).ifEmpty { linkWord }; val md = "[$t](https://)"; NoteFormat.Edit(e.text.substring(0, e.start) + md + e.text.substring(e.end), e.start + t.length + 3, e.start + md.length - 1) } }
+                Tool(R.drawable.ic_horizontal_rule, stringResource(R.string.notes_divider), w) { format { e -> NoteFormat.Edit(e.text.substring(0, e.end) + "\n\n---\n" + e.text.substring(e.end), e.end + 6, e.end + 6) } }
+                Tool(R.drawable.ic_format_indent_increase, stringResource(R.string.notes_indent), w) { format { NoteFormat.indent(it, false) } }
+                Tool(R.drawable.ic_format_indent_decrease, stringResource(R.string.notes_outdent), w) { format { NoteFormat.indent(it, true) } }
             } else if (!trashed) {
-                Tool(R.drawable.ic_undo, "Undo", w, enabled = undo.canUndo) { apply(undo.undo()) }
-                Tool(R.drawable.ic_redo, "Redo", w, enabled = undo.canRedo) { apply(undo.redo()) }
-                if (wide) Tool(R.drawable.ic_label, "Labels", w, on = labels.isNotEmpty()) { tagsOpen = true } // a phone opens them from the + by the tags
-                Tool(R.drawable.ic_history, "History", w) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
-                if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, if (reading) "Edit" else "Read", w, on = reading) { reading = !reading }
-                Tool(R.drawable.ic_push_pin, if (pinned) "Unpin" else "Pin", w, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }
+                Tool(R.drawable.ic_undo, stringResource(R.string.common_undo), w, enabled = undo.canUndo) { apply(undo.undo()) }
+                Tool(R.drawable.ic_redo, stringResource(R.string.common_redo), w, enabled = undo.canRedo) { apply(undo.redo()) }
+                if (wide) Tool(R.drawable.ic_label, stringResource(R.string.notes_labels), w, on = labels.isNotEmpty()) { tagsOpen = true } // a phone opens them from the + by the tags
+                Tool(R.drawable.ic_history, stringResource(R.string.notes_history), w) { scope.launch { history = withContext(Dispatchers.IO) { store.history(initial.id) } } }
+                if (!initial.checklist) Tool(if (reading) R.drawable.ic_edit_note else R.drawable.ic_visibility, stringResource(if (reading) R.string.common_edit else R.string.notes_read), w, on = reading) { reading = !reading }
+                Tool(R.drawable.ic_push_pin, stringResource(if (pinned) R.string.notes_unpin else R.string.notes_pin), w, on = pinned) { pinned = !pinned; meta { it.put("isPinned", pinned) } }
                 if (wide) {
-                    Tool(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive, if (archived) "Unarchive" else "Archive", w) { archive() }
-                    Tool(R.drawable.ic_delete, "Move to Trash", w) { toTrash() }
+                    Tool(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive, stringResource(if (archived) R.string.notes_unarchive else R.string.notes_archive), w) { archive() }
+                    Tool(R.drawable.ic_delete, stringResource(R.string.notes_move_to_trash), w) { toTrash() }
                 }
             }
         }
-        val swap: @Composable () -> Unit = { if (canFormat) Tool(R.drawable.ic_swap_horiz, if (formatting) "Note controls" else "Formatting tools", w, on = formatting) { formatting = !formatting } }
+        val swap: @Composable () -> Unit = { if (canFormat) Tool(R.drawable.ic_swap_horiz, stringResource(if (formatting) R.string.notes_note_controls else R.string.notes_formatting_tools), w, on = formatting) { formatting = !formatting } }
         val screen = LocalConfiguration.current.screenWidthDp.dp
         if (imeOpen && !trashed) Row(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(islandColor()).padding(horizontal = 4.dp),
@@ -552,13 +553,13 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         ) {
             swap()
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) { row() }
-            Tool(R.drawable.ic_keyboard_arrow_up, "More tools", w) { tools = true }
+            Tool(R.drawable.ic_keyboard_arrow_up, stringResource(R.string.notes_more_tools), w) { tools = true }
         } else Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp)) {
             IslandBottomBar(expand = { if (!trashed) tools = true }, visible = !tools && !tagsOpen && history == null) {
-                Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
+                Tool(R.drawable.ic_chevron_left, stringResource(R.string.common_back), w) { leave() }
                 if (trashed) {
-                    TextButton(onClick = { leave("Note restored") { it.remove("trashedAt") } }) { Text("Restore", color = w) }
-                    TextButton(onClick = { scope.launch(Dispatchers.IO) { store.remove(initial.id); withContext(Dispatchers.Main) { onClose(null, "Note deleted") } } }) { Text("Delete", color = Color(0xFFE35A4F)) }
+                    TextButton(onClick = { leave(context.getString(R.string.notes_note_restored)) { it.remove("trashedAt") } }) { Text(stringResource(R.string.notes_restore), color = w, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    TextButton(onClick = { scope.launch(Dispatchers.IO) { store.remove(initial.id); withContext(Dispatchers.Main) { onClose(null, context.getString(R.string.notes_note_deleted)) } } }) { Text(stringResource(R.string.common_delete), color = Color(0xFFE35A4F), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 } else {
                     swap()
                     // The note's controls fit as they are; the longer formatting row scrolls sideways.
@@ -572,7 +573,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     if (tools) ModalBottomSheet(onDismissRequest = { tools = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // The formatting tools are on the island now (its swap button); the sheet keeps colour, and Archive and Trash on a phone.
-            Text("Colour", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.notes_colour), style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 (listOf<String?>(null) + NOTE_COLORS).forEach { hex ->
                     Box(Modifier.size(44.dp).background(noteColor(hex) ?: Color(0xFF3A3F43), CircleShape)
@@ -582,8 +583,8 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
             }
             // A tablet has Archive and Trash on the island; a phone has them here.
             if (!wide) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(Modifier.weight(1f)) { DriveWideAction(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive, if (archived) "Unarchive" else "Archive") { tools = false; archive() } }
-                Box(Modifier.weight(1f)) { DriveWideAction(R.drawable.ic_delete, "Trash") { tools = false; toTrash() } }
+                Box(Modifier.weight(1f)) { DriveWideAction(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive, stringResource(if (archived) R.string.notes_unarchive else R.string.notes_archive)) { tools = false; archive() } }
+                Box(Modifier.weight(1f)) { DriveWideAction(R.drawable.ic_delete, stringResource(R.string.notes_trash)) { tools = false; toTrash() } }
             }
         }
     }
@@ -595,16 +596,16 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     history?.let { versions ->
         AlertDialog(
             onDismissRequest = { history = null },
-            title = { Text("History") },
+            title = { Text(stringResource(R.string.notes_history)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("The note as it was before you last changed it, and as you left it — the newest three. Restoring keeps the current one too.", style = MaterialTheme.typography.bodySmall)
-                    if (versions.isEmpty()) Text("No versions yet.")
+                    Text(stringResource(R.string.notes_history_note), style = MaterialTheme.typography.bodySmall)
+                    if (versions.isEmpty()) Text(stringResource(R.string.notes_no_versions))
                     versions.forEach { v ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(v.at), style = MaterialTheme.typography.titleSmall)
-                                Text(v.title.ifBlank { "Untitled" } + " · " + (v.content.lines().firstOrNull { it.isNotBlank() } ?: v.items.firstOrNull()?.text.orEmpty()),
+                                Text(v.title.ifBlank { stringResource(R.string.notes_untitled) } + " · " + (v.content.lines().firstOrNull { it.isNotBlank() } ?: v.items.firstOrNull()?.text.orEmpty()),
                                     style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             TextButton(onClick = {
@@ -613,12 +614,12 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                                     edit(t = n.title, b = TextFieldValue(n.content), i = n.items, step = true)
                                     history = null; tools = false
                                 }
-                            }) { Text("Restore") }
+                            }) { Text(stringResource(R.string.notes_restore), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { history = null }) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { history = null }) { Text(stringResource(R.string.common_close), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         )
     }
 }
@@ -650,20 +651,20 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         LaunchedEffect(focus) { if (focus == i.id) { requester.requestFocus(); focus = null } }
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { change(items.map { if (it.id == i.id) it.copy(checked = !it.checked, order = if (it.checked) open.size else it.order) else it }, true) }, enabled = !readOnly) {
-                Icon(painterResource(if (i.checked) R.drawable.ic_check_box else R.drawable.ic_check_box_outline_blank), contentDescription = if (i.checked) "Done" else "Not done", tint = ink)
+                Icon(painterResource(if (i.checked) R.drawable.ic_check_box else R.drawable.ic_check_box_outline_blank), contentDescription = stringResource(if (i.checked) R.string.notes_item_done else R.string.notes_item_not_done), tint = ink)
             }
             BasicTextField(i.text, { t -> change(items.map { if (it.id == i.id) it.copy(text = t) else it }, false) }, readOnly = readOnly, singleLine = true,
                 textStyle = TextStyle(color = ink.copy(alpha = if (i.checked) 0.55f else 1f), fontSize = 16.sp, textDecoration = if (i.checked) TextDecoration.LineThrough else null),
                 cursorBrush = SolidColor(ink), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { insertAfter(i.id) }),
                 modifier = Modifier.weight(1f).focusRequester(requester).padding(vertical = 10.dp))
-            if (!readOnly) IconButton(onClick = { change(items.filter { it.id != i.id }, true) }) { Icon(painterResource(R.drawable.ic_cancel), contentDescription = "Remove item", tint = ink.copy(alpha = 0.6f), modifier = Modifier.size(20.dp)) }
+            if (!readOnly) IconButton(onClick = { change(items.filter { it.id != i.id }, true) }) { Icon(painterResource(R.drawable.ic_cancel), contentDescription = stringResource(R.string.notes_remove_item), tint = ink.copy(alpha = 0.6f), modifier = Modifier.size(20.dp)) }
         }
     }
     Column {
         open.forEach { row(it) }
-        if (!readOnly) TextButton(onClick = { insertAfter(null) }) { Icon(painterResource(R.drawable.ic_add), null, tint = ink); Text("  Add item", color = ink) }
+        if (!readOnly) TextButton(onClick = { insertAfter(null) }) { Icon(painterResource(R.drawable.ic_add), null, tint = ink); Text("  " + stringResource(R.string.notes_add_item), color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         if (done.isNotEmpty()) {
-            Text("${done.size} done", color = ink.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 16.dp, bottom = 4.dp))
+            Text(pluralStringResource(R.plurals.notes_done_count, done.size, done.size), color = ink.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 16.dp, bottom = 4.dp))
             done.forEach { row(it) }
         }
         Spacer(Modifier.heightIn(min = 80.dp))
@@ -684,9 +685,9 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
     fun set(next: List<String>) { selected = next; change(next) }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Labels", style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.notes_labels), style = MaterialTheme.typography.titleLarge)
             FlowRow(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("+  Add label", on = false) { adding = true }
+                Chip("+  " + stringResource(R.string.notes_add_label), on = false) { adding = true }
                 all.forEach { tag -> Chip(tag, on = tag in selected) { set(if (tag in selected) selected - tag else selected + tag) } }
             }
         }
@@ -704,13 +705,13 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         }
         AlertDialog(
             onDismissRequest = { adding = false },
-            title = { Text("Add label") },
+            title = { Text(stringResource(R.string.notes_add_label)) },
             text = {
-                androidx.compose.material3.OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth().focusRequester(focus), placeholder = { Text("Name") }, singleLine = true,
+                androidx.compose.material3.OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth().focusRequester(focus), placeholder = { Text(stringResource(R.string.common_name)) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { add() }))
             },
-            confirmButton = { TextButton(onClick = { add() }, enabled = name.isNotBlank()) { Text("Add") } },
-            dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { add() }, enabled = name.isNotBlank()) { Text(stringResource(R.string.common_add), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            dismissButton = { TextButton(onClick = { adding = false }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         )
     }
 }

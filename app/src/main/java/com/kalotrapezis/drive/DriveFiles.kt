@@ -28,6 +28,15 @@ data class DriveItem(val file: File, val relativePath: String, val isDirectory: 
 }
 data class DriveRecent(val relativePath: String, val openedAt: Long)
 enum class DriveFolderColor { Blue, Green, Yellow, Red, Purple }
+/**
+ * Something Files refuses, said in the user's language where it is shown ([res] with [args], see [shownMessage]);
+ * the message is the English for the log and for screens that show it as it is.
+ */
+class DriveProblem(message: String, @androidx.annotation.StringRes val res: Int, vararg val args: Any) : IllegalArgumentException(message)
+private inline fun need(ok: Boolean, @androidx.annotation.StringRes res: Int, vararg args: Any, english: () -> String) { if (!ok) throw DriveProblem(english(), res, *args) }
+/** A failure's words for the screen: a Files problem in the user's language, anything else as it says itself. */
+fun Throwable.shownMessage(context: Context): String? = (this as? DriveProblem)?.let { context.getString(it.res, *it.args) } ?: message
+
 data class DriveSpaceUsage(val bytesByType: Map<String, Long>) {
     val totalBytes: Long get() = bytesByType.values.sum()
 }
@@ -103,7 +112,7 @@ object DriveRules {
      */
     fun incomingChoiceWins(localChosen: Boolean, localAt: Long, chosen: Boolean, at: Long) = at > localAt || (at == localAt && chosen && !localChosen)
     fun ensureSystemFolders(root: File) = SYSTEM_FOLDERS.forEach { File(root, it).mkdirs() }
-    private fun requireMovable(relativePath: String) = require(!isSystem(relativePath)) { "${relativePath.substringAfterLast('/')} is a system folder and stays where it is." }
+    private fun requireMovable(relativePath: String) = relativePath.substringAfterLast('/').let { name -> need(!isSystem(relativePath), R.string.files_error_system_folder, name) { "$name is a system folder and stays where it is." } }
 
     fun inside(root: File, candidate: File): Boolean {
         val rootPath = root.canonicalFile.path
@@ -112,16 +121,16 @@ object DriveRules {
     }
 
     fun folder(root: File, relativePath: String): File {
-        require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive folder." }
+        need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_folder) { "Invalid Drive folder." }
         return File(root, relativePath).canonicalFile.also {
-            require(inside(root, it) && it.isDirectory) { "Folder is outside Drive." }
+            need(inside(root, it) && it.isDirectory, R.string.files_error_folder_outside) { "Folder is outside Drive." }
         }
     }
 
     fun file(root: File, relativePath: String): File {
-        require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive file." }
+        need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_file) { "Invalid Drive file." }
         return File(root, relativePath).canonicalFile.also {
-            require(inside(root, it) && it.isFile) { "File is outside Drive." }
+            need(inside(root, it) && it.isFile, R.string.files_error_file_outside) { "File is outside Drive." }
         }
     }
 
@@ -130,9 +139,9 @@ object DriveRules {
      * the same way, and a name already taken is kept: "letter.txt" becomes "letter (2).txt", never a replacement.
      */
     fun newFile(root: File, relativePath: String): File {
-        require(relativePath.isSafeDriveRelativePath() && relativePath.isNotEmpty()) { "Invalid Drive file." }
+        need(relativePath.isSafeDriveRelativePath() && relativePath.isNotEmpty(), R.string.files_error_bad_file) { "Invalid Drive file." }
         val wanted = File(root, relativePath).canonicalFile
-        require(inside(root, wanted)) { "File is outside Drive." }
+        need(inside(root, wanted), R.string.files_error_file_outside) { "File is outside Drive." }
         if (!wanted.exists()) return wanted
         val base = wanted.name.substringBeforeLast('.', wanted.name)
         val extension = wanted.name.substringAfterLast('.', "").let { if (it.isEmpty()) "" else ".$it" }
@@ -145,14 +154,14 @@ object DriveRules {
     }
 
     fun item(root: File, relativePath: String): File {
-        require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive item." }
+        need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_item) { "Invalid Drive item." }
         return File(root, relativePath).canonicalFile.also {
-            require(inside(root, it) && it.exists()) { "Item is outside Drive." }
+            need(inside(root, it) && it.exists(), R.string.files_error_item_outside) { "Item is outside Drive." }
         }
     }
 
     fun relative(root: File, file: File): String {
-        require(inside(root, file)) { "Item is outside Drive." }
+        need(inside(root, file), R.string.files_error_item_outside) { "Item is outside Drive." }
         return file.canonicalFile.relativeTo(root.canonicalFile).invariantSeparatorsPath
     }
 
@@ -178,7 +187,7 @@ object DriveRules {
     )
 
     fun rename(root: File, relativePath: String, newName: String): String {
-        require(newName.isSafeDriveName()) { "Invalid name." }
+        need(newName.isSafeDriveName(), R.string.files_error_bad_name) { "Invalid name." }
         requireMovable(relativePath)
         val source = item(root, relativePath)
         val target = File(source.parentFile, newName).canonicalFile
@@ -193,20 +202,20 @@ object DriveRules {
     fun newKinds(root: File, blankDeck: ByteArray? = null): List<DriveNew> {
         val templates = File(root, TEMPLATES_FOLDER).listFiles().orEmpty().filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name.lowercase(Locale.ROOT) }
             .map { DriveNew(it.nameWithoutExtension, it.extension, it) }
-        val built = listOfNotNull(DriveNew("Text file", "txt"), DriveNew("Words document", "docx"), DriveNew("Tables spreadsheet", "xlsx"),
-            blankDeck?.let { DriveNew("Slides presentation", "pptx", bytes = it) }).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
-        return listOf(DriveNew("Folder", null)) + templates + built
+        val built = listOfNotNull(DriveNew("Text file", "txt", shown = R.string.files_new_text), DriveNew("Words document", "docx", shown = R.string.files_new_words),
+            DriveNew("Tables spreadsheet", "xlsx", shown = R.string.files_new_tables), blankDeck?.let { DriveNew("Slides presentation", "pptx", bytes = it, shown = R.string.files_new_slides) }).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
+        return listOf(DriveNew("Folder", null, shown = R.string.files_folder)) + templates + built
     }
 
     /** [kind] named [name] in the folder [folderRelativePath]; its path. Never over something already there. */
     fun create(root: File, folderRelativePath: String, kind: DriveNew, name: String): String {
         val full = kind.extension?.takeIf { it.isNotEmpty() && !name.endsWith(".$it", ignoreCase = true) }?.let { "$name.$it" } ?: name
-        require(full.isSafeDriveName() && !full.startsWith(".")) { "Invalid name." }
+        need(full.isSafeDriveName() && !full.startsWith("."), R.string.files_error_bad_name) { "Invalid name." }
         val target = File(folder(root, folderRelativePath), full).canonicalFile
-        require(inside(root, target)) { "Invalid name." }
-        require(!target.exists()) { "Something named $full is already here." }
+        need(inside(root, target), R.string.files_error_bad_name) { "Invalid name." }
+        need(!target.exists(), R.string.files_error_name_taken, full) { "Something named $full is already here." }
         when {
-            kind.extension == null -> require(target.mkdir()) { "Could not make the folder." }
+            kind.extension == null -> need(target.mkdir(), R.string.files_error_make_folder) { "Could not make the folder." }
             kind.template != null -> Files.copy(kind.template.toPath(), target.toPath())
             kind.extension.equals("docx", ignoreCase = true) -> target.writeBytes(OfficeFormats.write(OfficeDoc(listOf(DocPara(emptyList()))), OfficeKind.Docx))
             kind.extension.equals("xlsx", ignoreCase = true) -> target.writeBytes(SheetBook.empty())
@@ -219,9 +228,9 @@ object DriveRules {
     fun copy(root: File, relativePath: String, destinationRelativePath: String): String {
         val source = item(root, relativePath)
         val destination = folder(root, destinationRelativePath)
-        require(!source.isDirectory || !inside(source, destination)) { "A folder cannot be copied into itself." }
+        need(!source.isDirectory || !inside(source, destination), R.string.files_error_copy_into_itself) { "A folder cannot be copied into itself." }
         val target = File(destination, source.name).canonicalFile
-        require(inside(root, target) && !target.exists()) { "A file with this name already exists." }
+        need(inside(root, target) && !target.exists(), R.string.files_error_name_exists) { "A file with this name already exists." }
         requireNoLinks(source)
         if (source.isDirectory) source.copyRecursively(target, overwrite = false) else Files.copy(source.toPath(), target.toPath())
         return relative(root, target)
@@ -231,7 +240,7 @@ object DriveRules {
         requireMovable(relativePath)
         val source = item(root, relativePath)
         val destination = folder(root, destinationRelativePath)
-        require(!source.isDirectory || !inside(source, destination)) { "A folder cannot be moved into itself." }
+        need(!source.isDirectory || !inside(source, destination), R.string.files_error_move_into_itself) { "A folder cannot be moved into itself." }
         val target = File(destination, source.name).canonicalFile
         moveExisting(root, source, target)
         return relative(root, target)
@@ -254,11 +263,11 @@ object DriveRules {
 
     fun moveToTrash(root: File, relativePath: String): String {
         val trash = File(root, TRASH_FOLDER).canonicalFile
-        require(inside(root, trash)) { "Trash is outside Drive." }
-        if (!trash.exists()) require(trash.mkdirs()) { "Could not create Trash." }
+        need(inside(root, trash), R.string.files_error_trash_outside) { "Trash is outside Drive." }
+        if (!trash.exists()) need(trash.mkdirs(), R.string.files_error_make_trash) { "Could not create Trash." }
         requireMovable(relativePath)
         val source = item(root, relativePath)
-        require(!inside(trash, source)) { "This item is already in Trash." }
+        need(!inside(trash, source), R.string.files_error_already_in_trash) { "This item is already in Trash." }
         val target = freeTarget(trash, source)
         moveExisting(root, source, target)
         return relative(root, target)
@@ -279,7 +288,7 @@ object DriveRules {
      * whole to the Trash, as the user answered. Returns each move (from, to), so favorites and tags follow.
      */
     fun clearLeftOut(root: File, name: String, toTrash: Boolean): List<Pair<String, String>> {
-        require(name in OPTIONAL_FOLDERS && !isSystem(name)) { "$name is still a system folder." }
+        need(name in OPTIONAL_FOLDERS && !isSystem(name), R.string.files_error_still_system, name) { "$name is still a system folder." }
         val dir = File(root, name).canonicalFile
         if (!inside(root, dir) || !dir.isDirectory) return emptyList()
         val entries = dir.listFiles().orEmpty()
@@ -296,20 +305,20 @@ object DriveRules {
 
     fun emptyTrash(root: File): Int {
         val trash = File(root, TRASH_FOLDER).canonicalFile
-        require(inside(root, trash)) { "Trash is outside Drive." }
+        need(inside(root, trash), R.string.files_error_trash_outside) { "Trash is outside Drive." }
         if (!trash.exists()) return 0
         val items = trash.listFiles().orEmpty()
-        items.forEach { item -> require(inside(root, item)) { "Trash contains an unsafe item." }; requireNoLinks(item) }
-        items.forEach { item -> check(item.deleteRecursively()) { "Could not permanently delete ${item.name}." } }
+        items.forEach { item -> need(inside(root, item), R.string.files_error_unsafe_in_trash) { "Trash contains an unsafe item." }; requireNoLinks(item) }
+        items.forEach { item -> need(item.deleteRecursively(), R.string.files_error_delete, item.name) { "Could not permanently delete ${item.name}." } }
         return items.size
     }
 
     // copyRecursively and deleteRecursively follow links, so one inside a folder would copy in or delete what it points at.
     private fun requireNoLinks(item: File) =
-        require(item.walkTopDown().none { Files.isSymbolicLink(it.toPath()) }) { "${item.name} holds a link, which Tetra does not follow." }
+        need(item.walkTopDown().none { Files.isSymbolicLink(it.toPath()) }, R.string.files_error_link, item.name) { "${item.name} holds a link, which Tetra does not follow." }
 
     private fun moveExisting(root: File, source: File, target: File) {
-        require(inside(root, target) && target != source && !target.exists()) { "A file with this name already exists." }
+        need(inside(root, target) && target != source && !target.exists(), R.string.files_error_name_exists) { "A file with this name already exists." }
         Files.move(source.toPath(), target.toPath())
     }
 }
@@ -335,7 +344,8 @@ private const val TRASH_FOLDER = "Trash"
 private const val TEMPLATES_FOLDER = ".templates"
 
 /** Something New makes: a folder ([extension] null), a copy of [template], or Writer's own empty file of [extension]. */
-data class DriveNew(val label: String, val extension: String?, val template: File? = null, /** the file's bytes as made (the app's empty deck) */ val bytes: ByteArray? = null)
+data class DriveNew(val label: String, val extension: String?, val template: File? = null, /** the file's bytes as made (the app's empty deck) */ val bytes: ByteArray? = null,
+    /** what New calls it in the user's language; null: a template, called by its file name */ @androidx.annotation.StringRes val shown: Int? = null)
 
 /**
  * Files just made with New (asked 16 Oct: "enter edit mode automatically, he does not want to see an empty page"):
@@ -483,7 +493,7 @@ class DriveMetadata(context: Context) {
     fun isFavorite(relativePath: String): Boolean = favorites().contains(relativePath)
 
     fun setFavorite(relativePath: String, favorite: Boolean) {
-        require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive item." }
+        need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_item) { "Invalid Drive item." }
         val updated = favorites()
         if (favorite) updated.add(relativePath) else updated.remove(relativePath)
         preferences.edit().putStringSet("favorites", updated).apply()
@@ -493,7 +503,7 @@ class DriveMetadata(context: Context) {
     fun color(relativePath: String): DriveFolderColor? = colors()[relativePath]?.let { runCatching { DriveFolderColor.valueOf(it) }.getOrNull() }
 
     fun setColor(relativePath: String, color: DriveFolderColor?) {
-        require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive folder." }
+        need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_folder) { "Invalid Drive folder." }
         val updated = colors()
         if (color == null) updated.remove(relativePath) else updated[relativePath] = color.name
         saveColors(updated)
@@ -509,7 +519,7 @@ class DriveMetadata(context: Context) {
     }
 
     fun setTags(relativePath: String, names: Set<String>) {
-        require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive item." }
+        need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_item) { "Invalid Drive item." }
         val cleaned = DriveTagRules.names(names)
         val updated = tagsByPath().toMutableMap()
         if (cleaned.isEmpty()) updated.remove(relativePath) else updated[relativePath] = cleaned
@@ -670,12 +680,12 @@ class DriveManifest(context: Context) {
 
 object DriveTagRules {
     fun name(value: String): String = value.trim().also {
-        require(it.isNotEmpty() && it.length <= 32 && ',' !in it) { "Tags must be 1–32 characters and cannot contain commas." }
+        need(it.isNotEmpty() && it.length <= 32 && ',' !in it, R.string.files_error_tag_length) { "Tags must be 1–32 characters and cannot contain commas." }
     }
 
     fun names(values: Set<String>): Set<String> {
         val cleaned = values.map(::name).toSet()
-        require(cleaned.size == values.size) { "Tags must be unique." }
+        need(cleaned.size == values.size, R.string.files_error_tag_unique) { "Tags must be unique." }
         return cleaned
     }
 }
@@ -694,19 +704,19 @@ class DriveOpeners(context: Context) {
 
     /** This file's own app first, else the app last chosen for its type (asked 2026-09-26: "remember my preference"). */
     fun component(relativePath: String): ComponentName? {
-        require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive file." }
+        need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_file) { "Invalid Drive file." }
         return (preferences.getString(relativePath, null) ?: preferences.getString(typeKey(relativePath), null))
             ?.let(ComponentName::unflattenFromString)
     }
 
     fun set(relativePath: String, component: ComponentName) {
-        require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive file." }
+        need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_file) { "Invalid Drive file." }
         preferences.edit().putString(relativePath, component.flattenToString()).putString(typeKey(relativePath), component.flattenToString()).commit()
     }
 
     /** The remembered app is gone: forget it for this file and for its type, so the chooser asks again. */
     fun clear(relativePath: String) {
-        require(relativePath.isSafeDriveRelativePath()) { "Invalid Drive file." }
+        need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_file) { "Invalid Drive file." }
         preferences.edit().remove(relativePath).remove(typeKey(relativePath)).apply()
     }
 

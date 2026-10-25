@@ -2165,7 +2165,7 @@ private fun DriveTab(
                 }
             }
             Handler(Looper.getMainLooper()).post {
-                result.onSuccess { metadataVersion++; refresh() }.onFailure { error = it.message ?: "Could not change this item." }
+                result.onSuccess { metadataVersion++; refresh() }.onFailure { error = it.shownMessage(context) ?: context.getString(R.string.files_error_change) }
             }
         }.start()
     }
@@ -2185,7 +2185,7 @@ private fun DriveTab(
                         is DriveItemAction.Tags -> metadata.setTags(item.relativePath, action.names)
                         else -> Unit // rename and folder colour are about one item by nature
                     }
-                }.exceptionOrNull()?.let { "${item.file.name}: ${it.message ?: "failed"}" }
+                }.exceptionOrNull()?.let { "${item.file.name}: ${it.shownMessage(context) ?: context.getString(R.string.files_failed)}" }
             }
             Handler(Looper.getMainLooper()).post {
                 metadataVersion++
@@ -2200,24 +2200,24 @@ private fun DriveTab(
     val chosen = (state as? DriveListState.Items)?.entries.orEmpty().filter { it.relativePath in selection }
     fun createTag(name: String): String? = runCatching { metadata.createTag(name) }.fold(
         onSuccess = { metadataVersion++; null },
-        onFailure = { it.message ?: "Could not create this tag." },
+        onFailure = { it.shownMessage(context) ?: context.getString(R.string.files_error_tag) },
     )
     fun emptyTrash() {
         Thread {
             val result = runCatching { DriveRules.emptyTrash(root) }
             Handler(Looper.getMainLooper()).post {
-                result.onSuccess { metadataVersion++; refresh() }.onFailure { error = it.message ?: "Could not empty Trash." }
+                result.onSuccess { metadataVersion++; refresh() }.onFailure { error = it.shownMessage(context) ?: context.getString(R.string.files_error_empty_trash) }
             }
         }.start()
     }
     Box(Modifier.fillMaxSize()) {
         when {
             !hasAccess -> Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Drive needs all files access", style = MaterialTheme.typography.headlineSmall)
-                Text("This reads only Drive in main storage. It is needed to browse and open your local Drive files.")
-                Button(onClick = grant) { Text("Allow all files access") }
+                Text(stringResource(R.string.files_access_title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.files_access_body))
+                Button(onClick = grant) { Text(stringResource(R.string.files_access_allow), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
-            filtering -> DriveFiles("", DriveListState.Items("", searchItems), grid, sort, metadata, { grid = !grid }, { relative -> searchQuery = ""; selectedTag = null; openFolder(relative) }, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { searchQuery = ""; selectedTag = null }, refresh, ::perform, ::performAll, title = selectedTag?.let { "#$it" } ?: "Search files", emptyMessage = "No matching Drive items.", metadataVersion = metadataVersion)
+            filtering -> DriveFiles("", DriveListState.Items("", searchItems), grid, sort, metadata, { grid = !grid }, { relative -> searchQuery = ""; selectedTag = null; openFolder(relative) }, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { searchQuery = ""; selectedTag = null }, refresh, ::perform, ::performAll, title = selectedTag?.let { "#$it" } ?: stringResource(R.string.files_search), emptyMessage = stringResource(R.string.files_search_none), metadataVersion = metadataVersion)
             pane == DrivePane.Home -> DriveHome(root, recentItems, metadata, metadataVersion, home, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, { setPane(DrivePane.Files); refresh() }, ::perform)
             pane == DrivePane.Favorites -> DriveFavorites(favoriteItems, metadata, home, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, openFolder, ::perform)
             pane == DrivePane.Files -> DriveFiles(folder, state, grid, sort, metadata, { grid = !grid }, openFolder, { relative -> error = openFile(relative, false) }, { relative -> error = openFile(relative, true) }, goParent, refresh, ::perform, ::performAll, selection, { selection = it }, emptyTrash = if (folder == "Trash") { { emptyTrashConfirm = true } } else null, metadataVersion = metadataVersion)
@@ -2236,7 +2236,7 @@ private fun DriveTab(
                 expand = { toolsOpen = true },
                 visible = !toolsOpen && selection.isEmpty(),
             )
-            SearchButton(visible = !toolsOpen && selection.isEmpty(), description = "Search files") {
+            SearchButton(visible = !toolsOpen && selection.isEmpty(), description = stringResource(R.string.files_search)) {
                 setPane(DrivePane.Files)
                 searchOpen = true
             }
@@ -2266,7 +2266,7 @@ private fun DriveTab(
             }
         }
     }
-    if (searchOpen) SearchSheet(searchQuery, { searchQuery = it }, { searchQuery = "" }, { searchOpen = false }, title = "Search files", hint = "File name or tag")
+    if (searchOpen) SearchSheet(searchQuery, { searchQuery = it }, { searchQuery = "" }, { searchOpen = false }, title = stringResource(R.string.files_search), hint = stringResource(R.string.files_search_hint))
     if (toolsOpen) DriveToolsSheet(
         sort = sort,
         setSort = { sort = it },
@@ -2284,7 +2284,7 @@ private fun DriveTab(
                 leftOut.flatMap { DriveRules.clearLeftOut(root, it, toTrash) }.forEach { (from, to) -> metadata.rewritePath(from, to); driveOpeners.rewritePath(from, to) }
             }
             Handler(Looper.getMainLooper()).post {
-                result.onFailure { error = it.message ?: "Could not move what was in the folder." }
+                result.onFailure { error = it.shownMessage(context) ?: context.getString(R.string.files_error_move_out) }
                 metadataVersion++
                 refresh() // makes the chosen ones (ensureSystemFolders) and shows them
             }
@@ -2300,13 +2300,13 @@ private fun DriveTab(
         val one = full.size == 1
         AlertDialog(
             onDismissRequest = { leftOutAsk = null },
-            title = { Text(if (one) "“${full[0]}” has files in it" else "${full.dropLast(1).joinToString(", ")} and ${full.last()} have files in them") },
-            text = { Text("Move what is inside to the top of Tetra, or move ${if (one) "the folder" else "the folders"} with everything in ${if (one) "it" else "them"} to Trash. Empty folders left out simply go.") },
-            confirmButton = { TextButton(onClick = { leftOutAsk = null; saveSystemFolders(chosen, toTrash = false) }) { Text("Move files out") } },
+            title = { Text(if (one) stringResource(R.string.files_left_out_one, full[0]) else stringResource(R.string.files_left_out_many, full.dropLast(1).joinToString(", "), full.last())) },
+            text = { Text(stringResource(if (one) R.string.files_left_out_body_one else R.string.files_left_out_body_many)) },
+            confirmButton = { TextButton(onClick = { leftOutAsk = null; saveSystemFolders(chosen, toTrash = false) }) { Text(stringResource(R.string.files_move_out), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { leftOutAsk = null }) { Text("Cancel") }
-                    TextButton(onClick = { leftOutAsk = null; saveSystemFolders(chosen, toTrash = true) }) { Text("Move to Trash") }
+                    TextButton(onClick = { leftOutAsk = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    TextButton(onClick = { leftOutAsk = null; saveSystemFolders(chosen, toTrash = true) }) { Text(stringResource(R.string.files_move_to_trash), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             },
         )
@@ -2325,7 +2325,7 @@ private fun DriveTab(
     if (newOpen) {
         val here = if (pane == DrivePane.Files && folder != "Trash" && !folder.startsWith("Trash/")) folder else ""
         NewItemDialog(here.ifEmpty { "Tetra" }, remember { DriveRules.newKinds(root, runCatching { context.assets.open("blank.pptx").use { it.readBytes() } }.getOrNull()) }, { newOpen = false }) { kind, name ->
-            val made = runCatching { DriveRules.create(root, here, kind, name) }.getOrElse { return@NewItemDialog it.message ?: "Could not make it." }
+            val made = runCatching { DriveRules.create(root, here, kind, name) }.getOrElse { return@NewItemDialog it.shownMessage(context) ?: context.getString(R.string.files_error_new) }
             newOpen = false
             if (kind.extension != null) JustMade.mark(File(root, made)) // it opens editing
             refresh()
@@ -2344,10 +2344,10 @@ private fun DriveFavorites(items: List<DriveItem>, metadata: DriveMetadata, home
     val textColor = MaterialTheme.colorScheme.onBackground
     var moreItem by remember { mutableStateOf<DriveItem?>(null) }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        FilesPageHeader("Favorites", R.drawable.ic_favorite_border, home)
+        FilesPageHeader(stringResource(R.string.files_favorites), R.drawable.ic_favorite_border, home)
         if (items.isEmpty()) {
             Icon(painterResource(R.drawable.ic_favorite_border), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp))
-            Text("No files in Favorites yet.", color = textColor, style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.files_favorites_none), color = textColor, style = MaterialTheme.typography.titleMedium)
         } else LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(items, key = { it.relativePath }) { item ->
                 DriveRowItem(item, metadata.color(item.relativePath), metadata.tags(item.relativePath), openFolder, openFile) { moreItem = item }
@@ -2370,15 +2370,15 @@ private fun DriveHome(root: File, recents: List<DriveRecent>, metadata: DriveMet
     }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            FilesPageHeader("Recent files", R.drawable.ic_home, home)
+            FilesPageHeader(stringResource(R.string.files_recent), R.drawable.ic_home, home)
         }
         item { Box(Modifier.heightIn(min = 6.dp)) }
         if (items.isEmpty()) item {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("No opened files yet")
-                    Text("Open a file from Files and it will appear here.", style = MaterialTheme.typography.bodySmall)
-                    Button(onClick = openFiles) { Text("Browse files") }
+                    Text(stringResource(R.string.files_recent_none))
+                    Text(stringResource(R.string.files_recent_none_body), style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = openFiles) { Text(stringResource(R.string.files_browse), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         }
@@ -2408,7 +2408,7 @@ private fun DriveFiles(
     selected: Set<String> = emptySet(),
     setSelected: (Set<String>) -> Unit = {},
     title: String? = null,
-    emptyMessage: String = "This folder is empty.",
+    emptyMessage: String = stringResource(R.string.files_folder_empty),
     emptyTrash: (() -> Unit)? = null,
     metadataVersion: Int = 0,
 ) {
@@ -2422,7 +2422,7 @@ private fun DriveFiles(
     PullToRefreshBox(isRefreshing = state is DriveListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
             when (state) {
-                DriveListState.Idle, DriveListState.Loading -> TimelineMessage("Loading files…")
+                DriveListState.Idle, DriveListState.Loading -> TimelineMessage(stringResource(R.string.files_loading))
                 is DriveListState.Error -> TimelineMessage(state.message, MaterialTheme.colorScheme.error)
                 is DriveListState.Items -> {
                     val entries = remember(state.entries, sort) {
@@ -2458,7 +2458,7 @@ private fun DriveFiles(
                 }
             }
             FilesPageHeader(
-                title = title ?: if (folder.isEmpty()) "Files" else folder.substringAfterLast('/'),
+                title = title ?: if (folder.isEmpty()) stringResource(R.string.app_files) else folder.substringAfterLast('/'),
                 icon = if (isTrash) R.drawable.ic_delete else R.drawable.ic_folder,
                 back = goParent,
                 emptyTrash = emptyTrash,
@@ -2467,7 +2467,7 @@ private fun DriveFiles(
                 trailing = {
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                         IconButton(onClick = toggleGrid) {
-                            Icon(painterResource(if (grid) R.drawable.ic_view_list else R.drawable.ic_view_grid), contentDescription = if (grid) "Show list" else "Show grid")
+                            Icon(painterResource(if (grid) R.drawable.ic_view_list else R.drawable.ic_view_grid), contentDescription = stringResource(if (grid) R.string.files_show_list else R.string.files_show_grid))
                         }
                     }
                 },
@@ -2496,7 +2496,7 @@ internal fun FilesPageHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
         }
         // A header floating over a scrolling list sits in the same island as Gallery's date, so it stays legible.
         if (island) Box(Modifier.weight(1f)) {
@@ -2512,7 +2512,7 @@ internal fun FilesPageHeader(
         }
         // The one destructive action on the page sits where the page's actions are, and is the only red thing.
         if (emptyTrash != null) Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer, shape = CircleShape) {
-            IconButton(onClick = emptyTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Empty Trash") }
+            IconButton(onClick = emptyTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.files_empty_trash)) }
         }
         trailing?.invoke()
     }
@@ -2525,7 +2525,7 @@ internal fun FilesPageHeader(
     modifier = modifier.fillMaxWidth(),
 ) { Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
     Icon(painterResource(R.drawable.ic_delete), contentDescription = null, modifier = Modifier.size(20.dp))
-    Text("Items in Trash can be deleted permanently.", style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.files_trash_warning), style = MaterialTheme.typography.bodySmall)
 } }
 
 private sealed interface DriveItemAction {
@@ -2558,11 +2558,12 @@ private fun DriveBulkSheet(
     var selectedTags by remember { mutableStateOf(emptySet<String>()) }
     var newTag by remember { mutableStateOf("") }
     var tagError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
     fun submit(action: DriveItemAction) { performAll(items, action); dismiss() }
     // open all the way: half open, a folder list pushed Move here and Cancel off the screen
     ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("${items.size} selected", style = MaterialTheme.typography.titleLarge)
+            Text(pluralStringResource(R.plurals.files_selected, items.size, items.size), style = MaterialTheme.typography.titleLarge)
             when (panel) {
                 DriveBulkPanel.Copy, DriveBulkPanel.Move -> {
                     val copying = panel == DriveBulkPanel.Copy
@@ -2572,7 +2573,7 @@ private fun DriveBulkSheet(
                 }
                 DriveBulkPanel.Tags -> {
                     val availableTags = metadata.allTags(driveRoot()).plus(selectedTags).distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
-                    Text("These tags replace the tags on every selected item.")
+                    Text(stringResource(R.string.files_tags_replace))
                     if (availableTags.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(availableTags, key = { it }) { tag ->
                             Surface(
@@ -2583,11 +2584,11 @@ private fun DriveBulkSheet(
                             ) { Text("#$tag", modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) }
                         }
                     }
-                    OutlinedTextField(newTag, { newTag = it; tagError = null }, modifier = Modifier.fillMaxWidth(), label = { Text("New tag") }, singleLine = true, isError = tagError != null, supportingText = tagError?.let { { Text(it) } })
-                    DriveWideAction(R.drawable.ic_tag, "Add tag") {
-                        runCatching { DriveTagRules.name(newTag) }.onSuccess { tag -> selectedTags += tag; newTag = "" }.onFailure { tagError = it.message }
+                    OutlinedTextField(newTag, { newTag = it; tagError = null }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.files_new_tag)) }, singleLine = true, isError = tagError != null, supportingText = tagError?.let { { Text(it) } })
+                    DriveWideAction(R.drawable.ic_tag, stringResource(R.string.files_add_tag)) {
+                        runCatching { DriveTagRules.name(newTag) }.onSuccess { tag -> selectedTags += tag; newTag = "" }.onFailure { tagError = it.shownMessage(context) }
                     }
-                    DriveWideAction(R.drawable.ic_check, "Save tags") { submit(DriveItemAction.Tags(selectedTags)) }
+                    DriveWideAction(R.drawable.ic_check, stringResource(R.string.files_save_tags)) { submit(DriveItemAction.Tags(selectedTags)) }
                 }
             }
         }
@@ -2607,33 +2608,33 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
     // open all the way: half open, Move's folder list pushed its buttons off the screen
     ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (panel != DriveItemSheetPanel.Menu) IconButton(onClick = { panel = DriveItemSheetPanel.Menu }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to item actions") }
+            if (panel != DriveItemSheetPanel.Menu) IconButton(onClick = { panel = DriveItemSheetPanel.Menu }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.files_back_to_actions)) }
             Text(item.file.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
             when (panel) {
                 DriveItemSheetPanel.Menu -> {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DriveActionTile(R.drawable.ic_copy, "Copy") { panel = DriveItemSheetPanel.Copy }
+                        DriveActionTile(R.drawable.ic_copy, stringResource(R.string.common_copy)) { panel = DriveItemSheetPanel.Copy }
                         if (!DriveRules.isSystem(item.relativePath)) {
-                            DriveActionTile(R.drawable.ic_move, "Move") { panel = DriveItemSheetPanel.Move }
-                            DriveActionTile(R.drawable.ic_edit, "Rename") { panel = DriveItemSheetPanel.Rename }
+                            DriveActionTile(R.drawable.ic_move, stringResource(R.string.common_move)) { panel = DriveItemSheetPanel.Move }
+                            DriveActionTile(R.drawable.ic_edit, stringResource(R.string.common_rename)) { panel = DriveItemSheetPanel.Rename }
                         }
-                        if (!item.isDirectory) DriveActionTile(R.drawable.ic_share, "Share") { dismiss(); shareDriveFile(context, item.file) }
+                        if (!item.isDirectory) DriveActionTile(R.drawable.ic_share, stringResource(R.string.common_share)) { dismiss(); shareDriveFile(context, item.file) }
                     }
-                    if (!item.isDirectory) DriveWideAction(R.drawable.ic_open_with, "Open with…") { dismiss(); openWith() }
-                    DriveWideAction(if (metadata.isFavorite(item.relativePath)) R.drawable.ic_remove_favorite else R.drawable.ic_favorite_border, if (metadata.isFavorite(item.relativePath)) "Remove from Favorites" else "Add to Favorites") { submit(DriveItemAction.Favorite(!metadata.isFavorite(item.relativePath))) }
-                    DriveWideAction(R.drawable.ic_tag, "Tags") { panel = DriveItemSheetPanel.Tags }
-                    DriveWideAction(R.drawable.ic_info, "Properties") { panel = DriveItemSheetPanel.Properties }
-                    if (item.isDirectory) DriveWideAction(R.drawable.ic_palette, "Change folder color") { panel = DriveItemSheetPanel.Color }
-                    if (item.isDirectory) DriveWideAction(R.drawable.ic_sync, "Sync now") { panel = DriveItemSheetPanel.Sync }
+                    if (!item.isDirectory) DriveWideAction(R.drawable.ic_open_with, stringResource(R.string.files_open_with)) { dismiss(); openWith() }
+                    DriveWideAction(if (metadata.isFavorite(item.relativePath)) R.drawable.ic_remove_favorite else R.drawable.ic_favorite_border, stringResource(if (metadata.isFavorite(item.relativePath)) R.string.files_favorite_remove else R.string.files_favorite_add)) { submit(DriveItemAction.Favorite(!metadata.isFavorite(item.relativePath))) }
+                    DriveWideAction(R.drawable.ic_tag, stringResource(R.string.files_tags)) { panel = DriveItemSheetPanel.Tags }
+                    DriveWideAction(R.drawable.ic_info, stringResource(R.string.files_properties)) { panel = DriveItemSheetPanel.Properties }
+                    if (item.isDirectory) DriveWideAction(R.drawable.ic_palette, stringResource(R.string.files_folder_color)) { panel = DriveItemSheetPanel.Color }
+                    if (item.isDirectory) DriveWideAction(R.drawable.ic_sync, stringResource(R.string.files_sync_now)) { panel = DriveItemSheetPanel.Sync }
                     // Already in Trash: the useful action is the opposite one — put it back where Drive keeps things.
-                    if (item.relativePath.startsWith("Trash/")) DriveWideAction(R.drawable.ic_restore, "Restore from Trash") { submit(DriveItemAction.Move("")) }
-                    else if (item.relativePath != "Trash" && !DriveRules.isSystem(item.relativePath)) DriveWideAction(R.drawable.ic_delete, "Move to Trash") { panel = DriveItemSheetPanel.Trash }
-                    if (DriveRules.isSystem(item.relativePath)) Text("A system folder: Tetra keeps it, so it cannot be moved, renamed or deleted. Everything inside it can.", style = MaterialTheme.typography.bodySmall)
+                    if (item.relativePath.startsWith("Trash/")) DriveWideAction(R.drawable.ic_restore, stringResource(R.string.files_restore)) { submit(DriveItemAction.Move("")) }
+                    else if (item.relativePath != "Trash" && !DriveRules.isSystem(item.relativePath)) DriveWideAction(R.drawable.ic_delete, stringResource(R.string.files_move_to_trash)) { panel = DriveItemSheetPanel.Trash }
+                    if (DriveRules.isSystem(item.relativePath)) Text(stringResource(R.string.files_system_note), style = MaterialTheme.typography.bodySmall)
                 }
                 DriveItemSheetPanel.Rename -> {
-                    Text("Rename this ${if (item.isDirectory) "folder" else "file"}.")
-                    OutlinedTextField(rename, { rename = it }, modifier = Modifier.fillMaxWidth(), label = { Text("New name") }, singleLine = true)
-                    DriveWideAction(R.drawable.ic_check, "Rename") { submit(DriveItemAction.Rename(rename)) }
+                    Text(stringResource(if (item.isDirectory) R.string.files_rename_folder else R.string.files_rename_file))
+                    OutlinedTextField(rename, { rename = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.files_new_name)) }, singleLine = true)
+                    DriveWideAction(R.drawable.ic_check, stringResource(R.string.common_rename)) { submit(DriveItemAction.Rename(rename)) }
                 }
                 DriveItemSheetPanel.Copy, DriveItemSheetPanel.Move -> {
                     val copying = panel == DriveItemSheetPanel.Copy
@@ -2643,7 +2644,7 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                 }
                 DriveItemSheetPanel.Tags -> {
                     val availableTags = metadata.allTags(driveRoot()).plus(selectedTags).distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
-                    Text("Select existing tags, or create one for this item.")
+                    Text(stringResource(R.string.files_tags_pick))
                     if (availableTags.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(availableTags, key = { it }) { tag ->
                             Surface(
@@ -2654,33 +2655,33 @@ private fun DriveItemMoreSheet(item: DriveItem, metadata: DriveMetadata, open: (
                             ) { Text("#$tag", modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) }
                         }
                     }
-                    OutlinedTextField(newTag, { newTag = it; tagError = null }, modifier = Modifier.fillMaxWidth(), label = { Text("New tag") }, singleLine = true, isError = tagError != null, supportingText = tagError?.let { { Text(it) } })
-                    DriveWideAction(R.drawable.ic_tag, "Add tag") {
-                        runCatching { DriveTagRules.name(newTag) }.onSuccess { tag -> selectedTags += tag; newTag = "" }.onFailure { tagError = it.message }
+                    OutlinedTextField(newTag, { newTag = it; tagError = null }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.files_new_tag)) }, singleLine = true, isError = tagError != null, supportingText = tagError?.let { { Text(it) } })
+                    DriveWideAction(R.drawable.ic_tag, stringResource(R.string.files_add_tag)) {
+                        runCatching { DriveTagRules.name(newTag) }.onSuccess { tag -> selectedTags += tag; newTag = "" }.onFailure { tagError = it.shownMessage(context) }
                     }
-                    DriveWideAction(R.drawable.ic_check, "Save tags") { submit(DriveItemAction.Tags(selectedTags)) }
+                    DriveWideAction(R.drawable.ic_check, stringResource(R.string.files_save_tags)) { submit(DriveItemAction.Tags(selectedTags)) }
                 }
                 DriveItemSheetPanel.Color -> {
-                    Text("Choose a folder color.")
+                    Text(stringResource(R.string.files_folder_color_pick))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         DriveFolderColor.entries.forEach { color -> DriveColorCircle(color, metadata.color(item.relativePath) == color) { submit(DriveItemAction.Color(color)) } }
                     }
                     DriveNoColorCircle(metadata.color(item.relativePath) == null) { submit(DriveItemAction.Color(null)) }
                 }
                 DriveItemSheetPanel.Properties -> {
-                    Text(if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name))
-                    Text("Location: $DRIVE_PATH${item.relativePath}", style = MaterialTheme.typography.bodyMedium)
-                    Text("${item.file.length()} bytes", style = MaterialTheme.typography.bodyMedium)
-                    if (metadata.tags(item.relativePath).isNotEmpty()) Text("Tags: ${metadata.tags(item.relativePath).joinToString()}", style = MaterialTheme.typography.bodyMedium)
-                    DriveWideAction(if (item.isDirectory) R.drawable.ic_folder else R.drawable.ic_file, if (item.isDirectory) "Open folder" else "Open file") { dismiss(); open() }
+                    Text(if (item.isDirectory) stringResource(R.string.files_folder) else fileTypeLabel(item.file.name))
+                    Text(stringResource(R.string.files_location, "$DRIVE_PATH${item.relativePath}"), style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.files_bytes, item.file.length()), style = MaterialTheme.typography.bodyMedium)
+                    if (metadata.tags(item.relativePath).isNotEmpty()) Text(stringResource(R.string.files_tags_list, metadata.tags(item.relativePath).joinToString()), style = MaterialTheme.typography.bodyMedium)
+                    DriveWideAction(if (item.isDirectory) R.drawable.ic_folder else R.drawable.ic_file, stringResource(if (item.isDirectory) R.string.files_open_folder else R.string.files_open_file)) { dismiss(); open() }
                 }
                 DriveItemSheetPanel.Trash -> {
-                    Text("Are you sure you want to move this item to Trash?")
-                    DriveWideAction(R.drawable.ic_delete, "Move to Trash") { submit(DriveItemAction.Trash) }
+                    Text(stringResource(R.string.files_trash_ask))
+                    DriveWideAction(R.drawable.ic_delete, stringResource(R.string.files_move_to_trash)) { submit(DriveItemAction.Trash) }
                 }
                 DriveItemSheetPanel.Sync -> {
-                    Text("No paired device is available yet. Sync will only start after a trusted device is connected.")
-                    DriveWideAction(R.drawable.ic_check, "OK", dismiss)
+                    Text(stringResource(R.string.files_sync_none))
+                    DriveWideAction(R.drawable.ic_check, stringResource(R.string.common_ok), dismiss)
                 }
             }
         }
@@ -2704,14 +2705,14 @@ private val DriveTrashAccent = Color(0xFFE3685F)
 private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<DriveItem>, cancel: () -> Unit, pick: (String) -> Unit) {
     var at by remember { mutableStateOf(start) }
     val inside = remember(at) { DriveRules.subfolders(driveRoot(), at).filterNot { f -> moving.any { it.isDirectory && it.relativePath == f } } }
-    Text(if (copying) "Copy into" else "Move into", style = MaterialTheme.typography.bodyMedium)
+    Text(stringResource(if (copying) R.string.files_copy_into else R.string.files_move_into), style = MaterialTheme.typography.bodyMedium)
     Text(listOf("Tetra").plus(at.split('/').filter { it.isNotEmpty() }).joinToString(" › "), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
     LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (at.isNotEmpty()) item("up") {
             Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { at = DriveRules.parent(at) }) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = null, modifier = Modifier.size(22.dp))
-                    Text("Up to ${DriveRules.parent(at).substringAfterLast('/').ifEmpty { "Tetra" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(stringResource(R.string.files_up_to, DriveRules.parent(at).substringAfterLast('/').ifEmpty { "Tetra" }), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -2720,21 +2721,21 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(painterResource(driveItemIcon(DriveItem(File(driveRoot(), f), f, true))), contentDescription = null, modifier = Modifier.size(22.dp))
                     Text(f.substringAfterLast('/'), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Open", modifier = Modifier.size(20.dp))
+                    Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = stringResource(R.string.common_open), modifier = Modifier.size(20.dp))
                 }
             }
         }
-        if (inside.isEmpty()) item("none") { Text("No folders inside.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp)) }
+        if (inside.isEmpty()) item("none") { Text(stringResource(R.string.files_no_folders), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp)) }
     }
     val already = !copying && moving.all { DriveRules.parent(it.relativePath) == at }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedButton(onClick = cancel, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) { Text("Cancel") }
+        OutlinedButton(onClick = cancel, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         Button(onClick = { pick(at) }, enabled = !already, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) {
             Icon(painterResource(if (copying) R.drawable.ic_copy else R.drawable.ic_move), contentDescription = null, modifier = Modifier.size(20.dp))
-            Text(if (copying) "Copy here" else "Move here", modifier = Modifier.padding(start = 8.dp))
+            Text(stringResource(if (copying) R.string.files_copy_here else R.string.files_move_here), modifier = Modifier.padding(start = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
-    if (already) Text("It is already here: open a folder to move it into.", style = MaterialTheme.typography.bodySmall)
+    if (already) Text(stringResource(R.string.files_already_here), style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable internal fun DriveWideAction(icon: Int, description: String, click: () -> Unit) = Surface(
@@ -2742,18 +2743,21 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
     modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp).clickable(onClick = click),
 ) { Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
     Icon(painterResource(icon), contentDescription = description, modifier = Modifier.size(24.dp))
-    Text(description, modifier = Modifier.padding(start = 10.dp), style = MaterialTheme.typography.labelLarge)
+    Text(description, modifier = Modifier.padding(start = 10.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
 } }
 
 @Composable private fun DriveColorCircle(color: DriveFolderColor, selected: Boolean, click: () -> Unit) = Surface(
     color = driveFolderAccent(color).copy(alpha = 0.68f), contentColor = if (color == DriveFolderColor.Yellow) Color.Black else Color.White, shape = CircleShape,
     modifier = Modifier.size(44.dp).then(if (selected) Modifier.border(2.dp, islandContentColor(), CircleShape) else Modifier).clickable(onClick = click),
-) { if (selected) Icon(painterResource(R.drawable.ic_check), contentDescription = color.name, modifier = Modifier.padding(10.dp)) }
+) { if (selected) Icon(painterResource(R.drawable.ic_check), contentDescription = stringResource(when (color) {
+    DriveFolderColor.Blue -> R.string.files_color_blue; DriveFolderColor.Green -> R.string.files_color_green; DriveFolderColor.Yellow -> R.string.files_color_yellow
+    DriveFolderColor.Red -> R.string.files_color_red; DriveFolderColor.Purple -> R.string.files_color_purple
+}), modifier = Modifier.padding(10.dp)) }
 
 @Composable private fun DriveNoColorCircle(selected: Boolean, click: () -> Unit) = Surface(
     color = driveNavigationSelectedColor(), contentColor = driveNavigationSelectedContentColor(), shape = CircleShape,
     modifier = Modifier.size(44.dp).then(if (selected) Modifier.border(2.dp, islandContentColor(), CircleShape) else Modifier).clickable(onClick = click),
-) { Icon(painterResource(R.drawable.ic_no_color), contentDescription = "No folder color", modifier = Modifier.padding(10.dp), tint = DriveTrashAccent) }
+) { Icon(painterResource(R.drawable.ic_no_color), contentDescription = stringResource(R.string.files_color_none), modifier = Modifier.padding(10.dp), tint = DriveTrashAccent) }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable private fun DriveRowItem(
@@ -2775,7 +2779,7 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
             Text(item.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
             Text(driveItemTypeLabel(item) + if (tags.isEmpty()) "" else " · ${tags.joinToString(" ") { "#$it" }}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
+        IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.files_more_options)) }
     }
 }
 
@@ -2799,7 +2803,7 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
             if (!thumb) DriveItemIcon(item, folderColor, selected, 64.dp)
             else FileThumb(item.file, Modifier.matchParentSize().clip(MaterialTheme.shapes.medium), item.lastModified, item.length) { DriveItemIcon(item, folderColor, false, 64.dp) }
             Surface(color = if (thumb) islandColor().copy(alpha = 0.7f) else Color.Transparent, contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.align(Alignment.TopEnd)) {
-                IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "More options") }
+                IconButton(onClick = more) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.files_more_options)) }
             }
         }
         Column {
@@ -2818,7 +2822,7 @@ private fun DriveFolderPicker(start: String, copying: Boolean, moving: List<Driv
 
 @Composable private fun DriveItemGlyph(item: DriveItem, folderColor: DriveFolderColor?, selected: Boolean, size: androidx.compose.ui.unit.Dp) = Icon(
     painterResource(if (selected) R.drawable.ic_check else driveItemIcon(item)),
-    contentDescription = if (selected) "Selected" else driveItemIconDescription(item),
+    contentDescription = if (selected) stringResource(R.string.files_selected_one) else driveItemIconDescription(item),
     tint = if (selected) driveSelectionContentColor() else driveItemIconColor(item, folderColor),
     modifier = Modifier.size(size),
 )
@@ -2841,9 +2845,9 @@ private fun driveItemIcon(item: DriveItem): Int = when {
     var problem by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("New") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.common_new)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("In $where", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.files_new_in, where), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 kinds.forEach { k ->
                     // Each kind in its own colour and picture, as Files shows it: Word blue, text purple (asked 14 Oct).
@@ -2851,25 +2855,25 @@ private fun driveItemIcon(item: DriveItem): Int = when {
                     val tint = when (ext) { null -> Color(0xFFE0A030); "txt", "md" -> Category.Text.color; else -> driveExtensionColor(ext).takeIf { it != MaterialTheme.colorScheme.onSurfaceVariant } ?: Category.Text.color }
                     val icon = when (ext) { null -> R.drawable.ic_folder; "docx", "doc", "odt", "rtf" -> R.drawable.ic_file_word; "txt", "md" -> R.drawable.ic_file_text; else -> R.drawable.ic_file }
                     androidx.compose.material3.FilterChip(selected = kind == k, onClick = { kind = k; problem = null },
-                        label = { Text(if (k.template != null && !k.extension.isNullOrEmpty()) "${k.label} (.${k.extension})" else k.label) },
+                        label = { Text(if (k.template != null && !k.extension.isNullOrEmpty()) "${k.label} (.${k.extension})" else k.shown?.let { stringResource(it) } ?: k.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingIcon = { Icon(painterResource(icon), null, Modifier.size(20.dp), tint = if (kind == k) Color.White else tint) },
                         colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = tint, selectedLabelColor = Color.White,
                             containerColor = tint.copy(alpha = 0.12f), labelColor = MaterialTheme.colorScheme.onSurface),
                         border = androidx.compose.material3.FilterChipDefaults.filterChipBorder(enabled = true, selected = kind == k, borderColor = tint.copy(alpha = 0.5f), selectedBorderColor = tint))
                 }
             }
-            OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text("Name") },
+            OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text(stringResource(R.string.common_name)) },
                 suffix = { kind.extension?.takeIf { it.isNotEmpty() && !name.endsWith(".$it", ignoreCase = true) }?.let { Text(".$it") } },
                 isError = problem != null, supportingText = problem?.let { { Text(it) } },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus))
         } },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { problem = create(kind, name.trim()) }) { Text("Create") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { problem = create(kind, name.trim()) }) { Text(stringResource(R.string.files_create), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
 }
 
-private fun driveItemIconDescription(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (item.isDirectory) "Folder" else "File"
+@Composable private fun driveItemIconDescription(item: DriveItem): String = stringResource(if (item.relativePath == "Trash") R.string.files_trash else if (item.isDirectory) R.string.files_folder else R.string.files_file)
 
-private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") "Trash" else if (DriveRules.isSystem(item.relativePath)) "System folder" else if (item.isDirectory) "Folder" else fileTypeLabel(item.file.name)
+@Composable private fun driveItemTypeLabel(item: DriveItem): String = if (item.relativePath == "Trash") stringResource(R.string.files_trash) else if (DriveRules.isSystem(item.relativePath)) stringResource(R.string.files_system_folder) else if (item.isDirectory) stringResource(R.string.files_folder) else fileTypeLabel(item.file.name)
 
 @Composable private fun driveItemIconColor(item: DriveItem, folderColor: DriveFolderColor?): Color = when {
     item.relativePath == "Trash" -> DriveTrashAccent
@@ -2902,9 +2906,8 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
     var chosen by remember { mutableStateOf(DriveRules.chosenFolders) }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("System folders", style = MaterialTheme.typography.titleLarge)
-            Text("Folders Tetra keeps in Files for sorting things into, each with its own picture. Documents is always there. " +
-                "A folder left out later goes; if it has files in it, you choose where they go.", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.files_system_folders), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.files_system_folders_body), style = MaterialTheme.typography.bodyMedium)
             androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 DriveRules.OPTIONAL_FOLDERS.forEach { name ->
                     val (icon, tint) = systemFolderLook(name) ?: (R.drawable.ic_folder to Color.Gray)
@@ -2915,17 +2918,17 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
                         Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Box {
                                 Icon(painterResource(icon), null, tint = tint, modifier = Modifier.size(44.dp))
-                                if (on) Icon(painterResource(R.drawable.ic_check), "Chosen", tint = Color.White,
+                                if (on) Icon(painterResource(R.drawable.ic_check), stringResource(R.string.common_chosen), tint = Color.White,
                                     modifier = Modifier.align(Alignment.TopEnd).size(18.dp).background(tint, CircleShape).padding(2.dp))
                             }
-                            Text(name, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                            Text(name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = dismiss) { Text("Cancel", color = islandContentColor()) }
-                TextButton(onClick = { save(chosen) }) { Text("OK", color = islandContentColor()) }
+                TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel), color = islandContentColor(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                TextButton(onClick = { save(chosen) }) { Text(stringResource(R.string.common_ok), color = islandContentColor(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }
@@ -2933,10 +2936,10 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
 
 @Composable private fun DriveBottomBar(pane: DrivePane, home: () -> Unit, favorites: () -> Unit, files: () -> Unit, new: () -> Unit, expand: () -> Unit, visible: Boolean, modifier: Modifier = Modifier) {
     IslandBottomBar(expand, visible, modifier) {
-        IslandNavigationItem("Home", pane == DrivePane.Home, R.drawable.ic_home, home)
-        IslandNavigationItem("Favorites", pane == DrivePane.Favorites, if (pane == DrivePane.Favorites) R.drawable.ic_favorite else R.drawable.ic_favorite_border, favorites)
-        IslandNavigationItem("Files", pane == DrivePane.Files, R.drawable.ic_folder, files)
-        IslandNavigationItem("New", false, R.drawable.ic_add, new)
+        IslandNavigationItem(stringResource(R.string.app_home), pane == DrivePane.Home, R.drawable.ic_home, home)
+        IslandNavigationItem(stringResource(R.string.files_favorites), pane == DrivePane.Favorites, if (pane == DrivePane.Favorites) R.drawable.ic_favorite else R.drawable.ic_favorite_border, favorites)
+        IslandNavigationItem(stringResource(R.string.app_files), pane == DrivePane.Files, R.drawable.ic_folder, files)
+        IslandNavigationItem(stringResource(R.string.common_new), false, R.drawable.ic_add, new)
     }
 }
 
@@ -2992,16 +2995,16 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
     val context = LocalContext.current
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { Text("Files tools", style = MaterialTheme.typography.titleLarge) }
+            item { Text(stringResource(R.string.files_tools), style = MaterialTheme.typography.titleLarge) }
             item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DriveActionTile(R.drawable.ic_tag, "Tags") { openTags() }
-                DriveActionTile(R.drawable.ic_delete, "Trash") { openTrash() }
-                DriveActionTile(R.drawable.ic_folder_others, "System folders") { openSystemFolders() }
+                DriveActionTile(R.drawable.ic_tag, stringResource(R.string.files_tags)) { openTags() }
+                DriveActionTile(R.drawable.ic_delete, stringResource(R.string.files_trash)) { openTrash() }
+                DriveActionTile(R.drawable.ic_folder_others, stringResource(R.string.files_system_folders)) { openSystemFolders() }
             } }
-            item { Text("Sort Files", style = MaterialTheme.typography.titleMedium) }
-            item { DriveWideAction(R.drawable.ic_sort_name, if (sort == DriveSort.Name) "Name ✓" else "Name") { setSort(DriveSort.Name); dismiss() } }
-            item { DriveWideAction(R.drawable.ic_sort_time, if (sort == DriveSort.Modified) "Date modified ✓" else "Date modified") { setSort(DriveSort.Modified); dismiss() } }
-            item { Text("Drive space by file type", style = MaterialTheme.typography.titleMedium) }
+            item { Text(stringResource(R.string.files_sort), style = MaterialTheme.typography.titleMedium) }
+            item { DriveWideAction(R.drawable.ic_sort_name, stringResource(R.string.common_name).let { if (sort == DriveSort.Name) stringResource(R.string.files_checked, it) else it }) { setSort(DriveSort.Name); dismiss() } }
+            item { DriveWideAction(R.drawable.ic_sort_time, stringResource(R.string.files_date_modified).let { if (sort == DriveSort.Modified) stringResource(R.string.files_checked, it) else it }) { setSort(DriveSort.Modified); dismiss() } }
+            item { Text(stringResource(R.string.files_space), style = MaterialTheme.typography.titleMedium) }
             item {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Canvas(Modifier.size(156.dp)) {
@@ -3027,7 +3030,7 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Surface(color = driveSpaceColor(type), shape = CircleShape, modifier = Modifier.size(12.dp)) {}
-                            Text(type)
+                            Text(spaceTypeLabel(type))
                         }
                         Text(Formatter.formatShortFileSize(context, bytes))
                     }
@@ -3050,12 +3053,12 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
     var tagError by remember { mutableStateOf<String?>(null) }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Tags", style = MaterialTheme.typography.titleLarge)
-            Text("Create a tag or select one to filter Files.", style = MaterialTheme.typography.bodyMedium)
-            OutlinedTextField(newTag, { newTag = it; tagError = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Create a tag") }, singleLine = true, isError = tagError != null, supportingText = tagError?.let { { Text(it) } })
-            DriveWideAction(R.drawable.ic_tag, "Create tag") { tagError = createTag(newTag); if (tagError == null) newTag = "" }
-            if (selectedTag != null) DriveWideAction(R.drawable.ic_tag, "Clear tag filter") { chooseTag(null) }
-            if (tags.isEmpty()) Text("No tags yet. Tags can also be added from an item’s three-dot menu.", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.files_tags), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.files_tags_body), style = MaterialTheme.typography.bodyMedium)
+            OutlinedTextField(newTag, { newTag = it; tagError = null }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.files_create_a_tag)) }, singleLine = true, isError = tagError != null, supportingText = tagError?.let { { Text(it) } })
+            DriveWideAction(R.drawable.ic_tag, stringResource(R.string.files_create_tag)) { tagError = createTag(newTag); if (tagError == null) newTag = "" }
+            if (selectedTag != null) DriveWideAction(R.drawable.ic_tag, stringResource(R.string.files_clear_tag)) { chooseTag(null) }
+            if (tags.isEmpty()) Text(stringResource(R.string.files_tags_none), style = MaterialTheme.typography.bodyMedium)
             else LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(tags, key = { it }) { tag ->
                     Surface(
@@ -3074,11 +3077,23 @@ private fun systemFolderLook(name: String): Pair<Int, Color>? = when (name) {
 @Composable private fun EmptyTrashSheet(dismiss: () -> Unit, emptyTrash: () -> Unit) {
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Empty Trash?", style = MaterialTheme.typography.titleLarge)
-            Text("This permanently deletes every item in Trash and cannot be undone.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-            DriveWideAction(R.drawable.ic_delete, "Empty Trash permanently", emptyTrash)
+            Text(stringResource(R.string.files_empty_trash_ask), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.files_empty_trash_body), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            DriveWideAction(R.drawable.ic_delete, stringResource(R.string.files_empty_trash_now), emptyTrash)
         }
     }
+}
+
+/** [fileTypeGroup]'s kind (also the key of its colour) in the user's words. */
+@Composable private fun spaceTypeLabel(type: String): String = when (type) {
+    "Documents" -> stringResource(R.string.files_kind_documents)
+    "Spreadsheets" -> stringResource(R.string.files_kind_spreadsheets)
+    "Text" -> stringResource(R.string.files_kind_text)
+    "Drawings" -> stringResource(R.string.files_kind_drawings)
+    "Pictures" -> stringResource(R.string.files_kind_pictures)
+    "Videos" -> stringResource(R.string.files_kind_videos)
+    "Other" -> stringResource(R.string.common_other)
+    else -> type // PDF
 }
 
 private fun driveSpaceColor(type: String): Color = when (type) {
@@ -3100,14 +3115,14 @@ private fun driveSpaceColor(type: String): Color = when (type) {
 ) {
     Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(22.dp))
-        if (selected) Text(label, style = MaterialTheme.typography.labelLarge)
+        if (selected) Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable internal fun driveNavigationSelectedColor(): Color = Color.White.copy(alpha = 0.72f)
 @Composable internal fun driveNavigationSelectedContentColor(): Color = Color.Black
 
-private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "").takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)?.plus(" file") ?: "File"
+@Composable private fun fileTypeLabel(name: String): String = name.substringAfterLast('.', "").takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)?.let { stringResource(R.string.files_type_file, it) } ?: stringResource(R.string.files_file)
 @Composable private fun driveItemColor(item: DriveItem, folderColor: DriveFolderColor?): Color {
     if (item.isDirectory) return folderColor?.let(::driveFolderAccent) ?: MaterialTheme.colorScheme.onSurfaceVariant
     return driveExtensionColor(item.file.extension)
@@ -4848,8 +4863,8 @@ private fun SelectionActions(
                 IconButton(onClick = hide) { Icon(painterResource(R.drawable.ic_lock), contentDescription = "Move selected photos to Hidden") }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("$count selected", style = MaterialTheme.typography.labelLarge)
-                Text("Cancel", modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+                Text(pluralStringResource(R.plurals.files_selected, count, count), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(R.string.common_cancel), modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -4873,8 +4888,8 @@ private fun TrashSelectionActions(count: Int, restore: () -> Unit, emptyTrash: (
                 Text("Empty trash", modifier = Modifier.padding(start = 10.dp))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Text("$count selected", style = MaterialTheme.typography.labelLarge)
-                Text("Cancel", modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+                Text(pluralStringResource(R.plurals.files_selected, count, count), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(R.string.common_cancel), modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -4900,19 +4915,19 @@ private fun DriveSelectionActions(
         Column(Modifier.padding(horizontal = 4.dp, vertical = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(horizontalArrangement = Arrangement.SpaceEvenly) {
                 if (!inTrash) {
-                    if (anyFile) IconButton(onClick = share) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share selected files") }
-                    IconButton(onClick = copy) { Icon(painterResource(R.drawable.ic_copy), contentDescription = "Copy selected") }
-                    IconButton(onClick = move) { Icon(painterResource(R.drawable.ic_move), contentDescription = "Move selected") }
-                    IconButton(onClick = tags) { Icon(painterResource(R.drawable.ic_tag), contentDescription = "Tag selected") }
-                    IconButton(onClick = favorite) { Icon(painterResource(R.drawable.ic_favorite_border), contentDescription = "Add selected to Favorites") }
-                    IconButton(onClick = trash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Move selected to Trash") }
+                    if (anyFile) IconButton(onClick = share) { Icon(painterResource(R.drawable.ic_share), contentDescription = stringResource(R.string.files_share_selected)) }
+                    IconButton(onClick = copy) { Icon(painterResource(R.drawable.ic_copy), contentDescription = stringResource(R.string.files_copy_selected)) }
+                    IconButton(onClick = move) { Icon(painterResource(R.drawable.ic_move), contentDescription = stringResource(R.string.files_move_selected)) }
+                    IconButton(onClick = tags) { Icon(painterResource(R.drawable.ic_tag), contentDescription = stringResource(R.string.files_tag_selected)) }
+                    IconButton(onClick = favorite) { Icon(painterResource(R.drawable.ic_favorite_border), contentDescription = stringResource(R.string.files_favorite_selected)) }
+                    IconButton(onClick = trash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.files_trash_selected)) }
                 } else {
-                    IconButton(onClick = restore) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "Restore selected from Trash") }
+                    IconButton(onClick = restore) { Icon(painterResource(R.drawable.ic_restore), contentDescription = stringResource(R.string.files_restore_selected)) }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("$count selected", style = MaterialTheme.typography.labelLarge)
-                Text("Cancel", modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+                Text(pluralStringResource(R.plurals.files_selected, count, count), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(R.string.common_cancel), modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -4927,8 +4942,8 @@ private fun HiddenSelectionActions(count: Int, restore: () -> Unit, cancel: () -
                 Text("Restore", modifier = Modifier.padding(start = 10.dp))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Text("$count selected", style = MaterialTheme.typography.labelLarge)
-                Text("Cancel", modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+                Text(pluralStringResource(R.plurals.files_selected, count, count), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(R.string.common_cancel), modifier = Modifier.clickable(onClick = cancel).padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -5812,7 +5827,7 @@ private fun shareDriveFiles(context: Context, files: List<File>) {
         putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
         clipData = ClipData.newRawUri(real.first().name, uris.first()).also { clip -> uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }, "Share ${real.size} files"))
+    }, context.resources.getQuantityString(R.plurals.files_share_files, real.size, real.size)))
 }
 
 internal fun shareDriveFile(context: Context, file: File) {
@@ -5823,7 +5838,7 @@ internal fun shareDriveFile(context: Context, file: File) {
         putExtra(Intent.EXTRA_STREAM, uri)
         clipData = ClipData.newRawUri(file.name, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }, "Share ${file.name}"))
+    }, context.getString(R.string.files_share_named, file.name)))
 }
 
 /** Shows one photo or video handed over by another app that is not in the Gallery (e.g. a chat attachment). */

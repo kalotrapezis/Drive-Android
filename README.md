@@ -10,7 +10,7 @@ Photos, files, notes, Office, calendar, timers, maps, contacts, calls and data, 
 
 ![Tetra on a computer, a tablet and a phone](Assets/cards/tetra-hero.jpg)
 
-Tetra replaces a dozen apps with one. Each **applet** (Photos, Files, Notes, Office, Calendar, Timer, Maps,
+Tetra replaces a dozen apps with one. Each **applet** (Photos, Files, Notes, Office, Calendar, Timer, Maps\*,
 Contacts, Phone, Data, Scanner, Codes, Text editor) opens from Home and shares the same folder, `/sdcard/Tetra`.
 [Tetra for the desktop](https://github.com/kalotrapezis/Drive) has the same applets on Linux. The two **sync over
 your own Wi-Fi**, with no server, no account and no cloud. Faces, labels, text recognition, maps and routes are all
@@ -28,7 +28,7 @@ worked out on the device.
   block and spam lookup, and calls from the computer through the phone, with a call bubble on the PC.
 - **Data**: what each app uses on mobile data and Wi-Fi, your plan's alerts and forecast, the hotspot, and Wi-Fi
   signal, spots and drops, for the phone, tablet and computer together.
-- **Maps**: offline maps of Greece, search, places, routes by car, on foot and by bike, "Main roads" or "Shortest",
+- **Maps\***: offline maps of Greece, search, places, routes by car, on foot and by bike, "Main roads" or "Shortest",
   voice guidance and Android Auto.
 - **PDF editing**: notes, highlights, ink, stamps, forms, signatures, pages, passwords, true redaction and text
   recognition (Greek and English).
@@ -55,13 +55,15 @@ worked out on the device.
 | **Office** | **Words** (`.docx`, `.doc`, `.odt`, `.rtf`) on a real page with rulers, styles, tables, pictures, comments, tracked changes and APA 7 citations. **Tables** (`.xlsx`, `.xls`, `.ods`, `.csv`) with charts and about 80 functions. **Slides** (`.pptx`, `.odp`) with themes, transitions, animations and a presenter view on a second screen. **PDF** with editing. Files open and save as themselves. |
 | **Calendar** | Plain iCalendar (`.ics`) files: day, week, month and agenda, repeats, reminders, birthdays, import and export. |
 | **Timer** | Timers that ring on every device, pinned on Home. |
-| **Maps** | OpenStreetMap on the device, search, saved places, lists and trips, routes and guidance, Android Auto. |
+| **Maps\*** | OpenStreetMap of Greece on the device, search, saved places, lists and trips, routes and guidance, Android Auto. |
 | **Contacts** | vCard files with faces, favourites, labels and history. |
 | **Phone** | The dialer, Recents, the call screen, blocking and spam lookup, and calls from the computer. |
 | **Data** | Usage per app, plan alerts, the hotspot, Wi-Fi signal and drops. |
 | **Scanner** | Scan paper to PDF: the page found live, straightened and cropped, filters, reorder, 300 or 200 dpi. |
 | **Codes** | QR codes and barcodes, text in a photo, and Greek RF payment codes. |
 | **Text editor** | Tabs for any text file, a symbols row, word wrap, Windows line endings kept. |
+
+<sub>\* Maps covers Greece only for now; other countries will follow.</sub>
 
 The full list is in [FEATURES.md](FEATURES.md).
 

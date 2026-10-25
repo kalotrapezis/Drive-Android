@@ -15,7 +15,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /*
  * The Calendar's reminders (Plan.md § Calendar › Notifications). One exact alarm, for the next reminder only. Whenever
@@ -89,7 +88,7 @@ internal object CalendarAlarms {
     private fun channel(c: Context) {
         val nm = c.getSystemService(NotificationManager::class.java) ?: return
         if (nm.getNotificationChannel(CHANNEL) == null)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Calendar reminders", NotificationManager.IMPORTANCE_HIGH).apply { description = "Reminders of your events" })
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, c.getString(R.string.calendar_channel), NotificationManager.IMPORTANCE_HIGH).apply { description = c.getString(R.string.calendar_channel_about) })
     }
 
     /** The words under a reminder's title: "Today 13:00 – 14:00 · Café Ermou", "Tue 20 Oct, all day". */
@@ -97,8 +96,8 @@ internal object CalendarAlarms {
         val zone = ZoneId.systemDefault()
         val day = if (o.allDay) o.start.toLocalDate() else o.start.withZoneSameInstant(zone).toLocalDate()
         val today = LocalDate.now(zone)
-        val dayText = when (day) { today -> "Today"; today.plusDays(1) -> "Tomorrow"; else -> day.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)) }
-        val time = if (o.allDay) "$dayText, all day" else "$dayText ${timeText(c, o.start)} – ${timeText(c, o.end)}"
+        val dayText = when (day) { today -> c.getString(R.string.common_today); today.plusDays(1) -> c.getString(R.string.common_tomorrow); else -> day.format(DateTimeFormatter.ofPattern("EEE d MMM", c.uiLocale())) }
+        val time = if (o.allDay) c.getString(R.string.calendar_when_all_day, dayText) else "$dayText ${timeText(c, o.start)} – ${timeText(c, o.end)}"
         return time + (o.event.place.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: "")
     }
 
@@ -112,8 +111,8 @@ internal object CalendarAlarms {
     }
 
     private fun show(c: Context, r: DueReminder, late: Boolean) =
-        post(c, r.key.hashCode(), r.occ.event.title.ifEmpty { "(No title)" }, (if (late) "Missed · " else "") + whenText(c, r.occ), r.occ.calendar.color,
-            occurrenceKey(r.key), if (r.occ.allDay) "All day" else timeText(c, r.occ.start))
+        post(c, r.key.hashCode(), r.occ.event.title.ifEmpty { c.getString(R.string.calendar_no_title) }, whenText(c, r.occ).let { if (late) c.getString(R.string.calendar_missed, it) else it }, r.occ.calendar.color,
+            occurrenceKey(r.key), if (r.occ.allDay) c.getString(R.string.calendar_all_day) else timeText(c, r.occ.start))
 
     fun post(c: Context, id: Int, title: String, text: String, color: Int, occurrence: String = "", time: String = "") {
         channel(c)
@@ -136,8 +135,8 @@ internal object CalendarAlarms {
             // stays until ✕ Done or Snooze (the user, 18 Oct: "an X button to consider the reminding complete")
             .setOngoing(true)
             .setAutoCancel(false)
-            .addAction(R.drawable.ic_close, "Done", done)
-            .addAction(0, "Snooze 10 min", snooze)
+            .addAction(R.drawable.ic_close, c.getString(R.string.calendar_reminder_done), done)
+            .addAction(0, c.getString(R.string.calendar_snooze), snooze)
         if (HyperIsland.isSupported(c)) HyperIsland.reminder(n, title, text, time, done,
             android.graphics.drawable.Icon.createWithResource(c, R.drawable.ic_reminder_done), snooze)
         runCatching { NotificationManagerCompat.from(c).notify(id, n.build()) } // notifications not allowed: nothing to show
@@ -176,7 +175,7 @@ internal object CalendarAlarms {
 
     fun handle(c: Context, i: Intent) = when (i.action) {
         ACTION_SNOOZE -> snooze(c, i)
-        ACTION_TEST -> post(c, 4242, "Test reminder", "Today, now · from Tetra's settings", CalendarFiles.PALETTE[0], "", java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")))
+        ACTION_TEST -> post(c, 4242, c.getString(R.string.calendar_test_title), c.getString(R.string.calendar_test_text), CalendarFiles.PALETTE[0], "", java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")))
         ACTION_DONE -> {
             NotificationManagerCompat.from(c).cancel(i.getIntExtra("id", 0))
             i.getStringExtra("occurrence")?.takeIf { it.isNotEmpty() }?.let { k -> prefs(c).edit().putStringSet("done", doneKeys(c) + k).apply() }

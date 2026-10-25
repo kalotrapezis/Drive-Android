@@ -67,11 +67,11 @@ class CalendarTest {
             .filter { it.occ.event.uid == "godchild-birthday@google.com" }
         assertEquals(listOf("2026-10-17T09:00", "2026-10-23T09:00", "2026-10-24T09:00"), due.map { LocalDateTime.ofInstant(it.at, athens).toString() })
         val b = due[0].occ
-        assertEquals(listOf("On the day at 09:00", "The day before at 09:00", "A week before at 09:00"), b.event.alarms.map { alarmText(it, true, b.start) })
+        assertEquals(listOf("On the day at 09:00", "The day before at 09:00", "A week before at 09:00"), b.event.alarms.map { alarmText(EnglishWords, it, true, b.start) })
         // the day after is the 25th, when the clocks go back: still 09:00, as on the desktop
-        assertEquals("The day after at 09:00", alarmText(CalAlarm(1, 9 * 3600), true, b.start))
+        assertEquals("The day after at 09:00", alarmText(EnglishWords, CalAlarm(1, 9 * 3600), true, b.start))
         assertEquals("2026-10-25T09:00", CalAlarm(0, 9 * 3600).times(b.start.plusDays(1), b.end.plusDays(1), true).single().toLocalDateTime().toString())
-        assertEquals("9 hours after", alarmText(CalAlarm(0, 9 * 3600), false, b.start.withHour(10)))
+        assertEquals("9 hours after", alarmText(EnglishWords, CalAlarm(0, 9 * 3600), false, b.start.withHour(10)))
     }
 
     @Test fun `a file Claude wrote, in UTC with plain line ends, reads`() {
@@ -329,5 +329,16 @@ class CalendarPlaceTest {
         assertEquals("", CalendarPlace.label("https://maps.app.goo.gl/AbC123"))
         assertEquals("geo:0,0?q=Ermou%2010%2C%20Athens", CalendarPlace.uri("Ermou 10, Athens"))
         assertEquals(null, CalendarPlace.uri("  "))
+    }
+
+    @Test fun `a repeat in words, from the string files`() {
+        val tue = LocalDateTime.parse("2026-10-20T18:00").atZone(ZoneId.of("Europe/Athens")) // the third Tuesday
+        val w = EnglishWords
+        assertEquals("Monthly on the third Tuesday", repeatText(w, "FREQ=MONTHLY;BYDAY=3TU", tue))
+        assertEquals("Every weekday", repeatText(w, "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", tue))
+        assertEquals("Every 2 weeks on Tuesday, 6 times", repeatText(w, "FREQ=WEEKLY;INTERVAL=2;COUNT=6", tue))
+        assertEquals("Yearly on 20 October, until 1 Jan 2030", repeatText(w, "FREQ=YEARLY;UNTIL=20300101T000000Z", tue))
+        assertEquals("Monthly on the third Tuesday", repeatPresets(w, tue.toLocalDate())[3].second)
+        assertEquals("30 minutes before", alarmText(w, CalAlarm(0, -1800), false, tue))
     }
 }

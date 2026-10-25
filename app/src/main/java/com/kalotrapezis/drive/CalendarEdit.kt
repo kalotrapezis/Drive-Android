@@ -81,25 +81,24 @@ import java.util.Locale
  */
 
 /** Which days of a repeating event a change or a deletion is for (Google's three). */
-internal enum class Scope(val label: String) { One("This event"), Following("This and following events"), All("All events") }
+internal enum class Scope(@androidx.annotation.StringRes val label: Int) { One(R.string.calendar_scope_one), Following(R.string.calendar_scope_following), All(R.string.calendar_scope_all) }
 
 private const val DAY = 86_400L
 
 /** The repeat menu's choices for a start date: (RRULE or null, its words). */
-internal fun repeatPresets(d: LocalDate): List<Pair<String?, String>> {
+internal fun repeatPresets(w: UiWords, d: LocalDate): List<Pair<String?, String>> {
     val dow = d.dayOfWeek
     val code = dow.name.take(2)
     val nth = (d.dayOfMonth - 1) / 7 + 1
-    val name = dow.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
-    val ordinal = listOf("first", "second", "third", "fourth", "fifth")[nth - 1]
+    val name = dow.getDisplayName(TextStyle.FULL, w.locale)
     return listOf(
-        null to "Does not repeat",
-        "FREQ=DAILY" to "Daily",
-        "FREQ=WEEKLY;BYDAY=$code" to "Weekly on $name",
-        "FREQ=MONTHLY;BYDAY=$nth$code" to "Monthly on the $ordinal $name",
-        "FREQ=MONTHLY" to "Monthly on day ${d.dayOfMonth}",
-        "FREQ=YEARLY" to "Yearly on ${d.dayOfMonth} ${d.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)}",
-        "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" to "Every weekday (Monday to Friday)",
+        null to w.get(R.string.calendar_no_repeat),
+        "FREQ=DAILY" to w.get(R.string.calendar_repeat_daily),
+        "FREQ=WEEKLY;BYDAY=$code" to w.get(R.string.calendar_repeat_on, w.get(R.string.calendar_repeat_weekly), name),
+        "FREQ=MONTHLY;BYDAY=$nth$code" to w.get(R.string.calendar_repeat_on_the, w.get(R.string.calendar_repeat_monthly), nthDay(w, nth, dow)),
+        "FREQ=MONTHLY" to w.get(R.string.calendar_repeat_on_day, w.get(R.string.calendar_repeat_monthly), d.dayOfMonth.toString()),
+        "FREQ=YEARLY" to w.get(R.string.calendar_repeat_on, w.get(R.string.calendar_repeat_yearly), d.format(DateTimeFormatter.ofPattern("d MMMM", w.locale))),
+        "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" to w.get(R.string.calendar_repeat_weekdays_full),
     )
 }
 
@@ -138,6 +137,7 @@ internal fun EventEditor(
     save: (CalEvent, CalendarInfo?) -> Unit,
 ) {
     val context = LocalContext.current
+    val w = rememberUiWords()
     var title by remember { mutableStateOf(draft.title) }
     var place by remember { mutableStateOf(draft.place) }
     var notes by remember { mutableStateOf(draft.notes) }
@@ -153,9 +153,9 @@ internal fun EventEditor(
     BackHandler(onBack = cancel)
 
     fun setStart(s: ZonedDateTime) {
-        val presets = repeatPresets(start.toLocalDate()).map { it.first }
+        val presets = repeatPresets(w, start.toLocalDate()).map { it.first }
         val k = presets.indexOf(rrule)
-        if (k > 0) rrule = repeatPresets(s.toLocalDate())[k].first // "Weekly on Tuesday" follows the date to Wednesday
+        if (k > 0) rrule = repeatPresets(w, s.toLocalDate())[k].first // "Weekly on Tuesday" follows the date to Wednesday
         end = end.plusMinutes(ChronoUnit.MINUTES.between(start, s)) // the length kept
         start = s
     }
@@ -165,24 +165,24 @@ internal fun EventEditor(
         val kept = if (allDay == draft.allDay) keepClock(alarms, draft.start, s) else alarms
         return draft.copy(title = title.trim(), place = place.trim(), notes = notes.trim(), allDay = allDay, start = s, end = e, rrule = rrule, alarms = kept)
     }
-    val dateF = DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.ENGLISH)
+    val dateF = DateTimeFormatter.ofPattern("EEE, d MMM yyyy", w.locale)
 
     val body: @Composable () -> Unit = {
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Cancel") }
-                Text(heading ?: if (isNew) "New event" else "Edit event", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = { save(result(), cal) }) { Text("Save") }
+                IconButton(onClick = cancel) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_cancel)) }
+                Text(heading ?: stringResource(if (isNew) R.string.calendar_new_event else R.string.calendar_edit_event), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                TextButton(onClick = { save(result(), cal) }) { Text(stringResource(R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             HorizontalDivider()
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Title") }, singleLine = true, textStyle = MaterialTheme.typography.titleLarge)
+                OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.calendar_title)) }, singleLine = true, textStyle = MaterialTheme.typography.titleLarge)
                 // the calendar it goes in
                 var calMenu by remember { mutableStateOf(false) }
                 Box {
                     Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { calMenu = true }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.padding(end = 12.dp).size(16.dp).clip(CircleShape).background(Color(cal?.color ?: CalendarFiles.PALETTE[0])))
-                        Text(cal?.name ?: "Personal (new)", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        Text(cal?.name ?: stringResource(R.string.calendar_personal_new), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                         Text("▾")
                     }
                     DropdownMenu(expanded = calMenu, onDismissRequest = { calMenu = false }) {
@@ -192,33 +192,33 @@ internal fun EventEditor(
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("All day", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.calendar_all_day), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                     Switch(checked = allDay, onCheckedChange = { on ->
                         if (on != allDay) alarms = defaultAlarms(on, start)
                         allDay = on
                         if (!on && !end.isAfter(start)) end = start.plusHours(1)
                     }, colors = SwitchDefaults.colors(checkedTrackColor = CalendarPink))
                 }
-                listOf("Starts" to start, "Ends" to end).forEach { (label, t) ->
+                listOf(true to start, false to end).forEach { (isStart, t) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.width(72.dp))
-                        TextButton(onClick = { picking = if (label == "Starts") "startDate" else "endDate" }) { Text(t.format(dateF)) }
-                        if (!allDay) TextButton(onClick = { picking = if (label == "Starts") "startTime" else "endTime" }) { Text(timeText(context, t)) }
+                        Text(stringResource(if (isStart) R.string.calendar_starts else R.string.calendar_ends), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.width(72.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        TextButton(onClick = { picking = if (isStart) "startDate" else "endDate" }) { Text(t.format(dateF), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        if (!allDay) TextButton(onClick = { picking = if (isStart) "startTime" else "endTime" }) { Text(timeText(context, t), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
                 }
-                if (!allDay && !end.isAfter(start)) Text("The end is before the start; it will be an hour long.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                if (!allDay && !end.isAfter(start)) Text(stringResource(R.string.calendar_end_before_start), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 // repeat
                 var repeatMenu by remember { mutableStateOf(false) }
-                val presets = repeatPresets(start.toLocalDate())
+                val presets = repeatPresets(w, start.toLocalDate())
                 Box {
                     Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { repeatMenu = true }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(painterResource(R.drawable.ic_sync), contentDescription = null, modifier = Modifier.padding(end = 12.dp).size(20.dp))
-                        Text(presets.firstOrNull { it.first == rrule }?.second ?: repeatText(rrule, start) ?: "Does not repeat", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        Text(presets.firstOrNull { it.first == rrule }?.second ?: repeatText(w, rrule, start) ?: stringResource(R.string.calendar_no_repeat), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                         Text("▾")
                     }
                     DropdownMenu(expanded = repeatMenu, onDismissRequest = { repeatMenu = false }) {
                         presets.forEach { (r, words) -> DropdownMenuItem(text = { Text(words) }, onClick = { rrule = r; repeatMenu = false }) }
-                        DropdownMenuItem(text = { Text("Custom…") }, onClick = { repeatMenu = false; customRepeat = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.calendar_custom)) }, onClick = { repeatMenu = false; customRepeat = true })
                     }
                 }
                 // reminders
@@ -226,21 +226,21 @@ internal fun EventEditor(
                     alarms.forEachIndexed { i, a ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(painterResource(R.drawable.ic_notifications), contentDescription = null, modifier = Modifier.padding(end = 12.dp).size(20.dp))
-                            Text(alarmText(a, allDay, start), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { alarms = alarms.toMutableList().also { it.removeAt(i) } }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Remove this reminder") }
+                            Text(alarmText(w, a, allDay, start), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { alarms = alarms.toMutableList().also { it.removeAt(i) } }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.calendar_remove_reminder)) }
                         }
                     }
                     var alarmMenu by remember { mutableStateOf(false) }
                     Box {
-                        TextButton(onClick = { alarmMenu = true }) { Text("Add a reminder") }
+                        TextButton(onClick = { alarmMenu = true }) { Text(stringResource(R.string.calendar_add_reminder), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         DropdownMenu(expanded = alarmMenu, onDismissRequest = { alarmMenu = false }) {
-                            presetAlarms(allDay, start).forEach { a -> DropdownMenuItem(text = { Text(alarmText(a, allDay, start)) }, onClick = { alarmMenu = false; if (a !in alarms) alarms = alarms + a }) }
-                            DropdownMenuItem(text = { Text("Custom…") }, onClick = { alarmMenu = false; customAlarm = true })
+                            presetAlarms(allDay, start).forEach { a -> DropdownMenuItem(text = { Text(alarmText(w, a, allDay, start)) }, onClick = { alarmMenu = false; if (a !in alarms) alarms = alarms + a }) }
+                            DropdownMenuItem(text = { Text(stringResource(R.string.calendar_custom)) }, onClick = { alarmMenu = false; customAlarm = true })
                         }
                     }
                 }
-                OutlinedTextField(place, { place = it }, Modifier.fillMaxWidth(), label = { Text("Place") }, singleLine = true)
-                OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth().heightIn(min = 96.dp), label = { Text("Notes") })
+                OutlinedTextField(place, { place = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.calendar_place)) }, singleLine = true)
+                OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth().heightIn(min = 96.dp), label = { Text(stringResource(R.string.calendar_notes)) })
             }
         }
     }
@@ -263,8 +263,8 @@ internal fun EventEditor(
                         if (isStart) setStart(moved) else end = moved
                     }
                     picking = null
-                }) { Text("OK") }
-            }, dismissButton = { TextButton(onClick = { picking = null }) { Text("Cancel") } }) { DatePicker(state) }
+                }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }, dismissButton = { TextButton(onClick = { picking = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }) { DatePicker(state) }
         }
         "startTime", "endTime" -> {
             val isStart = picking == "startTime"
@@ -275,8 +275,8 @@ internal fun EventEditor(
                     val moved = t.withHour(state.hour).withMinute(state.minute)
                     if (isStart) setStart(moved) else end = moved
                     picking = null
-                }) { Text("OK") }
-            }, dismissButton = { TextButton(onClick = { picking = null }) { Text("Cancel") } }, text = { TimePicker(state) })
+                }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }, dismissButton = { TextButton(onClick = { picking = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }, text = { TimePicker(state) })
         }
     }
     if (customRepeat) CustomRepeat(rrule, start.toLocalDate(), { customRepeat = false }) { rrule = it; customRepeat = false }
@@ -294,7 +294,8 @@ internal fun EventEditor(
     var count by remember { mutableStateOf(p["COUNT"] ?: "10") }
     var until by remember { mutableStateOf(p["UNTIL"]?.take(8)?.let { runCatching { LocalDate.parse(it, DateTimeFormatter.BASIC_ISO_DATE) }.getOrNull() } ?: start.plusMonths(3)) }
     var pickUntil by remember { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Repeats") }, confirmButton = {
+    val locale = LocalContext.current.uiLocale()
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.calendar_repeats_title)) }, confirmButton = {
         TextButton(onClick = {
             val n = every.toIntOrNull()?.coerceAtLeast(1) ?: 1
             val parts = mutableListOf("FREQ=$unit")
@@ -305,16 +306,16 @@ internal fun EventEditor(
             if (unit != "WEEKLY" && p["BYDAY"] != null && p["FREQ"] == unit) parts.add("BYDAY=${p["BYDAY"]}")
             when (ends) { "count" -> parts.add("COUNT=${count.toIntOrNull()?.coerceAtLeast(1) ?: 1}"); "until" -> parts.add("UNTIL=" + until.format(DateTimeFormatter.BASIC_ISO_DATE)) }
             set(parts.joinToString(";"))
-        }) { Text("OK") }
-    }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, text = {
+        }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    }, dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Every")
+                Text(stringResource(R.string.calendar_every))
                 OutlinedTextField(every, { every = it.filter(Char::isDigit).take(3) }, Modifier.width(72.dp), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 var menu by remember { mutableStateOf(false) }
-                val names = mapOf("DAILY" to "days", "WEEKLY" to "weeks", "MONTHLY" to "months", "YEARLY" to "years")
+                val names = mapOf("DAILY" to stringResource(R.string.calendar_unit_days), "WEEKLY" to stringResource(R.string.calendar_unit_weeks), "MONTHLY" to stringResource(R.string.calendar_unit_months), "YEARLY" to stringResource(R.string.calendar_unit_years))
                 Box {
-                    TextButton(onClick = { menu = true }) { Text((names[unit] ?: unit) + " ▾") }
+                    TextButton(onClick = { menu = true }) { Text((names[unit] ?: unit) + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { names.forEach { (k, v) -> DropdownMenuItem(text = { Text(v) }, onClick = { unit = k; menu = false }) } }
                 }
             }
@@ -324,27 +325,27 @@ internal fun EventEditor(
                     val on = code in days
                     Box(Modifier.size(36.dp).clip(CircleShape).background(if (on) CalendarPink else Color.Transparent)
                         .border(1.dp, CalendarPink, CircleShape).clickable { days = if (on) days - code else days + code }, contentAlignment = Alignment.Center) {
-                        Text(d.getDisplayName(TextStyle.NARROW, Locale.ENGLISH), color = if (on) Color.White else MaterialTheme.colorScheme.onSurface)
+                        Text(d.getDisplayName(TextStyle.NARROW, locale), color = if (on) Color.White else MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
-            Text("Ends", style = MaterialTheme.typography.titleSmall)
-            Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(ends == "never", { ends = "never" }); Text("Never") }
+            Text(stringResource(R.string.calendar_ends), style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(ends == "never", { ends = "never" }); Text(stringResource(R.string.calendar_never)) }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(ends == "until", { ends = "until" }); Text("On ")
-                TextButton(onClick = { ends = "until"; pickUntil = true }) { Text(until.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH))) }
+                RadioButton(ends == "until", { ends = "until" }); Text(stringResource(R.string.calendar_ends_on) + " ")
+                TextButton(onClick = { ends = "until"; pickUntil = true }) { Text(until.format(DateTimeFormatter.ofPattern("d MMM yyyy", locale)), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(ends == "count", { ends = "count" }); Text("After ")
+                RadioButton(ends == "count", { ends = "count" }); Text(stringResource(R.string.calendar_ends_after) + " ")
                 OutlinedTextField(count, { count = it.filter(Char::isDigit).take(4); ends = "count" }, Modifier.width(80.dp), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                Text(" times")
+                Text(" " + stringResource(R.string.calendar_times))
             }
         }
     })
     if (pickUntil) {
         val state = rememberDatePickerState(initialSelectedDateMillis = until.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
         DatePickerDialog(onDismissRequest = { pickUntil = false }, confirmButton = {
-            TextButton(onClick = { state.selectedDateMillis?.let { until = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }; pickUntil = false }) { Text("OK") }
+            TextButton(onClick = { state.selectedDateMillis?.let { until = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }; pickUntil = false }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }) { DatePicker(state) }
     }
 }
@@ -354,13 +355,14 @@ internal fun EventEditor(
 @Composable private fun CustomAlarm(allDay: Boolean, start: ZonedDateTime, dismiss: () -> Unit, add: (CalAlarm) -> Unit) {
     val context = LocalContext.current
     var n by remember { mutableStateOf("3") }
-    var unit by remember { mutableStateOf(if (allDay) "days" else "days") }
+    var unit by remember { mutableStateOf(if (allDay) "days" else "days") } // an ID; its words from [unitWords]
     var at by remember { mutableStateOf(if (allDay) LocalTime.of(9, 0) else start.toLocalTime()) }
     var daily by remember { mutableStateOf(false) }
     var pickTime by remember { mutableStateOf(false) }
     val units = if (allDay) listOf("days", "weeks") else listOf("minutes", "hours", "days", "weeks")
     val clock = unit == "days" || unit == "weeks"
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Reminder") }, confirmButton = {
+    val unitWords = mapOf("minutes" to stringResource(R.string.calendar_unit_minutes), "hours" to stringResource(R.string.calendar_unit_hours), "days" to stringResource(R.string.calendar_unit_days), "weeks" to stringResource(R.string.calendar_unit_weeks))
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.calendar_reminder)) }, confirmButton = {
         TextButton(onClick = {
             val k = n.toLongOrNull()?.coerceAtLeast(0) ?: 0
             add(when (unit) {
@@ -368,26 +370,26 @@ internal fun EventEditor(
                 "hours" -> CalAlarm(0, -k * 3600)
                 else -> daysBeforeAt(start, if (unit == "weeks") k * 7 else k, at, daily)
             })
-        }) { Text("Add") }
-    }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, text = {
+        }) { Text(stringResource(R.string.common_add), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    }, dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(n, { n = it.filter(Char::isDigit).take(3) }, Modifier.width(72.dp), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 var menu by remember { mutableStateOf(false) }
                 Box {
-                    TextButton(onClick = { menu = true }) { Text("$unit ▾") }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { units.forEach { u -> DropdownMenuItem(text = { Text(u) }, onClick = { unit = u; menu = false }) } }
+                    TextButton(onClick = { menu = true }) { Text("${unitWords[unit]} ▾", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { units.forEach { u -> DropdownMenuItem(text = { Text(unitWords.getValue(u)) }, onClick = { unit = u; menu = false }) } }
                 }
-                Text("before")
+                Text(stringResource(R.string.calendar_before))
             }
             if (clock) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("at ")
-                    TextButton(onClick = { pickTime = true }) { Text(timeText(context, start.with(at))) }
+                    Text(stringResource(R.string.calendar_at) + " ")
+                    TextButton(onClick = { pickTime = true }) { Text(timeText(context, start.with(at)), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { daily = !daily }) {
                     Checkbox(daily, { daily = it })
-                    Text("And every day after it, until the event", maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(stringResource(R.string.calendar_every_day_after), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -395,7 +397,7 @@ internal fun EventEditor(
     if (pickTime) {
         val state = rememberTimePickerState(at.hour, at.minute, android.text.format.DateFormat.is24HourFormat(context))
         AlertDialog(onDismissRequest = { pickTime = false }, confirmButton = {
-            TextButton(onClick = { at = LocalTime.of(state.hour, state.minute); pickTime = false }) { Text("OK") }
+            TextButton(onClick = { at = LocalTime.of(state.hour, state.minute); pickTime = false }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }, text = { TimePicker(state) })
     }
 }
@@ -403,10 +405,10 @@ internal fun EventEditor(
 /** Which days a change or deletion of a repeating event is for. */
 @Composable internal fun ScopeDialog(deleting: Boolean, dismiss: () -> Unit, pick: (Scope) -> Unit) {
     var scope by remember { mutableStateOf(Scope.One) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text(if (deleting) "Delete a repeating event" else "Change a repeating event") }, confirmButton = {
-        TextButton(onClick = { pick(scope) }) { Text("OK") }
-    }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, text = {
-        Column { Scope.entries.forEach { s -> Row(Modifier.fillMaxWidth().clickable { scope = s }, verticalAlignment = Alignment.CenterVertically) { RadioButton(scope == s, { scope = s }); Text(s.label) } } }
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(if (deleting) R.string.calendar_delete_repeating else R.string.calendar_change_repeating)) }, confirmButton = {
+        TextButton(onClick = { pick(scope) }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    }, dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }, text = {
+        Column { Scope.entries.forEach { s -> Row(Modifier.fillMaxWidth().clickable { scope = s }, verticalAlignment = Alignment.CenterVertically) { RadioButton(scope == s, { scope = s }); Text(stringResource(s.label)) } } }
     })
 }
 
@@ -416,18 +418,18 @@ internal fun EventEditor(
     var name by remember { mutableStateOf(old?.name ?: "") }
     var color by remember { mutableStateOf(old?.color ?: CalendarFiles.PALETTE[taken.size % CalendarFiles.PALETTE.size]) }
     val clash = name.trim().lowercase() in taken.map { it.lowercase() } && name.trim() != old?.name
-    AlertDialog(onDismissRequest = dismiss, title = { Text(if (old == null) "New calendar" else "Calendar") }, confirmButton = {
-        TextButton(enabled = name.isNotBlank() && !clash, onClick = { save(name.trim(), color) }) { Text(if (old == null) "Create" else "Save") }
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(if (old == null) R.string.calendar_new_calendar else R.string.app_calendar)) }, confirmButton = {
+        TextButton(enabled = name.isNotBlank() && !clash, onClick = { save(name.trim(), color) }) { Text(stringResource(if (old == null) R.string.calendar_create else R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }, dismissButton = {
         Row {
-            if (old != null) TextButton(onClick = delete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-            if (old != null) TextButton(onClick = export) { Text("Export") }
-            TextButton(onClick = dismiss) { Text("Cancel") }
+            if (old != null) TextButton(onClick = delete) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            if (old != null) TextButton(onClick = export) { Text(stringResource(R.string.common_export), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true, isError = clash,
-                supportingText = if (clash) ({ Text("A calendar has this name.") }) else null)
+            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.common_name)) }, singleLine = true, isError = clash,
+                supportingText = if (clash) ({ Text(stringResource(R.string.calendar_name_taken)) }) else null)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CalendarFiles.PALETTE.forEach { c ->
                     Box(Modifier.size(36.dp).clip(CircleShape).background(Color(c)).then(if (c == color) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier).clickable { color = c })
@@ -438,20 +440,22 @@ internal fun EventEditor(
 }
 
 /** What + and Home's Calendar tiles start (the user, 18 Oct: "New : Shedule : burthday : reminder"). */
-internal enum class NewKind(val label: String, val icon: Int) {
-    Event("New", R.drawable.ic_add), Schedule("Schedule", R.drawable.ic_schedule), Birthday("Birthday", R.drawable.ic_cake), Reminder("Reminder", R.drawable.ic_notifications)
+// [label] stays the English for Home's tiles (MainActivity) until they read [text]
+internal enum class NewKind(val label: String, val icon: Int, @androidx.annotation.StringRes val text: Int) {
+    Event("New", R.drawable.ic_add, R.string.common_new), Schedule("Schedule", R.drawable.ic_schedule, R.string.calendar_schedule),
+    Birthday("Birthday", R.drawable.ic_cake, R.string.calendar_birthday), Reminder("Reminder", R.drawable.ic_notifications, R.string.calendar_reminder)
 }
 
 /** A date to pick: its words on a button, Android's date picker behind it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun DateButton(d: LocalDate, pattern: String = "EEE, d MMM yyyy", set: (LocalDate) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    TextButton(onClick = { open = true }) { Text(d.format(DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH))) }
+    TextButton(onClick = { open = true }) { Text(d.format(DateTimeFormatter.ofPattern(pattern, LocalContext.current.uiLocale())), maxLines = 1, overflow = TextOverflow.Ellipsis) }
     if (open) {
         val state = rememberDatePickerState(initialSelectedDateMillis = d.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
         DatePickerDialog(onDismissRequest = { open = false }, confirmButton = {
-            TextButton(onClick = { state.selectedDateMillis?.let { set(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) }; open = false }) { Text("OK") }
-        }, dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } }) { DatePicker(state) }
+            TextButton(onClick = { state.selectedDateMillis?.let { set(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) }; open = false }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }, dismissButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }) { DatePicker(state) }
     }
 }
 
@@ -459,12 +463,12 @@ internal enum class NewKind(val label: String, val icon: Int) {
 @Composable internal fun TimeButton(t: LocalTime, set: (LocalTime) -> Unit) {
     val context = LocalContext.current
     var open by remember { mutableStateOf(false) }
-    TextButton(onClick = { open = true }) { Text(timeText(context, t.atDate(LocalDate.now()).atZone(ZoneId.systemDefault()))) }
+    TextButton(onClick = { open = true }) { Text(timeText(context, t.atDate(LocalDate.now()).atZone(ZoneId.systemDefault())), maxLines = 1, overflow = TextOverflow.Ellipsis) }
     if (open) {
         val state = rememberTimePickerState(t.hour, t.minute, android.text.format.DateFormat.is24HourFormat(context))
         AlertDialog(onDismissRequest = { open = false }, confirmButton = {
-            TextButton(onClick = { set(LocalTime.of(state.hour, state.minute)); open = false }) { Text("OK") }
-        }, dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } }, text = { TimePicker(state) })
+            TextButton(onClick = { set(LocalTime.of(state.hour, state.minute)); open = false }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }, dismissButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }, text = { TimePicker(state) })
     }
 }
 
@@ -477,26 +481,26 @@ internal enum class NewKind(val label: String, val icon: Int) {
     var date by remember { mutableStateOf(LocalDate.now()) }
     var yearKnown by remember { mutableStateOf(false) }
     var asContact by remember { mutableStateOf(true) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Birthday") }, confirmButton = {
-        TextButton(enabled = name.isNotBlank(), onClick = { save(name.trim(), date, yearKnown, asContact) }) { Text("Save") }
-    }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, text = {
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.calendar_birthday)) }, confirmButton = {
+        TextButton(enabled = name.isNotBlank(), onClick = { save(name.trim(), date, yearKnown, asContact) }) { Text(stringResource(R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    }, dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Whose birthday") }, singleLine = true)
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("Date", Modifier.width(72.dp)); DateButton(date, if (yearKnown) "d MMMM yyyy" else "d MMMM") { date = it } }
+            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.calendar_whose_birthday)) }, singleLine = true)
+            Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.calendar_date), Modifier.width(72.dp), maxLines = 1, overflow = TextOverflow.Ellipsis); DateButton(date, if (yearKnown) "d MMMM yyyy" else "d MMMM") { date = it } }
             Row(Modifier.clickable { yearKnown = !yearKnown }, verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(yearKnown, { yearKnown = it }); Text("I know the year (to show the age)")
+                Checkbox(yearKnown, { yearKnown = it }); Text(stringResource(R.string.calendar_year_known))
             }
             Row(Modifier.clickable { asContact = !asContact }, verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(asContact, { asContact = it }); Text("Save as a contact too")
+                Checkbox(asContact, { asContact = it }); Text(stringResource(R.string.calendar_save_as_contact))
             }
-            Text("All day, every year, in the calendar Contacts' birthdays go into (Γενέθλια); reminded at 9:00.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.calendar_birthday_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     })
 }
 
 /** A school year's dates (the user, 18 Oct); the high school's end is a guess until the user says. */
-internal class ScheduleTemplate(val label: String, val startMonth: Int, val startDay: Int, val endMonth: Int, val endDay: Int)
-internal val SCHEDULE_TEMPLATES = listOf(ScheduleTemplate("Elementary school year", 9, 1, 6, 26), ScheduleTemplate("High school year", 9, 1, 6, 15))
+internal class ScheduleTemplate(@androidx.annotation.StringRes val label: Int, val startMonth: Int, val startDay: Int, val endMonth: Int, val endDay: Int)
+internal val SCHEDULE_TEMPLATES = listOf(ScheduleTemplate(R.string.calendar_elementary_year, 9, 1, 6, 26), ScheduleTemplate(R.string.calendar_high_school_year, 9, 1, 6, 15))
 
 /** The school year that a day falls in, from September: 18 Oct 2026 → 1 Sep 2026 – June 2027. */
 internal fun templateDates(t: ScheduleTemplate, today: LocalDate): Pair<LocalDate, LocalDate> {
@@ -534,17 +538,18 @@ internal fun scheduleEvent(uid: String, title: String, place: String, weekdays: 
     var skip by remember { mutableStateOf(holidays) }
     var cal by remember { mutableStateOf(calendar ?: calendars.firstOrNull()) }
     var template by remember { mutableStateOf<ScheduleTemplate?>(null) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Schedule") }, confirmButton = {
-        TextButton(enabled = title.isNotBlank() && days.isNotEmpty() && !to.isBefore(from), onClick = { save(title.trim(), place.trim(), days, at, until, from, to, skip, cal) }) { Text("Save") }
-    }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } }, text = {
+    val locale = LocalContext.current.uiLocale()
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.calendar_schedule)) }, confirmButton = {
+        TextButton(enabled = title.isNotBlank() && days.isNotEmpty() && !to.isBefore(from), onClick = { save(title.trim(), place.trim(), days, at, until, from, to, skip, cal) }) { Text(stringResource(R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    }, dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("What (e.g. Lessons)") }, singleLine = true)
+            OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.calendar_schedule_what)) }, singleLine = true)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SCHEDULE_TEMPLATES.forEach { t ->
                     val on = template == t
                     Box(Modifier.clip(CircleShape).background(if (on) CalendarPink else Color.Transparent).border(1.dp, CalendarPink, CircleShape)
                         .clickable { template = t; val (a, b) = templateDates(t, today); from = a; to = b; days = days.ifEmpty { setOf(java.time.DayOfWeek.MONDAY) } }.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                        Text(t.label, color = if (on) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelLarge)
+                        Text(stringResource(t.label), color = if (on) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -553,19 +558,19 @@ internal fun scheduleEvent(uid: String, title: String, place: String, weekdays: 
                     val on = d in days
                     Box(Modifier.size(36.dp).clip(CircleShape).background(if (on) CalendarPink else Color.Transparent).border(1.dp, CalendarPink, CircleShape)
                         .clickable { days = if (on) days - d else days + d }, contentAlignment = Alignment.Center) {
-                        Text(d.getDisplayName(TextStyle.NARROW, Locale.ENGLISH), color = if (on) Color.White else MaterialTheme.colorScheme.onSurface)
+                        Text(d.getDisplayName(TextStyle.NARROW, locale), color = if (on) Color.White else MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("From", Modifier.width(56.dp)); TimeButton(at) { at = it }; Text("to"); TimeButton(until) { until = it } }
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("Starts", Modifier.width(56.dp)); DateButton(from) { from = it } }
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("Ends", Modifier.width(56.dp)); DateButton(to) { to = it } }
-            if (template == SCHEDULE_TEMPLATES[1]) Text("The high school year's end is a guess (15 June): set the right date.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            if (holidays) Row(Modifier.clickable { skip = !skip }, verticalAlignment = Alignment.CenterVertically) { Checkbox(skip, { skip = it }); Text("Skip the days in the Holidays calendar") }
-            OutlinedTextField(place, { place = it }, Modifier.fillMaxWidth(), label = { Text("Place") }, singleLine = true)
+            Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.calendar_from), Modifier.width(56.dp), maxLines = 1, overflow = TextOverflow.Ellipsis); TimeButton(at) { at = it }; Text(stringResource(R.string.calendar_to)); TimeButton(until) { until = it } }
+            Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.calendar_starts), Modifier.width(56.dp), maxLines = 1, overflow = TextOverflow.Ellipsis); DateButton(from) { from = it } }
+            Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.calendar_ends), Modifier.width(56.dp), maxLines = 1, overflow = TextOverflow.Ellipsis); DateButton(to) { to = it } }
+            if (template == SCHEDULE_TEMPLATES[1]) Text(stringResource(R.string.calendar_high_school_guess), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (holidays) Row(Modifier.clickable { skip = !skip }, verticalAlignment = Alignment.CenterVertically) { Checkbox(skip, { skip = it }); Text(stringResource(R.string.calendar_skip_holidays)) }
+            OutlinedTextField(place, { place = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.calendar_place)) }, singleLine = true)
             var menu by remember { mutableStateOf(false) }
             Box {
-                TextButton(onClick = { menu = true }) { Box(Modifier.padding(end = 8.dp).size(12.dp).clip(CircleShape).background(Color(cal?.color ?: CalendarFiles.PALETTE[0]))); Text((cal?.name ?: "Personal (new)") + " ▾") }
+                TextButton(onClick = { menu = true }) { Box(Modifier.padding(end = 8.dp).size(12.dp).clip(CircleShape).background(Color(cal?.color ?: CalendarFiles.PALETTE[0]))); Text((cal?.name ?: stringResource(R.string.calendar_personal_new)) + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { calendars.forEach { c -> DropdownMenuItem(text = { Text(c.name) }, onClick = { cal = c; menu = false }) } }
             }
         }

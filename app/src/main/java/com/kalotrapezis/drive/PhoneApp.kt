@@ -52,7 +52,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-internal enum class PhoneTab(val icon: Int) { Recents(R.drawable.ic_history), Favourites(R.drawable.ic_star), Contacts(R.drawable.ic_contacts), Recordings(R.drawable.ic_mic) }
+internal enum class PhoneTab(val icon: Int) { Recents(R.drawable.ic_history), Favourites(R.drawable.ic_favorite), Contacts(R.drawable.ic_contacts), Recordings(R.drawable.ic_mic) }
 
 /**
  * The Phone applet (Plan.md § Phone), Tetra's way (the user, 24 Oct: "an island for recents, favourites, contacts,

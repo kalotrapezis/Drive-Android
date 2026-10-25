@@ -158,7 +158,7 @@ internal fun ContactEditor(start: ContactInfo, isNew: Boolean, allLabels: List<S
                     Group("Labels") {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             FilterChip(i.favourite, { i = i.favourite(!i.favourite) }, label = { Text("Favourite") },
-                                leadingIcon = { Icon(painterResource(R.drawable.ic_star), contentDescription = null) }, colors = chipColors())
+                                leadingIcon = { Icon(painterResource(R.drawable.ic_favorite), contentDescription = null) }, colors = chipColors())
                             (allLabels + i.labels).distinctBy { it.lowercase() }.sortedBy { it.lowercase() }.forEach { l ->
                                 val on = i.labels.any { it.equals(l, true) }
                                 FilterChip(on, { i = i.copy(categories = if (on) i.categories.filterNot { it.equals(l, true) } else i.categories + l) }, label = { Text(l) }, colors = chipColors())

@@ -90,9 +90,63 @@ internal val CONTACTS_COLOR = Color(0xFFBE7E4D)
 internal fun contactsRoot() = ContactsFiles.root(TetraFolder.root(Environment.getExternalStorageDirectory()))
 
 /** Contacts read ahead when Tetra opens (the user, 24 Oct: "no contacts" showed for a second before the list). */
+/**
+ * Contacts read ahead when Tetra opens, so the screen has them at once (the user, 25 Oct: "slow; taps don't answer until
+ * it's all ready"): first the favourites and the screenful the list began with last time (their files' names are kept),
+ * their faces made small at once, then everyone, sorted here and not on the screen's thread. [list] is what the screen shows; [all] everyone.
+ */
 internal object ContactsPreload {
+    private const val FIRST = 24
     @Volatile var all: List<Contact>? = null
-    fun warm() = Thread { runCatching { all = ContactsFiles.all(contactsRoot()) } }.start()
+    /** The list as the screen shows it, sorted for [byLast]: the first screenful, then everyone. */
+    var list by mutableStateOf<List<Contact>?>(null)
+        private set
+    @Volatile var byLast = false
+        private set
+    private fun order(c: Context) = File(c.cacheDir, "contacts-first.txt")
+
+    fun warm(context: Context) = Thread { runCatching { load(context.applicationContext, ContactsPrefs.byLast(context)) } }.start()
+
+    /** Reads the folder (only files changed since are read again) and answers everyone; one read at a time. */
+    fun load(context: Context, byLast: Boolean): List<Contact> = synchronized(this) {
+        if (list == null) runCatching {
+            val first = order(context).readLines().map(::File).filter { it.isFile }.map(ContactsFiles::cached).filter { it.lines.isNotEmpty() }
+            first.forEach { ContactThumbs.get(it.info.photo, ContactThumbs.SMALL) } // the favourites' faces ready before anyone else is read
+            if (first.isNotEmpty()) { this.byLast = byLast; list = ContactsFiles.sorted(first, byLast) }
+        }
+        val everyone = ContactsFiles.sorted(ContactsFiles.all(contactsRoot()), byLast)
+        // the favourites (their faces on top) and the first screenful: read first next time; a face is made again only
+        // when its photo changed (ContactThumbs knows a photo by its bytes)
+        val ahead = (everyone.filter { it.info.favourite } + everyone.take(FIRST)).distinct()
+        ahead.forEach { ContactThumbs.get(it.info.photo, ContactThumbs.SMALL) }
+        all = everyone; this.byLast = byLast; list = everyone
+        runCatching { order(context).writeText(ahead.mapNotNull { it.file?.path }.joinToString("\n")) }
+        everyone
+    }
+}
+
+/**
+ * Contacts' photos made small once, off the screen's thread: a row's face is 40 dp, and decoding the vCard's full photo
+ * for each row as it came on screen kept taps waiting.
+ */
+internal object ContactThumbs {
+    const val SMALL = 192
+    private const val LARGE = 720
+    private val cache = android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(400)
+    fun size(px: Int) = if (px <= SMALL) SMALL else LARGE
+    private fun key(photo: String, size: Int) = "${photo.length}:${photo.hashCode()}:$size"
+    fun cached(photo: String?, size: Int) = photo?.let { cache.get(key(it, size)) }
+    fun get(photo: String?, size: Int): androidx.compose.ui.graphics.ImageBitmap? {
+        photo ?: return null
+        cached(photo, size)?.let { return it }
+        val bytes = runCatching { java.util.Base64.getDecoder().decode(photo) }.getOrNull() ?: return null
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= size) sample *= 2
+        val b = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+        return b.asImageBitmap().also { cache.put(key(photo, size), it) }
+    }
 }
 
 /**
@@ -102,13 +156,13 @@ internal object ContactsPreload {
  */
 internal object ContactsTiming {
     fun watch(opened: Long, shown: () -> Long?) {
-        var last = 0L; var stuckUntil = 0L; var longest = 0L
+        var last = opened; var stuckUntil = 0L; var longest = 0L
         val choreographer = android.view.Choreographer.getInstance()
         choreographer.postFrameCallback(object : android.view.Choreographer.FrameCallback {
             override fun doFrame(nanos: Long) {
                 val now = android.os.SystemClock.uptimeMillis()
-                if (last > 0 && now - last > 100) stuckUntil = now
-                if (last > 0) longest = maxOf(longest, now - last)
+                if (now - last > 100) stuckUntil = now
+                longest = maxOf(longest, now - last)
                 last = now
                 if (now - opened < 5000) choreographer.postFrameCallback(this)
                 else WriterLog.i("Contacts: opened → first contacts ${shown()?.let { "${it - opened} ms" } ?: "not yet"}, taps answered from ${if (stuckUntil == 0L) 0 else stuckUntil - opened} ms, longest frame $longest ms")
@@ -141,7 +195,7 @@ internal fun syncBirthdays(context: Context, contacts: List<ContactInfo>): List<
     return links
 }
 
-private enum class ContactsTab(val label: String, val icon: Int) { All("All", R.drawable.ic_person), Favourites("Favourites", R.drawable.ic_star), Labels("Labels", R.drawable.ic_label) }
+private enum class ContactsTab(val label: String, val icon: Int) { All("All", R.drawable.ic_person), Favourites("Favourites", R.drawable.ic_favorite), Labels("Labels", R.drawable.ic_label) }
 
 /**
  * Contacts (Plan.md § Contacts): the list (search on top, favourites' faces, letters), a contact's page as the iPhone's
@@ -193,13 +247,15 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         onDispose { watcher.stop() }
     }
     // read ahead when Tetra opens (ContactsPreload): the list shows at once; until the first read, a spinner, never "No contacts"
-    val loaded by produceState(ContactsPreload.all?.let { ContactsFiles.sorted(it, byLast) }, version, byLast) {
-        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(root).also { ContactsPreload.all = it }.let { ContactsFiles.sorted(it, byLast) } }.getOrDefault(emptyList()) }
+    // (sorted there too: nothing heavy on this thread, taps answered from the first frame)
+    var failed by remember { mutableStateOf(false) }
+    LaunchedEffect(version, byLast) {
+        failed = withContext(Dispatchers.IO) { runCatching { ContactsPreload.load(context, byLast) } }.onFailure { WriterLog.e("Contacts: reading the folder", it) }.isFailure
     }
+    val loaded = ContactsPreload.list?.takeIf { ContactsPreload.byLast == byLast } ?: if (failed) emptyList() else null
     val all = loaded.orEmpty()
-    val opened = remember { android.os.SystemClock.uptimeMillis() }
     var shownAt by remember { mutableStateOf<Long?>(null) }
-    LaunchedEffect(Unit) { ContactsTiming.watch(opened) { shownAt } }
+    val opened = remember { android.os.SystemClock.uptimeMillis().also { t -> ContactsTiming.watch(t) { shownAt } } } // from the first frame on
     LaunchedEffect(all.isNotEmpty()) { if (all.isNotEmpty() && shownAt == null) { androidx.compose.runtime.withFrameMillis {}; shownAt = android.os.SystemClock.uptimeMillis() } }
     val open = all.firstOrNull { it.info.uid == openUid }
     // two columns always show a contact; one column (a phone, split screen, a folded tablet) opens one only when it is
@@ -287,7 +343,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
         val cs = exporting
         if (uri != null) act { context.contentResolver.openOutputStream(uri)!!.use { it.write(ContactsMerge.export(cs).toByteArray()) }; "${cs.size} contacts exported" }
     }
-    val duplicates = remember(all) { ContactsMerge.pairs(all) }
+    val duplicates by produceState(emptyList<Pair<Contact, Contact>>(), all) { value = withContext(Dispatchers.Default) { ContactsMerge.pairs(all) } }
 
     val shown = remember(all, query, tab, label) {
         all.filter { c -> ContactsFiles.matches(c.info, query) && when {
@@ -327,12 +383,28 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                 }
                 // the favourites' faces on top of All (the user's sketch: round faces, one tap opens)
                 val favs = all.filter { it.info.favourite }
+                // a grid of two rows, not a row to scroll (the user, 25 Oct); more than fit: the last cell opens Favourites
                 if (tab == ContactsTab.All && query.isEmpty() && label == null && favs.isNotEmpty()) item(key = "favs") {
-                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(favs, key = { "f" + it.info.uid }) { c ->
-                            Column(Modifier.width(64.dp).clickable { openUid = c.info.uid; autoOpened = false }, horizontalAlignment = Alignment.CenterHorizontally) {
-                                ContactAvatar(c.info, 56.dp)
-                                Text(c.info.given.ifBlank { c.info.name }, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        val cols = ((maxWidth + 8.dp) / 72.dp).toInt().coerceAtLeast(1)
+                        val room = cols * 2
+                        val cells = if (favs.size > room) favs.take(room - 1) else favs
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            (cells.map<Contact, Contact?> { it } + if (favs.size > room) listOf(null) else emptyList()).chunked(cols).forEach { row ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    row.forEach { c ->
+                                        Column(Modifier.width(64.dp).clip(MaterialTheme.shapes.medium).clickable {
+                                            if (c == null) tab = ContactsTab.Favourites else { openUid = c.info.uid; autoOpened = false }
+                                        }, horizontalAlignment = Alignment.CenterHorizontally) {
+                                            if (c != null) ContactAvatar(c.info, 56.dp)
+                                            else Box(Modifier.size(56.dp).clip(CircleShape).background(CONTACTS_COLOR.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+                                                Text("+${favs.size - cells.size}", color = CONTACTS_COLOR, fontWeight = FontWeight.Bold)
+                                            }
+                                            Text(c?.let { it.info.given.ifBlank { it.info.name } } ?: "All", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                    repeat(cols - row.size) { Spacer(Modifier.width(64.dp)) }
+                                }
                             }
                         }
                     }
@@ -347,7 +419,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                     Hint(when {
                         all.isEmpty() -> "No contacts yet. Pull up the island for Import: this phone's contacts, or a file from Google Contacts (vCard, CSV or Takeout's zip)."
                         query.isNotEmpty() -> "No one matches \"$query\"."
-                        tab == ContactsTab.Favourites -> "No favourites yet: the star on a contact's page adds one."
+                        tab == ContactsTab.Favourites -> "No favourites yet: the heart on a contact's page adds one."
                         else -> "No one here."
                     })
                 }
@@ -447,7 +519,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
                             IconButton(onClick = {
                                 val on = !many.all { it.info.favourite }
                                 act { many.forEach { c -> ContactsFiles.save(root, c, c.info.favourite(on)) }; if (on) "${many.size} added to favourites" else "${many.size} not favourites" }
-                            }) { Icon(painterResource(if (many.all { it.info.favourite }) R.drawable.ic_star else R.drawable.ic_star_border), contentDescription = "Favourites") }
+                            }) { Icon(painterResource(if (many.all { it.info.favourite }) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = "Favourites") }
                             IconButton(onClick = {
                                 runCatching {
                                     val f = File(File(context.cacheDir, "share").apply { mkdirs() }, "${many.size} contacts.vcf").apply { writeText(ContactsMerge.export(many)) }
@@ -637,9 +709,12 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
 
 /** A contact's round face: the photo, or the initial on a soft brown (the plan's page). Decoded once per photo. */
 @Composable internal fun ContactAvatar(i: ContactInfo, size: Dp) {
-    val photo = remember(i.photo) { i.photo?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }
-        ?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
-    if (photo != null) Image(photo, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size).clip(CircleShape))
+    val px = ContactThumbs.size(with(androidx.compose.ui.platform.LocalDensity.current) { size.roundToPx() })
+    val photo by produceState(ContactThumbs.cached(i.photo, px), i.photo, px) { // the initial until it is decoded (off this thread)
+        if (value == null && i.photo != null) value = withContext(Dispatchers.Default) { ContactThumbs.get(i.photo, px) }
+    }
+    val shown = photo
+    if (shown != null) Image(shown, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size).clip(CircleShape))
     else Box(Modifier.size(size).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFFD7A982), CONTACTS_COLOR, Color(0xFF8D5A3B)))), contentAlignment = Alignment.Center) {
         val first = i.name.trim().firstOrNull()?.takeIf { it.isLetterOrDigit() }
         if (first == null) Icon(painterResource(R.drawable.ic_person), contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.55f))
@@ -790,7 +865,7 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
             }
         }
         // the contact's own buttons in one island at the bottom right, within the thumb's reach (the user, 24 Oct: Edit
-        // there, then "bring the star, maybe share too"): Share · ☆ · Edit
+        // there, then "bring the star, maybe share too"): Share · ♥ · Edit (a heart since 25 Oct: the star marks the default number)
         Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
             modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp)) {
             Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -809,7 +884,7 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                     "Show as a QR code" to { qr = true },
                 ) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
                 IconButton(onClick = star) {
-                    Icon(painterResource(if (i.favourite) R.drawable.ic_star else R.drawable.ic_star_border), contentDescription = if (i.favourite) "Remove from favourites" else "Add to favourites",
+                    Icon(painterResource(if (i.favourite) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = if (i.favourite) "Remove from favourites" else "Add to favourites",
                         tint = if (i.favourite) CONTACTS_COLOR else islandContentColor())
                 }
                 Surface(onClick = edit, color = Color.White.copy(alpha = 0.12f), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.padding(4.dp)) {

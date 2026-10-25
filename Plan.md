@@ -3090,7 +3090,13 @@ Send log.
 - [x] 8. Home's Data group (the art, the plan at a glance, Devices, Signal, Drops) and the icon: tools/applet-icons.py cuts
    Data.png's dark corners with a rounded-square mask; launcher background #17191D; Settings › App icons: Tetra Data.
    Emulator: light and dark, phone and tablet width. Unit suite 644, 0 failing, 9 skipped (DataTest, DataSignalTest).
-- [ ] 9. On the real phone, tablet and PC (tools/phone-install.sh), a cycle's numbers next to Nova's. Waits for the user.
+- [~] 9. On the real devices (25 Oct): the phone and the tablet installed (step 1's notes above), the phone's numbers next to
+   Nova's (6 % apart, the figure typed). **The computer**: desktop 0.6.0-beta.14 (Drive 9c05f58) installed by the user
+   (`sudo apt install ./…deb`), restarted 09:21; its first file at 09:30: 74 MB Wi-Fi, 27.8 MB of it over the phone's
+   hotspot — the other ~46 MB its own sync with the phone (the speed test's 40 MB among them), left out as designed. From
+   the phone: "Phone as hotspot" read "Computer: −16 dBm · 162 Mb/s · Xiaomi 15"; speed to the computer ↓ 192 · ↑ 22 Mb/s.
+   Left: the tablet's files reaching the phone and the computer (it was not connected when synced), a week of drops,
+   roaming on a trip; the span-chip fix (d780018) goes with the next phone install. Merging both branches waits for the user.
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

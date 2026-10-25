@@ -246,13 +246,16 @@ class MainActivity : ComponentActivity() {
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
         CalendarIndex.dir = cacheDir // the Calendar's events kept between starts
         CalendarAlarms.planSoon(this) // the Calendar's next reminder, from the files as they are now
-        CalendarPreload.warm(this) // and its events, so it opens with them
         ContactsPreload.warm(this) // Contacts open full, not "no contacts" for a second
         PhoneLog.warm(this) // and the Phone's Recents
         NotesStore.indexDir = cacheDir
-        // and Notes; at a background priority, so Home's first frames and an applet tapped at once are not kept waiting
-        Thread { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); if (Environment.isExternalStorageManager()) runCatching { notesStore().list() } }.start()
         HomeArt.warm(this) // Home's pictures made small before Home is drawn
+        // the Calendar's events and Notes once Home's first frame is drawn, at a background priority: started with it, they
+        // slowed that frame on the phone (25 Oct)
+        android.view.Choreographer.getInstance().postFrameCallback { window.decorView.post {
+            CalendarPreload.warm(this)
+            Thread { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); if (Environment.isExternalStorageManager()) runCatching { notesStore().list() } }.start()
+        } }
         Thread { runCatching { TimerService.check(this) } }.start() // a timer running (here or started elsewhere): its notification
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false
@@ -1392,8 +1395,10 @@ private var homeSyncSummary = ""
 /** Four favourites for Home, from Contacts' read-ahead (ContactsPreload): no second read of every contact's file. */
 private fun homeFavourites(all: List<Contact>?, phones: Boolean) =
     all.orEmpty().map { it.info }.filter { it.favourite && (!phones || it.phones.isNotEmpty()) }.sortedBy { ContactsFiles.sortKey(it, false) }.take(4)
-private suspend fun homeFavourites(context: Context, phones: Boolean, or: List<ContactInfo>) = withContext(Dispatchers.IO) {
-    runCatching { homeFavourites(ContactsPreload.load(context.applicationContext, ContactsPrefs.byLast(context)), phones) }.getOrDefault(or)
+// read as the read-ahead reads (a file again only when it changed), not through it: its load published the whole list
+// again to an open Contacts, which then kept taps waiting ~1.3 s on the phone (25 Oct)
+private suspend fun homeFavourites(phones: Boolean, or: List<ContactInfo>) = withContext(Dispatchers.IO) {
+    runCatching { homeFavourites(ContactsFiles.all(contactsRoot()), phones) }.getOrDefault(or)
 }
 
 /**
@@ -1401,8 +1406,7 @@ private suspend fun homeFavourites(context: Context, phones: Boolean, or: List<C
  * its recommended answer), an empty one "Add" opening Contacts.
  */
 @Composable private fun HomeContactsGroup(open: (String?) -> Unit) {
-    val context = LocalContext.current
-    val favs by produceState(remember { homeFavourites(ContactsPreload.all, false) }) { value = homeFavourites(context, false, value) }
+    val favs by produceState(remember { homeFavourites(ContactsPreload.all, false) }) { value = homeFavourites(false, value) }
     HomeGroup(Category.Contacts.color) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeArtCard("Contacts", R.drawable.contacts_art, { open(null) }, Modifier.weight(1f), artSize = 76)
@@ -1428,7 +1432,7 @@ internal fun openPhone(c: Context, tab: String? = null) = c.startActivity(Intent
 /** The Phone on Home: its art, and four favourites to call with one tap (the plan's question 7, its recommended answer). */
 @Composable private fun HomePhoneGroup() {
     val context = LocalContext.current
-    val favs by produceState(remember { homeFavourites(ContactsPreload.all, true) }) { value = homeFavourites(context, true, value) }
+    val favs by produceState(remember { homeFavourites(ContactsPreload.all, true) }) { value = homeFavourites(true, value) }
     val scope = rememberCoroutineScope()
     fun call(f: ContactInfo) {
         val n = f.defaultPhone ?: f.phones.first().value

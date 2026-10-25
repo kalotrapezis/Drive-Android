@@ -104,7 +104,8 @@ private fun inView(n: Note, v: NotesView) = when (v) {
     NotesView.Archived -> n.trashedAt == null && n.archivedAt != null
     NotesView.Home -> n.trashedAt == null && n.archivedAt == null
 }
-private fun fold(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "").lowercase()
+private val accents = Regex("\\p{M}")
+private fun fold(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(accents, "").lowercase()
 
 /** `start`: true opens a new checklist, false a new note, null the list (the home card's three doors). */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -113,7 +114,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     val store = remember { notesStore() }
     val scope = rememberCoroutineScope()
     var version by remember { mutableIntStateOf(0) }
-    var notes by remember { mutableStateOf<List<Note>?>(null) }
+    var notes by remember { mutableStateOf(store.lastList()) } // read ahead when Tetra started
     OpenTiming("Notes", notes != null)
     var view by remember { mutableStateOf(NotesView.Home) }
     var label by remember { mutableStateOf<String?>(null) }
@@ -125,7 +126,12 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     var selected by remember { mutableStateOf(emptySet<String>()) }
     val remote by NotesSync.changed.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(version, remote, hasAccess) { if (hasAccess) notes = withContext(Dispatchers.IO) { store.sweep(); store.list() } }
+    LaunchedEffect(version, remote, hasAccess) {
+        if (!hasAccess) return@LaunchedEffect
+        val got = withContext(Dispatchers.IO) { store.list() }
+        notes = got
+        if (withContext(Dispatchers.IO) { store.sweep(notes = got) } > 0) notes = withContext(Dispatchers.IO) { store.list() } // after the list shows
+    }
     LaunchedEffect(version) { if (version > 0) NotesSync.soon(context) } // a change made here, in the list or an editor
     // Opening Notes is the moment to catch up — the whole sync may have been skipped (asked 2026-09-26).
     var refreshing by remember { mutableStateOf(false) }
@@ -166,13 +172,13 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     // A search or a label looks through every note but the Trash, whichever page it starts from (asked 2026-09-28).
     val everywhere = q.isNotEmpty() || label != null
     val trash = view == NotesView.Trash && !everywhere
-    val shown = all.filter { n -> (if (everywhere) n.trashedAt == null else inView(n, view)) && (label == null || label in n.labels) &&
+    val shown = remember(all, view, label, q) { all.filter { n -> (if (everywhere) n.trashedAt == null else inView(n, view)) && (label == null || label in n.labels) &&
         (q.isEmpty() || fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" ")).contains(q)) }
-        .sortedWith(if (trash) compareByDescending { it.trashedAt } else compareByDescending { it.updatedAt })
+        .sortedWith(if (trash) compareByDescending { it.trashedAt } else compareByDescending { it.updatedAt }) }
     // Pinned on top of Home, the rest below them (asked 2026-09-26).
-    val pinned = if (view == NotesView.Home || everywhere) shown.filter { it.pinned } else emptyList()
-    val others = shown - pinned.toSet()
-    val labels = all.filter { it.trashedAt == null }.flatMap { it.labels }.groupingBy { it }.eachCount().toSortedMap()
+    val pinned = remember(shown, view, everywhere) { if (view == NotesView.Home || everywhere) shown.filter { it.pinned } else emptyList() }
+    val others = remember(shown, pinned) { shown - pinned.toSet() }
+    val labels = remember(all) { all.filter { it.trashedAt == null }.flatMap { it.labels }.groupingBy { it }.eachCount().toSortedMap() }
     // A label no note carries any more is gone, so it cannot stay chosen either.
     LaunchedEffect(labels.keys, notes) { if (notes != null && label != null && label !in labels) label = null }
     val wide = LocalConfiguration.current.screenWidthDp >= 700
@@ -335,7 +341,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                 else Spacer(Modifier.weight(1f))
                 if (n.pinned && !small) Icon(painterResource(R.drawable.ic_push_pin), contentDescription = "Pinned", modifier = Modifier.size(16.dp))
             }
-            NoteFormat.preview(n, if (small) 3 else 8).forEach { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+            remember(n, small) { NoteFormat.preview(n, if (small) 3 else 8) }.forEach { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis) }
             if (!small && n.labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
                 n.labels.forEach { Text(it, style = MaterialTheme.typography.labelSmall, modifier = Modifier.background(Color(0x33888888), CircleShape).padding(horizontal = 8.dp, vertical = 2.dp)) }
             }

@@ -21,6 +21,20 @@ class NotesTest {
         assertEquals(n.id, s.get(n.id)?.id)
     }
 
+    @Test fun `the list keeps what it read, and reads again a note changed here or by another app`() {
+        val s = store()
+        val n = s.create(checklist = false)
+        s.setText(n.id, "One", "", null)
+        assertEquals("One", s.list().single().title)
+        assertEquals("One", s.lastList()!!.single().title)
+        s.setText(n.id, "Two", "", null)
+        assertEquals("Two", s.list().single().title)
+        val f = File(s.root, "${n.id}.json")
+        f.writeText(JSONObject(f.readText()).put("title", "Three").toString())
+        f.setLastModified(f.lastModified() + 2000)
+        assertEquals("Three", NotesStore(s.root).list().single().title)
+    }
+
     @Test fun `a failed replacement reports failure and preserves the obstructing target`() {
         val s = store()
         val target = File(s.root, "blocked.json").apply { mkdirs() }

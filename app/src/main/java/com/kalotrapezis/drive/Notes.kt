@@ -57,8 +57,19 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     fun list(): List<Note> = synchronized(lock) {
         val deleted = deletedIds()
         root.listFiles { f -> f.isFile && f.name.endsWith(".json") && f.name != "deletions.json" }.orEmpty()
-            .mapNotNull { f -> runCatching { parse(JSONObject(f.readText())) }.getOrNull() }
+            .mapNotNull(::read)
             .filterNot { it.id in deleted }
+            .also { lists[root.path] = it }
+    }
+
+    /** The list as [list] last read it (Tetra reads it ahead at start, NotesPreload): the screen's first frame. */
+    fun lastList(): List<Note>? = lists[root.path]
+
+    // A note's file is read again only when it changed: opening Notes read and parsed every one each time (25 Oct).
+    private fun read(f: File): Note? {
+        val stamp = f.lastModified() to f.length()
+        seen[f.path]?.let { (s, n) -> if (s == stamp) return n }
+        return runCatching { parse(JSONObject(f.readText())) }.getOrNull()?.also { seen[f.path] = stamp to it }
     }
 
     /** Whole, through a temporary file, so a crash never leaves half a note. */
@@ -71,6 +82,7 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     }
 
     private fun writeJson(target: File, text: String) {
+        seen.remove(target.path)
         root.mkdirs()
         val tmp = File(root, "${target.name}.tmp")
         tmp.writeText(text)
@@ -154,8 +166,8 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
     }
 
     /** Trash keeps a note 30 days, then it is deleted for good. */
-    fun sweep(now: Long = System.currentTimeMillis()): Int = synchronized(lock) {
-        list().filter { it.trashedAt != null && it.trashedAt < now - 30 * 86_400_000L }.onEach { remove(it.id, now) }.size
+    fun sweep(now: Long = System.currentTimeMillis(), notes: List<Note> = list()): Int = synchronized(lock) {
+        notes.filter { it.trashedAt != null && it.trashedAt < now - 30 * 86_400_000L }.onEach { remove(it.id, now) }.size
     }
 
     /** What this phone sends at a sync: every note and every deletion. */
@@ -199,6 +211,8 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
 
     companion object {
         private val locks = ConcurrentHashMap<String, Any>()
+        private val seen = ConcurrentHashMap<String, Pair<Pair<Long, Long>, Note>>()
+        private val lists = ConcurrentHashMap<String, List<Note>>()
         const val KEEP = 3 // copies of a note in its history
         fun safeTitle(t: String) = t.replace(Regex("[/\\\\\u0000:*?\"<>|]"), " ").replace(Regex("\\s+"), " ").trim().take(80).ifEmpty { "Untitled" }
 
@@ -282,10 +296,16 @@ internal object NoteFormat {
 
     fun indent(e: Edit, out: Boolean): Edit = lines(e) { ls -> ls.map { if (out) it.replaceFirst(Regex("^ {1,2}"), "") else "  $it" } }
 
+    // made once: built per line of every card, they kept the first frame of a full Notes waiting (25 Oct)
+    private val heading = Regex("^(#{1,3} |> )")
+    private val open = Regex("^(\\s*)- \\[ \\] ")
+    private val done = Regex("^(\\s*)- \\[[xX]\\] ")
+    private val marks = Regex("\\*\\*|~~|`")
+
     fun preview(n: Note, max: Int = 8): List<String> =
         if (n.checklist) n.items.sortedForList().take(max).map { "${if (it.checked) "☑" else "☐"} ${it.text}" }
         else n.content.lines().filter { it.isNotBlank() }.take(max).map {
-            it.replace(Regex("^(#{1,3} |> )"), "").replace(Regex("^(\\s*)- \\[ \\] "), "$1☐ ").replace(Regex("^(\\s*)- \\[[xX]\\] "), "$1☑ ").replace(Regex("\\*\\*|~~|`"), "")
+            it.replace(heading, "").replace(open, "$1☐ ").replace(done, "$1☑ ").replace(marks, "")
         }
 }
 

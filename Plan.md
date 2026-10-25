@@ -398,6 +398,15 @@ How to write here:
 - [x] (data-plan session, 25 Oct, branch claude/data-plan; Drive branch `data`) **Data** planned and built, steps 2–8 (§ Data); not merged; on the phone, the tablet and the computer (details in § Data). Planned: Setup, usage and the plan (fair use, roaming
       day pass), live speed, three devices and the hotspot, Wi-Fi meter with Spots, signal drops; other apps checked; the house
       map explained, not built; battery set aside by the user; the user answered most questions 25 Oct.
+- [~] (optimise session, 25 Oct; branch claude/optimise-applets) **Every applet opens fast** (the user, 25 Oct: "optimise all
+      the rest of the apps. Notes needs optimisation; it's kind of slow to show the notes"), one by one with Contacts' recipe.
+      Each applet writes its opening to writer.log ("Notes: opened → first notes … ms", ScreenTiming/OpenTiming). Measured on
+      the tablet (971f6b37, debug build; the phone not connected): first content shown when tapped on Home, Tetra ready /
+      reopened / tapped at once after start. Photos on the phone and the desktop (the tablet has no photos).
+
+      | Applet | before | after | what was slow |
+      |---|---|---|---|
+      | Notes (218 notes) | 1000 / 740 / 1043 ms | 435 / 315 / 608 ms | every note file read and parsed twice per open (the Trash sweep, then the list) before anything showed; four Regexes built per line of every card. Now: read ahead at start, a file read again only when it changed, the sweep after the list shows, Regexes made once. What is left is laying out ~12 cards of text (debug build) |
 - [ ] **Next, in this order** (the user, 25 Oct): (1) wait for the two agents now running — sync's clean-up of what Data
       leaves behind, and Contacts' call history with recordings — then merge everything; (2) one agent optimises every
       other applet one by one with Contacts' speed recipe (Notes is slow to show its notes; Files, Scanner, Timer, Calendar

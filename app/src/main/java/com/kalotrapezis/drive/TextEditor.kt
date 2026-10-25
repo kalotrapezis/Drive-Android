@@ -334,7 +334,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
         tabs.firstOrNull { it.uri == uri.toString() }?.let { current = it.id; persist(); return }
         runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
         val name = withContext(Dispatchers.IO) { displayName(context, uri) }
-        val file = load(TextEditorStore.Tab("", uri.toString(), name)) ?: run { message = "Could not open $name as text."; return }
+        val file = load(TextEditorStore.Tab("", uri.toString(), name)) ?: run { message = context.getString(R.string.text_open_failed, name); return }
         val t = TextEditorStore.Tab(UUID.randomUUID().toString(), uri.toString(), name, file.crlf, file.bom)
         tabs.add(t); text[t.id] = TextFieldValue(file.text); saved[t.id] = file.text; current = t.id; persist(); store.mark(t.uri, true)
     }
@@ -387,22 +387,22 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
         if (t.uri == null) { naming = t.id; return }
         scope.launch {
             val ok = withContext(Dispatchers.IO) { write(t, Uri.parse(t.uri)) }
-            if (ok) { saved[t.id] = text[t.id]?.text ?: ""; withContext(Dispatchers.IO) { store.setDraft(t.id, null) }; message = "Saved ${t.name}"; then() }
-            else message = "Could not save ${t.name}."
+            if (ok) { saved[t.id] = text[t.id]?.text ?: ""; withContext(Dispatchers.IO) { store.setDraft(t.id, null) }; message = context.getString(R.string.text_saved, t.name); then() }
+            else message = context.getString(R.string.text_save_failed, t.name)
         }
     }
     // Save as: a new file in the save folder. Never over another file.
     fun saveAs(id: String, typed: String) {
         val t = tabs.firstOrNull { it.id == id } ?: return
-        val name = TextFileRules.fileName(typed) ?: run { message = "That is not a file name."; return }
+        val name = TextFileRules.fileName(typed) ?: run { message = context.getString(R.string.text_bad_name); return }
         scope.launch {
             val dir = store.saveDirectory()
             val file = File(dir, name)
             val result = withContext(Dispatchers.IO) {
                 when {
-                    !dir.isDirectory && !dir.mkdirs() -> "Could not make ${store.saveFolder}."
-                    file.exists() -> "$name is already in ${store.saveFolder}. Choose another name."
-                    !write(t, Uri.fromFile(file)) -> "Could not save $name."
+                    !dir.isDirectory && !dir.mkdirs() -> context.getString(R.string.text_folder_failed, store.saveFolder)
+                    file.exists() -> context.getString(R.string.text_name_taken, name, store.saveFolder)
+                    !write(t, Uri.fromFile(file)) -> context.getString(R.string.text_save_failed, name)
                     else -> null
                 }
             }
@@ -410,7 +410,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
             val renamed = t.copy(uri = Uri.fromFile(file).toString(), name = name)
             tabs[tabs.indexOfFirst { it.id == id }] = renamed
             saved[id] = text[id]?.text ?: ""; withContext(Dispatchers.IO) { store.setDraft(id, null) }
-            naming = null; persist(); store.mark(renamed.uri, true); message = "Saved in ${store.saveFolder}"
+            naming = null; persist(); store.mark(renamed.uri, true); message = context.getString(R.string.text_saved_in, store.saveFolder)
         }
     }
     fun close(id: String, force: Boolean = false) {
@@ -437,13 +437,13 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
                         val ink = if (on) Color.Black else Color.White
                         Text((if (dirty(t.id)) "• " else "") + t.name, color = ink, style = MaterialTheme.typography.labelLarge, maxLines = 1,
                             overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp))
-                        Box(Modifier.size(32.dp).clip(CircleShape).clickable(onClickLabel = "Close ${t.name}") { close(t.id) }, contentAlignment = Alignment.Center) {
-                            Icon(painterResource(R.drawable.ic_close), contentDescription = "Close ${t.name}", tint = ink, modifier = Modifier.size(16.dp))
+                        Box(Modifier.size(32.dp).clip(CircleShape).clickable(onClickLabel = stringResource(R.string.text_close_named, t.name)) { close(t.id) }, contentAlignment = Alignment.Center) {
+                            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.text_close_named, t.name), tint = ink, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
-                Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF2A2E30)).clickable(onClickLabel = "New tab") { newTab() }, contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_add), contentDescription = "New tab", tint = Color.White, modifier = Modifier.size(20.dp))
+                Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF2A2E30)).clickable(onClickLabel = stringResource(R.string.text_new_tab)) { newTab() }, contentAlignment = Alignment.Center) {
+                    Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.text_new_tab), tint = Color.White, modifier = Modifier.size(20.dp))
                 }
             }
             // Word wrap off: the text is laid out as wide as its longest line and scrolls sideways, like code.
@@ -452,7 +452,7 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
             val screen = LocalConfiguration.current.screenWidthDp.dp
             if (tab != null) Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).then(if (wrap) Modifier else Modifier.horizontalScroll(rememberScrollState()))) {
                 BasicTextField(value, ::edit, textStyle = style, cursorBrush = SolidColor(ink),
-                    decorationBox = { inner -> Box { if (value.text.isEmpty()) Text("Type here…", style = style.copy(color = ink.copy(alpha = 0.4f))); inner() } },
+                    decorationBox = { inner -> Box { if (value.text.isEmpty()) Text(stringResource(R.string.text_type_here), style = style.copy(color = ink.copy(alpha = 0.4f))); inner() } },
                     // As tall as the page, so a tap anywhere below the text starts typing, like a notepad.
                     modifier = (if (wrap) Modifier.fillMaxWidth() else Modifier.widthIn(min = screen)).heightIn(min = LocalConfiguration.current.screenHeightDp.dp - 140.dp)
                         .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 120.dp))
@@ -464,15 +464,15 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
         val imeOpen = WindowInsets.isImeVisible
         val u = tab?.let { undo[it.id] }
         val swap: @Composable (Modifier) -> Unit = { m -> Box(m, contentAlignment = Alignment.Center) {
-            Tool(R.drawable.ic_swap_horiz, if (symbols) "Controls" else "Symbols", w, on = symbols) { symbols = !symbols } } }
+            Tool(R.drawable.ic_swap_horiz, stringResource(if (symbols) R.string.text_controls else R.string.text_symbols), w, on = symbols) { symbols = !symbols } } }
         val controls: @Composable () -> Unit = {
             undoTick
-            Tool(R.drawable.ic_chevron_left, "Back", w) { back() }
+            Tool(R.drawable.ic_chevron_left, stringResource(R.string.common_back), w) { back() }
             swap(Modifier)
-            Tool(R.drawable.ic_undo, "Undo", w, enabled = u?.canUndo == true) { restore(u?.undo()) }
-            Tool(R.drawable.ic_redo, "Redo", w, enabled = u?.canRedo == true) { restore(u?.redo()) }
-            Tool(R.drawable.ic_save, "Save", w, enabled = tab != null && (tab.uri == null || dirty(tab.id))) { tab?.let { save(it) } }
-            Tool(R.drawable.ic_folder, "Open a file", w) { picker.launch(arrayOf("*/*")) }
+            Tool(R.drawable.ic_undo, stringResource(R.string.common_undo), w, enabled = u?.canUndo == true) { restore(u?.undo()) }
+            Tool(R.drawable.ic_redo, stringResource(R.string.common_redo), w, enabled = u?.canRedo == true) { restore(u?.redo()) }
+            Tool(R.drawable.ic_save, stringResource(R.string.common_save), w, enabled = tab != null && (tab.uri == null || dirty(tab.id))) { tab?.let { save(it) } }
+            Tool(R.drawable.ic_folder, stringResource(R.string.text_open_file), w) { picker.launch(arrayOf("*/*")) }
         }
         // The swap key and the 31 symbols: two rows of 16, each key an equal share of the width.
         val keys: @Composable () -> Unit = {
@@ -502,16 +502,16 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
 
     if (tools) ModalBottomSheet(onDismissRequest = { tools = false }, containerColor = Color(0xFF16191A), contentColor = w) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            tab?.let { t -> DriveWideAction(R.drawable.ic_save, "Save as…") { tools = false; naming = t.id } }
+            tab?.let { t -> DriveWideAction(R.drawable.ic_save, stringResource(R.string.text_save_as_more)) { tools = false; naming = t.id } }
             Row(Modifier.fillMaxWidth().clickable { wrap = !wrap; store.wordWrap = wrap }, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Word wrap", style = MaterialTheme.typography.titleSmall)
-                    Text(if (wrap) "Long lines continue on the next line." else "Long lines keep going; scroll sideways.", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.text_word_wrap), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(if (wrap) R.string.text_wrap_on else R.string.text_wrap_off), style = MaterialTheme.typography.bodySmall)
                 }
                 Switch(checked = wrap, onCheckedChange = { wrap = it; store.wordWrap = it })
             }
-            tab?.let { t -> Text(if (t.uri == null) "Not saved yet · Save puts it in ${store.saveFolder}"
-                else (if (t.crlf) "Windows line endings (CRLF), kept" else "Line endings: LF"), style = MaterialTheme.typography.bodySmall) }
+            tab?.let { t -> Text(if (t.uri == null) stringResource(R.string.text_not_saved, store.saveFolder)
+                else stringResource(if (t.crlf) R.string.text_crlf else R.string.text_lf), style = MaterialTheme.typography.bodySmall) }
         }
     }
 
@@ -519,28 +519,28 @@ internal fun TextEditorScreen(back: () -> Unit, open: Uri? = null, start: String
         var typed by remember(id) { mutableStateOf(tabs.firstOrNull { it.id == id }?.name?.takeUnless { it.startsWith("Untitled") } ?: "") }
         AlertDialog(
             onDismissRequest = { naming = null },
-            title = { Text("Save as") },
+            title = { Text(stringResource(R.string.text_save_as)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") })
-                    Text("In ${store.saveFolder} (Settings › Text editor). No extension adds .txt.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text(stringResource(R.string.scanner_file_name)) })
+                    Text(stringResource(R.string.text_save_where, store.saveFolder), style = MaterialTheme.typography.bodySmall)
                 }
             },
-            confirmButton = { TextButton(onClick = { saveAs(id, typed) }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { naming = null }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { saveAs(id, typed) }) { Text(stringResource(R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            dismissButton = { TextButton(onClick = { naming = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         )
     }
     closing?.let { id ->
         val t = tabs.firstOrNull { it.id == id }
         AlertDialog(
             onDismissRequest = { closing = null },
-            title = { Text("Save ${t?.name ?: "this file"}?") },
-            text = { Text("It has changes that are not saved.") },
-            confirmButton = { TextButton(onClick = { closing = null; t?.let { save(it) { close(id, force = true) } } }) { Text("Save") } },
+            title = { Text(t?.name?.let { stringResource(R.string.text_save_named_ask, it) } ?: stringResource(R.string.text_save_this_ask)) },
+            text = { Text(stringResource(R.string.text_unsaved)) },
+            confirmButton = { TextButton(onClick = { closing = null; t?.let { save(it) { close(id, force = true) } } }) { Text(stringResource(R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { closing = null }) { Text("Cancel") }
-                    TextButton(onClick = { closing = null; close(id, force = true) }) { Text("Don't save", color = Color(0xFFE35A4F)) }
+                    TextButton(onClick = { closing = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    TextButton(onClick = { closing = null; close(id, force = true) }) { Text(stringResource(R.string.text_dont_save), color = Color(0xFFE35A4F), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             },
         )

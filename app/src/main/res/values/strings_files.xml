@@ -502,4 +502,31 @@
     <string name="codes_copy_payment">Copy payment code</string>
     <string name="codes_share_payment">Share payment code</string>
     <string name="codes_no_browser">No browser can open this link.</string>
+    <!-- Text editor -->
+    <string name="text_open_failed">Could not open %1$s as text.</string>
+    <string name="text_saved">Saved %1$s</string>
+    <string name="text_save_failed">Could not save %1$s.</string>
+    <string name="text_bad_name">That is not a file name.</string>
+    <string name="text_folder_failed">Could not make %1$s.</string>
+    <string name="text_name_taken">%1$s is already in %2$s. Choose another name.</string>
+    <string name="text_saved_in">Saved in %1$s</string>
+    <string name="text_close_named">Close %1$s</string>
+    <string name="text_new_tab">New tab</string>
+    <string name="text_type_here">Type here…</string>
+    <string name="text_controls">Controls</string>
+    <string name="text_symbols">Symbols</string>
+    <string name="text_open_file">Open a file</string>
+    <string name="text_save_as_more">Save as…</string>
+    <string name="text_word_wrap">Word wrap</string>
+    <string name="text_wrap_on">Long lines continue on the next line.</string>
+    <string name="text_wrap_off">Long lines keep going; scroll sideways.</string>
+    <string name="text_not_saved">Not saved yet · Save puts it in %1$s</string>
+    <string name="text_crlf">Windows line endings (CRLF), kept</string>
+    <string name="text_lf">Line endings: LF</string>
+    <string name="text_save_as">Save as</string>
+    <string name="text_save_where">In %1$s (Settings › Text editor). No extension adds .txt.</string>
+    <string name="text_save_named_ask">Save %1$s?</string>
+    <string name="text_save_this_ask">Save this file?</string>
+    <string name="text_unsaved">It has changes that are not saved.</string>
+    <string name="text_dont_save">Don\'t save</string>
 </resources>

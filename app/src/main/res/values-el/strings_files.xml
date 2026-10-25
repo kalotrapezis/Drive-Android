@@ -502,4 +502,31 @@
     <string name="codes_copy_payment">Αντιγραφή κωδικού πληρωμής</string>
     <string name="codes_share_payment">Κοινοποίηση κωδικού πληρωμής</string>
     <string name="codes_no_browser">Κανένα πρόγραμμα περιήγησης δεν μπορεί να ανοίξει αυτόν τον σύνδεσμο.</string>
+    <!-- Text editor -->
+    <string name="text_open_failed">Δεν ήταν δυνατό το άνοιγμα του %1$s ως κειμένου.</string>
+    <string name="text_saved">Αποθηκεύτηκε: %1$s</string>
+    <string name="text_save_failed">Δεν ήταν δυνατή η αποθήκευση του %1$s.</string>
+    <string name="text_bad_name">Αυτό δεν είναι όνομα αρχείου.</string>
+    <string name="text_folder_failed">Δεν ήταν δυνατή η δημιουργία του %1$s.</string>
+    <string name="text_name_taken">Το %1$s υπάρχει ήδη στο %2$s. Επιλέξτε άλλο όνομα.</string>
+    <string name="text_saved_in">Αποθηκεύτηκε στο %1$s</string>
+    <string name="text_close_named">Κλείσιμο %1$s</string>
+    <string name="text_new_tab">Νέα καρτέλα</string>
+    <string name="text_type_here">Πληκτρολογήστε εδώ…</string>
+    <string name="text_controls">Χειριστήρια</string>
+    <string name="text_symbols">Σύμβολα</string>
+    <string name="text_open_file">Άνοιγμα αρχείου</string>
+    <string name="text_save_as_more">Αποθήκευση ως…</string>
+    <string name="text_word_wrap">Αναδίπλωση λέξεων</string>
+    <string name="text_wrap_on">Οι μεγάλες γραμμές συνεχίζουν στην επόμενη γραμμή.</string>
+    <string name="text_wrap_off">Οι μεγάλες γραμμές συνεχίζουν· κυλήστε οριζόντια.</string>
+    <string name="text_not_saved">Δεν έχει αποθηκευτεί · Η Αποθήκευση το βάζει στο %1$s</string>
+    <string name="text_crlf">Τέλη γραμμών Windows (CRLF), διατηρούνται</string>
+    <string name="text_lf">Τέλη γραμμών: LF</string>
+    <string name="text_save_as">Αποθήκευση ως</string>
+    <string name="text_save_where">Στο %1$s (Ρυθμίσεις › Κείμενο). Χωρίς κατάληξη προστίθεται .txt.</string>
+    <string name="text_save_named_ask">Αποθήκευση του %1$s;</string>
+    <string name="text_save_this_ask">Αποθήκευση αυτού του αρχείου;</string>
+    <string name="text_unsaved">Έχει αλλαγές που δεν έχουν αποθηκευτεί.</string>
+    <string name="text_dont_save">Χωρίς αποθήκευση</string>
 </resources>

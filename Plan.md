@@ -384,6 +384,12 @@ How to write here:
       Σκάλα 11.7 km/17 min no track, My Market 11.1 km on secondary. Road surface and slope are not in the graph (a rebuild
       would add them). Default Main roads (the user: yes). On the phone 24 Oct (phone-install.sh, Android Auto re-approved); not merged.
 
+- [x] (Drive `sync-one-writer`, sync-copies session, 25 Oct) Sync's "(2)", "(3)", "(4)" of a file only the phone writes (Data's
+      month file): the computer took a path it had just asked for as agreed before the upload came; a late upload (a part's and
+      the whole sync at once) or one that never came then made a conflict and an offer of the computer's older copy back to the
+      phone. Fixed in desktop `files.js`/`sync.js` only (SYNC_PLAN.md 6aq); test in `sync.test.js`; 136 desktop tests pass. Not
+      merged, not run between real devices; the phone needs no new APK.
+
 ## Waiting on the user
 - [x] (answered 18 Oct) **Touch targets**: the Office settings decide — the user: "The tab look compact normal and desktop mode
   (Top bottom) is all settings in the Office section". Done: with the tools Normal, the tab row's tabs and the icon-only tools are

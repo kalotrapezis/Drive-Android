@@ -62,7 +62,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -175,6 +184,15 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
         return
     }
     BackHandler { when { selected.isNotEmpty() -> selected = emptySet(); drawer -> drawer = false; searching -> { searching = false; query = "" }; label != null -> label = null; view != NotesView.Home -> view = NotesView.Home; else -> back() } }
+    // A keyboard (the user, 25 Oct), the desktop's keys: Ctrl+N a note, Ctrl+Shift+N a checklist, Ctrl+F search, Esc a step back
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(searching) { if (!searching) runCatching { keys.requestFocus() } } // the search field gone: the keys come here again
+    fun key(e: KeyEvent): Boolean = e.type == KeyEventType.KeyDown && when {
+        e.isCtrlPressed && e.key == Key.N -> { create(e.isShiftPressed); true }
+        e.isCtrlPressed && e.key == Key.F -> { searching = true; true }
+        e.key == Key.Escape -> { when { selected.isNotEmpty() -> selected = emptySet(); searching -> { searching = false; query = "" }; label != null -> label = null; view != NotesView.Home -> view = NotesView.Home; else -> back() }; true }
+        else -> false
+    }
 
     val all = notes.orEmpty()
     val q = fold(query.trim())
@@ -205,7 +223,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     }
     val header: @Composable (String) -> Unit = { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp, top = 8.dp)) }
 
-    androidx.compose.material3.pulltorefresh.PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh() }, modifier = Modifier.fillMaxSize()) {
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh() }, modifier = Modifier.fillMaxSize().onPreviewKeyEvent(::key).focusRequester(keys).focusable()) {
         LazyVerticalStaggeredGrid(
             columns = StaggeredGridCells.Adaptive(165.dp),
             modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -450,8 +468,21 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         edit(b = TextFieldValue(r.text, TextRange(r.start, r.end)), step = true)
     }
     BackHandler { if (tools) tools = false else leave() }
+    // the desktop's keys: Esc leaves, Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) undo and redo, Ctrl+B / Ctrl+I bold and italic
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { keys.requestFocus() } }
+    fun key(e: KeyEvent): Boolean = e.type == KeyEventType.KeyDown && when {
+        e.key == Key.Escape -> { if (tools) tools = false else leave(); true }
+        trashed || !e.isCtrlPressed -> false
+        e.key == Key.Z && !e.isShiftPressed -> { apply(undo.undo()); true }
+        e.key == Key.Y || e.key == Key.Z -> { apply(undo.redo()); true }
+        initial.checklist || reading -> false
+        e.key == Key.B -> { format { NoteFormat.wrap(it, "**") }; true }
+        e.key == Key.I -> { format { NoteFormat.wrap(it, "*") }; true }
+        else -> false
+    }
 
-    Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding()) {
+    Box(Modifier.fillMaxSize().background(tint ?: MaterialTheme.colorScheme.background).statusBarsPadding().imePadding().onPreviewKeyEvent(::key).focusRequester(keys).focusable()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = if (imeOpen) 64.dp else if (!trashed) 170.dp else 120.dp)) {
             // Enter in the title goes on to the body (asked 2026-09-26): the text, or a checklist's first item.
             BasicTextField(title, { t ->

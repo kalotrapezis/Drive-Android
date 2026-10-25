@@ -404,6 +404,10 @@ How to write here:
       the tablet (971f6b37, debug build; the phone not connected): first content shown when tapped on Home, Tetra ready /
       reopened / tapped at once after start. Photos on the phone and the desktop (the tablet has no photos).
 
+      Notes also has a keyboard now (the user, 25 Oct: "can we add keyboard support"), the desktop's keys: in the list Ctrl+N a
+      note, Ctrl+Shift+N a checklist, Ctrl+F search, Esc a step back; in a note Esc leaves, Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) undo
+      and redo, Ctrl+B / Ctrl+I bold and italic. Tried on the tablet with adb's key combinations.
+
       | Applet | before | after | what was slow |
       |---|---|---|---|
       | Notes (218 notes) | 1000 / 740 / 1043 ms | 435 / 315 / 608 ms | every note file read and parsed twice per open (the Trash sweep, then the list) before anything showed; four Regexes built per line of every card. Now: read ahead at start, a file read again only when it changed, the sweep after the list shows, Regexes made once. Made for thousands of notes (the user: "think ahead"): the list keeps only each card (title, the lines it shows, labels, dates), a tap reads the whole note from its file, an index file in the app's cache (147 KB for 218 notes) shows the list at once however many there are, files changed since are read again; search's index is read from the files while search is open and let go after; what is kept follows the folder (Tetra open for months holds no deleted note). What is left is laying out ~12 cards of text (debug build) |

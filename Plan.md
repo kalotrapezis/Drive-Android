@@ -414,9 +414,8 @@ How to write here:
       in one call); made for thousands of items (the user: "think ahead"): the lists keep what a card shows, the whole item
       is read when opened, search indexes live only while searching, and what was deleted leaves memory (Tetra left open
       for months does not grow). Measured and left as they are (already quick, the camera or the map is the wait): Scanner
-      341 / 142 / 397 ms, Codes 310 / 99 / 388, Text editor 200 / 116 / 224, Maps 376 / 246 / 364. Still to do: Office
-      and PDF documents (the phone's fonts now read when Office's home opens, not by the first document), Photos on the
-      phone. Unit suite 655, 0 failing.
+      341 / 142 / 397 ms, Codes 310 / 99 / 388, Text editor 200 / 116 / 224, Maps 376 / 246 / 364. Office and PDF
+      documents measured (below; left as they are). Still to do: Photos on the phone (not connected; the tablet has none). Unit suite 655, 0 failing.
 
       **The biggest lever is the build, not the code:** the phone and the tablet run a debuggable build, and Android runs a
       debuggable app's Compose several times slower. The same code built not debuggable, signed with the same debug key
@@ -444,6 +443,7 @@ How to write here:
       | Timer | 366–371 ms; 495–635 at once | 334–343; 438–606 | the timers' service check read their files on the UI thread before the cards, and the clean-up of sync's copies came first too; now the cards first, both after, off the UI thread |
       | Data | 1556–1942 ms; 2347–2912 at once | 853–965; 1065–1443 | today's counts asked of Android (a second and more), the jobs scheduled, then the month files read: the page waited for all of it; the plan file read again at every recomposition. Now what is written shows first and today's counts follow |
       | Office (home) | 2132–2137 ms; 2634–2743 at once | ~948 (2255 the first time, before its cache); 1106–1305 | every open walked the whole library (~700 folders on the tablet) to show the newest ten of each kind; now the list from the last look (the app's cache) shows at once and the walk runs behind it |
+      | Words (Test-Words/Tetra test.docx) and a PDF | Words 1779 ms the first in a session (read 16 ms, pages 55 ms, then one 1.64 s frame), 181–191 ms after; PDF 242–257 ms, ~170 after | not changed | the file is read and laid out in well under 0.1 s; the first document's wait is Words' own code running for the first time in a debug build (the phone's fonts, read then too, are at most ~30 ms of it, so they are not read ahead). The non-debuggable build is the cure |
 - [ ] **Next, in this order** (the user, 25 Oct): (1) wait for the two agents now running — sync's clean-up of what Data
       leaves behind, and Contacts' call history with recordings — then merge everything; (2) one agent optimises every
       other applet one by one with Contacts' speed recipe (Notes is slow to show its notes; Files, Scanner, Timer, Calendar

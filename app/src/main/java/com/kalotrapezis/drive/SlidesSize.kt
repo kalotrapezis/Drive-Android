@@ -14,8 +14,8 @@ internal object SlidesSize {
     /** PowerPoint's two (13.333 × 7.5 in and 10 × 7.5 in), in points. */
     const val WIDE_W = 960f; const val STANDARD_W = 720f; const val HEIGHT = 540f
     /** The sizes offered (w × h pt): PowerPoint's Widescreen, On-screen Show (16:10), Standard, 35mm slides (3:2), and a tall 1:2 page. */
-    val PRESETS = listOf("Widescreen 16:9" to (WIDE_W to HEIGHT), "16:10" to (720f to 450f), "Standard 4:3" to (STANDARD_W to HEIGHT),
-        "3:2" to (810f to HEIGHT), "1:2 (tall)" to (540f to 1080f))
+    val PRESETS = listOf(R.string.slides_size_wide to (WIDE_W to HEIGHT), R.string.slides_size_1610 to (720f to 450f), R.string.slides_size_standard to (STANDARD_W to HEIGHT),
+        R.string.slides_size_32 to (810f to HEIGHT), R.string.slides_size_tall to (540f to 1080f))
     /** PowerPoint's own name for a size (p:sldSz's type), "custom" for one it has none for; Widescreen has none written. */
     fun type(w: Float, h: Float): String? {
         fun at(a: Float, b: Float) = Math.abs(w - a) < 0.5f && Math.abs(h - b) < 0.5f

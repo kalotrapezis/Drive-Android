@@ -409,7 +409,7 @@ internal object SlidesOdp {
             val items = ArrayList<SlideItem>().also { shapes(m, it, true) }
             fun hint(words: String, size: Float, align: DocAlign) = SlideText(listOf(SlidePara.plain(words, size, 0x888888, align = align)), 'm', floatArrayOf(7.2f, 3.6f, 7.2f, 3.6f))
             boxes.forEachIndexed { k, f -> val b = box(f); val title = f.a(PRES, "class") == "title"
-                items += SlideItem.Shape(b[0], b[1], b[2], b[3], 0f, null, hint(if (title) "Title" else "Text", if (title) 32f else 20f, if (title) DocAlign.Center else DocAlign.Start), id = "o$k", hint = true).also { it.anim = "o$k" } }
+                items += SlideItem.Shape(b[0], b[1], b[2], b[3], 0f, null, hint(if (title) Slides.hintTitle else Slides.hintText, if (title) 32f else 20f, if (title) DocAlign.Center else DocAlign.Start), id = "o$k", hint = true).also { it.anim = "o$k" } }
             // the page saved: these boxes empty, in the master's places and styles
             val frames = boxes.joinToString("") { f ->
                 val cls = f.a(PRES, "class") ?: "outline"

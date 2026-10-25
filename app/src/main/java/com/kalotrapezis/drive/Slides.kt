@@ -159,6 +159,8 @@ internal class Deck(val width: Float, val height: Float, val slides: List<Slide>
 internal class SlideLayout(val name: String, val part: String, val preview: Slide, val xml: ByteArray)
 
 internal object Slides {
+    /** An empty placeholder's grey words (only shown, never saved): English here and in the tests, the app's language from SlidesScreen. */
+    @Volatile var hintTitle = "Title"; @Volatile var hintSubtitle = "Subtitle"; @Volatile var hintText = "Text"; @Volatile var hintPicture = "Picture"
     /** A face as a run's raw settings name it (Word's rFonts, which [DocStyles.fontName] reads). */
     fun face(name: String) = """<w:rFonts w:ascii="${name.replace("&", "&amp;").replace("\"", "&quot;")}"/>"""
     fun isSlides(name: String) = name.substringAfterLast('.', "").lowercase() in setOf("pptx", "ppsx", "odp")
@@ -254,7 +256,7 @@ internal object Slides {
                         val type = ph.attr("type"); val idx = ph.attr("idx")
                         val hint = when (type) { "title", "ctrTitle" -> "Title"; "subTitle" -> "Subtitle"; "pic" -> "Picture"; else -> "Text" }
                         append("""<p:sp><p:nvSpPr><p:cNvPr id="${i + 2}" name="$hint ${i + 1}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph${type?.let { " type=\"$it\"" }.orEmpty()}${idx?.let { " idx=\"$it\"" }.orEmpty()}/></p:nvPr></p:nvSpPr><p:spPr/>""")
-                        append(if (hints) """<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:buNone/></a:pPr><a:r><a:rPr lang="el-GR"><a:solidFill><a:srgbClr val="8C8C8C"/></a:solidFill></a:rPr><a:t>$hint</a:t></a:r></a:p></p:txBody></p:sp>"""
+                        append(if (hints) """<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:buNone/></a:pPr><a:r><a:rPr lang="el-GR"><a:solidFill><a:srgbClr val="8C8C8C"/></a:solidFill></a:rPr><a:t>${when (type) { "title", "ctrTitle" -> hintTitle; "subTitle" -> hintSubtitle; "pic" -> hintPicture; else -> hintText }}</a:t></a:r></a:p></p:txBody></p:sp>"""
                             else """<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="el-GR"/></a:p></p:txBody></p:sp>""")
                     }
                     append("""</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>""")
@@ -507,7 +509,7 @@ internal object Slides {
                             e.kid("txBody")?.below("t")?.none { it.textContent.isNotEmpty() } != false
                         val paths = spPr?.kid("custGeom")?.let(::custom).orEmpty()
                         val hintBody = if (empty) OfficeFormats.parse(("""<p:txBody xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:buNone/></a:pPr><a:r><a:rPr><a:solidFill><a:srgbClr val="8C8C8C"/></a:solidFill></a:rPr><a:t>""" +
-                            (when (ph?.attr("type")) { "title", "ctrTitle" -> "Title"; "subTitle" -> "Subtitle"; else -> "Text" }) + "</a:t></a:r></a:p></p:txBody>").toByteArray()).documentElement else null
+                            (when (ph?.attr("type")) { "title", "ctrTitle" -> hintTitle; "subTitle" -> hintSubtitle; else -> hintText }) + "</a:t></a:r></a:p></p:txBody>").toByteArray()).documentElement else null
                         val text = (hintBody ?: e.kid("txBody"))?.let { text(it, chain.mapNotNull { c -> c.kid("txBody") }, ctx?.style(e) ?: ctx?.defaults, fontColor, rels = rels) }
                         if (shape != null || text != null) out += SlideItem.Shape(box[0], box[1], box[2], box[3], rot, shape, text, paths,
                             xfrm?.attr("flipH") == "1", xfrm?.attr("flipV") == "1", grad,

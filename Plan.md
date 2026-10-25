@@ -398,7 +398,7 @@ How to write here:
 - [x] (data-plan session, 25 Oct, branch claude/data-plan; Drive branch `data`) **Data** planned and built, steps 2–8 (§ Data); not merged; on the phone, the tablet and the computer (details in § Data). Planned: Setup, usage and the plan (fair use, roaming
       day pass), live speed, three devices and the hotspot, Wi-Fi meter with Spots, signal drops; other apps checked; the house
       map explained, not built; battery set aside by the user; the user answered most questions 25 Oct.
-- [~] (optimise session, 25 Oct; branch claude/optimise-applets) **Every applet opens fast** (the user, 25 Oct: "optimise all
+- [x] (optimise session, 25 Oct; branch claude/optimise-applets, not merged; on the phone) **Every applet opens fast** (the user, 25 Oct: "optimise all
       the rest of the apps. Notes needs optimisation; it's kind of slow to show the notes"), one by one with Contacts' recipe.
       Each applet writes its opening to writer.log ("Notes: opened → first notes … ms", ScreenTiming/OpenTiming). Measured on
       the tablet (971f6b37, debug build; the phone not connected): first content shown when tapped on Home, Tetra ready /
@@ -447,7 +447,26 @@ How to write here:
       | Data | 911–957 ms | 183–192; 327 ms |
       | Office home | ~948 ms | 166–263; 187 ms |
 
-      A choice for the user (it changes how writer.log is read: `run-as` needs a debuggable app; File › Send log still works).
+      **Chosen by the user (25 Oct, "Yes: make the build I install non-debuggable"), 6e4a37f:** the debug build is not debuggable
+      (`./gradlew assembleDebug -Pdebuggable` for one that is), same key, installed over the app on the phone with nothing lost.
+      Logs moved to /sdcard/Android/data/com.kalotrapezis.drive/files/logs (adb reads them without run-as; Send log shares from
+      there). On the phone, ms, Tetra ready (tapped at once after start where it differs):
+
+      | Applet (phone) | before (debuggable) | now (the branch, not debuggable) |
+      |---|---|---|
+      | Tetra's start to its first frame | 924 | 157–253 |
+      | Home's first frame | 519–586 | 83–100 |
+      | Data | 2353–2426 | 157–194 |
+      | Notes | 348–407 | 45–66 |
+      | Calendar | 268–291 | 32–35 |
+      | Photos | 619–667 at once | 266–375 at once |
+      | Office home | 711–881 | 59–65 |
+      | Files | 159–173 | 37–49 |
+      | Timer | 226–246 | 38–52 |
+      | Contacts | 157–218 | 32–38 |
+
+      Measuring on the phone: `am force-stop` then `am start` at once leaves HyperOS's recents_animation_input_consumer over the
+      screen and adb's taps are lost; press HOME in between (memory phone-tap-measuring).
 
       Notes also has a keyboard now (the user, 25 Oct: "can we add keyboard support"), the desktop's keys: in the list Ctrl+N a
       note, Ctrl+Shift+N a checklist, Ctrl+F search, Esc a step back; in a note Esc leaves, Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) undo

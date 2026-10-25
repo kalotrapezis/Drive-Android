@@ -52,7 +52,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-internal enum class PhoneTab(val icon: Int) { Recents(R.drawable.ic_history), Favourites(R.drawable.ic_star), Contacts(R.drawable.ic_contacts), Recordings(R.drawable.ic_mic) }
+internal enum class PhoneTab(val icon: Int) { Recents(R.drawable.ic_history), Favourites(R.drawable.ic_favorite), Contacts(R.drawable.ic_contacts), Recordings(R.drawable.ic_mic) }
 
 /**
  * The Phone applet (Plan.md § Phone), Tetra's way (the user, 24 Oct: "an island for recents, favourites, contacts,
@@ -68,6 +68,8 @@ class PhoneActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WriterLog.init(this)
         TetraLook.load(this)
+        if (PhoneLog.recent == null) PhoneLog.warm(this) // opened from the launcher, not from Tetra's Home: read ahead from here
+        if (ContactsPreload.all == null) ContactsPreload.warm(this)
         take(intent)
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = TetraLook.light
         setContent { TetraTheme { PhoneApp(keypad, tab, number, missed, back = { finish() }) } }
@@ -105,6 +107,8 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
         onDispose { lifecycle.lifecycle.removeObserver(o); context.contentResolver.unregisterContentObserver(log) }
     }
     var tab by tabState
+    var shownAt by remember { mutableStateOf<Long?>(null) } // how long the Phone takes to open (ContactsTiming): first calls drawn
+    remember { android.os.SystemClock.uptimeMillis().also { t -> ContactsTiming.watch(t, "Calls") { shownAt } } }
     var query by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf(emptySet<CallGroup>()) }
     val tablet = remember { PhoneRelay.noCalls(context) } // no calls of its own: the phone's, through the computer (PhoneRelay)
@@ -112,11 +116,13 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     val scope = rememberCoroutineScope()
     val askRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { version++ }
     val contacts by produceState(ContactsPreload.all?.map { it.info } ?: emptyList(), version) {
-        value = withContext(Dispatchers.IO) { runCatching { ContactsFiles.all(contactsRoot()).also { ContactsPreload.all = it }.map { it.info } }.getOrDefault(value) }
+        value = withContext(Dispatchers.IO) { runCatching { ContactsPreload.load(context, ContactsPrefs.byLast(context)).map { it.info } }.getOrDefault(value) }
     }
-    val calls by produceState(emptyList<LoggedCall>(), version) {
-        value = withContext(Dispatchers.IO) { if (tablet) PhoneRelay.calls() else PhoneLog.read(context).also { PhoneHistory.write(context) } }
+    val calls by produceState(if (tablet) emptyList() else PhoneLog.recent.orEmpty(), version) {
+        value = withContext(Dispatchers.IO) { if (tablet) PhoneRelay.calls() else PhoneLog.read(context).also { PhoneLog.recent = it } }
+        if (!tablet) withContext(Dispatchers.IO) { PhoneHistory.write(context) } // after the list shows: it reads every call there is
     }
+    LaunchedEffect(calls.isNotEmpty()) { if (calls.isNotEmpty() && shownAt == null) { androidx.compose.runtime.withFrameMillis {}; shownAt = android.os.SystemClock.uptimeMillis() } }
     val spam by produceState(PhoneSpam.read(), version) { value = withContext(Dispatchers.IO) { PhoneSpam.read() } }
     val byKey = remember(contacts) { contacts.flatMap { c -> c.phones.map { ContactsWays.key(it.value) to c } }.filter { it.first.length >= 5 }.toMap() }
     fun who(n: String) = byKey[ContactsWays.key(n)]
@@ -258,7 +264,7 @@ private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, isSp
                             color = if (missed) CALL_RED else MaterialTheme.colorScheme.onSurface, fontWeight = if (missed && g.newest.unseen) FontWeight.Bold else FontWeight.Normal,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            CallTypeIcon(g.newest.type, 16.dp)
+                            CallTypeIcon(g.newest.type, 20.dp)
                             val where = c?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(g.number) }?.label?.ifBlank { null } ?: PhoneArea.of(g.number)
                             if (g.number.isNotBlank() && isSpam(g.number)) Text("Spam ·", style = MaterialTheme.typography.bodySmall, color = CALL_RED, fontWeight = FontWeight.Bold)
                             Text(listOfNotNull(where, whenText(g.newest.at, zone, today)).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
@@ -347,15 +353,19 @@ private fun whenText(at: Long, zone: ZoneId, today: LocalDate): String {
 }
 
 @Composable
-private fun CallTypeIcon(type: Int, size: Dp) {
+internal fun CallTypeIcon(type: Int, size: Dp) {
+    // a white arrow on a coloured round (the user, 25 Oct: "barely noticeable what is what"): in green, out blue, missed and
+    // declined red, blocked grey
     val (icon, tint, what) = when (type) {
-        CallLog.Calls.OUTGOING_TYPE -> Triple(R.drawable.ic_call_made, CALL_GREEN, "Outgoing")
+        CallLog.Calls.OUTGOING_TYPE -> Triple(R.drawable.ic_call_made, CALL_BLUE, "Outgoing")
         CallLog.Calls.MISSED_TYPE -> Triple(R.drawable.ic_call_missed, CALL_RED, "Missed")
-        CallLog.Calls.REJECTED_TYPE -> Triple(R.drawable.ic_call_end, MaterialTheme.colorScheme.onSurfaceVariant, "Declined")
-        CallLog.Calls.BLOCKED_TYPE -> Triple(R.drawable.ic_block, MaterialTheme.colorScheme.onSurfaceVariant, "Blocked")
-        else -> Triple(R.drawable.ic_call_received, PHONE_COLOR, "Incoming")
+        CallLog.Calls.REJECTED_TYPE -> Triple(R.drawable.ic_call_end, CALL_RED, "Declined")
+        CallLog.Calls.BLOCKED_TYPE -> Triple(R.drawable.ic_block, Color(0xFF7A7F84), "Blocked")
+        else -> Triple(R.drawable.ic_call_received, CALL_GREEN, "Incoming")
     }
-    Icon(painterResource(icon), contentDescription = what, tint = tint, modifier = Modifier.size(size))
+    Box(Modifier.size(size).clip(CircleShape).background(tint), contentAlignment = Alignment.Center) {
+        Icon(painterResource(icon), contentDescription = what, tint = Color.White, modifier = Modifier.size(size * 0.68f))
+    }
 }
 
 private fun typeText(type: Int) = when (type) {
@@ -399,7 +409,7 @@ private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, ca
         items(all.take(50), key = { it.id }) { l ->
             Column {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CallTypeIcon(l.type, 18.dp)
+                CallTypeIcon(l.type, 24.dp)
                 val t = Instant.ofEpochMilli(l.at).atZone(zone)
                 Text(t.format(DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)), Modifier.weight(1f))
                 Text(listOfNotNull(typeText(l.type), l.seconds.takeIf { it > 0 }?.let { PhoneCalls.elapsed(it * 1000) }).joinToString(" · "), color = islandContentColor().copy(alpha = 0.7f),
@@ -420,7 +430,7 @@ private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, ca
 @Composable
 private fun Favourites(people: List<ContactInfo>, pad: PaddingValues, call: (String) -> Unit) {
     val context = LocalContext.current
-    if (people.isEmpty()) { Box(Modifier.padding(pad)) { Hint("Star people in Contacts and they show here: one tap calls, holding opens them.") }; return }
+    if (people.isEmpty()) { Box(Modifier.padding(pad)) { Hint("Give people a heart in Contacts and they show here: one tap calls, holding opens them.") }; return }
     LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 76.dp, bottom = 96.dp)) {
         items(people, key = { it.uid.ifBlank { it.name } }) { p ->
             val number = p.defaultPhone ?: p.phones.firstOrNull()?.value

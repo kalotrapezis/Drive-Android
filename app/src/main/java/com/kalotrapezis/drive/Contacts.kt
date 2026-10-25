@@ -396,6 +396,10 @@ object ContactsFiles {
 
     private val cache = HashMap<String, Triple<Long, Long, Contact>>()
 
+    /** [f] read, or as read before when its size and time are the same. */
+    fun cached(f: File): Contact = synchronized(cache) { cache[f.path]?.takeIf { it.first == f.length() && it.second == f.lastModified() }?.third }
+        ?: read(f).also { synchronized(cache) { cache[f.path] = Triple(f.length(), f.lastModified(), it) } }
+
     fun read(f: File): Contact = Contact(f, VCard.cards(runCatching { f.readText() }.getOrDefault("")).firstOrNull() ?: emptyList())
 
     /**
@@ -403,10 +407,7 @@ object ContactsFiles {
      * saying how many versions there are. A file is read again only when its size or time changed.
      */
     fun all(dir: File): List<Contact> {
-        val read = vcfs(dir).map { f ->
-            synchronized(cache) { cache[f.path]?.takeIf { it.first == f.length() && it.second == f.lastModified() }?.third }
-                ?: read(f).also { synchronized(cache) { cache[f.path] = Triple(f.length(), f.lastModified(), it) } }
-        }.filter { it.lines.isNotEmpty() }
+        val read = vcfs(dir).map(::cached).filter { it.lines.isNotEmpty() }
         return read.groupBy { it.info.uid.ifEmpty { it.file!!.name } }.values.map { same ->
             same.maxWith(compareBy<Contact>({ it.info.rev }, { it.file?.lastModified() ?: 0 })).also { it.versions = same.size }
         }
@@ -419,7 +420,8 @@ object ContactsFiles {
         .trimStart { !it.isLetterOrDigit() } // a name written with a direction mark or a quote first sorts by its first letter
 
     /** Lower case, accents off: "Άννα" and "αννα" sort and search together. */
-    fun plain(s: String) = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").trim()
+    fun plain(s: String) = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(MARKS, "").trim()
+    private val MARKS = Regex("\\p{Mn}+") // made once: the list asks for every contact's letter as it draws
 
     /** The list's letter for a contact: "Ά" → "Α"; digits and signs under "#". */
     fun letter(i: ContactInfo, byLast: Boolean): String = sortKey(i, byLast).firstOrNull()?.takeIf { it.isLetter() }?.uppercase() ?: "#"

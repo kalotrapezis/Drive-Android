@@ -478,4 +478,28 @@
         <item quantity="one">%d unsaved page will be removed.</item>
         <item quantity="other">%d unsaved pages will be removed.</item>
     </plurals>
+    <!-- Codes -->
+    <string name="codes_pairing">Pairing…</string>
+    <string name="codes_paired">Paired with %1$s. Open Local Sync on the Home screen to back up your photos.</string>
+    <string name="codes_pairing_failed">Pairing failed.</string>
+    <string name="codes_camera_needed">Camera access is needed only to scan codes and text.</string>
+    <string name="codes_no_text">No text found. Move closer and try again.</string>
+    <string name="codes_read_failed">Could not read text.</string>
+    <string name="codes_point_pairing">Point at the pairing code on the computer</string>
+    <string name="codes_point_code">Point at a QR code or barcode</string>
+    <string name="codes_frame_text">Frame the text, then tap the shutter</string>
+    <string name="codes_text">Text</string>
+    <string name="codes_link">Link</string>
+    <string name="codes_code">Code</string>
+    <string name="codes_open_browser">Open in browser</string>
+    <string name="codes_add_contacts">Add to Contacts</string>
+    <string name="codes_added_contacts">Added to Contacts</string>
+    <string name="codes_already_contacts">Already in Contacts</string>
+    <string name="codes_not_added">Not added: %1$s</string>
+    <string name="codes_tetra_computer">Tetra computer</string>
+    <string name="codes_choose_hint">Hold a word, then drag the handles to choose what to copy. You can fix the words here too.</string>
+    <string name="codes_payment">Payment code (RF)</string>
+    <string name="codes_copy_payment">Copy payment code</string>
+    <string name="codes_share_payment">Share payment code</string>
+    <string name="codes_no_browser">No browser can open this link.</string>
 </resources>

@@ -134,18 +134,21 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
     val barcodes = remember { BarcodeScanning.getClient() }
     val scope = rememberCoroutineScope()
     var pairStatus by remember { mutableStateOf<String?>(null) }
+    var pairing by remember { mutableStateOf(false) }
     fun pair(raw: String, qr: PairingQr) {
         result = CodeResult.Pairing(raw, qr.name)
-        pairStatus = "Pairing…"
+        pairStatus = context.getString(R.string.codes_pairing)
+        pairing = true
         scope.launch {
             pairStatus = runCatching { withContext(Dispatchers.IO) { SyncStore(context.applicationContext).let { SyncClient(context.applicationContext, it).pair(qr) } } }
-                .fold({ "Paired with ${it.name}. Open Local Sync on the Home screen to back up your photos." }, { it.message ?: "Pairing failed." })
+                .fold({ context.getString(R.string.codes_paired, it.name) }, { it.message ?: context.getString(R.string.codes_pairing_failed) })
+            pairing = false
         }
     }
     val texts = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
     val requestCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasCamera = granted
-        if (!granted) error = "Camera access is needed only to scan codes and text."
+        if (!granted) error = context.getString(R.string.codes_camera_needed)
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -196,7 +199,7 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                 provider.unbindAll()
                 provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture, analysis)
                 capture = imageCapture
-            }.onFailure { error = it.message ?: "Could not start the camera." }
+            }.onFailure { error = it.message ?: context.getString(R.string.scanner_camera_failed) }
         }, ContextCompat.getMainExecutor(context))
     }
     DisposableEffect(Unit) { onDispose { runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() } } }
@@ -212,15 +215,15 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                 texts.process(InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees))
                     .addOnSuccessListener { text ->
                         val all = text.textBlocks.joinToString("\n\n") { it.text }
-                        if (all.isBlank()) error = "No text found. Move closer and try again."
+                        if (all.isBlank()) error = context.getString(R.string.codes_no_text)
                         else result = CodeResult.Text(all, PaymentCodes.findRf(all))
                     }
-                    .addOnFailureListener { error = it.message ?: "Could not read text." }
+                    .addOnFailureListener { error = it.message ?: context.getString(R.string.codes_read_failed) }
                     .addOnCompleteListener { image.close(); reading = false }
             }
             override fun onError(exception: ImageCaptureException) {
                 reading = false
-                error = exception.message ?: "Could not capture the page."
+                error = exception.message ?: context.getString(R.string.scanner_capture_failed)
             }
         })
     }
@@ -243,14 +246,14 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
         }
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
             }
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                 Text(
                     when {
-                        onCode != null -> "Point at the pairing code on the computer"
-                        mode == CodeMode.Codes -> "Point at a QR code or barcode"
-                        else -> "Frame the text, then tap the shutter"
+                        onCode != null -> stringResource(R.string.codes_point_pairing)
+                        mode == CodeMode.Codes -> stringResource(R.string.codes_point_code)
+                        else -> stringResource(R.string.codes_frame_text)
                     },
                     style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
                 )
@@ -261,14 +264,14 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(12.dp),
         ) {
             Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!hasCamera) Button(onClick = { requestCamera.launch(Manifest.permission.CAMERA) }) { Text("Allow camera") }
+                if (!hasCamera) Button(onClick = { requestCamera.launch(Manifest.permission.CAMERA) }) { Text(stringResource(R.string.scanner_allow_camera), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 else if (mode == CodeMode.Text) Box(Modifier.size(76.dp), contentAlignment = Alignment.Center) {
                     if (reading) CircularProgressIndicator()
                     else Surface(shape = CircleShape, color = Color.White, modifier = Modifier.size(68.dp).clickable(enabled = capture != null, onClick = ::readText)) {}
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ScanPill("Codes", R.drawable.ic_qr_code, mode == CodeMode.Codes) { mode = CodeMode.Codes; error = null }
-                    ScanPill("Text", R.drawable.ic_text_scan, mode == CodeMode.Text) { mode = CodeMode.Text; error = null }
+                    ScanPill(stringResource(R.string.app_codes), R.drawable.ic_qr_code, mode == CodeMode.Codes) { mode = CodeMode.Codes; error = null }
+                    ScanPill(stringResource(R.string.codes_text), R.drawable.ic_text_scan, mode == CodeMode.Text) { mode = CodeMode.Text; error = null }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
@@ -281,32 +284,32 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
                 when (current) {
                     is CodeResult.Payment -> PaymentCodeBlock(context, current.code, large = true)
                     is CodeResult.Code -> {
-                        Text(if (current.url != null) "Link" else "Code", style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(if (current.url != null) R.string.codes_link else R.string.codes_code), style = MaterialTheme.typography.titleLarge)
                         val pick = remember(current) { mutableStateOf(TextFieldValue(current.value)) }
                         ChoosableText(pick)
-                        current.url?.let { url -> DriveWideAction(R.drawable.ic_open_in_browser, "Open in browser") { openLink(context, url); dismiss() } }
+                        current.url?.let { url -> DriveWideAction(R.drawable.ic_open_in_browser, stringResource(R.string.codes_open_browser)) { openLink(context, url); dismiss() } }
                         // a contact's card (Contacts › Share › QR code, or anyone's vCard QR): into Tetra's Contacts
-                        if (current.value.trimStart().startsWith("BEGIN:VCARD", true)) DriveWideAction(R.drawable.ic_person, "Add to Contacts") {
+                        if (current.value.trimStart().startsWith("BEGIN:VCARD", true)) DriveWideAction(R.drawable.ic_person, stringResource(R.string.codes_add_contacts)) {
                             val r = runCatching { ContactsFiles.import(contactsRoot(), VCard.cards(current.value)) }.onSuccess { ScopedSync.soon(context, "contacts", 0, orWhole = true) }
-                            android.widget.Toast.makeText(context, r.fold({ if (it.added > 0) "Added to Contacts" else "Already in Contacts" }) { "Not added: ${it.message}" }, android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, r.fold({ context.getString(if (it.added > 0) R.string.codes_added_contacts else R.string.codes_already_contacts) }) { context.getString(R.string.codes_not_added, it.message.orEmpty()) }, android.widget.Toast.LENGTH_SHORT).show()
                             dismiss()
                         }
-                        DriveWideAction(R.drawable.ic_copy, if (pick.value.selection.collapsed) "Copy" else "Copy selected") { copyText(context, pick.value.chosen()); dismiss() }
-                        DriveWideAction(R.drawable.ic_share, "Share") { shareText(context, pick.value.chosen()) }
+                        DriveWideAction(R.drawable.ic_copy, stringResource(if (pick.value.selection.collapsed) R.string.common_copy else R.string.photos_copy_selected)) { copyText(context, pick.value.chosen()); dismiss() }
+                        DriveWideAction(R.drawable.ic_share, stringResource(R.string.common_share)) { shareText(context, pick.value.chosen()) }
                     }
                     is CodeResult.Pairing -> {
-                        Text("Tetra computer", style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.codes_tetra_computer), style = MaterialTheme.typography.titleLarge)
                         Text(current.computer, style = MaterialTheme.typography.titleMedium)
                         Text(pairStatus.orEmpty(), style = MaterialTheme.typography.bodyLarge)
-                        if (pairStatus == "Pairing…") CircularProgressIndicator()
+                        if (pairing) CircularProgressIndicator()
                     }
                     is CodeResult.Text -> {
                         current.payment?.let { PaymentCodeBlock(context, it, large = false) }
-                        Text("Text", style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.codes_text), style = MaterialTheme.typography.titleLarge)
                         val pick = remember(current) { mutableStateOf(TextFieldValue(current.text)) }
                         ChoosableText(pick)
-                        DriveWideAction(R.drawable.ic_copy, if (pick.value.selection.collapsed) "Copy all" else "Copy selected") { copyText(context, pick.value.chosen()); dismiss() }
-                        DriveWideAction(R.drawable.ic_share, "Share") { shareText(context, pick.value.chosen()) }
+                        DriveWideAction(R.drawable.ic_copy, stringResource(if (pick.value.selection.collapsed) R.string.photos_copy_all else R.string.photos_copy_selected)) { copyText(context, pick.value.chosen()); dismiss() }
+                        DriveWideAction(R.drawable.ic_share, stringResource(R.string.common_share)) { shareText(context, pick.value.chosen()) }
                     }
                 }
             }
@@ -318,7 +321,7 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
 @Composable
 internal fun ChoosableText(value: MutableState<TextFieldValue>, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Hold a word, then drag the handles to choose what to copy. You can fix the words here too.", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.codes_choose_hint), style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(value.value, { value.value = it }, Modifier.fillMaxWidth().heightIn(max = 360.dp), textStyle = MaterialTheme.typography.bodyLarge)
     }
 }
@@ -328,18 +331,18 @@ internal fun TextFieldValue.chosen() = if (selection.collapsed) text else text.s
 
 @Composable
 private fun PaymentCodeBlock(context: Context, code: String, large: Boolean) {
-    Text("Payment code (RF)", style = if (large) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.codes_payment), style = if (large) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium)
     SelectionContainer {
         Text(PaymentCodes.format(code), fontFamily = FontFamily.Monospace, style = if (large) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium)
     }
-    DriveWideAction(R.drawable.ic_copy, "Copy payment code") { copyText(context, code) }
-    if (large) DriveWideAction(R.drawable.ic_share, "Share payment code") { shareText(context, code) }
+    DriveWideAction(R.drawable.ic_copy, stringResource(R.string.codes_copy_payment)) { copyText(context, code) }
+    if (large) DriveWideAction(R.drawable.ic_share, stringResource(R.string.codes_share_payment)) { shareText(context, code) }
 }
 
 private fun copyText(context: Context, text: String) {
     context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Scanned text", text))
     // Android 13+ shows its own copied confirmation.
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) Toast.makeText(context, context.getString(R.string.photos_copied), Toast.LENGTH_SHORT).show()
 }
 
 private fun shareText(context: Context, text: String) {
@@ -348,5 +351,5 @@ private fun shareText(context: Context, text: String) {
 
 private fun openLink(context: Context, url: String) {
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-        .onFailure { Toast.makeText(context, "No browser can open this link.", Toast.LENGTH_SHORT).show() }
+        .onFailure { Toast.makeText(context, context.getString(R.string.codes_no_browser), Toast.LENGTH_SHORT).show() }
 }

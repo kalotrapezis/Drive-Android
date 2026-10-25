@@ -478,4 +478,28 @@
         <item quantity="one">%d σελίδα που δεν αποθηκεύτηκε θα αφαιρεθεί.</item>
         <item quantity="other">%d σελίδες που δεν αποθηκεύτηκαν θα αφαιρεθούν.</item>
     </plurals>
+    <!-- Codes -->
+    <string name="codes_pairing">Σύζευξη…</string>
+    <string name="codes_paired">Έγινε σύζευξη με %1$s. Ανοίξτε τον Συγχρονισμό στην Αρχική για αντίγραφο ασφαλείας των φωτογραφιών σας.</string>
+    <string name="codes_pairing_failed">Η σύζευξη απέτυχε.</string>
+    <string name="codes_camera_needed">Η πρόσβαση στην κάμερα χρειάζεται μόνο για σάρωση κωδικών και κειμένου.</string>
+    <string name="codes_no_text">Δεν βρέθηκε κείμενο. Πλησιάστε και δοκιμάστε ξανά.</string>
+    <string name="codes_read_failed">Δεν ήταν δυνατή η ανάγνωση κειμένου.</string>
+    <string name="codes_point_pairing">Στρέψτε την κάμερα στον κωδικό σύζευξης στον υπολογιστή</string>
+    <string name="codes_point_code">Στρέψτε την κάμερα σε κωδικό QR ή γραμμωτό κώδικα</string>
+    <string name="codes_frame_text">Πλαισιώστε το κείμενο και πατήστε το κουμπί λήψης</string>
+    <string name="codes_text">Κείμενο</string>
+    <string name="codes_link">Σύνδεσμος</string>
+    <string name="codes_code">Κωδικός</string>
+    <string name="codes_open_browser">Άνοιγμα στο πρόγραμμα περιήγησης</string>
+    <string name="codes_add_contacts">Προσθήκη στις Επαφές</string>
+    <string name="codes_added_contacts">Προστέθηκε στις Επαφές</string>
+    <string name="codes_already_contacts">Υπάρχει ήδη στις Επαφές</string>
+    <string name="codes_not_added">Δεν προστέθηκε: %1$s</string>
+    <string name="codes_tetra_computer">Υπολογιστής Tetra</string>
+    <string name="codes_choose_hint">Πατήστε παρατεταμένα μια λέξη και σύρετε τις λαβές για να επιλέξετε τι θα αντιγράψετε. Μπορείτε να διορθώσετε και τις λέξεις εδώ.</string>
+    <string name="codes_payment">Κωδικός πληρωμής (RF)</string>
+    <string name="codes_copy_payment">Αντιγραφή κωδικού πληρωμής</string>
+    <string name="codes_share_payment">Κοινοποίηση κωδικού πληρωμής</string>
+    <string name="codes_no_browser">Κανένα πρόγραμμα περιήγησης δεν μπορεί να ανοίξει αυτόν τον σύνδεσμο.</string>
 </resources>

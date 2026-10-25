@@ -264,7 +264,7 @@ private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, isSp
                             color = if (missed) CALL_RED else MaterialTheme.colorScheme.onSurface, fontWeight = if (missed && g.newest.unseen) FontWeight.Bold else FontWeight.Normal,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            CallTypeIcon(g.newest.type, 16.dp)
+                            CallTypeIcon(g.newest.type, 20.dp)
                             val where = c?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(g.number) }?.label?.ifBlank { null } ?: PhoneArea.of(g.number)
                             if (g.number.isNotBlank() && isSpam(g.number)) Text("Spam ·", style = MaterialTheme.typography.bodySmall, color = CALL_RED, fontWeight = FontWeight.Bold)
                             Text(listOfNotNull(where, whenText(g.newest.at, zone, today)).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
@@ -353,15 +353,19 @@ private fun whenText(at: Long, zone: ZoneId, today: LocalDate): String {
 }
 
 @Composable
-private fun CallTypeIcon(type: Int, size: Dp) {
+internal fun CallTypeIcon(type: Int, size: Dp) {
+    // a white arrow on a coloured round (the user, 25 Oct: "barely noticeable what is what"): in green, out blue, missed and
+    // declined red, blocked grey
     val (icon, tint, what) = when (type) {
-        CallLog.Calls.OUTGOING_TYPE -> Triple(R.drawable.ic_call_made, CALL_GREEN, "Outgoing")
+        CallLog.Calls.OUTGOING_TYPE -> Triple(R.drawable.ic_call_made, CALL_BLUE, "Outgoing")
         CallLog.Calls.MISSED_TYPE -> Triple(R.drawable.ic_call_missed, CALL_RED, "Missed")
-        CallLog.Calls.REJECTED_TYPE -> Triple(R.drawable.ic_call_end, MaterialTheme.colorScheme.onSurfaceVariant, "Declined")
-        CallLog.Calls.BLOCKED_TYPE -> Triple(R.drawable.ic_block, MaterialTheme.colorScheme.onSurfaceVariant, "Blocked")
-        else -> Triple(R.drawable.ic_call_received, PHONE_COLOR, "Incoming")
+        CallLog.Calls.REJECTED_TYPE -> Triple(R.drawable.ic_call_end, CALL_RED, "Declined")
+        CallLog.Calls.BLOCKED_TYPE -> Triple(R.drawable.ic_block, Color(0xFF7A7F84), "Blocked")
+        else -> Triple(R.drawable.ic_call_received, CALL_GREEN, "Incoming")
     }
-    Icon(painterResource(icon), contentDescription = what, tint = tint, modifier = Modifier.size(size))
+    Box(Modifier.size(size).clip(CircleShape).background(tint), contentAlignment = Alignment.Center) {
+        Icon(painterResource(icon), contentDescription = what, tint = Color.White, modifier = Modifier.size(size * 0.68f))
+    }
 }
 
 private fun typeText(type: Int) = when (type) {
@@ -405,7 +409,7 @@ private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, ca
         items(all.take(50), key = { it.id }) { l ->
             Column {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CallTypeIcon(l.type, 18.dp)
+                CallTypeIcon(l.type, 24.dp)
                 val t = Instant.ofEpochMilli(l.at).atZone(zone)
                 Text(t.format(DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)), Modifier.weight(1f))
                 Text(listOfNotNull(typeText(l.type), l.seconds.takeIf { it > 0 }?.let { PhoneCalls.elapsed(it * 1000) }).joinToString(" · "), color = islandContentColor().copy(alpha = 0.7f),

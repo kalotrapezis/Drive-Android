@@ -267,4 +267,11 @@ class ContactsTest {
         assertEquals("6900000022", VCard.info(lines).defaultPhone)
         assertTrue(Regex("item\\d+\\.TEL;TYPE=PREF:6900000022\r\n").containsMatchIn(VCard.write(lines))) // a custom label keeps its group form
     }
+
+    @Test fun aContactsRecordingsByNameOrNumber() {
+        val i = ContactInfo(given = "Άννα", family = "Πέτρου", phones = listOf(VField("Mobile", "+30 690 000 0011")))
+        val files = listOf("2026-10-24 09.15 Άννα Πέτρου.ogg", "2026-10-25 12.04 6900000011.ogg", "2026-10-25 13.00 Άννα Πετρίδου.ogg",
+            "2026-10-25 14.00 6900000099.ogg", "2026-10-25 15.00 Άννα Πέτρου.txt").map { File("/r", it) }
+        assertEquals(listOf("2026-10-25 12.04 6900000011.ogg", "2026-10-24 09.15 Άννα Πέτρου.ogg"), ContactsRecordings.of(files, i).map { it.name })
+    }
 }

@@ -741,9 +741,9 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
     val i = c.info
     fun go(uri: String, action: String = Intent.ACTION_VIEW) { runCatching { context.startActivity(Intent(action, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         .onFailure { android.widget.Toast.makeText(context, "No app opens this", android.widget.Toast.LENGTH_SHORT).show() } }
-    var history by remember(c.info.uid) { mutableStateOf(false) }
     var strip by remember { mutableStateOf<Pair<String, List<Pair<String, () -> Unit>>>?>(null) }
     var qr by remember { mutableStateOf(false) }
+    var more by remember(c.info.uid) { mutableStateOf<String?>(null) } // "History" or "Recordings": See all's page
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding()
             .padding(top = 72.dp, bottom = 96.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { // clear of Edit at the bottom
@@ -754,7 +754,10 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                 // the other apps' rows for these numbers, and the calls with them (both need the phone's permissions)
                 var permits by remember { mutableIntStateOf(0) }
                 val ways by produceState(emptyList<AppWay>(), i.phones, permits) { value = withContext(Dispatchers.IO) { runCatching { ContactsSystem.appWays(context, i.phones.map { it.value }) }.getOrDefault(emptyList()) } }
-                val calls by produceState(emptyList<CallEntry>(), i.phones, permits) { value = withContext(Dispatchers.IO) { runCatching { ContactsSystem.calls(context, i.phones.map { it.value }) }.getOrDefault(emptyList()) } }
+                val calls by produceState(emptyList<CallEntry>(), i.phones, permits) { value = withContext(Dispatchers.IO) { runCatching { ContactsSystem.calls(context, i.phones.map { it.value }, limit = 50) }.getOrDefault(emptyList()) } }
+                val recordings by produceState(emptyList<File>(), i.name, i.phones) {
+                    value = withContext(Dispatchers.IO) { runCatching { ContactsRecordings.of(File(phoneRoot(), "Recordings").listFiles()?.toList().orEmpty(), i) }.getOrDefault(emptyList()) }
+                }
                 // Google Play: the call log only for the phone's phone app, so History asks for that role, not the permission (Plan.md § Phone)
                 val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { permits++ }
                 fun open(w: AppWay) { runCatching {
@@ -783,41 +786,6 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                     }
                     RoundAction(R.drawable.ic_mail, "Mail", i.emails.isNotEmpty()) { choose("Mail", i.emails.map { e -> e.value to { mail(e.value) } }) }
                 }
-                // Details | History (the iPhone's Voicemail cannot be read by any app but the phone's own: History instead)
-                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = CircleShape) {
-                    Row(Modifier.padding(4.dp)) {
-                        listOf(false, true).forEach { h ->
-                            Surface(onClick = { history = h }, shape = CircleShape, color = if (history == h) CONTACTS_COLOR else Color.Transparent,
-                                contentColor = if (history == h) Color.White else MaterialTheme.colorScheme.onSurface) {
-                                Text(if (h) "History" else "Details", Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
-                            }
-                        }
-                    }
-                }
-                val canCalls = context.checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
-                if (history) {
-                    if (!canCalls) DetailCard {
-                        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Calls with ${i.given.ifBlank { i.name }} come from the phone's call log, which Tetra reads as the phone app.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            TextButton(onClick = {
-                                askCalls.launch(context.getSystemService(android.app.role.RoleManager::class.java).createRequestRoleIntent(android.app.role.RoleManager.ROLE_DIALER))
-                            }) { Text("Make it", color = CONTACTS_COLOR) }
-                        }
-                    } else if (calls.isEmpty()) Hint("No calls with ${i.given.ifBlank { i.name }} in the phone's call log.")
-                    else DetailCard { calls.forEach { call -> CallRow(call, i.phones.size > 1) { dial(call.number) } } }
-                    val dates = i.birthday?.let { listOf("Birthday" to dateText(it, true)) }.orEmpty() + i.dates.mapNotNull { f -> VDate.parse(f.value)?.let { f.label to dateText(it, false) } }
-                    if (dates.isNotEmpty()) DetailCard { dates.forEach { (l, t) -> DetailRow(l, t) } }
-                    return@Column
-                }
-                calls.firstOrNull()?.let { last -> DetailCard {
-                    Row(Modifier.fillMaxWidth().clickable { history = true }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Last call", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(callText(last), style = MaterialTheme.typography.bodyLarge)
-                        }
-                        Text("Call history ›", color = CONTACTS_COLOR)
-                    }
-                } }
                 if (c.versions > 1) DetailCard {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${c.versions} versions of this contact (a change on two devices). This is the newer.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
@@ -857,6 +825,47 @@ private fun ContactPage(c: Contact, all: List<Contact>, wide: Boolean, close: ()
                     if (i.labels.isNotEmpty()) DetailRow("Labels", i.labels.joinToString(" · "))
                     if (i.note.isNotEmpty()) DetailRow("Notes", i.note)
                 }
+                // at the end, the calls with them and their recordings (the user, 25 Oct): the latest three of each, See all
+                // opens their own page (the last 50 calls, every number of theirs)
+                if (i.phones.isNotEmpty()) {
+                    SectionTitle("History", if (calls.size > 3) "See all ${calls.size}" else null) { more = "History" }
+                    if (context.checkSelfPermission(Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) DetailCard {
+                        // Google Play: the call log only for the phone's phone app, so this asks for that role, not the permission (Plan.md § Phone)
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Calls with ${i.given.ifBlank { i.name }} come from the phone's call log, which Tetra reads as the phone app.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = {
+                                askCalls.launch(context.getSystemService(android.app.role.RoleManager::class.java).createRequestRoleIntent(android.app.role.RoleManager.ROLE_DIALER))
+                            }) { Text("Make it", color = CONTACTS_COLOR) }
+                        }
+                    } else if (calls.isEmpty()) DetailCard { Text("No calls so far", Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    else DetailCard { calls.take(3).forEach { call -> CallRow(call, i.phones.size > 1) { dial(call.number) } } }
+                }
+                SectionTitle("Recordings", if (recordings.size > 3) "See all ${recordings.size}" else null) { more = "Recordings" }
+                DetailCard {
+                    if (recordings.isEmpty()) Text("No recordings so far", Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    recordings.take(3).forEach { f -> RecordingRow(f) }
+                }
+                // See all: its own page, over the contact's
+                more?.let { what -> androidx.compose.ui.window.Dialog(onDismissRequest = { more = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        Box(Modifier.fillMaxSize()) {
+                            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding()
+                                .padding(top = 72.dp, bottom = 24.dp, start = 16.dp, end = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("$what · ${i.name}", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
+                                    DetailCard {
+                                        if (what == "History") calls.forEach { call -> CallRow(call, i.phones.size > 1) { more = null; dial(call.number) } }
+                                        else recordings.forEach { f -> RecordingRow(f) }
+                                    }
+                                }
+                            }
+                            Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
+                                modifier = Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                IconButton(onClick = { more = null }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = i.name) }
+                            }
+                        }
+                    }
+                } }
             }
         }
         Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -965,10 +974,34 @@ private fun callText(c: CallEntry): String {
     return "$day ${at.format(DateTimeFormatter.ofPattern("HH:mm"))} · $kind$length"
 }
 
+/** A section's name over its card on a contact's page, with See all at the right when there is more. */
+@Composable private fun SectionTitle(title: String, all: String?, open: () -> Unit) =
+    Row(Modifier.fillMaxWidth().padding(start = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        if (all != null) TextButton(onClick = open) { Text(all, color = CONTACTS_COLOR) }
+    }
+
+/** A call recorded on the computer: when, its size; a tap plays it in the phone's player. */
+@Composable private fun RecordingRow(f: File) {
+    val context = LocalContext.current
+    Row(Modifier.fillMaxWidth().clickable {
+        runCatching {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
+            context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "audio/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { WriterLog.w("Contacts: a recording did not open (${it.message})") }
+    }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Icon(painterResource(R.drawable.ic_mic), contentDescription = null, tint = CONTACTS_COLOR, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text(f.nameWithoutExtension.take(16).replace('.', ':'))
+            Text("${f.length() / 1024} KB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 @Composable private fun CallRow(c: CallEntry, showNumber: Boolean, click: () -> Unit) =
     Row(Modifier.fillMaxWidth().clickable(onClick = click).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val missed = c.type == android.provider.CallLog.Calls.MISSED_TYPE || c.type == android.provider.CallLog.Calls.REJECTED_TYPE
-        Icon(painterResource(R.drawable.ic_call), contentDescription = null, tint = if (missed) MaterialTheme.colorScheme.error else CONTACTS_COLOR, modifier = Modifier.size(20.dp))
+        CallTypeIcon(c.type, 28.dp)
         Column(Modifier.weight(1f)) {
             Text(callText(c), color = if (missed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             if (showNumber) Text(c.number, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

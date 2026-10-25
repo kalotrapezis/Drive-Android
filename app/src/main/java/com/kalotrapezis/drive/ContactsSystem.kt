@@ -1,5 +1,6 @@
 package com.kalotrapezis.drive
 
+import java.io.File
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -105,6 +106,23 @@ internal enum class Way { Message, Call, Video }
 /** A way to reach a number through another app, opened as the phone's Contacts opens it (ACTION_VIEW on the row). */
 internal data class AppWay(val app: String, val way: Way, val number: String, val id: Long, val mime: String)
 internal data class CallEntry(val number: String, val at: Long, val seconds: Long, val type: Int)
+
+/**
+ * A contact's call recordings, newest first: those the computer made in Tetra/Phone/Recordings, named
+ * "2026-10-25 12.04 <the contact's name, or the number>.ogg" (desktop calls.js recorder), matched by that name or number.
+ */
+internal object ContactsRecordings {
+    private val AUDIO = setOf("ogg", "opus", "m4a", "mp3", "wav")
+    private val STAMP = Regex("^\\d{4}-\\d{2}-\\d{2} \\d{2}\\.\\d{2} ")
+    fun of(files: List<File>, i: ContactInfo): List<File> {
+        val name = ContactsFiles.plain(i.name.replace(Regex("[/\\\\:*?\"<>|]"), "-").take(60))
+        val keys = i.phones.map { ContactsWays.key(it.value) }.filter { it.length >= 5 }.toSet()
+        return files.filter { f ->
+            val title = f.nameWithoutExtension.replace(STAMP, "")
+            f.extension.lowercase() in AUDIO && ((name.isNotEmpty() && ContactsFiles.plain(title) == name) || ContactsWays.key(title) in keys)
+        }.sortedByDescending { it.name }
+    }
+}
 
 internal object ContactsWays {
     /** The rows Tetra offers, by MIME type (as read on the user's phone, 23 Oct; Viber Out, a paid call, left out). */

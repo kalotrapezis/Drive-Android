@@ -1617,7 +1617,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             state.selection = androidx.compose.ui.text.TextRange(0)
             base = snapshot()
             loaded = true
-        }.onFailure { WriterLog.e("could not open", it); failed = it.message ?: context.getString(R.string.words_file_could_not_be_read) }
+        }.onFailure { WriterLog.e("could not open", it); failed = it.officeMessage(context) ?: context.getString(R.string.words_file_could_not_be_read) }
     }
     // The log: the mode, the tab and what Writer said (the taps are the ribbon's; see WriterLog).
     LaunchedEffect(viewing, reading) { WriterLog.i(if (reading) "reading mode at $readingZoom%" else if (viewing) "view mode" else "edit mode") }
@@ -1880,7 +1880,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     target
                 }
             }
-            result.onSuccess { message = context.getString(R.string.words_saved_in, it.name, dir.name) }.onFailure { message = it.message ?: context.getString(R.string.words_pdf_not_made) }
+            result.onSuccess { message = context.getString(R.string.words_saved_in, it.name, dir.name) }.onFailure { message = it.officeMessage(context) ?: context.getString(R.string.words_pdf_not_made) }
         }
     }
     /** File › Print: the pages as Export PDF makes them, to Android's printing (a printer, or Save as PDF). */
@@ -3338,8 +3338,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 Surface(color = if (copyOnly) Category.Office.color.copy(alpha = 0.22f) else Color(0xFF2A2E30), contentColor = Color.White,
                     shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { details = true }) {
                     Text(if (copyOnly && meta.blocking == setOf(LegacyDocs.OLDER)) stringResource(R.string.words_older_file_banner, name.substringAfterLast('.').uppercase(), name.substringBeforeLast('.'))
-                        else if (copyOnly) stringResource(R.string.words_copy_only_banner, meta.blocking.take(3).joinToString() + if (meta.blocking.size > 3) "…" else "")
-                        else stringResource(R.string.words_simplifies_banner, meta.simplified.joinToString()),
+                        else if (copyOnly) stringResource(R.string.words_copy_only_banner, OfficeDoc.notesText(LocalContext.current, meta.blocking.take(3)) + if (meta.blocking.size > 3) "…" else "")
+                        else stringResource(R.string.words_simplifies_banner, OfficeDoc.notesText(LocalContext.current, meta.simplified)),
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }
             }
@@ -4947,8 +4947,8 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 if (!sel.collapsed) counted(state.annotatedString.text, sel.min, sel.max).let {
                     Text(stringResource(R.string.words_selected_counts, "${wordsCount(it.words)} · ${charactersCount(it.chars)} ${stringResource(R.string.words_with_spaces, it.withSpaces)}"), style = MaterialTheme.typography.bodyMedium)
                 }
-                if (meta.blocking.isNotEmpty()) Text(stringResource(R.string.words_does_not_show, meta.blocking.joinToString()), style = MaterialTheme.typography.bodyMedium)
-                if (meta.simplified.isNotEmpty()) Text(stringResource(R.string.words_simplified_on_saving, meta.simplified.joinToString()), style = MaterialTheme.typography.bodyMedium)
+                if (meta.blocking.isNotEmpty()) Text(stringResource(R.string.words_does_not_show, OfficeDoc.notesText(LocalContext.current, meta.blocking)), style = MaterialTheme.typography.bodyMedium)
+                if (meta.simplified.isNotEmpty()) Text(stringResource(R.string.words_simplified_on_saving, OfficeDoc.notesText(LocalContext.current, meta.simplified)), style = MaterialTheme.typography.bodyMedium)
                 if (meta.unsupported.isEmpty()) Text(stringResource(R.string.words_keeps_everything), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.words_page_kept), style = MaterialTheme.typography.bodySmall)
             }

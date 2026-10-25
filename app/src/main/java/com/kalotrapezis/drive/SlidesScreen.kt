@@ -565,7 +565,7 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
     /** Words' import (a Tetra sources file, or Claude's answer pasted): the new ones added, none twice. */
     fun importSources(text: () -> String?) {
         val read = runCatching { text()?.let(SourcesImport::read) ?: throw IllegalArgumentException(context.getString(R.string.slides_nothing_to_import)) }
-        val r = read.getOrNull() ?: run { message = read.exceptionOrNull()?.message ?: context.getString(R.string.slides_file_unreadable); return }
+        val r = read.getOrNull() ?: run { message = read.exceptionOrNull()?.officeMessage(context) ?: context.getString(R.string.slides_file_unreadable); return }
         val added = ArrayList<DocSource>()
         for (n in r.sources) if (!SourcesImport.same(n, sources + added)) added += n.copy(tag = Citations.tagFor(if (odp) OfficeKind.Odt else OfficeKind.Docx, n, (sources + added).map { it.tag }, citeStyle))
         resource(sources + added, citeStyle, context.resources.getQuantityString(R.plurals.slides_sources_added, added.size, added.size) + (if (r.sources.size > added.size) context.getString(R.string.slides_sources_already_here, r.sources.size - added.size) else ""))
@@ -930,13 +930,13 @@ internal fun SlidesScreen(back: () -> Unit, open: String) {
         // Words' superscript and subscript, and Aa (change case: the box's words, each letter keeping its look)
         RibbonButton("X²", w, on = r?.script == 1) { restyle { it.copy(script = if (r?.script == 1) 0 else 1) } }
         RibbonButton("X₂", w, on = r?.script == -1) { restyle { it.copy(script = if (r?.script == -1) 0 else -1) } }
-        RibbonMenu("Aa", w, preset = false, title = stringResource(R.string.slides_change_case), choices = WriterBridge.Case.entries.map { cs -> MenuChoice(cs.label) { recase(box, cs) } })
+        RibbonMenu("Aa", w, preset = false, title = stringResource(R.string.slides_change_case), choices = WriterBridge.Case.entries.map { cs -> MenuChoice(stringResource(cs.text)) { recase(box, cs) } })
         Swatches(w, R.drawable.ic_format_color_text, stringResource(R.string.slides_text_colour), TEXT_COLOURS) { col -> restyle { it.copy(text = col?.toArgb() ?: 0xFF000000.toInt()) } }
         Swatches(w, R.drawable.ic_highlighter, stringResource(R.string.slides_highlight), HIGHLIGHT_COLOURS) { col -> restyle { it.copy(highlight = col?.toArgb() ?: SlidesEdit.NONE) } }
         // PowerPoint's Character Spacing (Words' choices): the box's letters closer or wider
         run { val now = r?.font?.let { LetterLooks.spacingOf(it) } ?: 0f
-            RibbonMenu(stringResource(R.string.slides_spacing), w, R.drawable.ic_format_letter_spacing, on = now != 0f, title = stringResource(R.string.slides_character_spacing), choices = CHARACTER_SPACINGS.map { (label, pt) ->
-                MenuChoice(label, checked = now == pt) { restyle { it.copy(letterSpacing = pt) }; WriterLog.i("Slides: character spacing $pt") } }) }
+            RibbonMenu(stringResource(R.string.slides_spacing), w, R.drawable.ic_format_letter_spacing, on = now != 0f, title = stringResource(R.string.slides_character_spacing), choices = CHARACTER_SPACINGS.mapIndexed { i, (_, pt) ->
+                MenuChoice(stringResource(CHARACTER_SPACING_NAMES[i]), checked = now == pt) { restyle { it.copy(letterSpacing = pt) }; WriterLog.i("Slides: character spacing $pt") } }) }
         // PowerPoint's Text Effects (WordArt's, on any box's words): an outline round the letters, a shadow, a glow (an .odp has none)
         run { val fx = TextEffects.of(r?.font); val tint = r?.color ?: 0x4472C4
             RibbonMenu(stringResource(R.string.slides_text_effects), w, R.drawable.ic_format_color_text, on = fx.any, preset = false, choices = listOfNotNull(Triple('o', stringResource(R.string.slides_outline), fx.outline != null), Triple('s', stringResource(R.string.slides_shadow), fx.shadow), Triple('g', stringResource(R.string.slides_glow), fx.glow != null).takeIf { !odp }).map { (kind, label, on) ->

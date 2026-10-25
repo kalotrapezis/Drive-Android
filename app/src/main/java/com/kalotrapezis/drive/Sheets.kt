@@ -19,7 +19,7 @@ import kotlin.math.roundToInt
 internal class SheetProblem(@androidx.annotation.StringRes val text: Int, vararg val args: Any) : IllegalStateException("Tables problem, string $text ${args.joinToString()}")
 internal fun sheetProblem(@androidx.annotation.StringRes text: Int, vararg args: Any): Nothing = throw SheetProblem(text, *args)
 /** What to tell the user of a failure: a [SheetProblem]'s words, else its own message. */
-internal fun Throwable.said(context: android.content.Context): String? = if (this is SheetProblem) context.getString(text, *args) else message
+internal fun Throwable.said(context: android.content.Context): String? = if (this is SheetProblem) context.getString(text, *args) else officeMessage(context)
 
 /**
  * Tetra's spreadsheets (the user, 15 Oct: "start with the viewer and let's complete it like we did with Word"): an

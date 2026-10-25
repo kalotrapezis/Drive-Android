@@ -41,21 +41,18 @@ your own backups. Screenshots use invented sample data.
 
 <sub>\* Maps and finding photos by place cover Greece only for now; other countries will follow.</sub>
 
-## See it work
-
-![Files both ways: Send to computer on the phone, Send to phone on the computer](Assets/cards/card-send.jpg)
-![Calls on your computer: the call bubble](Assets/cards/card-bubble.jpg)
-![Home your way: groups, a mix, icons only, edit mode](Assets/cards/card-home.jpg)
-
 ## The applets
 
+![Home your way: groups, a mix, icons only, edit mode](Assets/cards/card-home.jpg)
 ![Office: Words, Tables, Slides and PDF](Assets/cards/card-office.jpg)
 ![Photos](Assets/cards/card-photos.jpg)
 ![Notes](Assets/cards/card-notes.jpg)
 ![Calendar and Timer](Assets/cards/card-calendar.jpg)
 ![Contacts and Phone](Assets/cards/card-people.jpg)
+![Calls on your computer: the call bubble](Assets/cards/card-bubble.jpg)
 ![Maps](Assets/cards/card-maps.jpg)
 ![Files](Assets/cards/card-files.jpg)
+![Files both ways: Send to computer on the phone, Send to phone on the computer](Assets/cards/card-send.jpg)
 ![Data](Assets/cards/card-data.jpg)
 
 Also inside: **Scanner** (paper to PDF, the page found live and straightened), **Codes** (QR codes, barcodes, text

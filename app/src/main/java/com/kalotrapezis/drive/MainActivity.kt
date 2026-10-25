@@ -328,12 +328,12 @@ private fun authenticateVault(activity: Activity, success: () -> Unit, failure: 
     val allowed = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
     val manager = activity.getSystemService(BiometricManager::class.java)
     if (manager.canAuthenticate(allowed) != BiometricManager.BIOMETRIC_SUCCESS) {
-        failure("Set up a screen lock or biometric unlock in Android settings first.")
+        failure(activity.getString(R.string.home_vault_no_lock))
         return
     }
     BiometricPrompt.Builder(activity)
-        .setTitle("Unlock Hidden")
-        .setSubtitle("Use biometrics or your phone screen lock")
+        .setTitle(activity.getString(R.string.home_vault_unlock))
+        .setSubtitle(activity.getString(R.string.home_vault_unlock_detail))
         .setAllowedAuthenticators(allowed)
         .build()
         .authenticate(CancellationSignal(), activity.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
@@ -455,14 +455,14 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
     fun loadDrive(folder: String = driveFolder, quiet: Boolean = false) {
         if (!hasAllFilesAccess()) {
-            driveState = DriveListState.Error("All files access is required to use $DRIVE_PATH.")
+            driveState = DriveListState.Error(context.getString(R.string.home_files_access_needed, DRIVE_PATH))
             return
         }
         if (!quiet) driveState = DriveListState.Loading
         Thread {
             val result = runCatching {
                 val root = driveRoot()
-                check((root.exists() && root.isDirectory) || root.mkdirs()) { "Could not create Drive." }
+                check((root.exists() && root.isDirectory) || root.mkdirs()) { context.getString(R.string.home_drive_not_created) }
                 DriveRules.ensureSystemFolders(root)
                 if (folder == "Trash" && !File(root, folder).exists()) emptyList() else listDriveFolder(root, folder)
             }
@@ -470,7 +470,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 if (quiet && folder != driveFolder) return@runOnUiThread // moved on while it read; that folder loads itself
                 driveState = result.fold(
                     onSuccess = { DriveListState.Items(folder, it) },
-                    onFailure = { DriveListState.Error("Cannot read $DRIVE_PATH: ${it.message ?: "storage unavailable"}") },
+                    onFailure = { DriveListState.Error(context.getString(R.string.home_drive_unreadable, DRIVE_PATH, it.message ?: context.getString(R.string.home_storage_unavailable))) },
                 )
             }
         }.start()
@@ -486,11 +486,11 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         else -> context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
     }
     fun photoPermission(): String = when {
-        Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED -> "Full photo and video access"
-        Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED -> "Selected photos and videos only"
-        Build.VERSION.SDK_INT == 33 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED -> "Photo and video access granted"
-        Build.VERSION.SDK_INT <= 32 && context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED -> "Photo and video access granted"
-        else -> "Photo and video access not granted"
+        Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED -> context.getString(R.string.home_photos_full)
+        Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED -> context.getString(R.string.home_photos_selected)
+        Build.VERSION.SDK_INT == 33 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED -> context.getString(R.string.home_photos_granted)
+        Build.VERSION.SDK_INT <= 32 && context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED -> context.getString(R.string.home_photos_granted)
+        else -> context.getString(R.string.home_photos_not_granted)
     }
     fun canReadPhotos() = hasVisualAccess()
     fun photoPermissions() = when {
@@ -500,7 +500,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     }
     /** [quiet]: the photos already shown stay while they are read again (Photos opened again, back to the app). */
     fun loadPhotos(quiet: Boolean = false) {
-        if (!canReadPhotos()) { photosState = ListState.Error("Allow photos and videos to view DCIM and Screenshots."); return }
+        if (!canReadPhotos()) { photosState = ListState.Error(context.getString(R.string.home_photos_allow)); return }
         val shown = (photosState as? ListState.Items)?.entries?.mapTo(HashSet(), Entry::photoKey)
         if (!quiet || shown == null) photosState = ListState.Loading
         Thread {
@@ -513,7 +513,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             (context as MainActivity).runOnUiThread {
                 photosState = result.fold(
                     onSuccess = { ListState.Items(it) },
-                    onFailure = { ListState.Error("Cannot read photos: ${it.message ?: "permission lost"}") },
+                    onFailure = { ListState.Error(context.getString(R.string.home_photos_unreadable, it.message ?: context.getString(R.string.home_permission_lost))) },
                 )
                 // Whatever is new here has never been read: do it now, not the next time People is opened.
                 if (result.isSuccess) PhotoAnalysisService.start(context)
@@ -557,13 +557,13 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         pendingMove = chosen to dest
         runCatching { MediaStore.createWriteRequest(context.contentResolver, chosen.mapNotNull(Entry::contentUri)) }
             .onSuccess { requestMove.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
-            .onFailure { pendingMove = null; photosState = ListState.Error("Cannot move photos: ${it.message ?: "request failed"}") }
+            .onFailure { pendingMove = null; photosState = ListState.Error(context.getString(R.string.home_photos_not_moved, it.message ?: context.getString(R.string.home_request_failed))) }
     }
     fun movePhotosToTrash(uris: Set<Uri>) {
         if (uris.isEmpty()) return
         runCatching { MediaStore.createTrashRequest(context.contentResolver, uris.toList(), true) }
             .onSuccess { requestTrash.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
-            .onFailure { photosState = ListState.Error("Cannot move photos to trash: ${it.message ?: "request failed"}") }
+            .onFailure { photosState = ListState.Error(context.getString(R.string.home_photos_not_trashed, it.message ?: context.getString(R.string.home_request_failed))) }
     }
     // A finished sync has brought photos, files and other devices' edits in. Show them without being asked:
     // nothing is more confusing than a sync that says it is done over a page that still shows the old contents.
@@ -579,7 +579,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     fun selectedEntries(uris: Set<Uri>) = (photosState as? ListState.Items)?.entries.orEmpty().filter { it.contentUri in uris }
     fun metadataAction(action: () -> Unit): String? = runCatching(action).fold(
         onSuccess = { metadataVersion++; null },
-        onFailure = { it.message ?: "Could not save photo metadata." },
+        onFailure = { it.message ?: context.getString(R.string.home_metadata_not_saved) },
     )
     fun openDriveFile(relative: String, forceChooser: Boolean): String? = runCatching {
         val file = DriveRules.file(driveRoot(), relative)
@@ -599,7 +599,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 callback,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
             )
-            context.startActivity(Intent.createChooser(viewIntent, "Open with", pending.intentSender))
+            context.startActivity(Intent.createChooser(viewIntent, context.getString(R.string.home_open_with), pending.intentSender))
         }
         // A Word or LibreOffice document opens in Writer (Settings › Office); Open with… still offers other apps.
         if (!forceChooser && file.extension.lowercase(Locale.ROOT) in setOf("docx", "odt", "doc", "rtf") && TextEditorStore(context).opensOffice) {
@@ -639,7 +639,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         }
         driveRecents.record(driveRoot(), relative, System.currentTimeMillis())
         recentsVersion++
-    }.fold(onSuccess = { null }, onFailure = { it.message ?: "Could not open this file. Install an app that supports it." })
+    }.fold(onSuccess = { null }, onFailure = { it.message ?: context.getString(R.string.home_file_not_opened) })
     fun saveScan(name: String) {
         if (scanSaving) return
         scanSaving = true
@@ -649,7 +649,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             val result = runCatching {
                 val dpi = context.getSharedPreferences("scanner", Context.MODE_PRIVATE).getInt(SCANNER_DPI, 300)
                 ScanFiles.savePdf(driveRoot(), name, pages.size) { index ->
-                    checkNotNull(renderScanPage(pages[index], 1, scanMaxEdge(dpi))) { "Could not read page ${index + 1}." }
+                    checkNotNull(renderScanPage(pages[index], 1, scanMaxEdge(dpi))) { context.getString(R.string.home_scan_page_unreadable, index + 1) }
                 }
             }
             (context as MainActivity).runOnUiThread {
@@ -666,7 +666,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                         driveFolder = "Documents/Scanned Documents"
                         loadDrive("Documents/Scanned Documents")
                     },
-                    onFailure = { scannerError = it.message ?: "Could not save the scan." },
+                    onFailure = { scannerError = it.message ?: context.getString(R.string.home_scan_not_saved) },
                 )
             }
         }.start()
@@ -728,7 +728,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         val o = office ?: return@LaunchedEffect
         val f = withContext(Dispatchers.IO) { runCatching { OfficeOpen.file(context, o.uri, Environment.getExternalStorageDirectory(), File(driveRoot(), "Documents/From other apps"), o.mimeType) }
             .onFailure { WriterLog.e("Office: a file from another app could not be read", it) }.getOrNull() }
-        if (f == null) { Toast.makeText(context, "That file could not be opened.", Toast.LENGTH_LONG).show(); return@LaunchedEffect }
+        if (f == null) { Toast.makeText(context, context.getString(R.string.home_that_file_not_opened), Toast.LENGTH_LONG).show(); return@LaunchedEffect }
         WriterLog.i("Office: opened from another app (${f.extension})")
         openOfficeFile(f, Screen.Office)
     }
@@ -943,6 +943,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                     back = { screen = Screen.Home },
                     metadataStore = photoMetadata,
                     photoPermission = photoPermission(),
+                    photoAccess = hasVisualAccess(),
                     hasDriveAccess = hasAllFilesAccess(),
                     showPhotoBackdrop = homePhotoBackdrop,
                     setShowPhotoBackdrop = { enabled ->
@@ -1042,8 +1043,8 @@ private fun Home(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HomePhotosCard(openPhotos, showPhotoBackdrop, hasPhotoAccess, photoMetadata, Modifier.weight(1f))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HomeCompactCard("Screenshots", R.drawable.ic_screenshot, openScreenshots)
-                        HomeCompactCard("Documents", R.drawable.ic_file, openDocuments)
+                        HomeCompactCard(stringResource(R.string.home_screenshots), R.drawable.ic_screenshot, openScreenshots)
+                        HomeCompactCard(stringResource(R.string.home_documents), R.drawable.ic_file, openDocuments)
                     }
                 }
             }
@@ -1051,10 +1052,10 @@ private fun Home(
         "files" -> {
             HomeGroup(MaterialTheme.colorScheme.tertiaryContainer) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeArtCard("Files", R.drawable.files_art, openFiles, Modifier.weight(1f), artSize = 76) // the user's own tile (17 Oct), as Office's
+                    HomeArtCard(stringResource(R.string.app_files), R.drawable.files_art, openFiles, Modifier.weight(1f), artSize = 76) // the user's own tile (17 Oct), as Office's
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HomeCompactCard("Favorites", R.drawable.ic_favorite_border, openFavorites)
-                        HomeCompactCard("Recent", R.drawable.ic_home, openRecent)
+                        HomeCompactCard(stringResource(R.string.home_favorites), R.drawable.ic_favorite_border, openFavorites)
+                        HomeCompactCard(stringResource(R.string.home_recent), R.drawable.ic_home, openRecent)
                     }
                 }
             }
@@ -1062,10 +1063,10 @@ private fun Home(
         "notes" -> {
             HomeGroup(Category.Notes.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeArtCard("Notes", R.drawable.notes_art, openNotes, Modifier.weight(1f), artSize = 76) // the user's yellow tile (24 Oct), as the others
+                    HomeArtCard(stringResource(R.string.app_notes), R.drawable.notes_art, openNotes, Modifier.weight(1f), artSize = 76) // the user's yellow tile (24 Oct), as the others
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HomeCompactCard("Checklist", R.drawable.ic_checklist) { newNote(true) }
-                        HomeCompactCard("New note", R.drawable.ic_note_add) { newNote(false) }
+                        HomeCompactCard(stringResource(R.string.home_checklist), R.drawable.ic_checklist) { newNote(true) }
+                        HomeCompactCard(stringResource(R.string.home_new_note), R.drawable.ic_note_add) { newNote(false) }
                     }
                 }
             }
@@ -1075,7 +1076,7 @@ private fun Home(
         "office" -> {
             HomeGroup(Category.Office.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeArtCard("Office", R.drawable.office_art, openOffice, Modifier.weight(1f), artSize = 76)
+                    HomeArtCard(stringResource(R.string.app_office), R.drawable.office_art, openOffice, Modifier.weight(1f), artSize = 76)
                     // the four apps' Open, two by two (asked 17 Oct): each the picker for its own kind of file
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         listOf(listOf(OfficePick.Words, OfficePick.Tables), listOf(OfficePick.Slides, OfficePick.Pdf)).forEach { row ->
@@ -1089,10 +1090,10 @@ private fun Home(
         "text" -> {
             HomeGroup(Category.Text.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeArtCard("Text editor", R.drawable.text_editor_art, { openTextEditor(null) }, Modifier.weight(1f), artSize = 76) // a solid tile: kept clear of the title
+                    HomeArtCard(stringResource(R.string.app_text_editor), R.drawable.text_editor_art, { openTextEditor(null) }, Modifier.weight(1f), artSize = 76) // a solid tile: kept clear of the title
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HomeCompactCard("New file", R.drawable.ic_note_add) { openTextEditor("new") }
-                        HomeCompactCard("Open file", R.drawable.ic_folder) { openTextEditor("open") }
+                        HomeCompactCard(stringResource(R.string.home_new_file), R.drawable.ic_note_add) { openTextEditor("new") }
+                        HomeCompactCard(stringResource(R.string.home_open_file), R.drawable.ic_folder) { openTextEditor("open") }
                     }
                 }
             }
@@ -1101,7 +1102,7 @@ private fun Home(
         "calendar" -> {
             HomeGroup(Category.Calendar.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeArtCard("Calendar", R.drawable.calendar_art, openCalendar, Modifier.weight(1f), artSize = 76)
+                    HomeArtCard(stringResource(R.string.app_calendar), R.drawable.calendar_art, openCalendar, Modifier.weight(1f), artSize = 76)
                     // four tiles as Office's (the user, 18 Oct: "New : Shedule : burthday : reminder"), each the editor for its kind
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         listOf(listOf(NewKind.Event, NewKind.Schedule), listOf(NewKind.Birthday, NewKind.Reminder)).forEach { row ->
@@ -1116,14 +1117,14 @@ private fun Home(
         "timer" -> {
             HomeGroup(Category.Timer.color) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HomeArtCard("Timer", R.drawable.timer_art, openTimer, Modifier.weight(1f), artSize = 76)
+                    HomeArtCard(stringResource(R.string.app_timer), R.drawable.timer_art, openTimer, Modifier.weight(1f), artSize = 76)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         listOf(listOf(6, 15), listOf(20, 30)).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                row.forEach { m -> HomeTile("$m min", R.drawable.ic_play, lookTint(Color(0xFF80CBC4), Color(0xFF00796B)), Modifier.weight(1f)) {
+                                row.forEach { m -> HomeTile(stringResource(R.string.home_minutes, m), R.drawable.ic_play, lookTint(Color(0xFF80CBC4), Color(0xFF00796B)), Modifier.weight(1f)) {
                                     Thread {
                                         val failed = runCatching { TimerControl.start(context, m * 60L) }.onFailure { WriterLog.e("Timer: Home's $m min failed", it) }.exceptionOrNull()
-                                        android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, failed?.let { it.message ?: "The timer could not start" } ?: "$m min timer started", Toast.LENGTH_SHORT).show() }
+                                        android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, failed?.let { it.message ?: context.getString(R.string.home_timer_failed) } ?: context.getString(R.string.home_timer_started, m), Toast.LENGTH_SHORT).show() }
                                     }.start()
                                 } }
                             }
@@ -1132,8 +1133,8 @@ private fun Home(
                 }
             }
         }
-        "sync" -> HomeWideCard("Local Sync", syncSummary, R.drawable.sync_art, openSync)
-        "settings" -> HomeWideCard("Settings", "Permissions and local storage", R.drawable.settings_art, openSettings)
+        "sync" -> HomeWideCard(stringResource(R.string.home_local_sync), syncSummary, R.drawable.sync_art, openSync)
+        "settings" -> HomeWideCard(stringResource(R.string.common_settings), stringResource(R.string.home_settings_detail), R.drawable.settings_art, openSettings)
         // Contacts and Maps (23 Oct, the user: Maps one card with 4 slots, Contacts beside it)
         "contacts" -> HomeContactsGroup(openContacts)
         "phone" -> HomePhoneGroup()
@@ -1142,20 +1143,20 @@ private fun Home(
     } }
     // each part small: just its icon, as a launcher's (Scanner and Codes are two apps, so two icons)
     fun icons(id: String): List<HomeIcon> = when (id) {
-        "sync" -> listOf(HomeIcon("Local Sync", R.drawable.sync_art, openSync))
-        "settings" -> listOf(HomeIcon("Settings", R.drawable.settings_art, openSettings))
-        "gallery" -> listOf(HomeIcon("Photos", R.drawable.gallery_art, openPhotos))
-        "files" -> listOf(HomeIcon("Files", R.drawable.files_art, openFiles))
-        "notes" -> listOf(HomeIcon("Notes", R.drawable.notes_art, openNotes))
-        "scanner" -> listOf(HomeIcon("Scanner", R.drawable.scanner_art, openScanner), HomeIcon("Codes", R.drawable.codes_art, openCodes))
-        "office" -> listOf(HomeIcon("Office", R.drawable.office_art, openOffice))
-        "text" -> listOf(HomeIcon("Text editor", R.drawable.text_editor_art, { openTextEditor(null) }))
-        "calendar" -> listOf(HomeIcon("Calendar", R.drawable.calendar_art, openCalendar))
-        "timer" -> listOf(HomeIcon("Timer", R.drawable.timer_art, openTimer))
-        "contacts" -> listOf(HomeIcon("Contacts", R.drawable.contacts_art, { openContacts(null) }))
-        "phone" -> listOf(HomeIcon("Phone", R.drawable.phone_art, { openPhone(context) }))
-        "data" -> listOf(HomeIcon("Data", R.drawable.data_art, { openData(context) }))
-        "maps" -> listOf(HomeIcon("Maps", R.drawable.maps_art, { openMaps(null) }))
+        "sync" -> listOf(HomeIcon(R.string.home_local_sync, R.drawable.sync_art, openSync))
+        "settings" -> listOf(HomeIcon(R.string.common_settings, R.drawable.settings_art, openSettings))
+        "gallery" -> listOf(HomeIcon(R.string.app_photos, R.drawable.gallery_art, openPhotos))
+        "files" -> listOf(HomeIcon(R.string.app_files, R.drawable.files_art, openFiles))
+        "notes" -> listOf(HomeIcon(R.string.app_notes, R.drawable.notes_art, openNotes))
+        "scanner" -> listOf(HomeIcon(R.string.app_scanner, R.drawable.scanner_art, openScanner), HomeIcon(R.string.app_codes, R.drawable.codes_art, openCodes))
+        "office" -> listOf(HomeIcon(R.string.app_office, R.drawable.office_art, openOffice))
+        "text" -> listOf(HomeIcon(R.string.app_text_editor, R.drawable.text_editor_art, { openTextEditor(null) }))
+        "calendar" -> listOf(HomeIcon(R.string.app_calendar, R.drawable.calendar_art, openCalendar))
+        "timer" -> listOf(HomeIcon(R.string.app_timer, R.drawable.timer_art, openTimer))
+        "contacts" -> listOf(HomeIcon(R.string.app_contacts, R.drawable.contacts_art, { openContacts(null) }))
+        "phone" -> listOf(HomeIcon(R.string.app_phone, R.drawable.phone_art, { openPhone(context) }))
+        "data" -> listOf(HomeIcon(R.string.app_data, R.drawable.data_art, { openData(context) }))
+        "maps" -> listOf(HomeIcon(R.string.app_maps, R.drawable.maps_art, { openMaps(null) }))
         else -> emptyList()
     }
     // Home's own layout on this device (the user, 24 Oct: "a grid that expands, to drag and drop where I want them"): hold
@@ -1172,23 +1173,23 @@ private fun Home(
             val icon = remember(context) { context.getDrawable(R.mipmap.ic_launcher)?.toBitmap(144, 144)?.asImageBitmap() }
             icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(36.dp)) }
             Text(
-                if (editing) "Edit Home" else "Tetra",
+                if (editing) stringResource(R.string.home_edit) else stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge.copy(
                     shadow = Shadow(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f), Offset(2f, 3f), 2f),
                 ),
                 modifier = Modifier.weight(1f),
             )
             if (editing) {
-                TextButton(onClick = { HomeLayout.reset(context, wide); layout = HomeLayout.load(context, wide) }) { Text("Reset") }
-                Button(onClick = { editing = false }) { Text("Done") }
-            } else IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit Home") }
+                TextButton(onClick = { HomeLayout.reset(context, wide); layout = HomeLayout.load(context, wide) }) { Text(stringResource(R.string.home_reset), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                Button(onClick = { editing = false }) { Text(stringResource(R.string.common_done), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            } else IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = stringResource(R.string.home_edit)) }
         }
-        if (editing) Text("Hold a part and drag it to any cell; the others make room. ⤢ makes it large, medium or small, the eye hides it.",
+        if (editing) Text(stringResource(R.string.home_edit_hint),
             style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 6.dp, end = 6.dp, bottom = 6.dp))
         HomeGrid(layout, cols, editing, { editing = true }, ::change, scroll, large, ::icons)
         if (editing) {
             val hidden = layout.filter { it.hidden }
-            Text(if (hidden.isEmpty()) "Hidden parts wait here (and in Settings › Home)." else "Hidden — tap one to put it back",
+            Text(if (hidden.isEmpty()) stringResource(R.string.home_hidden_none) else stringResource(R.string.home_hidden_tap),
                 style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp))
             androidx.compose.foundation.layout.FlowRow {
                 hidden.forEach { item -> icons(item.id).first().let { HomeSmallIcon(HomeIcon(HomeLayout.NAMES[item.id] ?: it.label, it.art) { change(HomeLayout.change(layout, item.copy(hidden = false, col = -1, row = -1), cols)) }, Modifier.width(96.dp).height(88.dp).graphicsLayer { alpha = 0.55f }) } }
@@ -1267,10 +1268,10 @@ private fun Home(
                         horizontalArrangement = if (item.small) Arrangement.SpaceBetween else Arrangement.spacedBy(4.dp)) {
                         // one button through the three sizes: large, medium, small, large again
                         val next = when (item.size) { HomeSize.Large -> HomeSize.Medium; HomeSize.Medium -> HomeSize.Small; HomeSize.Small -> HomeSize.Large }
-                        HomeEditButton(if (item.small) R.drawable.ic_fullscreen else R.drawable.ic_fullscreen_exit, "Make ${next.name.lowercase()}", if (item.small) 24.dp else 30.dp) {
+                        HomeEditButton(if (item.small) R.drawable.ic_fullscreen else R.drawable.ic_fullscreen_exit, stringResource(when (next) { HomeSize.Large -> R.string.home_make_large; HomeSize.Medium -> R.string.home_make_medium; HomeSize.Small -> R.string.home_make_small }), if (item.small) 24.dp else 30.dp) {
                             save(HomeLayout.change(current, item.copy(size = next), cols))
                         }
-                        if (item.id != HomeLayout.SETTINGS) HomeEditButton(R.drawable.ic_visibility_off, "Hide from Home", if (item.small) 24.dp else 30.dp) { save(HomeLayout.change(current, item.copy(hidden = true), cols)) }
+                        if (item.id != HomeLayout.SETTINGS) HomeEditButton(R.drawable.ic_visibility_off, stringResource(R.string.home_hide), if (item.small) 24.dp else 30.dp) { save(HomeLayout.change(current, item.copy(hidden = true), cols)) }
                     }
                 }
             }
@@ -1310,7 +1311,7 @@ private fun Modifier.holdToDrag(key: Any, start: (Offset) -> Unit, move: (Offset
     shadowElevation = 2.dp, modifier = Modifier.size(size).clickable(onClick = click),
 ) { Box(contentAlignment = Alignment.Center) { Icon(painterResource(icon), contentDescription = label, modifier = Modifier.size(size * 0.6f)) } }
 
-private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
+private class HomeIcon(@androidx.annotation.StringRes val label: Int, val art: Int, val open: () -> Unit)
 
 /** A part shown small or medium on Home: its icon and name, as a launcher's; medium's icon big, in four cells. */
 @Composable private fun HomeSmallIcon(icon: HomeIcon, modifier: Modifier, art: androidx.compose.ui.unit.Dp = 52.dp) = Column(
@@ -1318,7 +1319,7 @@ private class HomeIcon(val label: String, val art: Int, val open: () -> Unit)
     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
 ) {
     HomeIconArt(icon, art)
-    Text(icon.label, style = if (art > 52.dp) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp))
+    Text(stringResource(icon.label), style = if (art > 52.dp) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp))
 }
 
 // the user's art is itself a tile, Sync's and Settings' too (24 Oct)
@@ -1367,14 +1368,14 @@ internal object HomeArt {
     }
     HomeGroup(Category.Maps.color) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeArtCard("Maps", R.drawable.maps_art, { openMaps(null) }, Modifier.weight(1f), artSize = 76)
+            HomeArtCard(stringResource(R.string.app_maps), R.drawable.maps_art, { openMaps(null) }, Modifier.weight(1f), artSize = 76)
             Column(Modifier.weight(if (wide) 1f else 1.6f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 // a phone: the first eight, half-size, two a row (the user, 21 Oct: "half the size, so we can have 8"); each by its Home name
                 val tint = lookTint(Color(0xFF81D4FA), Color(0xFF0277BD))
                 if (wide) slots.take(4).chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         row.forEach { p ->
-                            if (p == null) HomeTile("Add", R.drawable.ic_add, tint.copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
+                            if (p == null) HomeTile(stringResource(R.string.common_add), R.drawable.ic_add, tint.copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
                             else HomeTile(p.short, placeIcon(p.icon), tint, Modifier.weight(1f)) { openMaps(p) }
                         }
                     }
@@ -1382,7 +1383,7 @@ internal object HomeArt {
                     slots.take(MapsFiles.PHONE_SLOTS).chunked(2).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             row.forEach { p ->
-                                if (p == null) HomeMiniTile("Add", R.drawable.ic_add, tint.copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
+                                if (p == null) HomeMiniTile(stringResource(R.string.common_add), R.drawable.ic_add, tint.copy(alpha = 0.6f), Modifier.weight(1f)) { openMaps(null) }
                                 else HomeMiniTile(p.short, placeIcon(p.icon), tint, Modifier.weight(1f)) { openMaps(p) }
                             }
                         }
@@ -1412,14 +1413,14 @@ private suspend fun homeFavourites(phones: Boolean, or: List<ContactInfo>) = wit
     val favs by produceState(remember { homeFavourites(ContactsPreload.all, false) }) { value = homeFavourites(false, value) }
     HomeGroup(Category.Contacts.color) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeArtCard("Contacts", R.drawable.contacts_art, { open(null) }, Modifier.weight(1f), artSize = 76)
+            HomeArtCard(stringResource(R.string.app_contacts), R.drawable.contacts_art, { open(null) }, Modifier.weight(1f), artSize = 76)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 (favs + List(4 - favs.size) { null }).chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { f ->
                         Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = Modifier.weight(1f).height(73.dp).clickable { open(f?.uid) }) {
                             Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                 if (f != null) ContactAvatar(f, 40.dp) else Icon(painterResource(R.drawable.ic_add), contentDescription = null, tint = lookTint(Color(0xFFD7A982), Color(0xFF8D5A3B)), modifier = Modifier.size(28.dp))
-                                Text(f?.let { it.given.ifBlank { it.name } } ?: "Add", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(f?.let { it.given.ifBlank { it.name } } ?: stringResource(R.string.common_add), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     } }
@@ -1444,16 +1445,16 @@ internal fun openPhone(c: Context, tab: String? = null) = c.startActivity(Intent
     }
     HomeGroup(Category.Phone.color) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeArtCard("Phone", R.drawable.phone_art, { openPhone(context) }, Modifier.weight(1f), artSize = 76)
+            HomeArtCard(stringResource(R.string.app_phone), R.drawable.phone_art, { openPhone(context) }, Modifier.weight(1f), artSize = 76)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 // the favourites first; the slots left: Keypad, Recents, Contacts
-                val spare = listOf(Triple("Keypad", R.drawable.ic_dialpad, "keypad"), Triple("Recents", R.drawable.ic_history, "recents"), Triple("Contacts", R.drawable.ic_contacts, "contacts"))
+                val spare = listOf(Triple(R.string.home_keypad, R.drawable.ic_dialpad, "keypad"), Triple(R.string.home_recents, R.drawable.ic_history, "recents"), Triple(R.string.app_contacts, R.drawable.ic_contacts, "contacts"))
                 (favs.map { it to null } + spare.take(4 - favs.size).map { null to it }).chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { (f, s) ->
                         Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), modifier = Modifier.weight(1f).height(73.dp).clickable { if (f != null) call(f) else openPhone(context, s?.third) }) {
                             Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                 if (f != null) ContactAvatar(f, 40.dp) else Icon(painterResource(s!!.second), contentDescription = null, modifier = Modifier.size(26.dp))
-                                Text(f?.let { it.given.ifBlank { it.name } } ?: s!!.first, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(f?.let { it.given.ifBlank { it.name } } ?: stringResource(s!!.first), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     } }
@@ -1472,18 +1473,18 @@ internal fun openPhone(c: Context, tab: String? = null) = c.startActivity(Intent
             val phone = DataFiles.all().values.maxByOrNull { m -> DataFiles.days(m).sumOf { it.mobile } }.orEmpty()
             // a tablet: what it took over the phone's hotspot this month; a phone: its plan
             if (PhoneRelay.noCalls(context)) DataFiles.days(DataFiles.all()[DataFiles.device()].orEmpty()).filter { it.day.withDayOfMonth(1) == java.time.LocalDate.now().withDayOfMonth(1) }
-                .sumOf { it.viaHotspot }.takeIf { it > 0 }?.let { "Hotspot ${DataRules.bytes(it)}" }.orEmpty()
-            else if (plan == null) "Set up" else DataRules.status(plan, DataFiles.days(phone), java.time.LocalDate.now()).let { s ->
-                if (plan.limited) "${s.used * 100 / s.size.coerceAtLeast(1)} % · ${s.daysLeft} d" else DataRules.bytes(s.used)
+                .sumOf { it.viaHotspot }.takeIf { it > 0 }?.let { context.getString(R.string.home_data_hotspot, DataRules.bytes(it)) }.orEmpty()
+            else if (plan == null) context.getString(R.string.home_data_set_up) else DataRules.status(plan, DataFiles.days(phone), java.time.LocalDate.now()).let { s ->
+                if (plan.limited) context.getString(R.string.home_data_left, s.used * 100 / s.size.coerceAtLeast(1), s.daysLeft) else DataRules.bytes(s.used)
             }
         }.getOrDefault("") }
     }
     HomeGroup(Color(0xFF8ED11F)) { // the icon's lime, a step deeper so the tiles' text reads on it
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeArtCard("Data", R.drawable.data_art, { openData(context) }, Modifier.weight(1f), artSize = 76)
+            HomeArtCard(stringResource(R.string.app_data), R.drawable.data_art, { openData(context) }, Modifier.weight(1f), artSize = 76)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(listOf(Triple(line.ifEmpty { "Usage" }, R.drawable.ic_data_usage, "usage"), Triple("Devices", R.drawable.ic_devices, "devices")),
-                    listOf(Triple("Signal", R.drawable.ic_wifi, "signal"), Triple("Drops", R.drawable.ic_signal_bars, "signal"))).forEach { row ->
+                listOf(listOf(Triple(line.ifEmpty { stringResource(R.string.home_data_usage) }, R.drawable.ic_data_usage, "usage"), Triple(stringResource(R.string.home_data_devices), R.drawable.ic_devices, "devices")),
+                    listOf(Triple(stringResource(R.string.home_data_signal), R.drawable.ic_wifi, "signal"), Triple(stringResource(R.string.home_data_drops), R.drawable.ic_signal_bars, "signal"))).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { row.forEach { (label, icon, tab) ->
                         HomeTile(label, icon, lookTint(Color(0xFFC5F27A), Color(0xFF4E8A0A)), Modifier.weight(1f)) { openData(context, tab) }
                     } }
@@ -1518,7 +1519,7 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
             // Laid out like HomeArtCard: the Gallery tile top-right (only without the photo backdrop), the title at the bottom.
             Box(Modifier.fillMaxSize().padding(18.dp)) {
                 if (!hasBackdrop) ArtImage(R.drawable.gallery_art, 76.dp, Modifier.align(Alignment.TopEnd))
-                Text("Photos", color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
+                Text(stringResource(R.string.app_photos), color = if (hasBackdrop) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
             }
         }
     }
@@ -1535,12 +1536,12 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
 /** One of Home's Office Open tiles: the app's name over its icon in its colour; "Open …" where there is room. */
 @Composable private fun HomeOpenTile(kind: OfficePick, wide: Boolean, modifier: Modifier, click: () -> Unit) {
     val (name, icon, tint) = when (kind) {
-        OfficePick.Words -> Triple("Words", R.drawable.kind_docs_word, Color.Unspecified)
-        OfficePick.Tables -> Triple("Tables", R.drawable.kind_excel, Color.Unspecified)
-        OfficePick.Slides -> Triple("Slides", R.drawable.kind_slides, Color.Unspecified)
-        OfficePick.Pdf -> Triple("PDFs", R.drawable.kind_pdf, Color.Unspecified)
+        OfficePick.Words -> Triple(stringResource(if (wide) R.string.home_open_words else R.string.app_words), R.drawable.kind_docs_word, Color.Unspecified)
+        OfficePick.Tables -> Triple(stringResource(if (wide) R.string.home_open_tables else R.string.app_tables), R.drawable.kind_excel, Color.Unspecified)
+        OfficePick.Slides -> Triple(stringResource(if (wide) R.string.home_open_slides else R.string.app_slides), R.drawable.kind_slides, Color.Unspecified)
+        OfficePick.Pdf -> Triple(stringResource(if (wide) R.string.home_open_pdfs else R.string.home_pdfs), R.drawable.kind_pdf, Color.Unspecified)
     } // the user's tiles in their own colours (24 Oct)
-    HomeTile(if (wide) "Open $name" else name, icon, tint, modifier, click)
+    HomeTile(name, icon, tint, modifier, click)
 }
 
 /** One of Home's small tiles (Office's Open, Calendar's New…): a name under its icon in its colour. */
@@ -1571,14 +1572,14 @@ private fun HomePhotosCard(click: () -> Unit, showBackdrop: Boolean, hasPhotoAcc
     modifier = modifier.height(156.dp).clickable(onClick = click),
 ) { Box(Modifier.fillMaxSize().padding(18.dp)) {
     ArtImage(art, artSize.dp, Modifier.align(Alignment.TopEnd))
-    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.BottomStart))
+    Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart))
 } }
 
 @Composable private fun HomePdfToolsCard(openScanner: () -> Unit, openCodes: () -> Unit) = HomeGroup(Category.Scanner.color) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         // the user's own tiles for both (17 Oct), as Office's and the Text editor's art
-        PdfToolCard("Scanner", R.drawable.scanner_art, Modifier.weight(1f), openScanner)
-        PdfToolCard("Codes", R.drawable.codes_art, Modifier.weight(1f), openCodes)
+        PdfToolCard(stringResource(R.string.app_scanner), R.drawable.scanner_art, Modifier.weight(1f), openScanner)
+        PdfToolCard(stringResource(R.string.app_codes), R.drawable.codes_art, Modifier.weight(1f), openCodes)
     }
 }
 
@@ -1590,7 +1591,7 @@ private fun PdfToolCard(label: String, art: Int, modifier: Modifier = Modifier, 
 ) {
     Box(Modifier.fillMaxSize().padding(18.dp)) {
         ArtImage(art, 76.dp, Modifier.align(Alignment.TopEnd))
-        Text(label, style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.align(Alignment.BottomStart))
+        Text(label, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart))
     }
 }
 
@@ -2049,7 +2050,7 @@ internal fun ModuleHeader(title: String, back: () -> Unit, modifier: Modifier = 
     Surface(color = bar, contentColor = on, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.statusBarsPadding().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home") }
+                IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.home_back_to_home)) }
                 Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 art?.let { ArtImage(it, 34.dp) }
                 actions()
@@ -2082,12 +2083,12 @@ internal enum class Category(val color: Color, val icon: Int) {
 @Composable
 private fun PhotoSetup(allow: () -> Unit, skip: () -> Unit) {
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Gallery setup", style = MaterialTheme.typography.headlineMedium)
-        Text("Tetra needs permission to show your real Camera and Screenshots photos and videos.")
-        Text("Photos stay where they are. The app does not choose a folder or copy them anywhere.", style = MaterialTheme.typography.bodyMedium)
-        Text("You can change this later from the Gallery pull-up tools.", style = MaterialTheme.typography.bodySmall)
-        Button(onClick = allow, modifier = Modifier.fillMaxWidth()) { Text("Yes, allow photos") }
-        Button(onClick = skip, modifier = Modifier.fillMaxWidth()) { Text("No, not now") }
+        Text(stringResource(R.string.home_setup_title), style = MaterialTheme.typography.headlineMedium)
+        Text(stringResource(R.string.home_setup_why))
+        Text(stringResource(R.string.home_setup_stay), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.home_setup_later), style = MaterialTheme.typography.bodySmall)
+        Button(onClick = allow, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.home_setup_allow), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        Button(onClick = skip, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.home_setup_skip), maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
 }
 

@@ -68,7 +68,7 @@ internal class SyncJob : JobService() {
         private const val ID = 4130
         private const val NEW_PHOTO = 4131
         private const val MINUTES = "auto_sync_minutes"
-        val choices = listOf(0 to "Off", 15 to "15 min", 30 to "30 min", 60 to "1 hour")
+        val choices = listOf(0 to R.string.common_off, 15 to R.string.sync_every_15, 30 to R.string.sync_every_30, 60 to R.string.sync_every_60)
 
         /** 0 is Off. Android runs a periodic job no more often than every 15 minutes. */
         fun minutes(context: Context): Int = context.getSharedPreferences("sync_job", Context.MODE_PRIVATE).getInt(MINUTES, 30)

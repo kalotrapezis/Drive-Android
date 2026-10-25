@@ -88,7 +88,7 @@ internal class SecureVault(private val context: Context) : SQLiteOpenHelper(cont
                 val target = File(directory, fileName)
                 val sourceDigest = MessageDigest.getInstance("SHA-256")
                 val size = context.contentResolver.openInputStream(source.uri).use { input ->
-                    requireNotNull(input) { "Cannot read ${source.displayName}." }
+                    requireNotNull(input) { context.getString(R.string.home_vault_cannot_read, source.displayName) }
                     part.outputStream().use { output ->
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                         var total = 0L
@@ -104,8 +104,8 @@ internal class SecureVault(private val context: Context) : SQLiteOpenHelper(cont
                     }
                 }
                 val sourceHash = sourceDigest.digest().toHex()
-                require(size > 0 && digest(part) == sourceHash) { "Copy verification failed for ${source.displayName}." }
-                require(part.renameTo(target)) { "Could not finish the private copy." }
+                require(size > 0 && digest(part) == sourceHash) { context.getString(R.string.home_vault_copy_failed, source.displayName) }
+                require(part.renameTo(target)) { context.getString(R.string.home_vault_not_finished) }
                 val id = try { writableDatabase.insertOrThrow("vault_media", null, ContentValues().apply {
                     put("file_name", fileName)
                     put("photo_key", source.photoKey)
@@ -138,10 +138,10 @@ internal class SecureVault(private val context: Context) : SQLiteOpenHelper(cont
                 put(MediaStore.MediaColumns.RELATIVE_PATH, item.relativePath)
                 put(MediaStore.MediaColumns.DATE_TAKEN, item.takenMillis)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
-            })) { "Could not create ${item.displayName}." }
+            })) { context.getString(R.string.home_vault_not_created, item.displayName) }
             try {
                 context.contentResolver.openOutputStream(restored, "w").use { output ->
-                    requireNotNull(output) { "Cannot restore ${item.displayName}." }
+                    requireNotNull(output) { context.getString(R.string.home_vault_cannot_restore, item.displayName) }
                     FileInputStream(file(item)).use { it.copyTo(output) }
                 }
                 val verified = context.contentResolver.openInputStream(restored).use { input ->
@@ -155,7 +155,7 @@ internal class SecureVault(private val context: Context) : SQLiteOpenHelper(cont
                     }
                     md.digest().toHex() == item.sha256
                 }
-                require(verified) { "Restore verification failed for ${item.displayName}." }
+                require(verified) { context.getString(R.string.home_vault_restore_failed, item.displayName) }
                 context.contentResolver.update(restored, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
                 remove(listOf(item))
             } catch (failure: Throwable) {

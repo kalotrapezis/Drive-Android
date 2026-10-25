@@ -76,9 +76,12 @@ internal object HyperIsland {
     fun reminder(builder: NotificationCompat.Builder, title: String, text: String, time: String,
                  done: android.app.PendingIntent, doneIcon: android.graphics.drawable.Icon, snooze: android.app.PendingIntent) {
         runCatching {
+            // the builder's own context: the callers' signature stays as it is
+            @android.annotation.SuppressLint("RestrictedApi") val c = builder.mContext
+            val doneLabel = c.getString(R.string.home_island_done); val snoozeLabel = c.getString(R.string.home_island_snooze)
             val actions = Bundle().apply {
-                putParcelable("miui.focus.action_done", android.app.Notification.Action.Builder(doneIcon, "Done", done).build())
-                putParcelable("miui.focus.action_snooze", android.app.Notification.Action.Builder(null as android.graphics.drawable.Icon?, "Snooze 10 min", snooze).build())
+                putParcelable("miui.focus.action_done", android.app.Notification.Action.Builder(doneIcon, doneLabel, done).build())
+                putParcelable("miui.focus.action_snooze", android.app.Notification.Action.Builder(null as android.graphics.drawable.Icon?, snoozeLabel, snooze).build())
             }
             val paramV2 = JSONObject()
                 .put("protocol", 3)
@@ -90,8 +93,8 @@ internal object HyperIsland {
                 .put("islandFirstFloat", true)
                 .put("baseInfo", JSONObject().put("type", 1).put("title", title).put("content", text))
                 .put("actions", org.json.JSONArray()
-                    .put(JSONObject().put("type", 0).put("action", "miui.focus.action_done").put("actionTitle", "Done").put("actionIntentType", 2))
-                    .put(JSONObject().put("type", 2).put("action", "miui.focus.action_snooze").put("actionTitle", "Snooze 10 min").put("actionIntentType", 2)))
+                    .put(JSONObject().put("type", 0).put("action", "miui.focus.action_done").put("actionTitle", doneLabel).put("actionIntentType", 2))
+                    .put(JSONObject().put("type", 2).put("action", "miui.focus.action_snooze").put("actionTitle", snoozeLabel).put("actionIntentType", 2)))
                 .put("param_island", JSONObject()
                     .put("islandProperty", 1)
                     .put("islandPriority", 1)

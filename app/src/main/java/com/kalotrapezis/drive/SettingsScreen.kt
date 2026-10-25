@@ -48,26 +48,26 @@ import kotlinx.coroutines.withContext
  * longer explanations under their section. One accent (the theme's own); an applet's colour only tints its icon in
  * the list. [items] are the rows' titles, for the search.
  */
-internal enum class SettingsPage(val title: String, val icon: Int, val tint: Color?, val summary: String, val items: List<String>) {
-    Sync("Sync", R.drawable.ic_sync, null, "Computer, automatic sync", listOf("Computer", "Open Sync", "Sync automatically", "Listen in the background")),
-    Appearance("Appearance", R.drawable.ic_palette, null, "Theme, Home, app icons", listOf("Theme", "Language", "Photo on Home", "Hidden from Home", "App icons")),
-    Gallery("Gallery", Category.Gallery.icon, Category.Gallery.color, "Access, search, folders", listOf("Photos and videos", "Search quality", "Folders")),
-    Files("Files", Category.Files.icon, Category.Files.color, "Workspace, access", listOf("Drive workspace", "All files access")),
-    Scanner("PDF scanner", Category.Scanner.icon, Category.Scanner.color, "Resolution", listOf("Resolution")),
-    Office("Office", Category.Office.icon, Category.Office.color, "Opening files, editing, ribbon", listOf("Open Word documents here", "Open spreadsheets here", "Open presentations here",
-        "Open PDFs here", "AutoSave", "Lengths in", "Read aloud speed", "The ribbon", "Its tools", "Tab marker")),
-    Text("Text editor", Category.Text.icon, Category.Text.color, "Opening .txt files, word wrap", listOf("Open .txt files here", "Word wrap", "Save new files in")),
-    Calendar("Calendar", Category.Calendar.icon, Category.Calendar.color, "Reminders, import and export", listOf("Reminders on this device", "Send a test reminder", "Notifications",
-        "Alarms on time", "Battery", "Hyper Island", "Autostart", "Import", "Export all", "Share with Claude")),
-    Timer("Timer", Category.Timer.icon, Category.Timer.color, "Share with Claude", listOf("Share with Claude")),
-    Maps("Maps", Category.Maps.icon, Category.Maps.color, "Map, directions, parking, places", listOf("Map", "On foot", "By car", "Directions in", "Test voice", "Voice settings", "Warn of sharp bends",
-        "Save where I park", "Open the map at my car", "ΑμεΑ parking near the destination", "Export places", "Import places", "Import from Google Maps",
-        "Installed maps", "Send log")),
-    Contacts("Contacts", Category.Contacts.icon, Category.Contacts.color, "Phone's contacts, birthdays", listOf("In the phone's contacts", "Birthdays go into")),
-    Phone("Phone", Category.Phone.icon, Category.Phone.color, "Phone app, calls, the computer", listOf("Phone app", "Vibrate when answered", "Vibrate when a call ends",
-        "Silence numbers not in Contacts", "Decline hidden numbers", "Calls on the computer", "Phone permission", "Open the Phone")),
-    Data("Data", Category.Data.icon, Category.Data.color, "Your plan, warnings, roaming, live speed", listOf("Setup", "Usage access", "Your plan", "Warnings", "Roaming",
-        "Live speed", "Signal drops", "Wi-Fi around", "Open Data")),
+internal enum class SettingsPage(@androidx.annotation.StringRes val title: Int, val icon: Int, val tint: Color?, @androidx.annotation.StringRes val summary: Int, val items: List<Int>) {
+    Sync(R.string.app_sync, R.drawable.ic_sync, null, R.string.settings_sync_summary, listOf(R.string.settings_computer, R.string.settings_open_sync, R.string.settings_sync_auto, R.string.settings_listen)),
+    Appearance(R.string.settings_appearance, R.drawable.ic_palette, null, R.string.settings_appearance_summary, listOf(R.string.settings_theme, R.string.settings_language, R.string.settings_photo_on_home, R.string.settings_hidden_from_home, R.string.settings_app_icons)),
+    Gallery(R.string.app_gallery, Category.Gallery.icon, Category.Gallery.color, R.string.settings_gallery_summary, listOf(R.string.settings_photos_videos, R.string.settings_search_quality, R.string.settings_folders)),
+    Files(R.string.app_files, Category.Files.icon, Category.Files.color, R.string.settings_files_summary, listOf(R.string.settings_drive_workspace, R.string.settings_all_files)),
+    Scanner(R.string.settings_pdf_scanner, Category.Scanner.icon, Category.Scanner.color, R.string.settings_resolution, listOf(R.string.settings_resolution)),
+    Office(R.string.app_office, Category.Office.icon, Category.Office.color, R.string.settings_office_summary, listOf(R.string.settings_open_docx, R.string.settings_open_sheets, R.string.settings_open_slides,
+        R.string.settings_open_pdfs, R.string.settings_autosave, R.string.settings_lengths, R.string.settings_read_aloud_speed, R.string.settings_the_ribbon, R.string.settings_its_tools, R.string.settings_tab_marker)),
+    Text(R.string.app_text_editor, Category.Text.icon, Category.Text.color, R.string.settings_text_summary, listOf(R.string.settings_open_txt, R.string.settings_word_wrap, R.string.settings_save_new_in)),
+    Calendar(R.string.app_calendar, Category.Calendar.icon, Category.Calendar.color, R.string.settings_calendar_summary, listOf(R.string.settings_reminders_here, R.string.settings_test_reminder, R.string.settings_notifications,
+        R.string.settings_exact_alarms, R.string.settings_battery, R.string.settings_hyper_island, R.string.settings_autostart, R.string.common_import, R.string.settings_export_all, R.string.settings_share_claude)),
+    Timer(R.string.app_timer, Category.Timer.icon, Category.Timer.color, R.string.settings_share_claude, listOf(R.string.settings_share_claude)),
+    Maps(R.string.app_maps, Category.Maps.icon, Category.Maps.color, R.string.settings_maps_summary, listOf(R.string.settings_map, R.string.settings_on_foot, R.string.settings_by_car, R.string.settings_directions_in, R.string.settings_test_voice, R.string.settings_voice_settings, R.string.settings_sharp_bends,
+        R.string.settings_save_parking, R.string.settings_open_at_car, R.string.settings_accessible_parking, R.string.settings_export_places, R.string.settings_import_places, R.string.settings_import_google,
+        R.string.settings_installed_maps, R.string.settings_send_log)),
+    Contacts(R.string.app_contacts, Category.Contacts.icon, Category.Contacts.color, R.string.settings_contacts_summary, listOf(R.string.settings_in_phone_contacts, R.string.settings_birthdays_into)),
+    Phone(R.string.app_phone, Category.Phone.icon, Category.Phone.color, R.string.settings_phone_summary, listOf(R.string.settings_phone_app, R.string.settings_buzz_answer, R.string.settings_buzz_end,
+        R.string.settings_silence_unknown, R.string.settings_decline_hidden, R.string.settings_pc_calls, R.string.settings_phone_permission, R.string.settings_open_phone)),
+    Data(R.string.app_data, Category.Data.icon, Category.Data.color, R.string.settings_data_summary, listOf(R.string.settings_data_setup, R.string.settings_usage_access, R.string.settings_your_plan, R.string.settings_warnings, R.string.settings_roaming,
+        R.string.settings_live_speed, R.string.settings_signal_drops, R.string.settings_wifi_around, R.string.settings_open_data)),
 }
 
 @Composable
@@ -75,6 +75,7 @@ internal fun SettingsTab(
     back: () -> Unit,
     metadataStore: PhotoMetadataStore,
     photoPermission: String,
+    photoAccess: Boolean,
     hasDriveAccess: Boolean,
     showPhotoBackdrop: Boolean,
     setShowPhotoBackdrop: (Boolean) -> Unit,
@@ -98,32 +99,34 @@ internal fun SettingsTab(
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                    IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home") }
+                    IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.home_back_to_home)) }
                 }
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.weight(1f)) {
                     Row(Modifier.padding(start = 16.dp, end = 4.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Icon(painterResource(R.drawable.ic_search), contentDescription = null, Modifier.size(22.dp))
                         Box(Modifier.weight(1f)) {
-                            if (query.isEmpty()) Text("Search settings", color = islandContentColor().copy(alpha = 0.7f), maxLines = 1)
+                            if (query.isEmpty()) Text(stringResource(R.string.settings_search), color = islandContentColor().copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             BasicTextField(query, { query = it }, singleLine = true, textStyle = TextStyle(color = islandContentColor(), fontSize = 16.sp),
                                 cursorBrush = SolidColor(islandContentColor()), modifier = Modifier.fillMaxWidth())
                         }
-                        if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear") }
+                        if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_clear)) }
                     }
                 }
             }
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
-                @Composable fun PageRow(p: SettingsPage, summary: String) = SettingRow(p.title, summary, onClick = { open = p; query = "" },
+                @Composable fun PageRow(p: SettingsPage, summary: String) = SettingRow(stringResource(p.title), summary, onClick = { open = p; query = "" },
                     chosen = wide && p == shown, leading = { Icon(painterResource(p.icon), contentDescription = null, tint = p.tint ?: quiet(), modifier = Modifier.size(24.dp)) },
                 ) { if (!wide) Chevron() }
                 if (query.isBlank()) {
-                    SettingsSection("Tetra") { listOf(SettingsPage.Sync, SettingsPage.Appearance).forEach { PageRow(it, it.summary) } }
-                    SettingsSection("Apps") { SettingsPage.entries.drop(2).forEach { PageRow(it, it.summary) } }
+                    SettingsSection(stringResource(R.string.app_name)) { listOf(SettingsPage.Sync, SettingsPage.Appearance).forEach { PageRow(it, stringResource(it.summary)) } }
+                    SettingsSection(stringResource(R.string.settings_apps)) { SettingsPage.entries.drop(2).forEach { PageRow(it, stringResource(it.summary)) } }
                 } else {
+                    // the words as shown, in the language shown
+                    val res = LocalContext.current.resources
                     val q = query.trim().lowercase()
-                    val hits = SettingsPage.entries.flatMap { p -> p.items.filter { q in it.lowercase() || q in p.title.lowercase() }.map { p to it } }
-                    SettingsSection("${hits.size} found") { hits.forEach { (p, item) ->
-                        SettingRow(item, p.title, onClick = { open = p; query = "" },
+                    val hits = SettingsPage.entries.flatMap { p -> p.items.map(res::getString).filter { q in it.lowercase() || q in res.getString(p.title).lowercase() }.map { p to it } }
+                    SettingsSection(pluralStringResource(R.plurals.settings_found, hits.size, hits.size)) { hits.forEach { (p, item) ->
+                        SettingRow(item, stringResource(p.title), onClick = { open = p; query = "" },
                             leading = { Icon(painterResource(p.icon), contentDescription = null, tint = p.tint ?: quiet(), modifier = Modifier.size(24.dp)) }) { Chevron() }
                     } }
                 }
@@ -134,22 +137,22 @@ internal fun SettingsTab(
         Column(m.statusBarsPadding()) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp).heightIn(min = 48.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (!wide) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                    IconButton(onClick = { open = null }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Settings") }
+                    IconButton(onClick = { open = null }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.settings_back)) }
                 }
                 Icon(painterResource(p.icon), contentDescription = null, tint = p.tint ?: MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(28.dp))
-                Text(p.title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(p.title), style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
                 Column(Modifier.widthIn(max = 760.dp)) { when (p) {
                     SettingsPage.Sync -> SyncPage(pairedDevice, forgetPairedDevice, openSync)
                     SettingsPage.Appearance -> AppearancePage(showPhotoBackdrop, setShowPhotoBackdrop, openPart)
-                    SettingsPage.Gallery -> GalleryPage(photoPermission, managePhotos, metadataStore, folders, setFolderIncluded)
+                    SettingsPage.Gallery -> GalleryPage(photoPermission, photoAccess, managePhotos, metadataStore, folders, setFolderIncluded)
                     SettingsPage.Files -> FilesPage(hasDriveAccess, manageDrive)
                     SettingsPage.Scanner -> ScannerPage()
                     SettingsPage.Office -> OfficePage()
                     SettingsPage.Text -> TextEditorPage()
                     SettingsPage.Calendar -> CalendarPage()
-                    SettingsPage.Timer -> SettingsSection("Claude") { SkillRows("tetra-timer", "Timer", "Lets Claude start, pause and stop your timers by editing their files.") }
+                    SettingsPage.Timer -> SettingsSection("Claude") { SkillRows("tetra-timer", "Timer", stringResource(R.string.settings_timer_skill)) }
                     SettingsPage.Maps -> MapsPage()
                     SettingsPage.Contacts -> ContactsPage()
                     SettingsPage.Phone -> PhonePage()
@@ -205,13 +208,13 @@ internal fun SettingsTab(
     SettingRow(title, summary, onClick = { menu = true }) {
         Box {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(options.firstOrNull { it.first == chosen }?.second.orEmpty(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(options.firstOrNull { it.first == chosen }?.second.orEmpty(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Icon(painterResource(R.drawable.ic_unfold_more), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 options.forEach { (value, label) ->
                     DropdownMenuItem(text = { Text(label) }, onClick = { menu = false; pick(value) },
-                        trailingIcon = if (value == chosen) { { Icon(painterResource(R.drawable.ic_check), contentDescription = "Chosen", modifier = Modifier.size(18.dp)) } } else null)
+                        trailingIcon = if (value == chosen) { { Icon(painterResource(R.drawable.ic_check), contentDescription = stringResource(R.string.common_chosen), modifier = Modifier.size(18.dp)) } } else null)
                 }
             }
         }
@@ -220,7 +223,7 @@ internal fun SettingsTab(
 
 /** A setting that is a permission or a state elsewhere: how it stands, and a button to it. */
 @Composable private fun StatusRow(title: String, state: String, ok: Boolean, action: String?, act: () -> Unit) =
-    SettingRow(title, state, warn = !ok) { if (action != null) TextButton(onClick = act) { Text(action) } }
+    SettingRow(title, state, warn = !ok) { if (action != null) TextButton(onClick = act) { Text(action, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
 
 @Composable private fun Chevron() = Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = quiet(), modifier = Modifier.size(20.dp))
 
@@ -241,32 +244,32 @@ internal fun SettingsTab(
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) runCatching { context.contentResolver.openOutputStream(uri)!!.use { it.write(skillZip(context, skill)) } }
     }
-    SettingRow("Share with Claude", what, onClick = { shareSkill(context, skill, part) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = null, tint = quiet(), modifier = Modifier.size(20.dp)) }
-    SettingRow("Save to Files", "The skill as a .zip", onClick = { save.launch("$skill.zip") })
+    SettingRow(stringResource(R.string.settings_share_claude), what, onClick = { shareSkill(context, skill, part) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = null, tint = quiet(), modifier = Modifier.size(20.dp)) }
+    SettingRow(stringResource(R.string.settings_save_to_files), stringResource(R.string.settings_skill_zip), onClick = { save.launch("$skill.zip") })
 }
 
 // ---- the pages ----
 
 @Composable private fun SyncPage(paired: Pairing?, forget: () -> Unit, openSync: () -> Unit) {
     val c = LocalContext.current
-    SettingsSection("Computer", "A trusted device is known by a public-key fingerprint, not its IP or MAC address, so it is found again after a network change.") {
-        SettingRow(paired?.name ?: "No computer is paired yet", paired?.hosts?.firstOrNull()) { if (paired != null) TextButton(onClick = forget) { Text("Forget") } }
-        SettingRow("Open Sync", "Pairing, syncing now and the library", onClick = openSync) { Chevron() }
+    SettingsSection(stringResource(R.string.settings_computer), stringResource(R.string.settings_computer_note)) {
+        SettingRow(paired?.name ?: stringResource(R.string.settings_no_computer), paired?.hosts?.firstOrNull()) { if (paired != null) TextButton(onClick = forget) { Text(stringResource(R.string.settings_forget), maxLines = 1, overflow = TextOverflow.Ellipsis) } }
+        SettingRow(stringResource(R.string.settings_open_sync), stringResource(R.string.settings_open_sync_summary), onClick = openSync) { Chevron() }
     }
-    SettingsSection("Automatic", "Android may run a sync a little later to save battery.") {
+    SettingsSection(stringResource(R.string.settings_automatic), stringResource(R.string.settings_automatic_note)) {
         var every by remember { mutableStateOf(SyncJob.minutes(c)) }
-        ChoiceRow("Sync automatically", "With Tetra closed too, on any local network, a phone's hotspot included", SyncJob.choices, every) { every = it; SyncJob.setMinutes(c, it) }
+        ChoiceRow(stringResource(R.string.settings_sync_auto), stringResource(R.string.settings_sync_auto_summary), SyncJob.choices.map { (m, label) -> m to stringResource(label) }, every) { every = it; SyncJob.setMinutes(c, it) }
         var listen by remember { mutableStateOf(SyncListenService.enabled(c)) }
-        SwitchRow("Listen in the background",
-            if (listen) "With Tetra closed, the computer's syncs arrive at once and its Maps can ask where this device is; a small notification shows"
-            else "Only while Tetra is open does the computer reach this device; otherwise it syncs on the schedule", listen) { listen = it; SyncListenService.setEnabled(c, it) }
+        SwitchRow(stringResource(R.string.settings_listen),
+            if (listen) stringResource(R.string.settings_listen_on)
+            else stringResource(R.string.settings_listen_off), listen) { listen = it; SyncListenService.setEnabled(c, it) }
     }
 }
 
 @Composable private fun AppearancePage(photoBackdrop: Boolean, setPhotoBackdrop: (Boolean) -> Unit, open: (String) -> Unit) {
     val context = LocalContext.current
-    SettingsSection(null, "The same on every page; it does not follow the system or the wallpaper's colours. Maps' map has its own choice (Settings › Maps).") {
-        ChoiceRow("Theme", "Dark or light", listOf(false to "Dark", true to "Light"), TetraLook.light) { TetraLook.set(context, it) }
+    SettingsSection(null, stringResource(R.string.settings_theme_note)) {
+        ChoiceRow(stringResource(R.string.settings_theme), stringResource(R.string.settings_theme_summary), listOf(false to stringResource(R.string.settings_dark), true to stringResource(R.string.settings_light)), TetraLook.light) { TetraLook.set(context, it) }
     }
     SettingsSection(null, stringResource(R.string.settings_language_note)) {
         var language by remember { mutableStateOf(AppLocale.get(context)) }
@@ -277,56 +280,56 @@ internal fun SettingsTab(
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     var layout by remember(wide) { mutableStateOf(HomeLayout.load(context, wide)) }
     val hidden = layout.filter { it.hidden }
-    SettingsSection("Home", if (hidden.isEmpty()) null else "Hidden parts keep working (reminders, timers, sync).") {
-        SwitchRow("Photo on Home", "A random gallery photo behind the Photos card", photoBackdrop, setPhotoBackdrop)
-        if (hidden.isEmpty()) SettingRow("Hidden from Home", "Nothing is hidden. On Home, hold a part to move it; the pencil resizes and hides parts; this device only.")
+    SettingsSection(stringResource(R.string.app_home), if (hidden.isEmpty()) null else stringResource(R.string.settings_hidden_note)) {
+        SwitchRow(stringResource(R.string.settings_photo_on_home), stringResource(R.string.settings_photo_on_home_summary), photoBackdrop, setPhotoBackdrop)
+        if (hidden.isEmpty()) SettingRow(stringResource(R.string.settings_hidden_from_home), stringResource(R.string.settings_nothing_hidden))
         hidden.forEach { item ->
-            SettingRow(HomeLayout.NAMES[item.id] ?: item.id, "Hidden from Home on this device") {
-                if (item.id == "scanner") { TextButton({ open("scanner") }) { Text("Scanner") }; TextButton({ open("codes") }) { Text("Codes") } }
-                else TextButton({ open(item.id) }) { Text("Open") }
-                TextButton({ layout = HomeLayout.change(layout, item.copy(hidden = false, col = -1, row = -1), HomeLayout.columns(wide)); HomeLayout.save(context, wide, layout) }) { Text("Show") }
+            SettingRow(HomeLayout.NAMES[item.id]?.let { stringResource(it) } ?: item.id, stringResource(R.string.settings_hidden_here)) {
+                if (item.id == "scanner") { TextButton({ open("scanner") }) { Text(stringResource(R.string.app_scanner), maxLines = 1, overflow = TextOverflow.Ellipsis) }; TextButton({ open("codes") }) { Text(stringResource(R.string.app_codes), maxLines = 1, overflow = TextOverflow.Ellipsis) } }
+                else TextButton({ open(item.id) }) { Text(stringResource(R.string.common_open), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                TextButton({ layout = HomeLayout.change(layout, item.copy(hidden = false, col = -1, row = -1), HomeLayout.columns(wide)); HomeLayout.save(context, wide, layout) }) { Text(stringResource(R.string.common_show), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     }
     // a launcher icon for each part (asked 17 Oct): on the home screen and in the app list, opening straight into it
-    SettingsSection("App icons", "Give a part of Tetra its own icon on the home screen and in the app list; it opens straight into that part.") {
+    SettingsSection(stringResource(R.string.settings_app_icons), stringResource(R.string.settings_app_icons_note)) {
         Applet.entries.forEach { a ->
             var on by remember { mutableStateOf(a.shown(context)) }
-            SettingRow(a.label, onClick = { on = !on; a.show(context, on) }, leading = { Image(painterResource(a.art), contentDescription = null, modifier = Modifier.size(32.dp)) }) {
+            SettingRow(stringResource(a.label), onClick = { on = !on; a.show(context, on) }, leading = { Image(painterResource(a.art), contentDescription = null, modifier = Modifier.size(32.dp)) }) {
                 Switch(checked = on, onCheckedChange = { on = it; a.show(context, it) })
             }
         }
     }
 }
 
-@Composable private fun GalleryPage(permission: String, manage: () -> Unit, store: PhotoMetadataStore, folders: List<DeviceFolder>, setIncluded: (String, Boolean) -> Unit) {
-    SettingsSection("Access") { StatusRow("Photos and videos", permission, !permission.endsWith("not granted"), "Settings", manage) }
+@Composable private fun GalleryPage(permission: String, granted: Boolean, manage: () -> Unit, store: PhotoMetadataStore, folders: List<DeviceFolder>, setIncluded: (String, Boolean) -> Unit) {
+    SettingsSection(stringResource(R.string.settings_access)) { StatusRow(stringResource(R.string.settings_photos_videos), permission, granted, stringResource(R.string.common_settings), manage) }
     var quality by remember { mutableStateOf(store.searchQuality()) }
-    SettingsSection("Search", "Changing this re-analyzes photos the next time you open People or Documents. Advanced keeps the Fast tags too.") {
-        ChoiceRow("Search quality", if (quality == PhotoSearchQuality.Fast) "Quick local labels" else "Fast labels plus experimental Scene tags; slower",
-            listOf(PhotoSearchQuality.Fast to "Fast", PhotoSearchQuality.Advanced to "Advanced"), quality) { quality = it; store.setSearchQuality(it) }
+    SettingsSection(stringResource(R.string.common_search), stringResource(R.string.settings_search_note)) {
+        ChoiceRow(stringResource(R.string.settings_search_quality), if (quality == PhotoSearchQuality.Fast) stringResource(R.string.settings_search_fast_summary) else stringResource(R.string.settings_search_advanced_summary),
+            listOf(PhotoSearchQuality.Fast to stringResource(R.string.settings_search_fast), PhotoSearchQuality.Advanced to stringResource(R.string.settings_search_advanced)), quality) { quality = it; store.setSearchQuality(it) }
     }
     // every folder you have answered about, while the phone can still see it; a new one asks first, in Help organize
-    SettingsSection("Folders", "Camera, Screenshots and photos from the computer are always in. An included folder shows in Gallery, is backed up, and is kept as a collection.") {
+    SettingsSection(stringResource(R.string.settings_folders), stringResource(R.string.settings_folders_note)) {
         val answered = folders.filter { it.included != null }
-        answered.forEach { f -> SwitchRow(f.name, f.countText, f.included == true) { setIncluded(f.name, it) } }
-        if (answered.isEmpty()) SettingRow("No other folders yet", "New ones are asked about in Help organize")
+        answered.forEach { f -> SwitchRow(f.name, pluralStringResource(R.plurals.settings_folder_count, f.entries.size, f.entries.size), f.included == true) { setIncluded(f.name, it) } }
+        if (answered.isEmpty()) SettingRow(stringResource(R.string.settings_no_folders), stringResource(R.string.settings_no_folders_summary))
     }
 }
 
 @Composable private fun FilesPage(access: Boolean, manage: () -> Unit) {
-    SettingsSection("Storage", "Camera photos stay in DCIM/Camera and screenshots in Pictures/Screenshots. These paths are fixed so sync never needs to guess or duplicate photos.") {
-        SettingRow("Drive workspace", DRIVE_PATH)
+    SettingsSection(stringResource(R.string.settings_storage), stringResource(R.string.settings_storage_note)) {
+        SettingRow(stringResource(R.string.settings_drive_workspace), DRIVE_PATH)
     }
-    SettingsSection("Access") { StatusRow("All files access", if (access) "Granted" else "Not granted", access, "Settings", manage) }
+    SettingsSection(stringResource(R.string.settings_access)) { StatusRow(stringResource(R.string.settings_all_files), if (access) stringResource(R.string.settings_granted) else stringResource(R.string.settings_not_granted), access, stringResource(R.string.common_settings), manage) }
 }
 
 @Composable private fun ScannerPage() {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("scanner", Context.MODE_PRIVATE) }
     var dpi by remember { mutableStateOf(prefs.getInt(SCANNER_DPI, 300)) }
-    SettingsSection("Saved pages", "300 dpi is what a flatbed scanner gives and what small print needs; 200 makes a file roughly half the size, plenty for a page you only need to read.") {
-        ChoiceRow("Resolution", "How much detail a saved page keeps", listOf(300 to "300 dpi", 200 to "200 dpi"), dpi) { dpi = it; prefs.edit().putInt(SCANNER_DPI, it).apply() }
+    SettingsSection(stringResource(R.string.settings_saved_pages), stringResource(R.string.settings_saved_pages_note)) {
+        ChoiceRow(stringResource(R.string.settings_resolution), stringResource(R.string.settings_resolution_summary), listOf(300 to "300 dpi", 200 to "200 dpi"), dpi) { dpi = it; prefs.edit().putInt(SCANNER_DPI, it).apply() }
     }
 }
 
@@ -338,26 +341,26 @@ internal fun SettingsTab(
     var slides by remember { mutableStateOf(office.opensSlides) }
     var pdfs by remember { mutableStateOf(office.opensPdfs) }
     // Tetra in other apps' Open with (asked 16 Oct): Android's own Always there makes it the default
-    SettingsSection("Open from Files", "Open with… still offers other apps. Other apps offer Tetra Office in their Open with too; choose Always there to open these files here every time.") {
-        SwitchRow("Open Word documents here", if (opens) "A .docx or .odt opens in Words" else "A .docx or .odt opens in the app you chose for it", opens) { opens = it; office.opensOffice = it }
-        SwitchRow("Open spreadsheets here", if (sheets) "An .xlsx, .ods, .csv or .xls opens in Tables" else "A spreadsheet opens in the app you chose for it", sheets) { sheets = it; office.opensSheets = it }
-        SwitchRow("Open presentations here", if (slides) "A .pptx or .odp opens in Slides" else "A presentation opens in the app you chose for it", slides) { slides = it; office.opensSlides = it }
-        SwitchRow("Open PDFs here", if (pdfs) "A .pdf opens in Office's PDF viewer" else "A PDF opens in the app you chose for it", pdfs) { pdfs = it; office.opensPdfs = it }
+    SettingsSection(stringResource(R.string.settings_open_from_files), stringResource(R.string.settings_office_open_note)) {
+        SwitchRow(stringResource(R.string.settings_open_docx), if (opens) stringResource(R.string.settings_open_docx_on) else stringResource(R.string.settings_open_docx_off), opens) { opens = it; office.opensOffice = it }
+        SwitchRow(stringResource(R.string.settings_open_sheets), if (sheets) stringResource(R.string.settings_open_sheets_on) else stringResource(R.string.settings_open_sheets_off), sheets) { sheets = it; office.opensSheets = it }
+        SwitchRow(stringResource(R.string.settings_open_slides), if (slides) stringResource(R.string.settings_open_slides_on) else stringResource(R.string.settings_open_slides_off), slides) { slides = it; office.opensSlides = it }
+        SwitchRow(stringResource(R.string.settings_open_pdfs), if (pdfs) stringResource(R.string.settings_open_pdfs_on) else stringResource(R.string.settings_open_pdfs_off), pdfs) { pdfs = it; office.opensPdfs = it }
     }
-    SettingsSection("Editing") {
+    SettingsSection(stringResource(R.string.settings_editing)) {
         var auto by remember { mutableStateOf(office.autoSave) }
-        SwitchRow("AutoSave", if (auto) "Saves a few seconds after you stop typing; the file as you opened it stays in Versions"
-            else "Saves only when you press Save; changes are still kept as a recovery draft", auto) { auto = it; office.autoSave = it }
+        SwitchRow(stringResource(R.string.settings_autosave), if (auto) stringResource(R.string.settings_autosave_on)
+            else stringResource(R.string.settings_autosave_off), auto) { auto = it; office.autoSave = it }
         LaunchedEffect(Unit) { WriterUnits.load(context) }
-        ChoiceRow("Lengths in", "Words' rulers, margins, indents and sizes", listOf(false to "Centimetres", true to "Inches"), WriterUnits.inches) { WriterUnits.set(context, it) }
+        ChoiceRow(stringResource(R.string.settings_lengths), stringResource(R.string.settings_lengths_summary), listOf(false to stringResource(R.string.settings_centimetres), true to stringResource(R.string.settings_inches)), WriterUnits.inches) { WriterUnits.set(context, it) }
         var speed by remember { mutableStateOf(office.readAloudSpeed) }
-        ChoiceRow("Read aloud speed", "Review › Read aloud; 1× is normal", listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×", 1.5f to "1.5×", 2f to "2×"), speed) { speed = it; office.readAloudSpeed = it }
+        ChoiceRow(stringResource(R.string.settings_read_aloud_speed), stringResource(R.string.settings_read_aloud_summary), listOf(0.75f to "0.75×", 1f to "1×", 1.25f to "1.25×", 1.5f to "1.5×", 2f to "2×"), speed) { speed = it; office.readAloudSpeed = it }
     }
     // the ribbon's place and size for Words, Tables and Slides (asked 16 Oct: one Office section; File › Settings opens the same)
-    SettingsSection("Ribbon", "By itself: at the top and smaller while a mouse is in use, as on a computer; at the bottom, in reach of a hand, when you touch. Compact tools always use the dash.") {
-        ChoiceRow("The ribbon", "Where it stands", listOf("auto" to "By itself", "bottom" to "Bottom", "top" to "Top"), OfficeUi.place) { OfficeUi.set(context, place = it) }
-        ChoiceRow("Its tools", "How big they are", listOf("auto" to "By itself", "normal" to "Normal", "compact" to "Compact"), OfficeUi.size) { OfficeUi.set(context, size = it) }
-        ChoiceRow("Tab marker", "A bubble behind the chosen tab or a dash under it", listOf("bubble" to "Bubble", "dash" to "Dash"), OfficeUi.marker) { OfficeUi.set(context, marker = it) }
+    SettingsSection(stringResource(R.string.settings_ribbon), stringResource(R.string.settings_ribbon_note)) {
+        ChoiceRow(stringResource(R.string.settings_the_ribbon), stringResource(R.string.settings_the_ribbon_summary), listOf("auto" to stringResource(R.string.settings_by_itself), "bottom" to stringResource(R.string.settings_bottom), "top" to stringResource(R.string.settings_top)), OfficeUi.place) { OfficeUi.set(context, place = it) }
+        ChoiceRow(stringResource(R.string.settings_its_tools), stringResource(R.string.settings_its_tools_summary), listOf("auto" to stringResource(R.string.settings_by_itself), "normal" to stringResource(R.string.settings_normal), "compact" to stringResource(R.string.settings_compact)), OfficeUi.size) { OfficeUi.set(context, size = it) }
+        ChoiceRow(stringResource(R.string.settings_tab_marker), stringResource(R.string.settings_tab_marker_summary), listOf("bubble" to stringResource(R.string.settings_bubble), "dash" to stringResource(R.string.settings_dash)), OfficeUi.marker) { OfficeUi.set(context, marker = it) }
     }
 }
 
@@ -367,13 +370,13 @@ internal fun SettingsTab(
     var txt by remember { mutableStateOf(editor.opensTxt) }
     var wrap by remember { mutableStateOf(editor.wordWrap) }
     var folder by remember { mutableStateOf(editor.saveFolder) }
-    SettingsSection("Open from Files", "Open with… still offers other apps.") {
-        SwitchRow("Open .txt files here", if (txt) "A .txt opens in the Text editor" else "A .txt opens in the app you chose for it", txt) { txt = it; editor.opensTxt = it }
+    SettingsSection(stringResource(R.string.settings_open_from_files), stringResource(R.string.settings_text_open_note)) {
+        SwitchRow(stringResource(R.string.settings_open_txt), if (txt) stringResource(R.string.settings_open_txt_on) else stringResource(R.string.settings_open_txt_off), txt) { txt = it; editor.opensTxt = it }
     }
-    SettingsSection("Editing") {
-        SwitchRow("Word wrap", if (wrap) "Long lines continue on the next line" else "Long lines keep going; scroll sideways, like code", wrap) { wrap = it; editor.wordWrap = it }
+    SettingsSection(stringResource(R.string.settings_editing)) {
+        SwitchRow(stringResource(R.string.settings_word_wrap), if (wrap) stringResource(R.string.settings_word_wrap_on) else stringResource(R.string.settings_word_wrap_off), wrap) { wrap = it; editor.wordWrap = it }
         Column(Modifier.fillMaxWidth().background(rowColor()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Save new files in", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.settings_save_new_in), style = MaterialTheme.typography.bodyLarge)
             OutlinedTextField(folder, { folder = it; editor.saveFolder = it }, singleLine = true, prefix = { Text("/sdcard/") }, modifier = Modifier.fillMaxWidth())
         }
     }
@@ -399,42 +402,42 @@ internal fun SettingsTab(
     val battery = context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
     val xiaomi = android.os.Build.MANUFACTURER.equals("Xiaomi", true)
     val island = remember(version.intValue) { HyperIsland.isSupported(context) }
-    SettingsSection("Reminders", "Every device reminds; this switch turns it off on this one only.") {
+    SettingsSection(stringResource(R.string.settings_reminders), stringResource(R.string.settings_reminders_note)) {
         var on by remember { mutableStateOf(CalendarAlarms.enabled(context)) }
-        SwitchRow("Reminders on this device", if (on) "On" else "Off", on) { on = it; CalendarAlarms.setEnabled(context, it) }
-        SettingRow("Send a test reminder", "In 5 seconds: it pops up over Tetra here; on the home screen, in the island", onClick = { CalendarAlarms.test(context); say("A test reminder comes in 5 seconds") })
+        SwitchRow(stringResource(R.string.settings_reminders_here), if (on) stringResource(R.string.common_on) else stringResource(R.string.common_off), on) { on = it; CalendarAlarms.setEnabled(context, it) }
+        SettingRow(stringResource(R.string.settings_test_reminder), stringResource(R.string.settings_test_reminder_summary), onClick = { CalendarAlarms.test(context); say(context.getString(R.string.settings_test_reminder_coming)) })
     }
-    SettingsSection("What reminders need") {
-        StatusRow("Notifications", if (notifications) "Allowed: reminders show" else "Off: reminders will not show", notifications, if (notifications) "Settings" else "Allow") {
+    SettingsSection(stringResource(R.string.settings_reminders_need)) {
+        StatusRow(stringResource(R.string.settings_notifications), if (notifications) stringResource(R.string.settings_notifications_on) else stringResource(R.string.settings_notifications_off), notifications, if (notifications) stringResource(R.string.common_settings) else stringResource(R.string.common_allow)) {
             if (!notifications && android.os.Build.VERSION.SDK_INT >= 33) ask.launch(Manifest.permission.POST_NOTIFICATIONS) else open(notificationSettings)
         }
-        StatusRow("Alarms on time", if (exact) "Allowed: reminders ring at their minute" else "Not allowed: reminders may come a few minutes late", exact, if (exact) null else "Allow") {
+        StatusRow(stringResource(R.string.settings_exact_alarms), if (exact) stringResource(R.string.settings_exact_alarms_on) else stringResource(R.string.settings_exact_alarms_off), exact, if (exact) null else stringResource(R.string.common_allow)) {
             if (android.os.Build.VERSION.SDK_INT >= 31) open(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, pkg))
         }
-        StatusRow("Battery", if (battery) "No restrictions: reminders ring on time" else "Restricted: a reminder can be held back", battery, "Settings") {
+        StatusRow(stringResource(R.string.settings_battery), if (battery) stringResource(R.string.settings_battery_on) else stringResource(R.string.settings_battery_off), battery, stringResource(R.string.common_settings)) {
             open(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) || open(appDetails)
         }
         if (xiaomi) {
-            StatusRow("Hyper Island", if (island) "On: a reminder shows in the island, with ✕ for done" else "Off: turn on Tetra's focus notifications", island, "Settings") { open(notificationSettings) }
-            StatusRow("Autostart", "Needed for reminders after a restart (Xiaomi; Android does not tell apps whether it is on)", true, "Settings") {
+            StatusRow(stringResource(R.string.settings_hyper_island), if (island) stringResource(R.string.settings_hyper_island_on) else stringResource(R.string.settings_hyper_island_off), island, stringResource(R.string.common_settings)) { open(notificationSettings) }
+            StatusRow(stringResource(R.string.settings_autostart), stringResource(R.string.settings_autostart_summary), true, stringResource(R.string.common_settings)) {
                 open(Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")) || open(appDetails)
             }
         }
     }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch { say(withContext(Dispatchers.IO) { runCatching { importCalendars(context, uri) }.getOrElse { "Not imported: ${it.message}" } }) }
+        if (uri != null) scope.launch { say(withContext(Dispatchers.IO) { runCatching { importCalendars(context, uri) }.getOrElse { context.getString(R.string.settings_not_imported, it.message.orEmpty()) } }) }
     }
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) scope.launch { say(withContext(Dispatchers.IO) { runCatching {
-            context.contentResolver.openOutputStream(uri)!!.use { it.write(CalendarTransfer.exportAll(CalendarFiles.calendars(calendarRoot()))) }; "Exported"
-        }.getOrElse { "Not exported: ${it.message}" } }) }
+            context.contentResolver.openOutputStream(uri)!!.use { it.write(CalendarTransfer.exportAll(CalendarFiles.calendars(calendarRoot()))) }; context.getString(R.string.settings_exported)
+        }.getOrElse { context.getString(R.string.settings_not_exported, it.message.orEmpty()) } }) }
     }
-    SettingsSection("Your calendars", "Your calendars are the folders in Tetra/Calendar: they sync with the computer, and Claude can manage them there.") {
-        SettingRow("Import", "An .ics file or Google Takeout's zip; each calendar into the one of its name, an event already there updated",
+    SettingsSection(stringResource(R.string.settings_your_calendars), stringResource(R.string.settings_your_calendars_note)) {
+        SettingRow(stringResource(R.string.common_import), stringResource(R.string.settings_calendar_import_summary),
             onClick = { pick.launch(arrayOf("text/calendar", "application/zip", "application/octet-stream", "*/*")) })
-        SettingRow("Export all", "Every calendar as an .ics, in a zip", onClick = { save.launch("Tetra calendars.zip") })
+        SettingRow(stringResource(R.string.settings_export_all), stringResource(R.string.settings_export_all_summary), onClick = { save.launch("Tetra calendars.zip") })
     }
-    SettingsSection("Claude") { SkillRows("tetra-calendar", "Calendar", "Lets Claude read and change this calendar by editing its files.") }
+    SettingsSection("Claude") { SkillRows("tetra-calendar", "Calendar", stringResource(R.string.settings_calendar_skill)) }
 }
 
 /** Settings › Maps (21 Oct): what is installed, where updates come from, the directions' language and voice, parking, places. */
@@ -442,39 +445,39 @@ internal fun SettingsTab(
     val mapsContext = LocalContext.current
     var mapTheme by remember { mutableStateOf(MapsPrefs.mapTheme(mapsContext)) }
     var rolling by remember { mutableStateOf(MapsPrefs.rolling(mapsContext)) }
-    SettingsSection("Map") {
-        ChoiceRow("Map", "Its own light or dark, apart from Tetra's theme", listOf("light" to "Light", "dark" to "Dark"), mapTheme) { mapTheme = it; MapsPrefs.setMapTheme(mapsContext, it) }
-        ChoiceRow("On foot", if (rolling) "Rolling: routes for a wheelchair, without steps or rough paths, and its icon" else "Walking: every footpath and step",
-            listOf(false to "Walking", true to "Rolling"), rolling) { rolling = it; MapsPrefs.setRolling(mapsContext, it) }
+    SettingsSection(stringResource(R.string.settings_map)) {
+        ChoiceRow(stringResource(R.string.settings_map), stringResource(R.string.settings_map_summary), listOf("light" to stringResource(R.string.settings_light), "dark" to stringResource(R.string.settings_dark)), mapTheme) { mapTheme = it; MapsPrefs.setMapTheme(mapsContext, it) }
+        ChoiceRow(stringResource(R.string.settings_on_foot), if (rolling) stringResource(R.string.settings_rolling_summary) else stringResource(R.string.settings_walking_summary),
+            listOf(false to stringResource(R.string.settings_walking), true to stringResource(R.string.settings_rolling)), rolling) { rolling = it; MapsPrefs.setRolling(mapsContext, it) }
         var mainRoads by remember { mutableStateOf(MapsPrefs.mainRoads(mapsContext)) }
-        ChoiceRow("By car", if (mainRoads) "Main roads: the bigger roads; tracks and small country roads only when there is no other way, even if a little longer"
-            else "Shortest: the shorter way, even on tracks and small roads",
-            listOf(true to "Main roads", false to "Shortest"), mainRoads) { mainRoads = it; MapsPrefs.setMainRoads(mapsContext, it) }
+        ChoiceRow(stringResource(R.string.settings_by_car), if (mainRoads) stringResource(R.string.settings_main_roads_summary)
+            else stringResource(R.string.settings_shortest_summary),
+            listOf(true to stringResource(R.string.settings_main_roads), false to stringResource(R.string.settings_shortest)), mainRoads) { mainRoads = it; MapsPrefs.setMainRoads(mapsContext, it) }
     }
     var lang by remember { mutableStateOf(MapsPrefs.lang(mapsContext)) }
     var bends by remember { mutableStateOf(MapsPrefs.bends(mapsContext)) }
-    SettingsSection("Directions", "The voice is Android's text-to-speech; its voices are in Android's settings.") {
-        ChoiceRow("Directions in", "The words on the screen and the voice", listOf("el" to "Greek", "en" to "English"), lang) { lang = it; MapsPrefs.setLang(mapsContext, it) }
-        SettingRow("Test voice", MapsPrefs.sample(lang), onClick = {
+    SettingsSection(stringResource(R.string.settings_directions), stringResource(R.string.settings_directions_note)) {
+        ChoiceRow(stringResource(R.string.settings_directions_in), stringResource(R.string.settings_directions_in_summary), listOf("el" to stringResource(R.string.settings_greek), "en" to stringResource(R.string.settings_english)), lang) { lang = it; MapsPrefs.setLang(mapsContext, it) }
+        SettingRow(stringResource(R.string.settings_test_voice), MapsPrefs.sample(lang), onClick = {
             var t: android.speech.tts.TextToSpeech? = null
             t = android.speech.tts.TextToSpeech(mapsContext.applicationContext) { ok ->
                 if (ok == android.speech.tts.TextToSpeech.SUCCESS) {
                     val r = t?.setLanguage(MapsPrefs.ttsLocale(lang)) ?: -2
-                    if (r < 0) Toast.makeText(mapsContext, "No ${if (lang == "en") "English" else "Greek"} voice: add it in Android's voice settings.", Toast.LENGTH_LONG).show()
+                    if (r < 0) Toast.makeText(mapsContext, mapsContext.getString(if (lang == "en") R.string.settings_no_english_voice else R.string.settings_no_greek_voice), Toast.LENGTH_LONG).show()
                     else t?.speak(MapsPrefs.sample(lang), android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "test")
                 }
             }
         })
-        SettingRow("Voice settings", "Android's text-to-speech", onClick = { runCatching { mapsContext.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Chevron() }
-        SwitchRow("Warn of sharp bends", "By car, \"Sharp bend to the right ahead\" a little before each tight curve where no turn is said, as on mountain roads", bends) { bends = it; MapsPrefs.setBends(mapsContext, it) }
+        SettingRow(stringResource(R.string.settings_voice_settings), stringResource(R.string.settings_voice_settings_summary), onClick = { runCatching { mapsContext.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Chevron() }
+        SwitchRow(stringResource(R.string.settings_sharp_bends), stringResource(R.string.settings_sharp_bends_summary), bends) { bends = it; MapsPrefs.setBends(mapsContext, it) }
     }
     var autoPark by remember { mutableStateOf(MapsPrefs.autoPark(mapsContext)) }
     var openAtCar by remember { mutableStateOf(MapsPrefs.openAtCar(mapsContext)) }
     var radius by remember { mutableStateOf(MapsPrefs.parkingRadius(mapsContext)) }
-    SettingsSection("Parking", "The map's P button saves the spot any time. A saved spot is cleared when the car moves on: a new car trip, or car speed while the map is open.") {
-        SwitchRow("Save where I park", "When directions by car end or are stopped, the spot is saved as My car", autoPark) { autoPark = it; MapsPrefs.setAutoPark(mapsContext, it) }
-        SwitchRow("Open the map at my car", "While a parking spot is saved, Maps opens with directions on foot to it (not when you are already by it)", openAtCar) { openAtCar = it; MapsPrefs.setOpenAtCar(mapsContext, it) }
-        ChoiceRow("ΑμεΑ parking near the destination", "How far from where you are going the car's Parking button looks", MapsPrefs.RADII, radius) { radius = it; MapsPrefs.setParkingRadius(mapsContext, it) }
+    SettingsSection(stringResource(R.string.settings_parking), stringResource(R.string.settings_parking_note)) {
+        SwitchRow(stringResource(R.string.settings_save_parking), stringResource(R.string.settings_save_parking_summary), autoPark) { autoPark = it; MapsPrefs.setAutoPark(mapsContext, it) }
+        SwitchRow(stringResource(R.string.settings_open_at_car), stringResource(R.string.settings_open_at_car_summary), openAtCar) { openAtCar = it; MapsPrefs.setOpenAtCar(mapsContext, it) }
+        ChoiceRow(stringResource(R.string.settings_accessible_parking), stringResource(R.string.settings_accessible_parking_summary), MapsPrefs.RADII, radius) { radius = it; MapsPrefs.setParkingRadius(mapsContext, it) }
     }
     // Google Maps' saved places from Takeout (the user, 21 Oct: "be able to bring stuff I saved over")
     val importScope = rememberCoroutineScope()
@@ -492,7 +495,7 @@ internal fun SettingsTab(
             } }
             importing = false
             r.onSuccess { imported = it; WriterLog.i("Maps: imported ${it.places} places, ${it.missed.size} not placed") }
-                .onFailure { WriterLog.e("Maps: import", it); Toast.makeText(mapsContext, "Could not read that file: ${it.message}", Toast.LENGTH_LONG).show() }
+                .onFailure { WriterLog.e("Maps: import", it); Toast.makeText(mapsContext, mapsContext.getString(R.string.settings_file_unreadable, it.message.orEmpty()), Toast.LENGTH_LONG).show() }
         }
     }
     // sharing: my places and the map's additions out as GeoJSON and in again (the user, 21 Oct: "μαζική εισαγωγή και εξαγωγή
@@ -506,20 +509,19 @@ internal fun SettingsTab(
                 MapsShare.import(MapsFiles.root(driveRoot()), mapsContext.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) })
             } }
             r.onSuccess { shared = it; WriterLog.i("Maps: imported $it") }
-                .onFailure { WriterLog.e("Maps: import of a shared file", it); Toast.makeText(mapsContext, "Not a places file: ${it.message}", Toast.LENGTH_LONG).show() }
+                .onFailure { WriterLog.e("Maps: import of a shared file", it); Toast.makeText(mapsContext, mapsContext.getString(R.string.settings_not_places_file, it.message.orEmpty()), Toast.LENGTH_LONG).show() }
         }
     }
-    SettingsSection("Your places", "Google Takeout: choose only Saved and Maps (your places) at takeout.google.com (the others, as YouTube and Maps, carry videos and photos), then the .zip here, or one list's .csv. " +
-        "Each list becomes a list here; a place without its spot in the file is found by its name, the others are named for you to find.") {
-        SettingRow("Export places", "Your places and what you added to the map, as a GeoJSON file for another Tetra or another map app", onClick = { exportWhat = "" })
-        SettingRow("Import places", "Adds such a file's places and map additions to yours", onClick = { pickShared.launch(arrayOf("application/geo+json", "application/json", "*/*")) })
-        SettingRow("Import from Google Maps", if (importing) "Importing…" else "Your saved lists and starred places, from Google Takeout",
+    SettingsSection(stringResource(R.string.settings_your_places), stringResource(R.string.settings_your_places_note)) {
+        SettingRow(stringResource(R.string.settings_export_places), stringResource(R.string.settings_export_places_summary), onClick = { exportWhat = "" })
+        SettingRow(stringResource(R.string.settings_import_places), stringResource(R.string.settings_import_places_summary), onClick = { pickShared.launch(arrayOf("application/geo+json", "application/json", "*/*")) })
+        SettingRow(stringResource(R.string.settings_import_google), if (importing) stringResource(R.string.settings_importing) else stringResource(R.string.settings_import_google_summary),
             onClick = { if (!importing) pickTakeout.launch(arrayOf("application/zip", "text/csv", "text/comma-separated-values", "application/json", "*/*")) })
     }
-    exportWhat?.let { _ -> AlertDialog(onDismissRequest = { exportWhat = null }, title = { Text("Export") },
-        text = { Text("What goes in the file?") },
+    exportWhat?.let { _ -> AlertDialog(onDismissRequest = { exportWhat = null }, title = { Text(stringResource(R.string.common_export)) },
+        text = { Text(stringResource(R.string.settings_export_what)) },
         confirmButton = { Row {
-            listOf("mine" to "My places", "map" to "Map additions", "both" to "Both").forEach { (k, label) -> TextButton(onClick = {
+            listOf("mine" to stringResource(R.string.settings_my_places), "map" to stringResource(R.string.settings_map_additions), "both" to stringResource(R.string.settings_both)).forEach { (k, label) -> TextButton(onClick = {
                 exportWhat = null
                 runCatching {
                     val root = MapsFiles.root(driveRoot())
@@ -527,28 +529,27 @@ internal fun SettingsTab(
                     val file = java.io.File(mapsContext.cacheDir, "share/tetra-places-${java.time.LocalDate.now()}.geojson").apply { parentFile?.mkdirs(); writeText(text) }
                     val uri = androidx.core.content.FileProvider.getUriForFile(mapsContext, "${mapsContext.packageName}.files", file)
                     mapsContext.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("application/geo+json").putExtra(Intent.EXTRA_STREAM, uri)
-                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share places"))
-                }.onFailure { WriterLog.e("Maps: export", it); Toast.makeText(mapsContext, "Could not export: ${it.message}", Toast.LENGTH_LONG).show() }
-            }) { Text(label) } }
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), mapsContext.getString(R.string.settings_share_places)))
+                }.onFailure { WriterLog.e("Maps: export", it); Toast.makeText(mapsContext, mapsContext.getString(R.string.settings_not_exported_maps, it.message.orEmpty()), Toast.LENGTH_LONG).show() }
+            }) { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
         } },
-        dismissButton = { TextButton(onClick = { exportWhat = null }) { Text("Cancel") } }) }
-    shared?.let { r -> AlertDialog(onDismissRequest = { shared = null }, title = { Text("Imported") },
-        text = { Text("${r.places} places and ${r.added} map additions; ${r.skipped} already here or without a position.") },
-        confirmButton = { TextButton(onClick = { shared = null }) { Text("OK") } }) }
-    imported?.let { r -> AlertDialog(onDismissRequest = { imported = null }, title = { Text("Imported ${r.places} places") },
+        dismissButton = { TextButton(onClick = { exportWhat = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } }) }
+    shared?.let { r -> AlertDialog(onDismissRequest = { shared = null }, title = { Text(stringResource(R.string.settings_imported)) },
+        text = { Text(stringResource(R.string.settings_imported_shared, r.places, r.added, r.skipped)) },
+        confirmButton = { TextButton(onClick = { shared = null }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) } }) }
+    imported?.let { r -> AlertDialog(onDismissRequest = { imported = null }, title = { Text(pluralStringResource(R.plurals.settings_imported_places, r.places, r.places)) },
         text = { androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 360.dp)) {
-            item { Text("Into ${r.lists} lists." + if (r.missed.isEmpty()) "" else " These could not be placed — search for them in Maps and Save:", style = MaterialTheme.typography.bodyMedium) }
+            item { Text(pluralStringResource(R.plurals.settings_into_lists, r.lists, r.lists) + if (r.missed.isEmpty()) "" else " " + stringResource(R.string.settings_not_placed), style = MaterialTheme.typography.bodyMedium) }
             items(r.missed.size) { i -> Text("• " + r.missed[i], style = MaterialTheme.typography.bodySmall) }
         } },
-        confirmButton = { TextButton(onClick = { imported = null }) { Text("OK") } }) }
+        confirmButton = { TextButton(onClick = { imported = null }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) } }) }
     val files by produceState<List<Pair<String, String>>?>(null) { value = withContext(Dispatchers.IO) { MapsFiles.installed(MapsFiles.root(driveRoot())) } }
-    SettingsSection("Installed maps", "Maps are made on the computer and come here with Local Sync, into Tetra/Maps: tools/maps-greece.sh downloads " +
-        "the newest map of Greece and builds the routing for it (an Update button in desktop Tetra is planned).") {
+    SettingsSection(stringResource(R.string.settings_installed_maps), stringResource(R.string.settings_installed_maps_note)) {
         files?.forEach { (what, about) -> SettingRow(what, about) }
     }
     // the log and the last 7 days' drive traces (MapsTrace), for a problem seen on the road (the user, 23 Oct)
-    SettingsSection("Problems") {
-        SettingRow("Send log", "Tetra's log and the traces of your drives of the last 7 days, as one zip; they stay on this device until you send them",
+    SettingsSection(stringResource(R.string.settings_problems)) {
+        SettingRow(stringResource(R.string.settings_send_log), stringResource(R.string.settings_send_log_summary),
             onClick = { MapsTrace.export(mapsContext)?.let { shareDriveFile(mapsContext, it) } })
     }
 }
@@ -566,12 +567,12 @@ internal fun SettingsTab(
     val copy = ContactsAccount.on(context) && writes
     val cals = remember(version.intValue) { runCatching { CalendarFiles.calendars(calendarRoot()) }.getOrDefault(emptyList()) }
     val chosen = cals.firstOrNull { it.dir.name == ContactsPrefs.birthdays(context) } ?: ContactsBirthdays.existing(cals)
-    SettingsSection(null, "Your contacts are files in Tetra/Contacts, one per person: they sync with the computer, where Contacts shows them too.") {
-        SwitchRow("In the phone's contacts", if (copy) "The dialer, Viber, WhatsApp and the car show these names and photos (a read-only copy, account Tetra)"
-            else "Only Tetra shows your contacts", copy) { on ->
+    SettingsSection(null, stringResource(R.string.settings_contacts_note)) {
+        SwitchRow(stringResource(R.string.settings_in_phone_contacts), if (copy) stringResource(R.string.settings_in_phone_contacts_on)
+            else stringResource(R.string.settings_in_phone_contacts_off), copy) { on ->
             when { !on -> { ContactsAccount.set(context, false); version.intValue++ }; writes -> { ContactsAccount.set(context, true); version.intValue++ }; else -> askWrite.launch(Manifest.permission.WRITE_CONTACTS) }
         }
-        ChoiceRow("Birthdays go into", if (cals.isEmpty()) "No calendars yet" else "Each birthday and date is a yearly event there, reminded at 9:00 on the day and the day before",
+        ChoiceRow(stringResource(R.string.settings_birthdays_into), if (cals.isEmpty()) stringResource(R.string.settings_no_calendars) else stringResource(R.string.settings_birthdays_summary),
             cals.map { it to it.name }, chosen) { c -> c?.let { ContactsPrefs.setBirthdays(context, it.dir.name) }; version.intValue++ }
     }
 }
@@ -583,32 +584,31 @@ internal fun SettingsTab(
     val access = remember(back.intValue) { DataStats.hasAccess(context) }
     val plan = remember(back.intValue) { DataFiles.plan() }
     val prefs = remember { context.getSharedPreferences("data", android.content.Context.MODE_PRIVATE) }
-    SettingsSection(null, "Data counts each app's mobile data and Wi-Fi from Android's own statistics. It stays on your devices: Local Sync carries it to your tablet and computer only.") {
-        SettingRow("Setup", "Your plan, when it renews, roaming, warnings — step by step", onClick = { openData(context, "setup") }) { Chevron() }
-        StatusRow("Usage access", if (access) "On" else "Off — Data sees only its own use", access, "Settings") {
+    SettingsSection(null, stringResource(R.string.settings_data_note)) {
+        SettingRow(stringResource(R.string.settings_data_setup), stringResource(R.string.settings_data_setup_summary), onClick = { openData(context, "setup") }) { Chevron() }
+        StatusRow(stringResource(R.string.settings_usage_access), if (access) stringResource(R.string.common_on) else stringResource(R.string.settings_usage_access_off), access, stringResource(R.string.common_settings)) {
             runCatching { context.startActivity(DataStats.accessIntent(context)) }.onFailure { context.startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
         }
-        SettingRow("Your plan", plan?.let { p -> when (p.kind) {
-            DataPlan.UNLIMITED -> "Unlimited"; DataPlan.FAIR_USE -> "Unlimited, ${DataRules.bytes(p.size)} fair use"; else -> DataRules.bytes(p.size)
-        } + " · renews " + DataRules.cycle(p, java.time.LocalDate.now()).end.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH)) } ?: "Not set up", onClick = { openData(context, "setup") }) { Chevron() }
+        SettingRow(stringResource(R.string.settings_your_plan), plan?.let { p -> stringResource(R.string.settings_plan_renews, when (p.kind) {
+            DataPlan.UNLIMITED -> stringResource(R.string.settings_unlimited); DataPlan.FAIR_USE -> stringResource(R.string.settings_fair_use, DataRules.bytes(p.size)); else -> DataRules.bytes(p.size)
+        }, DataRules.cycle(p, java.time.LocalDate.now()).end.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.getDefault()))) } ?: stringResource(R.string.settings_not_set_up), onClick = { openData(context, "setup") }) { Chevron() }
     }
-    SettingsSection("Warnings") {
-        SettingRow("Warnings", plan?.takeIf { it.limited }?.warn?.joinToString(" · ") { "$it %" } ?: "None", onClick = { openData(context, "setup") }) { Chevron() }
+    SettingsSection(stringResource(R.string.settings_warnings)) {
+        SettingRow(stringResource(R.string.settings_warnings), plan?.takeIf { it.limited }?.warn?.joinToString(" · ") { "$it %" } ?: stringResource(R.string.common_none), onClick = { openData(context, "setup") }) { Chevron() }
         var budget by remember { mutableStateOf(prefs.getBoolean("warnBudget", false)) }
-        SwitchRow("When a day's budget is passed", null, budget) { budget = it; prefs.edit().putBoolean("warnBudget", it).apply() }
-        SettingRow("Roaming", plan?.let { p -> (if (p.passPrice > 0) "Outside the EU: ${p.currency}${"%.0f".format(p.passPrice)} for ${DataRules.bytes(p.passSize)} a day" else "No day pass") +
-            "; notices to turn data roaming off" } ?: "Not set up", onClick = { openData(context, "setup") }) { Chevron() }
+        SwitchRow(stringResource(R.string.settings_day_budget), null, budget) { budget = it; prefs.edit().putBoolean("warnBudget", it).apply() }
+        SettingRow(stringResource(R.string.settings_roaming), plan?.let { p -> stringResource(R.string.settings_roaming_summary, if (p.passPrice > 0) stringResource(R.string.settings_day_pass, p.currency + "%.0f".format(p.passPrice), DataRules.bytes(p.passSize)) else stringResource(R.string.settings_no_day_pass)) } ?: stringResource(R.string.settings_not_set_up), onClick = { openData(context, "setup") }) { Chevron() }
     }
-    SettingsSection("Live") {
+    SettingsSection(stringResource(R.string.settings_live)) {
         var live by remember { mutableStateOf(DataSpeed.enabled(context)) }
-        SwitchRow("Live speed", "In the status bar while the screen is on", live) { live = it; DataSpeed.setEnabled(context, it) }
+        SwitchRow(stringResource(R.string.settings_live_speed), stringResource(R.string.settings_live_speed_summary), live) { live = it; DataSpeed.setEnabled(context, it) }
         var drops by remember { mutableStateOf(DataSignal.summaryOn(context)) }
-        SwitchRow("Signal drops", "A daily summary of the drops (they are always listed in Data)", drops) { drops = it; DataSignal.setSummary(context, it) }
+        SwitchRow(stringResource(R.string.settings_signal_drops), stringResource(R.string.settings_signal_drops_summary), drops) { drops = it; DataSignal.setSummary(context, it) }
         val located = remember(back.intValue) { context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED }
-        StatusRow("Wi-Fi around", if (located) "Location allowed: the networks around and their channels" else "Needs the location permission (only while Signal is open)", located, if (located) null else "Settings") {
+        StatusRow(stringResource(R.string.settings_wifi_around), if (located) stringResource(R.string.settings_wifi_around_on) else stringResource(R.string.settings_wifi_around_off), located, if (located) null else stringResource(R.string.common_settings)) {
             context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)))
         }
-        SettingRow("Open Data", null, onClick = { openData(context) }) { Chevron() }
+        SettingRow(stringResource(R.string.settings_open_data), null, onClick = { openData(context) }) { Chevron() }
     }
 }
 
@@ -620,45 +620,44 @@ internal fun SettingsTab(
     val askCalls = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { version.intValue++; PhoneCall.Watcher.start(context.applicationContext) }
     @Suppress("UNUSED_EXPRESSION") version.intValue
     if (PhoneRelay.noCalls(context)) SettingsSection {
-        SettingRow("No calls of its own", "This device's Phone calls through your phone, by way of the computer, and shows the phone's calls as they ring. The voice stays on the phone.")
+        SettingRow(stringResource(R.string.settings_no_calls), stringResource(R.string.settings_no_calls_summary))
     } else {
         val dialer = PhonePrefs.isDialer(context)
-        SettingsSection("Phone app") {
-            SettingRow(if (dialer) "Tetra is the phone app" else "Tetra is not the phone app",
-                if (dialer) "Calls ring and are spoken on Tetra's own call screen. To give it back: Android's Default apps › Phone app."
-                else "As the phone app, Tetra shows its own call screen and buzzes when they answer. The phone's own call recording is not shown then.") {
+        SettingsSection(stringResource(R.string.settings_phone_app)) {
+            SettingRow(if (dialer) stringResource(R.string.settings_is_dialer) else stringResource(R.string.settings_not_dialer),
+                if (dialer) stringResource(R.string.settings_is_dialer_summary)
+                else stringResource(R.string.settings_not_dialer_summary)) {
                 TextButton(onClick = {
                     if (dialer) runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     else askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
-                }) { Text(if (dialer) "Change" else "Make it") }
+                }) { Text(if (dialer) stringResource(R.string.settings_change) else stringResource(R.string.settings_make_it), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
-            SettingRow("Open the Phone", "Speed dial and spam are in its own settings", onClick = { context.startActivity(Intent(context, PhoneActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Chevron() }
+            SettingRow(stringResource(R.string.settings_open_phone), stringResource(R.string.settings_open_phone_summary), onClick = { context.startActivity(Intent(context, PhoneActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Chevron() }
         }
         var answer by remember { mutableStateOf(PhonePrefs.buzzAnswer(context)) }
         var end by remember { mutableStateOf(PhonePrefs.buzzEnd(context)) }
         var unknown by remember { mutableStateOf(PhonePrefs.silenceUnknown(context)) }
         var hidden by remember { mutableStateOf(PhonePrefs.declineHidden(context)) }
-        SettingsSection("Calls") {
-            SwitchRow("Vibrate when answered", "Two short taps when the other side picks up a call you made", answer) { answer = it; PhonePrefs.setBuzzAnswer(context, it) }
-            SwitchRow("Vibrate when a call ends", "One tap when a call that was answered ends", end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
-            SwitchRow("Silence numbers not in Contacts", "They ring without sound and show in Recents as missed", unknown) { unknown = it; PhonePrefs.setSilenceUnknown(context, it) }
-            SwitchRow("Decline hidden numbers", "Calls that hide their number are declined before they ring", hidden) { hidden = it; PhonePrefs.setDeclineHidden(context, it) }
+        SettingsSection(stringResource(R.string.settings_calls)) {
+            SwitchRow(stringResource(R.string.settings_buzz_answer), stringResource(R.string.settings_buzz_answer_summary), answer) { answer = it; PhonePrefs.setBuzzAnswer(context, it) }
+            SwitchRow(stringResource(R.string.settings_buzz_end), stringResource(R.string.settings_buzz_end_summary), end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
+            SwitchRow(stringResource(R.string.settings_silence_unknown), stringResource(R.string.settings_silence_unknown_summary), unknown) { unknown = it; PhonePrefs.setSilenceUnknown(context, it) }
+            SwitchRow(stringResource(R.string.settings_decline_hidden), stringResource(R.string.settings_decline_hidden_summary), hidden) { hidden = it; PhonePrefs.setDeclineHidden(context, it) }
         }
     }
     // calls from the computer (was in Settings › Contacts): one permission for Tetra (Android's "Phone"), not one per contact
     val calls = PhoneCall.allAllowed(context)
-    SettingsSection("With the computer", (if (calls) "Once for Tetra, not for each contact. To take it back: Android's Settings › Apps › Tetra › Permissions › Phone and Call logs."
-        else "Allow asks once, for Tetra (not for each contact): to place a call, to see a call ringing, and to answer or end it from the computer. The caller's number and the rest come with Tetra as the phone app.") +
-        " The sound stays on the phone, unless the phone is connected to the computer by Bluetooth for calls (the computer's Settings › Calls).") {
+    SettingsSection(stringResource(R.string.settings_with_computer), (if (calls) stringResource(R.string.settings_with_computer_on)
+        else stringResource(R.string.settings_with_computer_off)) + " " + stringResource(R.string.settings_with_computer_sound)) {
         // the on/off (the user, 25 Oct: "the on/off was a different thing" from the permission below)
         var pc by remember { mutableStateOf(PhonePrefs.pcCalls(context)) }
-        SwitchRow("Calls on the computer", if (pc) "The computer shows this phone's calls (answer, decline, end) and can place calls through it"
-            else "Off: the computer hears of no call here and cannot place one", pc) {
+        SwitchRow(stringResource(R.string.settings_pc_calls), if (pc) stringResource(R.string.settings_pc_calls_on)
+            else stringResource(R.string.settings_pc_calls_off), pc) {
             pc = it; PhonePrefs.setPcCalls(context, it)
             if (it && !calls) askCalls.launch(PhoneCall.PERMISSIONS) // turned on: Android's permission asked then (the user, 25 Oct)
         }
-        StatusRow("Phone permission", if (calls) "Allowed: Call on the computer rings here at once, and the computer sees this phone's calls"
-            else "Each call from the computer comes as a notification to tap, and the computer does not see this phone's calls", true, if (calls) "Settings" else "Allow") {
+        StatusRow(stringResource(R.string.settings_phone_permission), if (calls) stringResource(R.string.settings_phone_permission_on)
+            else stringResource(R.string.settings_phone_permission_off), true, if (calls) stringResource(R.string.common_settings) else stringResource(R.string.common_allow)) {
             if (calls) runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             else askCalls.launch(PhoneCall.PERMISSIONS)
         }

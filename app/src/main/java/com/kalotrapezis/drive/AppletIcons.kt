@@ -11,21 +11,21 @@ import android.os.Bundle
  * Tetra's parts with launcher icons of their own (asked 17 Oct: Settings › App icons — on the home screen and in the
  * app list, each opening straight into its part). Each is an activity-alias of [AppletLaunch], off until switched on.
  */
-internal enum class Applet(val label: String, val art: Int) {
+internal enum class Applet(@androidx.annotation.StringRes val label: Int, val art: Int) {
     // Home's art for each; the launcher icons are made from the same (res/mipmap-anydpi-v26/applet_*)
-    Photos("Photos", R.drawable.gallery_art),
-    Files("Files", R.drawable.files_art),
-    Notes("Notes", R.drawable.notes_art),
-    Scanner("Scanner", R.drawable.scanner_art),
-    Codes("Codes", R.drawable.codes_art),
-    Office("Office", R.drawable.office_art),
-    TextEditor("Text editor", R.drawable.text_editor_art),
-    Calendar("Calendar", R.drawable.calendar_art),
-    Timer("Timer", R.drawable.timer_art),
-    Maps("Maps", R.drawable.maps_art),
-    Contacts("Contacts", R.drawable.contacts_art),
-    Phone("Phone", R.drawable.phone_art),
-    Data("Data", R.drawable.data_art);
+    Photos(R.string.app_photos, R.drawable.gallery_art),
+    Files(R.string.app_files, R.drawable.files_art),
+    Notes(R.string.app_notes, R.drawable.notes_art),
+    Scanner(R.string.app_scanner, R.drawable.scanner_art),
+    Codes(R.string.app_codes, R.drawable.codes_art),
+    Office(R.string.app_office, R.drawable.office_art),
+    TextEditor(R.string.app_text_editor, R.drawable.text_editor_art),
+    Calendar(R.string.app_calendar, R.drawable.calendar_art),
+    Timer(R.string.app_timer, R.drawable.timer_art),
+    Maps(R.string.app_maps, R.drawable.maps_art),
+    Contacts(R.string.app_contacts, R.drawable.contacts_art),
+    Phone(R.string.app_phone, R.drawable.phone_art),
+    Data(R.string.app_data, R.drawable.data_art);
 
     private fun component(context: Context) = ComponentName(context.packageName, "${Applet::class.java.packageName}.App$name")
 

@@ -28,6 +28,8 @@ your own backups. Screenshots use invented sample data.
 - **Calendar and timers, with AI.** Built-in skills (Settings › Calendar or Timer › *Share with Claude*) let Claude,
   ChatGPT or any assistant that can use your computer import a timetable, plan your week or start a timer: they simply
   edit the calendar's and timers' files, and Tetra syncs the result to your phone.
+- **Notes and lists, organised.** Keep your notes and shopping lists organised with tags and in sync between the phone
+  and the computer. Each note is a plain file in your own Tetra folder.
 - **Photos that know who and where.** Tags, live photos, and People and Documents collections from face recognition
   that runs on the device. Find photos by place\*, and bring your Google Photos over (Takeout import on the computer).
 - **Scan any page clean.** Filters and automatic cropping find and straighten the page: all the tools you need to make
@@ -36,6 +38,8 @@ your own backups. Screenshots use invented sample data.
   just covered. Tetra finds the eyes in a photo and covers them with black bars or stars, and finds text to hide.
 - **Office and PDF, good enough.** Word, Excel and PowerPoint open and save as themselves, compatible enough for
   everyday work; PDF editing and page organising; and a phone layout you can actually use.
+- **More than one copy, no subscription.** Tetra shows how many places hold each file, the phone, the tablet, the
+  computer or a USB drive, and what still lives in only one. Your own backups, with no cloud plan to pay for.
 - **Maps that work offline\*.** Search, places, routes by car, on foot and by bike, and voice guidance,
   all on the device.
 
@@ -54,6 +58,7 @@ your own backups. Screenshots use invented sample data.
 ![Files](Assets/cards/card-files.jpg)
 ![Files both ways: Send to computer on the phone, Send to phone on the computer](Assets/cards/card-send.jpg)
 ![Data](Assets/cards/card-data.jpg)
+![More than one copy, no subscription](Assets/cards/card-safety.jpg)
 
 Also inside: **Scanner** (paper to PDF, the page found live and straightened), **Codes** (QR codes, barcodes, text
 in a photo, Greek RF payment codes) and a **Text editor** with tabs. Every applet has a phone and a tablet layout; see

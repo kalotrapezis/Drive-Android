@@ -3248,21 +3248,21 @@ private fun PhotoTab(
         if (uris.isEmpty()) return
         runCatching { MediaStore.createTrashRequest(context.contentResolver, uris.toList(), false) }
             .onSuccess { trashRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
-            .onFailure { actionError = "Cannot restore: ${it.message ?: "request failed"}" }
+            .onFailure { actionError = context.getString(R.string.photos_cannot_restore, it.message ?: context.getString(R.string.photos_request_failed)) }
     }
     fun emptyPhotoTrash(all: List<Entry>) {
         val uris = all.mapNotNull(Entry::contentUri)
         if (uris.isEmpty()) return
         runCatching { MediaStore.createDeleteRequest(context.contentResolver, uris) }
             .onSuccess { trashRequest.launch(IntentSenderRequest.Builder(it.intentSender).build()) }
-            .onFailure { actionError = "Cannot empty Trash: ${it.message ?: "request failed"}" }
+            .onFailure { actionError = context.getString(R.string.photos_cannot_empty_trash, it.message ?: context.getString(R.string.photos_request_failed)) }
     }
     val deleteHiddenOriginals = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         val staged = stagedHide
         stagedHide = null
         if (staged != null && result.resultCode != Activity.RESULT_OK) Thread {
             vault.remove(staged.first)
-            Handler(Looper.getMainLooper()).post { vaultVersion++; actionError = "Hidden was cancelled; the verified private copies were removed." }
+            Handler(Looper.getMainLooper()).post { vaultVersion++; actionError = context.getString(R.string.photos_hide_cancelled) }
         }.start()
         if (result.resultCode == Activity.RESULT_OK) {
             Thread {
@@ -3282,7 +3282,7 @@ private fun PhotoTab(
             setFilter(PhotoFilter.Map)
             returnToCollections = true
             setPane(PhotosPane.Timeline)
-        } else if (!hasMediaLocationAccess) actionError = "Choose photos and allow their location metadata to use the map."
+        } else if (!hasMediaLocationAccess) actionError = context.getString(R.string.photos_map_needs_locations)
         openMapAfterPermission = false
     }
     fun requestPhotoLocations() = requestMediaLocation.launch(when {
@@ -3438,9 +3438,9 @@ private fun PhotoTab(
                             .onFailure {
                                 stagedHide = null
                                 Thread { vault.remove(hidden) }.start()
-                                actionError = "Could not request removal of the public originals."
+                                actionError = context.getString(R.string.photos_error_remove_originals)
                             }
-                    }.onFailure { actionError = it.message ?: "Could not create verified private copies." }
+                    }.onFailure { actionError = it.message ?: context.getString(R.string.photos_error_private_copies) }
                 }
             }.start()
         }, failure = { actionError = it })
@@ -3460,7 +3460,7 @@ private fun PhotoTab(
                         vaultVersion++
                         selectedUris = emptySet()
                         refresh()
-                        actionError = it.message ?: "Could not restore all hidden media. Items already verified were restored safely."
+                        actionError = it.message ?: context.getString(R.string.photos_error_restore_hidden)
                     }
             }
         }.start()
@@ -3525,16 +3525,16 @@ private fun PhotoTab(
         var name by remember(group.id) { mutableStateOf(if (isGeneratedPersonName(group.name)) "" else group.name) }
         AlertDialog(
             onDismissRequest = { renamingGroup = null },
-            title = { Text("Name this person") },
-            text = { OutlinedTextField(name, { name = it }, placeholder = { Text(group.name) }, singleLine = true) },
+            title = { Text(stringResource(R.string.photos_name_person)) },
+            text = { OutlinedTextField(name, { name = it }, placeholder = { Text(personName(group.name)) }, singleLine = true) },
             confirmButton = { Button(onClick = {
                 metadataStore.renameFaceGroup(group.id, name); renamingGroup = null; analysisVersion++
-            }, enabled = name.isNotBlank(), colors = neutralButtonColors()) { Text("Save") } },
-            dismissButton = { Button(onClick = { renamingGroup = null }, colors = neutralButtonColors()) { Text("Cancel") } },
+            }, enabled = name.isNotBlank(), colors = neutralButtonColors()) { Text(stringResource(R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            dismissButton = { Button(onClick = { renamingGroup = null }, colors = neutralButtonColors()) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         )
     }
     if (peopleHistoryOpen) MergeHistorySheet(
-        title = "History",
+        title = stringResource(R.string.photos_history),
         merges = remember(analysisVersion) { metadataStore.mergeHistory() },
         entriesByKey = allEntries.associateBy(Entry::photoKey),
         dismiss = { peopleHistoryOpen = false },
@@ -3641,15 +3641,15 @@ private fun PhotoTab(
     val back = { navigateBack() }
     val timelineTitle = when (filter) {
         PhotoFilter.Timeline -> null
-        PhotoFilter.Favorites -> "Favorites"
-        PhotoFilter.People -> "People"
-        PhotoFilter.Documents -> "Documents"
-        PhotoFilter.Screenshots -> "Screenshots"
-        PhotoFilter.Videos -> "Videos"
-        PhotoFilter.Review -> "Help organize"
-        PhotoFilter.Hidden -> "Hidden"
-        PhotoFilter.Trash -> "Trash"
-        PhotoFilter.Map -> "Map"
+        PhotoFilter.Favorites -> stringResource(R.string.files_favorites)
+        PhotoFilter.People -> stringResource(R.string.photos_people)
+        PhotoFilter.Documents -> stringResource(R.string.files_kind_documents)
+        PhotoFilter.Screenshots -> stringResource(R.string.photos_screenshots)
+        PhotoFilter.Videos -> stringResource(R.string.files_kind_videos)
+        PhotoFilter.Review -> stringResource(R.string.photos_help_organize)
+        PhotoFilter.Hidden -> stringResource(R.string.photos_hidden)
+        PhotoFilter.Trash -> stringResource(R.string.files_trash)
+        PhotoFilter.Map -> stringResource(R.string.photos_map)
         is PhotoFilter.Collection -> collections.firstOrNull { it.id == filter.id }?.name
     }
     val timelineIcon = when (filter) {
@@ -3715,14 +3715,14 @@ private fun PhotoTab(
                 // With nothing selected the one action Trash offers belongs in the header, as it does in Files.
                 emptyTrash = if (filter == PhotoFilter.Trash && selectedUris.isEmpty()) ({ emptyTrashConfirm = true }) else null,
                 emptyMessage = when (filter) {
-                    PhotoFilter.Documents -> "No local document classifications yet."
-                    PhotoFilter.Videos -> "No videos found in this collection."
-                    PhotoFilter.Review -> "Nothing needs your review."
-                    PhotoFilter.Hidden -> "Hidden is empty. Select photos or videos and tap the lock button to add them."
-                    PhotoFilter.Trash -> "Trash is empty. Deleted photos wait here for 30 days."
+                    PhotoFilter.Documents -> stringResource(R.string.photos_empty_documents)
+                    PhotoFilter.Videos -> stringResource(R.string.photos_empty_videos)
+                    PhotoFilter.Review -> stringResource(R.string.photos_empty_review)
+                    PhotoFilter.Hidden -> stringResource(R.string.photos_empty_hidden)
+                    PhotoFilter.Trash -> stringResource(R.string.photos_empty_trash)
                     else -> activeCollection?.takeIf { it.elsewhere > 0 }
-                        ?.let { "None of these are on this device. ${it.elsewhere} ${if (it.elsewhere == 1) "is" else "are"} kept on the computer." }
-                        ?: "No photos found in this collection."
+                        ?.let { pluralStringResource(R.plurals.photos_all_elsewhere, it.elsewhere, it.elsewhere) }
+                        ?: stringResource(R.string.photos_empty_collection)
                 },
             )
             }
@@ -3748,7 +3748,7 @@ private fun PhotoTab(
             modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 12.dp, top = 12.dp),
         ) {
             IconButton(onClick = back) {
-                Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back to Home")
+                Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.photos_back_home))
             }
         }
         if (pane == PhotosPane.Timeline && !mapCollection && searchQuery.isNotBlank() && !searchOpen) Surface(
@@ -3760,7 +3760,7 @@ private fun PhotoTab(
             IconButton(onClick = { searchQuery = "" }) {
                 Icon(
                     painterResource(R.drawable.ic_clear_search),
-                    contentDescription = "Clear search",
+                    contentDescription = stringResource(R.string.photos_clear_search),
                     tint = Color.Unspecified,
                 )
             }
@@ -3789,7 +3789,7 @@ private fun PhotoTab(
                         if (actionError == null) selectedUris = emptySet()
                     }
                 } },
-                removeLabel = folderAlbum?.let { "Move out of the $it folder" } ?: "Remove from this collection",
+                removeLabel = folderAlbum?.let { stringResource(R.string.photos_move_out_of, it) } ?: stringResource(R.string.photos_remove_from_collection),
                 moveToFolder = { moveSheetFor = selectedUris to null },
                 toggleFavorite = {
                     val allFavorite = entries.filter { it.contentUri in selectedUris }.all { metadata[it.photoKey].orDefault().favorite }
@@ -3829,7 +3829,7 @@ private fun PhotoTab(
                 IslandVisibility(!toolsOpen && !collectionToolsOpen && !searchOpen && selectedCollection != null) {
                     Surface(color = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError, shape = CircleShape) {
                         IconButton(onClick = { collectionPendingDelete = selectedCollection }) {
-                            Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete selected collection")
+                            Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.photos_delete_selected_collection))
                         }
                     }
                 }
@@ -3897,8 +3897,8 @@ private fun PhotoTab(
     analysisConsentFor?.let { requested ->
         AlertDialog(
             onDismissRequest = { analysisConsentFor = null },
-            title = { Text("Analyze your gallery?") },
-            text = { Text("No download or internet is needed. The first analysis finds search tags, documents and groups faces locally. It can take time and use battery. Later visits analyze only new or changed photos. Nothing leaves this device.") },
+            title = { Text(stringResource(R.string.photos_analyze_ask)) },
+            text = { Text(stringResource(R.string.photos_analyze_body)) },
             confirmButton = {
                 Button(onClick = {
                     metadataStore.setPeopleAnalysisEnabled(true)
@@ -3910,9 +3910,9 @@ private fun PhotoTab(
                         returnToCollections = true
                         setPane(PhotosPane.Timeline)
                     }
-                }) { Text("Analyze now") }
+                }) { Text(stringResource(R.string.photos_analyze_now), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             },
-            dismissButton = { Button(onClick = { analysisConsentFor = null }) { Text("Not now") } },
+            dismissButton = { Button(onClick = { analysisConsentFor = null }) { Text(stringResource(R.string.photos_not_now), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         )
     }
     MoveSheet()
@@ -3941,8 +3941,8 @@ private fun PhotoTab(
     )
     collectionPendingDelete?.let { collection -> AlertDialog(
         onDismissRequest = { collectionPendingDelete = null },
-        title = { Text("Delete ${collection.name}?") },
-        text = { Text("The collection will be removed. Its photos and videos will stay in your gallery and on the device.") },
+        title = { Text(stringResource(R.string.photos_delete_collection_ask, collection.name)) },
+        text = { Text(stringResource(R.string.photos_delete_collection_body)) },
         confirmButton = { Button(onClick = {
             actionError = deleteCollection(collection.id)
             if (actionError == null) selectedCollection = null
@@ -3952,23 +3952,23 @@ private fun PhotoTab(
             contentColor = MaterialTheme.colorScheme.onError,
         )) {
             Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
-            Text("Delete collection", modifier = Modifier.padding(start = 8.dp))
+            Text(stringResource(R.string.photos_delete_collection), modifier = Modifier.padding(start = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         } },
         dismissButton = { Button(onClick = { collectionPendingDelete = null }, colors = neutralButtonColors()) {
             Icon(painterResource(R.drawable.ic_cancel), contentDescription = null)
-            Text("Cancel", modifier = Modifier.padding(start = 8.dp))
+            Text(stringResource(R.string.common_cancel), modifier = Modifier.padding(start = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         } },
     ) }
     if (hideWarningOpen) AlertDialog(
         onDismissRequest = { hideWarningOpen = false },
-        title = { Text("Before using Hidden") },
-        text = { Text("Hidden photos and videos are stored only inside Tetra's private storage. Uninstalling the app deletes them. Restore everything from Hidden before uninstalling. The public original is removed only after a verified private copy and Android confirmation.") },
+        title = { Text(stringResource(R.string.photos_hidden_before)) },
+        text = { Text(stringResource(R.string.photos_hidden_before_body)) },
         confirmButton = { Button(onClick = {
             vault.acceptWarning()
             hideWarningOpen = false
                     performHide(selectedUris)
-        }, colors = neutralButtonColors()) { Text("I understand") } },
-        dismissButton = { Button(onClick = { hideWarningOpen = false }, colors = neutralButtonColors()) { Text("Cancel") } },
+        }, colors = neutralButtonColors()) { Text(stringResource(R.string.photos_understand), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { Button(onClick = { hideWarningOpen = false }, colors = neutralButtonColors()) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
     )
     actionError?.let { error -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
     analysisError?.let { error -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
@@ -3984,12 +3984,12 @@ private fun AnalysisProgress(done: Int, total: Int, paused: Boolean, togglePause
     modifier = modifier.fillMaxWidth(),
 ) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Analyzing locally", style = MaterialTheme.typography.titleSmall)
-        Text("$done / $total photos · no download or internet", style = MaterialTheme.typography.labelMedium)
+        Text(stringResource(R.string.photos_analyzing), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.photos_analyzing_count, done, total), style = MaterialTheme.typography.labelMedium)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             LinearProgressIndicator(progress = { analysisProgressFraction(done, total) }, modifier = Modifier.weight(1f))
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(40.dp).clickable(onClick = togglePause)) {
-                Icon(painterResource(if (paused) R.drawable.ic_play else R.drawable.ic_pause), contentDescription = if (paused) "Resume analysis" else "Pause analysis", modifier = Modifier.padding(9.dp))
+                Icon(painterResource(if (paused) R.drawable.ic_play else R.drawable.ic_pause), contentDescription = stringResource(if (paused) R.string.photos_resume_analysis else R.string.photos_pause_analysis), modifier = Modifier.padding(9.dp))
             }
         }
     }
@@ -4013,15 +4013,15 @@ private fun ReviewPage(
     val shown = reviews.filter { it.photoKey in entriesByKey }
     val left = folders.size + shown.size
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { FilesPageHeader("Help organize", R.drawable.ic_tag, back) }
+        item { FilesPageHeader(stringResource(R.string.photos_help_organize), R.drawable.ic_tag, back) }
         items(folders, key = { "folder/${it.name}" }) { folder -> FolderCard(folder) { includeFolder(folder.name, it) } }
         items(shown, key = { "${it.photoKey}/${it.faceSampleId}/${it.candidateGroupId}" }) { review ->
             ReviewCard(entriesByKey.getValue(review.photoKey), review, review.candidateGroupId?.let(faceGroup), entriesByKey) { answer(review, it) }
         }
         item {
             Text(
-                if (left == 0) "Thanks, no more questions for now! That's it."
-                else "$left ${if (left == 1) "question" else "questions"} left",
+                if (left == 0) stringResource(R.string.photos_review_done)
+                else pluralStringResource(R.plurals.photos_questions_left, left, left),
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
@@ -4038,15 +4038,15 @@ private fun FolderCard(folder: DeviceFolder, answer: (Boolean) -> Unit) = Surfac
     modifier = Modifier.fillMaxWidth(),
 ) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Include ${folder.name} in Tetra?", style = MaterialTheme.typography.titleLarge)
-        Text("${folder.countText}. Yes shows them in Gallery, backs them up and keeps them as a collection named ${folder.name}. Nothing is moved or copied on this phone.", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.photos_include_folder, folder.name), style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.photos_include_folder_body, folder.countText(LocalContext.current.resources), folder.name), style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             folder.entries.take(4).forEach { entry -> PhotoThumbnail(entry, false, Modifier.weight(1f).aspectRatio(1f).clip(MaterialTheme.shapes.medium)) {} }
             repeat(4 - minOf(4, folder.entries.size)) { Spacer(Modifier.weight(1f)) }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { answer(true) }, modifier = Modifier.weight(1f)) { Text("Yes") }
-            Button(onClick = { answer(false) }, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) { Text("No") }
+            Button(onClick = { answer(true) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_yes), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Button(onClick = { answer(false) }, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_no), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }
@@ -4058,18 +4058,18 @@ private fun ReviewCard(entry: Entry, review: PendingReview, candidate: FaceGroup
     modifier = Modifier.fillMaxWidth(),
 ) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(review.question, style = MaterialTheme.typography.titleLarge)
+        Text(review.name?.let { stringResource(R.string.photos_is_this, personName(it)) } ?: stringResource(R.string.photos_is_document), style = MaterialTheme.typography.titleLarge)
         if (review.candidateGroupId == null) ViewerImage(entry, Modifier.fillMaxWidth().height(240.dp).clip(MaterialTheme.shapes.large))
         else if (review.faceSample != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            FaceReviewCrop("This photo", entry, review.faceSample.bounds, Modifier.weight(1f))
+            FaceReviewCrop(stringResource(R.string.photos_this_photo), entry, review.faceSample.bounds, Modifier.weight(1f))
             // A person whose every face went elsewhere has nothing to compare with; the name still asks.
-            if (candidate != null) FaceReviewCrop(candidate.name, entriesByKey[candidate.photoKey], candidate.bounds(), Modifier.weight(1f))
+            if (candidate != null) FaceReviewCrop(personName(candidate.name), entriesByKey[candidate.photoKey], candidate.bounds(), Modifier.weight(1f))
             else Spacer(Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { answer(true) }, modifier = Modifier.weight(1f)) { Text("Yes") }
-            Button(onClick = { answer(false) }, modifier = Modifier.weight(1f)) { Text("No") }
-            Button(onClick = { answer(null) }, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) { Text("Skip") }
+            Button(onClick = { answer(true) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_yes), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Button(onClick = { answer(false) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_no), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Button(onClick = { answer(null) }, colors = neutralButtonColors(), modifier = Modifier.weight(1f)) { Text(stringResource(R.string.photos_skip), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }
@@ -4086,16 +4086,16 @@ private fun PeopleGroups(
     rename: (FaceGroup) -> Unit, forget: (FaceGroup) -> Unit, history: () -> Unit, back: () -> Unit,
 ) {
     val header = @Composable {
-        FilesPageHeader("People", R.drawable.ic_people, back) {
+        FilesPageHeader(stringResource(R.string.photos_people), R.drawable.ic_people, back) {
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                IconButton(onClick = history) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "History: forgotten and combined people") }
+                IconButton(onClick = history) { Icon(painterResource(R.drawable.ic_restore), contentDescription = stringResource(R.string.photos_people_history)) }
             }
         }
     }
     if (groups.isEmpty()) {
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             header()
-            Text("No people found yet.")
+            Text(stringResource(R.string.photos_people_none))
         }
         return
     }
@@ -4127,19 +4127,19 @@ private fun FaceGroupCard(group: FaceGroup, entry: Entry?, crop: File?, chooseFa
     Box(Modifier.align(Alignment.TopStart).padding(8.dp)) {
         Surface(color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White, shape = CircleShape) {
             IconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp)) {
-                Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit ${group.name}", modifier = Modifier.size(20.dp))
+                Icon(painterResource(R.drawable.ic_edit), contentDescription = stringResource(R.string.photos_edit_named, personName(group.name)), modifier = Modifier.size(20.dp))
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(painterResource(R.drawable.ic_edit), null) }, onClick = { menu = false; rename() })
-            DropdownMenuItem(text = { Text("Choose face") }, leadingIcon = { Icon(painterResource(R.drawable.ic_people), null) }, onClick = { menu = false; chooseFace() })
-            DropdownMenuItem(text = { Text("Forget this person") }, leadingIcon = { Icon(painterResource(R.drawable.ic_visibility_off), null) }, onClick = { menu = false; forget() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.common_rename)) }, leadingIcon = { Icon(painterResource(R.drawable.ic_edit), null) }, onClick = { menu = false; rename() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.photos_choose_face)) }, leadingIcon = { Icon(painterResource(R.drawable.ic_people), null) }, onClick = { menu = false; chooseFace() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.photos_forget_person)) }, leadingIcon = { Icon(painterResource(R.drawable.ic_visibility_off), null) }, onClick = { menu = false; forget() })
         }
     }
     Surface(color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White, modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
         Column(Modifier.padding(10.dp)) {
-            Text(group.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (group.here) group.count.toString() else "${group.count} · on the computer", style = MaterialTheme.typography.labelSmall)
+            Text(personName(group.name), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (group.here) group.count.toString() else stringResource(R.string.photos_on_computer, group.count), style = MaterialTheme.typography.labelSmall)
         }
     }
 } }
@@ -4190,15 +4190,15 @@ private fun PersonGroupScreen(
     }
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        FilesPageHeader(group.name, R.drawable.ic_collections, back)
+        FilesPageHeader(personName(group.name), R.drawable.ic_collections, back)
         if (editing) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(name, { name = it }, modifier = Modifier.weight(1f), singleLine = true)
-            Button(onClick = { rename(name); editing = false }) { Text("Save") }
+            Button(onClick = { rename(name); editing = false }) { Text(stringResource(R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         recentMerges.takeIf { it.isNotEmpty() }?.let { undos -> Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${undos.size} people combined", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                Text("Undo", modifier = Modifier.clickable { undos.asReversed().forEach(undoMerge); recentMerges = emptyList() }.padding(8.dp), style = MaterialTheme.typography.labelLarge)
+                Text(pluralStringResource(R.plurals.photos_people_combined, undos.size, undos.size), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.common_undo), modifier = Modifier.clickable { undos.asReversed().forEach(undoMerge); recentMerges = emptyList() }.padding(8.dp), style = MaterialTheme.typography.labelLarge)
             }
         } }
         LazyVerticalGrid(gridColumns(3), contentPadding = PaddingValues(bottom = 88.dp), verticalArrangement = Arrangement.spacedBy(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -4215,9 +4215,9 @@ private fun PersonGroupScreen(
     Box(Modifier.fillMaxSize().navigationBarsPadding().padding(12.dp), contentAlignment = Alignment.BottomCenter) {
         Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
             if (picked.isEmpty()) Row(Modifier.padding(horizontal = 4.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { combining = true }) { Icon(painterResource(R.drawable.ic_collections), contentDescription = "Combine this person with another") }
-                IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Rename this person") }
-                IconButton(onClick = { historyOpen = true }) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "What was combined into this person") }
+                IconButton(onClick = { combining = true }) { Icon(painterResource(R.drawable.ic_collections), contentDescription = stringResource(R.string.photos_combine_with)) }
+                IconButton(onClick = { editing = true }) { Icon(painterResource(R.drawable.ic_edit), contentDescription = stringResource(R.string.photos_rename_person)) }
+                IconButton(onClick = { historyOpen = true }) { Icon(painterResource(R.drawable.ic_restore), contentDescription = stringResource(R.string.photos_combined_into)) }
             } else Column(Modifier.padding(horizontal = 4.dp, vertical = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Button(
                     onClick = { detachFailed = !detach(picked); if (!detachFailed) picked = emptySet() },
@@ -4225,11 +4225,11 @@ private fun PersonGroupScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
                 ) {
                     Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = null)
-                    Text("Not this person", modifier = Modifier.padding(start = 10.dp))
+                    Text(stringResource(R.string.photos_not_this_person), modifier = Modifier.padding(start = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${picked.size} selected", style = MaterialTheme.typography.labelLarge)
-                    Text("Cancel", modifier = Modifier.clickable { picked = emptySet() }.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+                    Text(pluralStringResource(R.plurals.files_selected, picked.size, picked.size), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(stringResource(R.string.common_cancel), modifier = Modifier.clickable { picked = emptySet() }.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -4237,9 +4237,9 @@ private fun PersonGroupScreen(
     }
     if (detachFailed) AlertDialog(
         onDismissRequest = { detachFailed = false },
-        title = { Text("Keep at least one photo") },
-        text = { Text("Taking every photo out would leave ${group.name} with nobody in it. Leave one behind, or combine this person into another.") },
-        confirmButton = { Button(onClick = { detachFailed = false }, colors = neutralButtonColors()) { Text("OK") } },
+        title = { Text(stringResource(R.string.photos_keep_one)) },
+        text = { Text(stringResource(R.string.photos_keep_one_body, personName(group.name))) },
+        confirmButton = { Button(onClick = { detachFailed = false }, colors = neutralButtonColors()) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
     )
     if (historyOpen) MergeHistorySheet(
         merges = remember(historyOpen, group.id) { history() },
@@ -4250,10 +4250,10 @@ private fun PersonGroupScreen(
     if (combining) CombineFaceGroupsSheet(group, allGroups.filter { it.id != group.id }, entriesByKey, dismiss = { combining = false }, combine = { mergeTargets = it })
     mergeTargets?.let { sources -> AlertDialog(
         onDismissRequest = { mergeTargets = null },
-        title = { Text("Combine people?") },
-        text = { Text("Move every photo from ${sources.size} selected groups into ${group.name}. You can undo this for a few seconds.") },
-        confirmButton = { Button(onClick = { recentMerges = sources.map(merge); mergeTargets = null; combining = false }, colors = neutralButtonColors()) { Text("Combine") } },
-        dismissButton = { Button(onClick = { mergeTargets = null }, colors = neutralButtonColors()) { Text("Cancel") } },
+        title = { Text(stringResource(R.string.photos_combine_ask)) },
+        text = { Text(pluralStringResource(R.plurals.photos_combine_body, sources.size, sources.size, personName(group.name))) },
+        confirmButton = { Button(onClick = { recentMerges = sources.map(merge); mergeTargets = null; combining = false }, colors = neutralButtonColors()) { Text(stringResource(R.string.photos_combine), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { Button(onClick = { mergeTargets = null }, colors = neutralButtonColors()) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
     ) }
 }
 
@@ -4279,10 +4279,10 @@ private fun ChooseCoverSheet(
 ) {
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Show ${group.name} by", style = MaterialTheme.typography.titleLarge)
-            if (faces.isEmpty()) Text("No faces to choose from yet.")
+            Text(stringResource(R.string.photos_show_by, personName(group.name)), style = MaterialTheme.typography.titleLarge)
+            if (faces.isEmpty()) Text(stringResource(R.string.photos_faces_none))
             else {
-                Text("Pick the face this person is shown by, here and on your other devices.")
+                Text(stringResource(R.string.photos_pick_face))
                 LazyVerticalGrid(
                     GridCells.Adaptive(88.dp),
                     modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
@@ -4300,7 +4300,7 @@ private fun ChooseCoverSheet(
                     }
                 }
                 if (faces.any { it.chosen }) Text(
-                    "Use the best one instead",
+                    stringResource(R.string.photos_use_best),
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.clickable { choose(null) }.padding(vertical = 8.dp),
                 )
@@ -4314,7 +4314,7 @@ private fun ChooseCoverSheet(
 private fun MergeHistorySheet(
     merges: List<FaceMerge>, entriesByKey: Map<String, Entry>, dismiss: () -> Unit, restore: (FaceMerge) -> Unit,
     // The People page's History also lists everyone forgotten; a person's own History is only what was combined.
-    title: String = "Combined into this person", forgotten: List<FaceGroup>? = null, unforget: (FaceGroup) -> Unit = {},
+    title: String = stringResource(R.string.photos_combined_into), forgotten: List<FaceGroup>? = null, unforget: (FaceGroup) -> Unit = {},
 ) {
     val when_ = remember { java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.getDefault()) }
     @Composable fun HistoryRow(entry: Entry?, bounds: Rect?, name: String, detail: String, restore: () -> Unit) =
@@ -4322,30 +4322,30 @@ private fun MergeHistorySheet(
             Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 bounds?.let { FaceCrop(entry, it, Modifier.size(72.dp).clip(MaterialTheme.shapes.medium)) }
                 Column(Modifier.weight(1f)) {
-                    Text(name, style = MaterialTheme.typography.titleMedium)
+                    Text(personName(name), style = MaterialTheme.typography.titleMedium)
                     Text(detail, style = MaterialTheme.typography.bodyMedium)
                 }
-                Button(onClick = restore, colors = neutralButtonColors()) { Text("Restore") }
+                Button(onClick = restore, colors = neutralButtonColors()) { Text(stringResource(R.string.photos_restore), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge)
-            Text("Restore puts a person back the way they were, with the same faces.")
+            Text(stringResource(R.string.photos_restore_body))
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (forgotten != null) {
-                    item { Text("Forgotten", style = MaterialTheme.typography.labelLarge) }
-                    if (forgotten.isEmpty()) item { Text("Nobody has been forgotten.") }
+                    item { Text(stringResource(R.string.photos_forgotten), style = MaterialTheme.typography.labelLarge) }
+                    if (forgotten.isEmpty()) item { Text(stringResource(R.string.photos_forgotten_none)) }
                     items(forgotten, key = { "f${it.id}" }) { group ->
-                        HistoryRow(entriesByKey[group.photoKey], group.bounds(), group.name, "${group.count} photo${if (group.count == 1) "" else "s"}") { unforget(group) }
+                        HistoryRow(entriesByKey[group.photoKey], group.bounds(), group.name, pluralStringResource(R.plurals.photos_photos, group.count, group.count)) { unforget(group) }
                     }
-                    item { Text("Combined", style = MaterialTheme.typography.labelLarge) }
+                    item { Text(stringResource(R.string.photos_combined), style = MaterialTheme.typography.labelLarge) }
                 }
-                if (merges.isEmpty()) item { Text("Nothing has been combined yet.") }
+                if (merges.isEmpty()) item { Text(stringResource(R.string.photos_combined_none)) }
                 items(merges, key = { "m${it.id}" }) { merge ->
                     HistoryRow(
                         merge.head?.let { entriesByKey[it.photoKey] }, merge.head?.let { Rect(it.left, it.top, it.right, it.bottom) }, merge.sourceName,
-                        "${merge.sampleIds.size} face${if (merge.sampleIds.size == 1) "" else "s"} · ${when_.format(merge.mergedAt)}",
+                        "${pluralStringResource(R.plurals.photos_faces, merge.sampleIds.size, merge.sampleIds.size)} · ${when_.format(merge.mergedAt)}",
                     ) { restore(merge) }
                 }
             }
@@ -4361,14 +4361,14 @@ private fun CombineFaceGroupsSheet(current: FaceGroup, choices: List<FaceGroup>,
     val visibleChoices = remember(choices, query) { choices.filter { it.name.contains(query, ignoreCase = true) } }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Manually combine with ${current.name}", style = MaterialTheme.typography.titleLarge)
-            Text("These are all people groups, not AI suggestions. Choose one only when it is the same person.")
+            Text(stringResource(R.string.photos_combine_manually, personName(current.name)), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.photos_combine_manually_body))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(query, { query = it }, label = { Text("Find a person") }, modifier = Modifier.weight(1f), singleLine = true)
-                Button(onClick = { combine(choices.filter { it.id in selectedIds }) }, enabled = selectedIds.isNotEmpty(), colors = neutralButtonColors()) { Text("Combine") }
+                OutlinedTextField(query, { query = it }, label = { Text(stringResource(R.string.photos_find_person)) }, modifier = Modifier.weight(1f), singleLine = true)
+                Button(onClick = { combine(choices.filter { it.id in selectedIds }) }, enabled = selectedIds.isNotEmpty(), colors = neutralButtonColors()) { Text(stringResource(R.string.photos_combine), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
-            if (choices.isEmpty()) Text("There are no other people groups yet.")
-            else if (visibleChoices.isEmpty()) Text("No people match this name.")
+            if (choices.isEmpty()) Text(stringResource(R.string.photos_no_other_people))
+            else if (visibleChoices.isEmpty()) Text(stringResource(R.string.photos_no_people_match))
             else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(visibleChoices, key = { it.id }) { choice ->
                     val selected = choice.id in selectedIds
@@ -4378,10 +4378,10 @@ private fun CombineFaceGroupsSheet(current: FaceGroup, choices: List<FaceGroup>,
                     Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         FaceCrop(entriesByKey[choice.photoKey], choice, Modifier.size(72.dp).clip(MaterialTheme.shapes.medium))
                         Column(Modifier.weight(1f)) {
-                            Text(choice.name, style = MaterialTheme.typography.titleMedium)
-                            Text("${choice.count} face${if (choice.count == 1) "" else "s"}", style = MaterialTheme.typography.bodyMedium)
+                            Text(personName(choice.name), style = MaterialTheme.typography.titleMedium)
+                            Text(pluralStringResource(R.plurals.photos_faces, choice.count, choice.count), style = MaterialTheme.typography.bodyMedium)
                         }
-                        if (selected) Icon(painterResource(R.drawable.ic_check), contentDescription = "Selected")
+                        if (selected) Icon(painterResource(R.drawable.ic_check), contentDescription = stringResource(R.string.files_selected_one))
                     }
                 } }
             }
@@ -4392,12 +4392,12 @@ private fun CombineFaceGroupsSheet(current: FaceGroup, choices: List<FaceGroup>,
 @Composable
 private fun LockedVaultScreen(back: () -> Unit, unlock: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        FilesPageHeader("Hidden", R.drawable.ic_lock, back)
+        FilesPageHeader(stringResource(R.string.photos_hidden), R.drawable.ic_lock, back)
         Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Icon(painterResource(R.drawable.ic_lock), contentDescription = null, modifier = Modifier.size(54.dp))
-            Text("Hidden is locked", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
-            Text("Unlock with biometrics or your phone screen lock.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-            Button(onClick = unlock, colors = neutralButtonColors(), modifier = Modifier.padding(top = 16.dp)) { Text("Unlock") }
+            Text(stringResource(R.string.photos_hidden_locked), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 12.dp))
+            Text(stringResource(R.string.photos_unlock_body), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+            Button(onClick = unlock, colors = neutralButtonColors(), modifier = Modifier.padding(top = 16.dp)) { Text(stringResource(R.string.photos_unlock), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }
@@ -4405,37 +4405,37 @@ private fun LockedVaultScreen(back: () -> Unit, unlock: () -> Unit) {
 @Composable
 private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>, custom: List<PhotoCollection>, previews: Map<Long, Entry?>, documentKeys: Set<String>, peopleCount: Int, reviewKeys: Set<String>, folderQuestions: Int, hiddenCount: Int, showPeople: Boolean, showDocuments: Boolean, analysisRunning: Boolean, analysisPaused: Boolean, analysisDone: Int, analysisTotal: Int, toggleAnalysisPause: () -> Unit, back: () -> Unit, create: () -> Unit, open: (PhotoFilter) -> Unit, selectedCollectionId: Long?, selectCollection: (PhotoCollection) -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { FilesPageHeader("Collections", R.drawable.ic_collections, back, trailing = {
+        item { FilesPageHeader(stringResource(R.string.photos_collections), R.drawable.ic_collections, back, trailing = {
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                IconButton(onClick = create) { Icon(painterResource(R.drawable.ic_add), contentDescription = "Create collection") }
+                IconButton(onClick = create) { Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.photos_create_collection)) }
             }
         }) }
         if (analysisRunning) item { AnalysisProgress(analysisDone, analysisTotal, analysisPaused, toggleAnalysisPause) }
-        item { Text("System collections", style = MaterialTheme.typography.labelLarge) }
+        item { Text(stringResource(R.string.photos_system_collections), style = MaterialTheme.typography.labelLarge) }
         if (showPeople || showDocuments) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (showPeople) SystemCollectionButton("People", peopleCount, R.drawable.ic_people, { open(PhotoFilter.People) }, Modifier.weight(1f))
-            if (showDocuments) SystemCollectionButton("Documents", entries.count { it.photoKey in documentKeys }, R.drawable.ic_file, { open(PhotoFilter.Documents) }, Modifier.weight(1f))
+            if (showPeople) SystemCollectionButton(stringResource(R.string.photos_people), peopleCount, R.drawable.ic_people, { open(PhotoFilter.People) }, Modifier.weight(1f))
+            if (showDocuments) SystemCollectionButton(stringResource(R.string.files_kind_documents), entries.count { it.photoKey in documentKeys }, R.drawable.ic_file, { open(PhotoFilter.Documents) }, Modifier.weight(1f))
             if (!showPeople || !showDocuments) Box(Modifier.weight(1f))
         } }
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SystemCollectionButton("Screenshots", entries.count(Entry::isScreenshot), R.drawable.ic_screenshot, { open(PhotoFilter.Screenshots) }, Modifier.weight(1f))
-            SystemCollectionButton("Videos", entries.count(Entry::isVideo), R.drawable.ic_video, { open(PhotoFilter.Videos) }, Modifier.weight(1f))
+            SystemCollectionButton(stringResource(R.string.photos_screenshots), entries.count(Entry::isScreenshot), R.drawable.ic_screenshot, { open(PhotoFilter.Screenshots) }, Modifier.weight(1f))
+            SystemCollectionButton(stringResource(R.string.files_kind_videos), entries.count(Entry::isVideo), R.drawable.ic_video, { open(PhotoFilter.Videos) }, Modifier.weight(1f))
         } }
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SystemCollectionButton("Hidden", hiddenCount, R.drawable.ic_lock, { open(PhotoFilter.Hidden) }, Modifier.weight(1f))
-            SystemCollectionButton("Map", null, R.drawable.ic_map, { open(PhotoFilter.Map) }, Modifier.weight(1f))
+            SystemCollectionButton(stringResource(R.string.photos_hidden), hiddenCount, R.drawable.ic_lock, { open(PhotoFilter.Hidden) }, Modifier.weight(1f))
+            SystemCollectionButton(stringResource(R.string.photos_map), null, R.drawable.ic_map, { open(PhotoFilter.Map) }, Modifier.weight(1f))
         } }
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SystemCollectionButton("Help organize", entries.count { it.photoKey in reviewKeys } + folderQuestions, R.drawable.ic_tag, { open(PhotoFilter.Review) }, Modifier.weight(1f))
-            SystemCollectionButton("Favorites", entries.count { metadata[it.photoKey].orDefault().favorite }, R.drawable.ic_favorite_border, { open(PhotoFilter.Favorites) }, Modifier.weight(1f))
+            SystemCollectionButton(stringResource(R.string.photos_help_organize), entries.count { it.photoKey in reviewKeys } + folderQuestions, R.drawable.ic_tag, { open(PhotoFilter.Review) }, Modifier.weight(1f))
+            SystemCollectionButton(stringResource(R.string.files_favorites), entries.count { metadata[it.photoKey].orDefault().favorite }, R.drawable.ic_favorite_border, { open(PhotoFilter.Favorites) }, Modifier.weight(1f))
         } }
         // No count: Android holds the trash, and asking it for one on every Collections draw is a query per draw.
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SystemCollectionButton("Trash", null, R.drawable.ic_delete, { open(PhotoFilter.Trash) }, Modifier.weight(1f))
+            SystemCollectionButton(stringResource(R.string.files_trash), null, R.drawable.ic_delete, { open(PhotoFilter.Trash) }, Modifier.weight(1f))
             Box(Modifier.weight(1f))
         } }
-        item { Text("My collections", style = MaterialTheme.typography.labelLarge) }
-        if (custom.isEmpty()) item { Text("Tap + to create your first collection.", style = MaterialTheme.typography.bodyMedium) }
+        item { Text(stringResource(R.string.photos_my_collections), style = MaterialTheme.typography.labelLarge) }
+        if (custom.isEmpty()) item { Text(stringResource(R.string.photos_collections_none), style = MaterialTheme.typography.bodyMedium) }
         custom.chunked(2).forEach { row -> item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { collection -> MyCollectionCard(
@@ -4449,7 +4449,7 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
                 if (row.size == 1) Box(Modifier.weight(1f))
             }
         } }
-        item { Text("Hidden media stays in private app storage and unlocks with your phone security. Map coordinates are read locally; the OpenStreetMap background needs internet. Pull the bottom island here to manage system collections.", style = MaterialTheme.typography.bodySmall) }
+        item { Text(stringResource(R.string.photos_collections_note), style = MaterialTheme.typography.bodySmall) }
     }
 }
 
@@ -4470,14 +4470,14 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
 ) { Box(Modifier.fillMaxSize()) {
     CollectionCover(preview, Modifier.fillMaxSize())
     if (selected) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-        Icon(painterResource(R.drawable.ic_check), contentDescription = "Selected collection", modifier = Modifier.padding(8.dp).size(22.dp))
+        Icon(painterResource(R.drawable.ic_check), contentDescription = stringResource(R.string.photos_selected_collection), modifier = Modifier.padding(8.dp).size(22.dp))
     }
     Surface(
         color = Color.Black.copy(alpha = 0.55f), contentColor = Color.White,
         modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
     ) { Column(Modifier.padding(12.dp)) {
         Text(collection.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(if (collection.elsewhere > 0) "${collection.here} · +${collection.elsewhere} on the computer" else collection.here.toString(),
+        Text(if (collection.elsewhere > 0) stringResource(R.string.photos_here_and_computer, collection.here, collection.elsewhere) else collection.here.toString(),
             style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     } }
 } }
@@ -4498,11 +4498,10 @@ private fun Collections(entries: List<Entry>, metadata: Map<String, PhotoState>,
 @Composable
 private fun FolderMoveSheet(count: Int, leaving: String?, destinations: List<Pair<String, Int>>, onDismiss: () -> Unit, onPick: (String) -> Unit) {
     var name by remember { mutableStateOf("") }
-    val what = if (count == 1) "this photo" else "$count photos"
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(if (leaving != null) "Move $what out of $leaving" else "Move $what to a folder", style = MaterialTheme.typography.titleMedium)
-            Text("The file really moves, on this device. Favorites, collections and people stay with it.", style = MaterialTheme.typography.bodySmall)
+            Text(if (leaving != null) pluralStringResource(R.plurals.photos_move_out_title, count, count, leaving) else pluralStringResource(R.plurals.photos_move_title, count, count), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.photos_move_body), style = MaterialTheme.typography.bodySmall)
             destinations.forEach { (path, n) ->
                 Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth().clickable { onPick(path) }) {
@@ -4515,9 +4514,9 @@ private fun FolderMoveSheet(count: Int, leaving: String?, destinations: List<Pai
                     }
                 }
             }
-            OutlinedTextField(name, { name = it.replace("/", "").replace("\\", "") }, label = { Text("New folder in Pictures") },
+            OutlinedTextField(name, { name = it.replace("/", "").replace("\\", "") }, label = { Text(stringResource(R.string.photos_new_folder)) },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
-            Button(onClick = { onPick("Pictures/${name.trim()}") }, enabled = name.isNotBlank(), colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) { Text("Move") }
+            Button(onClick = { onPick("Pictures/${name.trim()}") }, enabled = name.isNotBlank(), colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_move), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }
@@ -4525,13 +4524,14 @@ private fun FolderMoveSheet(count: Int, leaving: String?, destinations: List<Pai
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NewCollectionSheet(dismiss: () -> Unit, create: (String) -> Result<PhotoCollection>) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     ModalBottomSheet(onDismissRequest = dismiss) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("New collection", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(name, { name = it; error = null }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true, isError = error != null)
-            Button(onClick = { create(name).onFailure { error = it.message ?: "Could not create collection." } }, modifier = Modifier.fillMaxWidth()) { Text("Create") }
+            Text(stringResource(R.string.photos_new_collection), style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(name, { name = it; error = null }, label = { Text(stringResource(R.string.common_name)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, isError = error != null)
+            Button(onClick = { create(name).onFailure { error = it.shownMessage(context) ?: context.getString(R.string.photos_error_collection) } }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.files_create), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }
@@ -4548,7 +4548,7 @@ private fun CollectionPickerSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Add to collection", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.photos_add_to_collection), style = MaterialTheme.typography.titleMedium)
             Surface(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -4557,8 +4557,8 @@ private fun CollectionPickerSheet(
                 Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(painterResource(R.drawable.ic_lock), contentDescription = null)
                     Column {
-                        Text("Hidden", style = MaterialTheme.typography.titleSmall)
-                        Text("Lock behind biometrics or screen lock", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.photos_hidden), style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.photos_hidden_lock), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -4566,13 +4566,13 @@ private fun CollectionPickerSheet(
                 Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(painterResource(R.drawable.ic_map), contentDescription = null)
                     Column {
-                        Text("Map", style = MaterialTheme.typography.titleSmall)
-                        Text("Added automatically when the photo has coordinates", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.photos_map), style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.photos_map_auto), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
-            Text("My collections", style = MaterialTheme.typography.labelLarge)
-            if (collections.isEmpty()) Text("No personal collections yet.", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.photos_my_collections), style = MaterialTheme.typography.labelLarge)
+            if (collections.isEmpty()) Text(stringResource(R.string.photos_personal_none), style = MaterialTheme.typography.bodySmall)
             collections.chunked(2).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { collection ->
@@ -4586,6 +4586,9 @@ private fun CollectionPickerSheet(
 }
 
 private fun PhotoState?.orDefault() = this ?: PhotoState()
+
+/** A person's name as shown: one Tetra numbered itself ("Person 3", kept so in the database and on the computer) in the user's words. */
+@Composable private fun personName(name: String): String = if (isGeneratedPersonName(name)) stringResource(R.string.photos_person_n, name.removePrefix("Person ")) else name
 internal fun Entry.isScreenshot() = relativePath?.startsWith("Pictures/Screenshots/") == true || relativePath?.startsWith("DCIM/Screenshots/") == true
 
 @Composable
@@ -4598,8 +4601,8 @@ private fun PhotoBottomBar(
     modifier: Modifier = Modifier,
 ) {
     IslandBottomBar(expand, visible, modifier) {
-        IslandNavigationItem("Gallery", pane == PhotosPane.Timeline, R.drawable.ic_gallery, gallery)
-        IslandNavigationItem("Collections", pane == PhotosPane.Collections, R.drawable.ic_collections, collections)
+        IslandNavigationItem(stringResource(R.string.app_gallery), pane == PhotosPane.Timeline, R.drawable.ic_gallery, gallery)
+        IslandNavigationItem(stringResource(R.string.photos_collections), pane == PhotosPane.Collections, R.drawable.ic_collections, collections)
     }
 }
 
@@ -4626,27 +4629,32 @@ private fun GalleryToolsSheet(
     setAlbumHidden: (PhotoCollection, Boolean) -> Unit,
     dismiss: () -> Unit,
 ) {
+    // every photo and video readable (not only the ones picked), asked of Android rather than read off [permission]'s words
+    val context = LocalContext.current
+    fun granted(p: String) = context.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
+    val fullAccess = if (Build.VERSION.SDK_INT >= 33) granted(Manifest.permission.READ_MEDIA_IMAGES) && granted(Manifest.permission.READ_MEDIA_VIDEO)
+        else granted(Manifest.permission.READ_EXTERNAL_STORAGE)
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Gallery tools", style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.photos_gallery_tools), style = MaterialTheme.typography.titleLarge)
             Text(permission, style = MaterialTheme.typography.bodyMedium)
-            if (permission != "Full photo and video access" && permission != "Photo and video access granted") {
-                DriveWideAction(R.drawable.ic_check, "Allow photos and videos") { allowPhotos(); dismiss() }
+            if (!fullAccess) {
+                DriveWideAction(R.drawable.ic_check, stringResource(R.string.photos_allow)) { allowPhotos(); dismiss() }
             }
-            DriveWideAction(R.drawable.ic_refresh, "Refresh") { refresh(); dismiss() }
-            Text("Hide from Gallery", style = MaterialTheme.typography.titleMedium)
-            Text("Hidden albums stay in Collections and on the phone; only the Gallery view skips them.", style = MaterialTheme.typography.bodySmall)
-            Text("System albums", style = MaterialTheme.typography.labelLarge)
+            DriveWideAction(R.drawable.ic_refresh, stringResource(R.string.photos_refresh)) { refresh(); dismiss() }
+            Text(stringResource(R.string.photos_hide_from_gallery), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.photos_hide_from_gallery_body), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.photos_system_albums), style = MaterialTheme.typography.labelLarge)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHideScreenshots(!hideScreenshots) }) {
                 Checkbox(checked = hideScreenshots, onCheckedChange = setHideScreenshots, colors = neutralCheckboxColors())
-                Text("Screenshots")
+                Text(stringResource(R.string.photos_screenshots))
             }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHideDocuments(!hideDocuments) }) {
                 Checkbox(checked = hideDocuments, onCheckedChange = setHideDocuments, colors = neutralCheckboxColors())
-                Text("Documents")
+                Text(stringResource(R.string.files_kind_documents))
             }
-            Text("My albums", style = MaterialTheme.typography.labelLarge)
-            if (albums.isEmpty()) Text("No albums yet. Create one in Collections with +.", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.photos_my_albums), style = MaterialTheme.typography.labelLarge)
+            if (albums.isEmpty()) Text(stringResource(R.string.photos_albums_none), style = MaterialTheme.typography.bodySmall)
             albums.forEach { album ->
                 val hidden = album.uuid in hiddenAlbums
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setAlbumHidden(album, !hidden) }) {
@@ -4655,26 +4663,25 @@ private fun GalleryToolsSheet(
                     Text("${album.here}", style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Text("Motion photos", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.photos_motion), style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("one" to "Show as one", "remove" to "Remove").forEach { (mode, label) ->
+                listOf("one" to stringResource(R.string.photos_motion_one), "remove" to stringResource(R.string.common_remove)).forEach { (mode, label) ->
                     Surface(
                         color = if (motionMode == mode) driveNavigationSelectedColor() else islandColor(),
                         contentColor = if (motionMode == mode) driveNavigationSelectedContentColor() else islandContentColor(),
                         shape = CircleShape,
                         modifier = Modifier.weight(1f).clickable { setMotionMode(mode) },
-                    ) { Text(label, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center) }
+                    ) { Text(label, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
-            Text(if (motionMode == "remove") "The few seconds of video beside a picture (MVIMG_….MP4 next to MVIMG_….jpg) go to Android's Trash, where they stay 30 days."
-                else "A picture and its few seconds of video show as one photo; Motion in the viewer plays them. Pictures with the video inside play too.",
+            Text(stringResource(if (motionMode == "remove") R.string.photos_motion_remove_body else R.string.photos_motion_one_body),
                 style = MaterialTheme.typography.bodySmall)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setMotionAutoplay(!motionAutoplay) }) {
                 Checkbox(checked = motionAutoplay, onCheckedChange = setMotionAutoplay, colors = neutralCheckboxColors())
-                Text("Autoplay motion photos")
+                Text(stringResource(R.string.photos_motion_autoplay))
             }
-            if (motionMode == "remove" && motionHalves > 0) DriveWideAction(R.drawable.ic_delete, "Move $motionHalves motion ${if (motionHalves == 1) "video" else "videos"} to Trash", removeMotionHalves)
-            Text("Timeline size", style = MaterialTheme.typography.titleMedium)
+            if (motionMode == "remove" && motionHalves > 0) DriveWideAction(R.drawable.ic_delete, pluralStringResource(R.plurals.photos_motion_trash, motionHalves, motionHalves), removeMotionHalves)
+            Text(stringResource(R.string.photos_timeline_size), style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TimelineScale.entries.forEach { option ->
                     Surface(
@@ -4682,7 +4689,7 @@ private fun GalleryToolsSheet(
                         contentColor = if (scale == option) driveNavigationSelectedContentColor() else islandContentColor(),
                         shape = CircleShape,
                         modifier = Modifier.weight(1f).clickable { selectScale(option); dismiss() },
-                    ) { Text(option.label, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center) }
+                    ) { Text(stringResource(option.label), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         }
@@ -4703,20 +4710,20 @@ private fun CollectionsToolsSheet(
 ) {
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Collections tools", style = MaterialTheme.typography.titleLarge)
-            Text("Hide system collections", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.photos_collections_tools), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.photos_hide_system), style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHidePeople(!hidePeople) }) {
                 Checkbox(checked = hidePeople, onCheckedChange = setHidePeople, colors = neutralCheckboxColors())
-                Text("People")
+                Text(stringResource(R.string.photos_people))
             }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { setHideDocuments(!hideDocuments) }) {
                 Checkbox(checked = hideDocuments, onCheckedChange = setHideDocuments, colors = neutralCheckboxColors())
-                Text("Documents")
+                Text(stringResource(R.string.files_kind_documents))
             }
-            Text("Look again", style = MaterialTheme.typography.titleMedium)
-            Text("Reads every photo again with the rules as they are now. People you have named keep their faces; only the groups nobody named are worked out afresh.")
-            CollectionsToolButton(R.drawable.ic_people, "Rescan faces", busy, Modifier.fillMaxWidth(), rescanFaces)
-            CollectionsToolButton(R.drawable.ic_file, "Rescan documents", busy, Modifier.fillMaxWidth(), rescanDocuments)
+            Text(stringResource(R.string.photos_look_again), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.photos_look_again_body))
+            CollectionsToolButton(R.drawable.ic_people, stringResource(R.string.photos_rescan_faces), busy, Modifier.fillMaxWidth(), rescanFaces)
+            CollectionsToolButton(R.drawable.ic_file, stringResource(R.string.photos_rescan_documents), busy, Modifier.fillMaxWidth(), rescanDocuments)
         }
     }
 }
@@ -4727,7 +4734,7 @@ private fun CollectionsToolButton(icon: Int, label: String, busy: Boolean, modif
 ) {
     Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
     Spacer(Modifier.width(8.dp))
-    Text(label)
+    Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable
@@ -4746,7 +4753,7 @@ private fun neutralButtonColors() = ButtonDefaults.buttonColors(
 )
 
 @Composable
-private fun SearchButton(visible: Boolean = true, description: String = "Search photos", open: () -> Unit) {
+private fun SearchButton(visible: Boolean = true, description: String = stringResource(R.string.photos_search), open: () -> Unit) {
     IslandVisibility(visible) {
         Surface(
             color = islandColor(),
@@ -4766,7 +4773,7 @@ private fun SearchButton(visible: Boolean = true, description: String = "Search 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SearchSheet(query: String, setQuery: (String) -> Unit, clear: () -> Unit, dismiss: () -> Unit, title: String = "Search photos", hint: String = "Name or folder", suggestions: List<String> = emptyList()) {
+private fun SearchSheet(query: String, setQuery: (String) -> Unit, clear: () -> Unit, dismiss: () -> Unit, title: String = stringResource(R.string.photos_search), hint: String = stringResource(R.string.photos_search_hint), suggestions: List<String> = emptyList()) {
     ModalBottomSheet(onDismissRequest = dismiss) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
@@ -4784,7 +4791,7 @@ private fun SearchSheet(query: String, setQuery: (String) -> Unit, clear: () -> 
                     }
                 }
             }
-            if (query.isNotBlank()) Text("Clear", modifier = Modifier.clickable(onClick = clear).padding(vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+            if (query.isNotBlank()) Text(stringResource(R.string.common_clear), modifier = Modifier.clickable(onClick = clear).padding(vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -4800,7 +4807,7 @@ private fun PhotoSearchPanel(query: String, setQuery: (String) -> Unit, clear: (
             OutlinedTextField(
                 value = query,
                 onValueChange = setQuery,
-                label = { Text("Name, place or English AI label") },
+                label = { Text(stringResource(R.string.photos_search_panel_hint)) },
                 modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
@@ -4817,9 +4824,9 @@ private fun PhotoSearchPanel(query: String, setQuery: (String) -> Unit, clear: (
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("English AI tags", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                if (query.isNotBlank()) Text("Clear", modifier = Modifier.clickable(onClick = clear).padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelLarge)
-                IconButton(onClick = dismiss) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Close search") }
+                Text(stringResource(R.string.photos_english_tags), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                if (query.isNotBlank()) Text(stringResource(R.string.common_clear), modifier = Modifier.clickable(onClick = clear).padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelLarge)
+                IconButton(onClick = dismiss) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.photos_close_search)) }
             }
         }
     }
@@ -4836,7 +4843,7 @@ private fun SelectionActions(
     hide: () -> Unit,
     cancel: () -> Unit,
     modifier: Modifier = Modifier,
-    removeLabel: String = "Remove from this collection",
+    removeLabel: String = stringResource(R.string.photos_remove_from_collection),
     moveToFolder: (() -> Unit)? = null,
 ) {
     Surface(
@@ -4849,18 +4856,18 @@ private fun SelectionActions(
             removeFromCollection?.let { remove ->
                 Button(onClick = remove, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
                     Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = null)
-                    Text(removeLabel, modifier = Modifier.padding(start = 10.dp))
+                    Text(removeLabel, modifier = Modifier.padding(start = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Row(horizontalArrangement = Arrangement.SpaceEvenly) {
-                IconButton(onClick = share) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share selected photos") }
+                IconButton(onClick = share) { Icon(painterResource(R.drawable.ic_share), contentDescription = stringResource(R.string.photos_share_selected)) }
                 addToCollection?.let { add -> IconButton(onClick = add) {
-                    Icon(painterResource(R.drawable.ic_add_to_collection), contentDescription = "Add selected photos to collection")
+                    Icon(painterResource(R.drawable.ic_add_to_collection), contentDescription = stringResource(R.string.photos_add_selected))
                 } }
-                IconButton(onClick = toggleFavorite) { Icon(painterResource(R.drawable.ic_favorite_border), contentDescription = "Toggle favorite for selected photos") }
-                IconButton(onClick = moveToTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = "Move selected photos to trash") }
-                moveToFolder?.let { move -> IconButton(onClick = move) { Icon(painterResource(R.drawable.ic_move), contentDescription = "Move selected photos to a folder") } }
-                IconButton(onClick = hide) { Icon(painterResource(R.drawable.ic_lock), contentDescription = "Move selected photos to Hidden") }
+                IconButton(onClick = toggleFavorite) { Icon(painterResource(R.drawable.ic_favorite_border), contentDescription = stringResource(R.string.photos_favorite_selected)) }
+                IconButton(onClick = moveToTrash) { Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.photos_trash_selected)) }
+                moveToFolder?.let { move -> IconButton(onClick = move) { Icon(painterResource(R.drawable.ic_move), contentDescription = stringResource(R.string.photos_folder_selected)) } }
+                IconButton(onClick = hide) { Icon(painterResource(R.drawable.ic_lock), contentDescription = stringResource(R.string.photos_hide_selected)) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(pluralStringResource(R.plurals.files_selected, count, count), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -4877,7 +4884,7 @@ private fun TrashSelectionActions(count: Int, restore: () -> Unit, emptyTrash: (
         Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(onClick = restore, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth().height(52.dp)) {
                 Icon(painterResource(R.drawable.ic_restore), contentDescription = null)
-                Text("Restore", modifier = Modifier.padding(start = 10.dp))
+                Text(stringResource(R.string.photos_restore), modifier = Modifier.padding(start = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Button(
                 onClick = emptyTrash,
@@ -4885,7 +4892,7 @@ private fun TrashSelectionActions(count: Int, restore: () -> Unit, emptyTrash: (
                 modifier = Modifier.fillMaxWidth().height(52.dp),
             ) {
                 Icon(painterResource(R.drawable.ic_delete), contentDescription = null)
-                Text("Empty trash", modifier = Modifier.padding(start = 10.dp))
+                Text(stringResource(R.string.photos_empty_trash_button), modifier = Modifier.padding(start = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Text(pluralStringResource(R.plurals.files_selected, count, count), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -4939,7 +4946,7 @@ private fun HiddenSelectionActions(count: Int, restore: () -> Unit, cancel: () -
         Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Button(onClick = restore, colors = neutralButtonColors(), modifier = Modifier.fillMaxWidth()) {
                 Icon(painterResource(R.drawable.ic_restore), contentDescription = null)
-                Text("Restore", modifier = Modifier.padding(start = 10.dp))
+                Text(stringResource(R.string.photos_restore), modifier = Modifier.padding(start = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Text(pluralStringResource(R.plurals.files_selected, count, count), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -4969,8 +4976,8 @@ private fun PhotoTimeline(
 ) {
     PullToRefreshBox(isRefreshing = state is ListState.Loading, onRefresh = refresh, modifier = Modifier.fillMaxSize()) {
         when (state) {
-            ListState.Idle -> TimelineMessage("Choose an action in More to load photos.")
-            ListState.Loading -> TimelineMessage("Loading…")
+            ListState.Idle -> TimelineMessage(stringResource(R.string.photos_idle))
+            ListState.Loading -> TimelineMessage(stringResource(R.string.common_loading))
             is ListState.Error -> TimelineMessage(state.message, MaterialTheme.colorScheme.error)
             is ListState.Items -> if (state.entries.isEmpty()) TimelineMessage(emptyMessage) else {
             val grouped = state.entries.groupBy { TimelineRules.groupKey(it.takenMillis, scale) }
@@ -4982,6 +4989,9 @@ private fun PhotoTimeline(
                 listOf(groups.firstOrNull() ?: "unknown") + groups
             }
             val activeGroup = TimelineRules.visibleGroupKey(itemGroupKeys, gridState.firstVisibleItemIndex)
+            val context = LocalContext.current
+            val unknownDate = stringResource(R.string.photos_unknown_date)
+            fun groupLabel(key: String) = TimelineRules.groupLabel(key, scale, unknownDate, { week, year -> context.getString(R.string.photos_week_of, week, year) })
             var scrollbarLabel by remember { mutableStateOf<String?>(null) }
             var scrollbarInteracting by remember { mutableStateOf(false) }
             var scrollbarVisible by remember { mutableStateOf(false) }
@@ -5024,7 +5034,7 @@ private fun PhotoTimeline(
                                 horizontalArrangement = Arrangement.Center,
                             ) {
                                 Text(
-                                    TimelineRules.groupLabel(key, scale),
+                                    groupLabel(key),
                                     color = MaterialTheme.colorScheme.onBackground,
                                     style = MaterialTheme.typography.titleLarge,
                                 )
@@ -5047,7 +5057,7 @@ private fun PhotoTimeline(
                 ) {
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
                         Text(
-                            TimelineRules.groupLabel(activeGroup, scale),
+                            groupLabel(activeGroup),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
                             style = MaterialTheme.typography.titleMedium,
                         )
@@ -5060,7 +5070,7 @@ private fun PhotoTimeline(
                     modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 12.dp, top = 12.dp),
                 ) {
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                        IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                        IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
                     }
                 }
                 if (itemGroupKeys.size > 8) TimelineFastScrollbar(
@@ -5070,7 +5080,7 @@ private fun PhotoTimeline(
                     setInteracting = { scrollbarInteracting = it },
                     onScrollTo = { index ->
                         val group = TimelineRules.visibleGroupKey(itemGroupKeys, index)
-                        scrollbarLabel = "${TimelineRules.yearForGroup(group)} · ${TimelineRules.groupLabel(group, scale)}"
+                        scrollbarLabel = "${TimelineRules.yearForGroup(group, unknownDate)} · ${groupLabel(group)}"
                         gridState.scrollToItem(index)
                     },
                     modifier = Modifier.align(Alignment.CenterEnd),
@@ -5125,12 +5135,13 @@ private fun TimelineFastScrollbar(
     }
     // Only as tall as the track it draws: a full-height strip sat over the top bar's buttons and took their taps —
     // Empty Trash, top right, scrolled the list instead (2026-09-25).
+    val fastScroll = stringResource(R.string.photos_fast_scroll)
     Box(
         modifier
             .fillMaxHeight(0.64f)
             .width(48.dp)
             .onSizeChanged { size = it }
-            .semantics { contentDescription = "Fast scroll photos" }
+            .semantics { contentDescription = fastScroll }
             .pointerInput(itemCount, size) {
                 detectTapGestures(onPress = { position ->
                     setInteracting(true)
@@ -5234,6 +5245,8 @@ internal fun PhotoThumbnail(entry: Entry, selected: Boolean, modifier: Modifier 
             }
         }
     }
+    val described = stringResource(if (entry.isVideo) R.string.photos_video_named else R.string.photos_photo_named, entry.name)
+    val selectedWords = stringResource(if (selected) R.string.files_selected_one else R.string.photos_not_selected)
     Box(
         modifier
             .padding(halfPixel)
@@ -5242,9 +5255,9 @@ internal fun PhotoThumbnail(entry: Entry, selected: Boolean, modifier: Modifier 
             .then(if (selected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary) else Modifier)
             .then(if (longPress == null) Modifier.clickable(onClick = open) else Modifier.combinedClickable(onClick = open, onLongClick = longPress))
             .semantics {
-                contentDescription = "${if (entry.isVideo) "Video" else "Photo"} ${entry.name}"
+                contentDescription = described
                 this.selected = selected
-                stateDescription = if (selected) "Selected" else "Not selected"
+                stateDescription = selectedWords
             },
     ) {
         val image = bitmap
@@ -5382,9 +5395,9 @@ private fun PhotoViewer(
     val selected = entries.firstOrNull { it.contentUri == selectedUri }
     if (selected == null) {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = close) { Text("Back") }
-            Text("This photo is no longer available.", style = MaterialTheme.typography.titleMedium)
-            Text("Refresh Photos after restoring permission or changing the collection.")
+            Button(onClick = close) { Text(stringResource(R.string.common_back), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Text(stringResource(R.string.photos_unavailable), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.photos_unavailable_body))
         }
         return
     }
@@ -5396,15 +5409,15 @@ private fun PhotoViewer(
     val ocrScope = rememberCoroutineScope()
     photoText?.let { t ->
         val pick = remember(t) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(t)) }
-        AlertDialog(onDismissRequest = { photoText = null }, title = { Text("Text in the photo") },
+        AlertDialog(onDismissRequest = { photoText = null }, title = { Text(stringResource(R.string.photos_text_in_photo)) },
             text = { if (t.isEmpty()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp)); Text("Reading…") }
-                else if (t == NO_TEXT) Text("No words found in this photo.")
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp)); Text(stringResource(R.string.photos_reading_text)) }
+                else if (t == NO_TEXT) Text(stringResource(R.string.photos_no_text))
                 else ChoosableText(pick) },
             confirmButton = { if (t.isNotEmpty() && t != NO_TEXT) TextButton(onClick = {
                 context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("Text", pick.value.chosen()))
-                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show(); photoText = null }) { Text(if (pick.value.selection.collapsed) "Copy all" else "Copy selected") } },
-            dismissButton = { TextButton(onClick = { photoText = null }) { Text("Close") } })
+                Toast.makeText(context, context.getString(R.string.photos_copied), Toast.LENGTH_SHORT).show(); photoText = null }) { Text(stringResource(if (pick.value.selection.collapsed) R.string.photos_copy_all else R.string.photos_copy_selected), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            dismissButton = { TextButton(onClick = { photoText = null }) { Text(stringResource(R.string.common_close), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
     }
     var actionError by remember(selectedUri) { mutableStateOf<String?>(null) }
     var manualFullscreen by remember { mutableStateOf(false) }
@@ -5513,7 +5526,7 @@ private fun PhotoViewer(
                     color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
                     modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
                 ) { IconButton(onClick = { if (manualFullscreen) manualFullscreen = false else close() }) {
-                    Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back")
+                    Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back))
                 } }
                 toggleMotion?.let { toggle -> Surface(
                     color = islandColor(), contentColor = islandContentColor(), shape = CircleShape,
@@ -5531,31 +5544,32 @@ private fun PhotoViewer(
         ViewerFilmstrip(entries, selectedUri, filmstripState, select)
         actions(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 12.dp))
     }
-    val aiTags = labelsByPhoto[selected.photoKey].orEmpty().joinToString(" · ").ifBlank { "Not analyzed yet" }
+    val aiTags = labelsByPhoto[selected.photoKey].orEmpty().joinToString(" · ").ifBlank { stringResource(R.string.photos_not_analyzed) }
     if (detailsOpen) ModalBottomSheet(onDismissRequest = { detailsOpen = false }) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // the photo's own tools, under the island (the user, 22 Oct: "Place ocr and reduct eyes and text options")
             if (!selected.isVideo) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { detailsOpen = false; readText() }) { Icon(painterResource(R.drawable.ic_text_fields), null); Spacer(Modifier.width(8.dp)); Text("Text in the photo") }
+                OutlinedButton(onClick = { detailsOpen = false; readText() }) { Icon(painterResource(R.drawable.ic_text_fields), null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.photos_text_in_photo), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 editPhoto?.let { open ->
-                    OutlinedButton(onClick = { detailsOpen = false; open(selected, PhotoHide.Eyes) }) { Icon(painterResource(R.drawable.ic_visibility_off), null); Spacer(Modifier.width(8.dp)); Text("Hide eyes") }
-                    OutlinedButton(onClick = { detailsOpen = false; open(selected, PhotoHide.Text) }) { Icon(painterResource(R.drawable.ic_text_fields), null); Spacer(Modifier.width(8.dp)); Text("Hide text") }
+                    OutlinedButton(onClick = { detailsOpen = false; open(selected, PhotoHide.Eyes) }) { Icon(painterResource(R.drawable.ic_visibility_off), null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.photos_hide_eyes), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    OutlinedButton(onClick = { detailsOpen = false; open(selected, PhotoHide.Text) }) { Icon(painterResource(R.drawable.ic_text_fields), null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.photos_hide_text), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
-            Text("Details", style = MaterialTheme.typography.titleMedium)
-            Text("Name: ${selected.name}")
-            Text("File: ${selected.relativePath ?: "Unavailable"}")
-            if (!hasLocationAccess) Button(onClick = requestLocationAccess) { Text("Allow photo locations") }
+            Text(stringResource(R.string.photos_details), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.photos_detail_name, selected.name))
+            Text(stringResource(R.string.photos_detail_file, selected.relativePath ?: stringResource(R.string.photos_detail_unavailable)))
+            if (!hasLocationAccess) Button(onClick = requestLocationAccess) { Text(stringResource(R.string.photos_allow_locations), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             else location?.let { photoLocation ->
-                Text("Place: ${photoLocation.placeName ?: "Not named"}")
+                Text(stringResource(R.string.photos_detail_place, photoLocation.placeName ?: stringResource(R.string.photos_detail_not_named)))
                 PhotoLocationPreview(photoLocation) { openMap(selected) }
-                Text("Coordinates: ${"%.5f".format(photoLocation.latitude)}, ${"%.5f".format(photoLocation.longitude)}")
-                Button(onClick = { openMap(selected) }) { Text("Show on map") }
-            } ?: Text("No embedded location in this photo.")
-            Text("Date: ${formatPhotoDateTime(selected.takenMillis)}")
-            Text("Size: ${selected.detail.substringAfter(" · ", selected.detail)}")
-            Text("AI tags (English): $aiTags")
-            peopleNamesByPhoto[selected.photoKey]?.takeIf { it.isNotEmpty() }?.let { Text("People: ${it.joinToString(" · ")}") }
+                Text(stringResource(R.string.photos_detail_coordinates, "${"%.5f".format(photoLocation.latitude)}, ${"%.5f".format(photoLocation.longitude)}"))
+                Button(onClick = { openMap(selected) }) { Text(stringResource(R.string.photos_show_on_map), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            } ?: Text(stringResource(R.string.photos_detail_no_location))
+            Text(stringResource(R.string.photos_detail_date, formatPhotoDateTime(selected.takenMillis)))
+            // the size the listing gave, in the user's words (the entry's detail ends "· N bytes"; a shared one has none)
+            Text(stringResource(R.string.photos_detail_size, if (selected.detail.isEmpty()) "" else stringResource(R.string.files_bytes, selected.sizeBytes)))
+            Text(stringResource(R.string.photos_detail_tags, aiTags))
+            peopleNamesByPhoto[selected.photoKey]?.takeIf { it.isNotEmpty() }?.let { Text(stringResource(R.string.photos_detail_people, it.map { n -> personName(n) }.joinToString(" · "))) }
         }
     }
     actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
@@ -5563,7 +5577,7 @@ private fun PhotoViewer(
 
 @Composable
 private fun MotionSwitch(on: Boolean, toggle: () -> Unit) = IconButton(onClick = toggle) {
-    Icon(painterResource(if (on) R.drawable.ic_motion else R.drawable.ic_motion_off), contentDescription = if (on) "Stop the motion" else "Play the motion",
+    Icon(painterResource(if (on) R.drawable.ic_motion else R.drawable.ic_motion_off), contentDescription = stringResource(if (on) R.string.photos_motion_stop else R.string.photos_motion_play),
         tint = if (on) MaterialTheme.colorScheme.primary else LocalContentColor.current)
 }
 
@@ -5573,7 +5587,7 @@ private fun ViewerHeader(entry: Entry, close: () -> Unit, end: @Composable () ->
     modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 12.dp),
 ) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+        IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
         Column(Modifier.weight(1f)) {
             Text(formatPhotoDateTime(entry.takenMillis), style = MaterialTheme.typography.titleSmall)
             Text(entry.name, style = MaterialTheme.typography.labelSmall, maxLines = 1)
@@ -5629,19 +5643,19 @@ private fun ViewerActionsIsland(
             }
             AnimatedVisibility(expanded) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    IconButton(onClick = share) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
-                    IconButton(onClick = details) { Icon(painterResource(R.drawable.ic_info), contentDescription = "Details") }
-                    IconButton(onClick = toggleFavorite) { Icon(painterResource(if (favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = "Toggle favorite") }
+                    IconButton(onClick = share) { Icon(painterResource(R.drawable.ic_share), contentDescription = stringResource(R.string.common_share)) }
+                    IconButton(onClick = details) { Icon(painterResource(R.drawable.ic_info), contentDescription = stringResource(R.string.photos_details)) }
+                    IconButton(onClick = toggleFavorite) { Icon(painterResource(if (favorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = stringResource(R.string.photos_toggle_favorite)) }
                     add?.let { action -> IconButton(onClick = action) {
-                        Icon(painterResource(R.drawable.ic_add_to_collection), contentDescription = "Add to collection")
+                        Icon(painterResource(R.drawable.ic_add_to_collection), contentDescription = stringResource(R.string.photos_add_to_collection))
                     } }
-                    restore?.let { action -> IconButton(onClick = action) { Icon(painterResource(R.drawable.ic_restore), contentDescription = "Restore from Hidden") } }
+                    restore?.let { action -> IconButton(onClick = action) { Icon(painterResource(R.drawable.ic_restore), contentDescription = stringResource(R.string.photos_restore_hidden)) } }
                     removeFromCollection?.let { action -> IconButton(onClick = action) {
-                        Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = "Remove from this collection")
+                        Icon(painterResource(R.drawable.ic_remove_from_collection), contentDescription = stringResource(R.string.photos_remove_from_collection))
                     } }
-                    edit?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_edit), contentDescription = "Edit") } }
+                    edit?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_edit), contentDescription = stringResource(R.string.common_edit)) } }
                     if (isVideo) IconButton(onClick = toggleFullscreen) {
-                        Icon(painterResource(if (fullscreen) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen), contentDescription = if (fullscreen) "Exit fullscreen" else "Fullscreen")
+                        Icon(painterResource(if (fullscreen) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen), contentDescription = stringResource(if (fullscreen) R.string.photos_exit_fullscreen else R.string.photos_fullscreen))
                     }
                 }
             }
@@ -5700,7 +5714,7 @@ private fun ViewerImage(
             )
         } else Modifier
         val image = bitmap
-        if (image == null) Text("Photo unavailable", modifier = Modifier.padding(16.dp)) else androidx.compose.foundation.Image(
+        if (image == null) Text(stringResource(R.string.photos_photo_unavailable), modifier = Modifier.padding(16.dp)) else androidx.compose.foundation.Image(
             bitmap = image.asImageBitmap(),
             contentDescription = entry.name,
             contentScale = ContentScale.Fit,
@@ -5798,14 +5812,16 @@ private fun FilmstripThumbnail(entry: Entry, selected: Boolean, choose: () -> Un
             withContext(Dispatchers.IO) { runCatching { context.contentResolver.loadThumbnail(uri, android.util.Size(120, 120), null) }.getOrNull() }
         }
     }
+    val described = stringResource(R.string.photos_view_named, entry.name)
+    val selectedWords = stringResource(if (selected) R.string.files_selected_one else R.string.photos_not_selected)
     Box(
         Modifier.size(52.dp).clip(MaterialTheme.shapes.small)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = choose)
             .semantics {
-                contentDescription = "View ${entry.name}"
+                contentDescription = described
                 this.selected = selected
-                stateDescription = if (selected) "Selected" else "Not selected"
+                stateDescription = selectedWords
             },
     ) {
         val image = bitmap
@@ -5846,7 +5862,7 @@ internal fun shareDriveFile(context: Context, file: File) {
 private fun ExternalMediaViewer(media: ExternalMedia, close: () -> Unit) {
     val context = LocalContext.current
     val entry = remember(media) {
-        Entry(name = media.uri.lastPathSegment ?: "Photo", detail = "", contentUri = media.uri, photoKey = media.uri.toString(), isVideo = media.mimeType?.startsWith("video/") == true)
+        Entry(name = media.uri.lastPathSegment ?: context.getString(R.string.photos_photo), detail = "", contentUri = media.uri, photoKey = media.uri.toString(), isVideo = media.mimeType?.startsWith("video/") == true)
     }
     val playback = remember { VideoPlaybackState() }
     BackHandler(onBack = close)
@@ -5855,10 +5871,10 @@ private fun ExternalMediaViewer(media: ExternalMedia, close: () -> Unit) {
         else ViewerImage(entry, Modifier.fillMaxSize(), background = Color.Black)
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
+                IconButton(onClick = close) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
             }
             Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                IconButton(onClick = { sharePhotos(context, listOf(entry)) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = "Share") }
+                IconButton(onClick = { sharePhotos(context, listOf(entry)) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = stringResource(R.string.common_share)) }
             }
         }
     }
@@ -5872,13 +5888,13 @@ private fun sharePhotos(context: Context, entries: List<Entry>) {
         if (uris.size == 1) putExtra(Intent.EXTRA_STREAM, uris.first()) else putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
         clipData = ClipData.newRawUri("photo", uris.first()).also { clip -> uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }.let { Intent.createChooser(it, "Share photos") })
+    }.let { Intent.createChooser(it, context.getString(R.string.photos_share)) })
 }
 
-private fun formatPhotoDateTime(takenMillis: Long): String = if (takenMillis > 0) {
+@Composable private fun formatPhotoDateTime(takenMillis: Long): String = if (takenMillis > 0) {
     DateTimeFormatter.ofPattern("d MMMM yyyy, HH:mm", Locale.getDefault())
         .format(Instant.ofEpochMilli(takenMillis).atZone(ZoneId.systemDefault()))
-} else "Date unavailable"
+} else stringResource(R.string.photos_date_unavailable)
 
 /** A random real photo for the Home card: never a screenshot or a photo the local analysis filed as a document. */
 private fun randomGalleryThumbnail(context: Context, documentKeys: Set<String>): Bitmap? = runCatching {

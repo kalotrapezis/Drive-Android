@@ -33,7 +33,7 @@ enum class DriveFolderColor { Blue, Green, Yellow, Red, Purple }
  * the message is the English for the log and for screens that show it as it is.
  */
 class DriveProblem(message: String, @androidx.annotation.StringRes val res: Int, vararg val args: Any) : IllegalArgumentException(message)
-private inline fun need(ok: Boolean, @androidx.annotation.StringRes res: Int, vararg args: Any, english: () -> String) { if (!ok) throw DriveProblem(english(), res, *args) }
+internal inline fun need(ok: Boolean, @androidx.annotation.StringRes res: Int, vararg args: Any, english: () -> String) { if (!ok) throw DriveProblem(english(), res, *args) }
 /** A failure's words for the screen: a Files problem in the user's language, anything else as it says itself. */
 fun Throwable.shownMessage(context: Context): String? = (this as? DriveProblem)?.let { context.getString(it.res, *it.args) } ?: message
 

@@ -40,6 +40,8 @@ internal object FolderRules {
 /** A folder found on this phone, for its Help organize card and its row in Gallery tools. */
 internal data class DeviceFolder(val name: String, val entries: List<Entry>, val included: Boolean?) {
     val countText get() = "${entries.size} ${if (entries.size == 1) "photo or video" else "photos and videos"}"
+    /** [countText] in the user's language. */
+    fun countText(resources: android.content.res.Resources): String = resources.getQuantityString(R.plurals.photos_or_videos, entries.size, entries.size)
 }
 
 internal fun deviceFolders(all: List<Entry>, choices: Map<String, Boolean>): List<DeviceFolder> = all

@@ -11,10 +11,10 @@ import java.util.Locale
  * `columns` is what a phone shows, and `targetDp` is roughly how wide one thumbnail wants to be there — the
  * two agree at a phone's ~400dp. See [TimelineRules.columns].
  */
-internal enum class TimelineScale(val columns: Int, val targetDp: Int, val label: String) {
-    Week(2, 190, "Week"),
-    Month(3, 128, "Month"),
-    Year(6, 64, "Year"),
+internal enum class TimelineScale(val columns: Int, val targetDp: Int, @androidx.annotation.StringRes val label: Int) {
+    Week(2, 190, R.string.photos_week),
+    Month(3, 128, R.string.photos_month),
+    Year(6, 64, R.string.photos_year),
     ;
 
     fun finer() = entries.getOrElse(ordinal - 1) { this }
@@ -46,9 +46,10 @@ internal object TimelineRules {
         }
     }
 
-    fun groupLabel(key: String, scale: TimelineScale, locale: Locale = Locale.getDefault()): String = when {
-        key == "unknown" -> "Unknown date"
-        scale == TimelineScale.Week -> "Week ${key.substringAfter("-W")} · ${key.substringBefore("-W")}"
+    /** [unknown] and [week] (its number, its year) are the words, in the user's language. */
+    fun groupLabel(key: String, scale: TimelineScale, unknown: String, week: (String, String) -> String, locale: Locale = Locale.getDefault()): String = when {
+        key == "unknown" -> unknown
+        scale == TimelineScale.Week -> week(key.substringAfter("-W"), key.substringBefore("-W"))
         scale == TimelineScale.Month -> YearMonth.parse(key).atDay(1).format(DateTimeFormatter.ofPattern("MMMM yyyy", locale))
         else -> key
     }
@@ -64,8 +65,8 @@ internal object TimelineRules {
     fun visibleGroupKey(itemGroupKeys: List<String>, firstVisibleItemIndex: Int): String =
         itemGroupKeys.getOrElse(firstVisibleItemIndex) { itemGroupKeys.lastOrNull() ?: "unknown" }
 
-    fun yearForGroup(key: String): String = when {
-        key == "unknown" -> "Unknown date"
+    fun yearForGroup(key: String, unknown: String): String = when {
+        key == "unknown" -> unknown
         key.contains("-W") -> key.substringBefore("-W")
         key.length >= 4 -> key.take(4)
         else -> key

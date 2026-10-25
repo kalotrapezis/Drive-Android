@@ -94,9 +94,9 @@ internal fun PhotoMapScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Allow photo locations to place your photos on the map.", style = MaterialTheme.typography.titleMedium)
-                Text("This reads GPS already embedded in selected photos. It never uses your phone's live location.", style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = requestLocationAccess) { Text("Allow photo locations") }
+                Text(stringResource(R.string.photos_map_allow_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.photos_map_allow_body), style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = requestLocationAccess) { Text(stringResource(R.string.photos_allow_locations), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             MapBackButton(back, Modifier.align(Alignment.TopStart).padding(16.dp))
         }
@@ -132,7 +132,7 @@ internal fun PhotoMapScreen(
     Box(Modifier.fillMaxSize()) {
         when {
             !scan.finished -> MapLoading(Modifier.align(Alignment.Center))
-            scan.photos.isEmpty() -> Text("No location data found in these photos or videos.", modifier = Modifier.align(Alignment.Center).padding(24.dp))
+            scan.photos.isEmpty() -> Text(stringResource(R.string.photos_map_none), modifier = Modifier.align(Alignment.Center).padding(24.dp))
             else -> PhotoMap(namedPhotos, focusPhotoKey, openPhoto)
         }
         MapBackButton(back, Modifier.align(Alignment.TopStart).padding(16.dp))
@@ -160,7 +160,7 @@ private fun MapLoading(modifier: Modifier = Modifier) {
             modifier = Modifier.size(56.dp).graphicsLayer { rotationZ = rotation },
         )
         Text(
-            "Please wait while we build the map with your best moments.",
+            stringResource(R.string.photos_map_loading),
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
         )
@@ -231,7 +231,7 @@ private fun PhotoMap(photos: List<LocatedPhoto>, focusPhotoKey: String?, openPho
                     Text(photo.location.placeName ?: photo.entry.name, style = MaterialTheme.typography.titleSmall)
                     Text("${"%.5f".format(photo.location.latitude)}, ${"%.5f".format(photo.location.longitude)}", style = MaterialTheme.typography.bodySmall)
                 }
-                Button(onClick = { openExternalMap(context, photo) }) { Text("Map app") }
+                Button(onClick = { openExternalMap(context, photo) }) { Text(stringResource(R.string.photos_map_app), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         } }
     }
@@ -242,7 +242,7 @@ private fun MapBackButton(back: () -> Unit, modifier: Modifier = Modifier) = Sur
     color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = modifier,
 ) {
     androidx.compose.material3.IconButton(onClick = back) {
-        androidx.compose.material3.Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back from map")
+        androidx.compose.material3.Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.photos_map_back))
     }
 }
 
@@ -282,10 +282,11 @@ internal fun PhotoLocationPreview(location: PhotoLocation, open: () -> Unit) {
             }
         }
     }
+    val showOnMap = stringResource(R.string.photos_show_on_map)
     Box(Modifier.fillMaxWidth().height(176.dp).clip(MaterialTheme.shapes.large)) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
         // Catches every touch above the map view, so scrolling the Details sheet never drags the map.
-        Box(Modifier.fillMaxSize().clickable(onClickLabel = "Show on map", onClick = open))
+        Box(Modifier.fillMaxSize().clickable(onClickLabel = showOnMap, onClick = open))
     }
 }
 

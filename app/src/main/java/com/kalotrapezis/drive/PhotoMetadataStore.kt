@@ -35,6 +35,8 @@ internal data class PendingReview(
     val candidateGroupId: Long? = null,
     val faceSampleId: Long? = null,
     val faceSample: FaceSample? = null,
+    /** the person a face question asks about; null: the document question */
+    val name: String? = null,
 )
 /** [here]: false when every photo of this person has left this phone (a Move): the cover is then the computer's crop of [coverUuid]. */
 internal data class FaceGroup(val id: Long, val name: String, val count: Int, val photoKey: String, val left: Int, val top: Int, val right: Int, val bottom: Int, val coverUuid: String? = null, val here: Boolean = true)
@@ -401,6 +403,7 @@ internal class PhotoMetadataStore(context: Context) : SQLiteOpenHelper(context, 
                 while (c.moveToNext()) add(PendingReview(
                     photoKey = c.getString(0),
                     question = "Is this ${c.getString(7)}?",
+                    name = c.getString(7),
                     candidateGroupId = c.getLong(1),
                     faceSampleId = c.getLong(2),
                     faceSample = FaceSample(c.getString(0), android.graphics.Rect(c.getInt(3), c.getInt(4), c.getInt(5), c.getInt(6))),
@@ -1193,9 +1196,9 @@ internal object PhotoMetadataRules {
     }
 
     fun collectionName(rawName: String): String = rawName.trim().also {
-        require(it.isNotEmpty()) { "Collection name cannot be empty." }
-        require(it.length <= 60) { "Collection names can be at most 60 characters." }
-        require(it.none(Char::isISOControl)) { "Collection name contains unsupported characters." }
+        need(it.isNotEmpty(), R.string.photos_error_name_empty) { "Collection name cannot be empty." }
+        need(it.length <= 60, R.string.photos_error_name_long) { "Collection names can be at most 60 characters." }
+        need(it.none(Char::isISOControl), R.string.photos_error_name_chars) { "Collection name contains unsupported characters." }
     }
 
     fun visibleInGallery(isScreenshot: Boolean, isDocument: Boolean, hideScreenshots: Boolean, hideDocuments: Boolean, inHiddenAlbum: Boolean = false): Boolean =

@@ -176,7 +176,7 @@ private fun renderPhotoEdit(original: Bitmap, edit: PhotoEdit, maxEdge: Float, w
 private fun renderForSave(context: Context, original: Uri, edit: PhotoEdit): Bitmap = try {
     renderPhotoEdit(decodePhoto(context, original, SAVE_EDGE), edit, SAVE_EDGE.toFloat(), withStrokes = true, recycleSource = true)
 } catch (_: OutOfMemoryError) {
-    error("Not enough memory to save this photo at full size. Nothing was changed.")
+    throw DriveProblem("Not enough memory to save this photo at full size. Nothing was changed.", R.string.photos_error_memory)
 }
 
 /**
@@ -184,7 +184,7 @@ private fun renderForSave(context: Context, original: Uri, edit: PhotoEdit): Bit
  * original. A failed write removes only the new, still-pending entry.
  */
 private fun savePhotoCopy(context: Context, entry: Entry, edit: PhotoEdit): Uri {
-    val original = checkNotNull(entry.contentUri) { "This photo is no longer available." }
+    val original = entry.contentUri ?: throw DriveProblem("This photo is no longer available.", R.string.photos_unavailable)
     val image = renderForSave(context, original, edit)
     val resolver = context.contentResolver
     val values = ContentValues().apply {
@@ -194,9 +194,9 @@ private fun savePhotoCopy(context: Context, entry: Entry, edit: PhotoEdit): Uri 
         if (entry.takenMillis > 0) put(MediaStore.Images.Media.DATE_TAKEN, entry.takenMillis)
         put(MediaStore.Images.Media.IS_PENDING, 1)
     }
-    val target = checkNotNull(resolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)) { "Could not create the edited photo." }
+    val target = resolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values) ?: throw DriveProblem("Could not create the edited photo.", R.string.photos_error_create)
     try {
-        checkNotNull(resolver.openOutputStream(target)).use { check(image.compress(Bitmap.CompressFormat.JPEG, 95, it)) { "Could not write the edited photo." } }
+        checkNotNull(resolver.openOutputStream(target)).use { need(image.compress(Bitmap.CompressFormat.JPEG, 95, it), R.string.photos_error_write) { "Could not write the edited photo." } }
         writeExif(context, target, readExif(context, original))
         resolver.update(target, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
     } catch (failure: Throwable) {
@@ -226,14 +226,14 @@ private fun settledPhotoKey(context: Context, uri: Uri): String? {
  * first; the original is only opened for writing once the complete new file exists.
  */
 private fun replacePhoto(context: Context, entry: Entry, edit: PhotoEdit): Uri {
-    val original = checkNotNull(entry.contentUri) { "This photo is no longer available." }
+    val original = entry.contentUri ?: throw DriveProblem("This photo is no longer available.", R.string.photos_unavailable)
     val exif = readExif(context, original)
     val encoded = File.createTempFile("edit", ".jpg", context.cacheDir)
     try {
         val image = renderForSave(context, original, edit)
-        encoded.outputStream().use { check(image.compress(Bitmap.CompressFormat.JPEG, 95, it)) { "Could not encode the edited photo." } }
+        encoded.outputStream().use { need(image.compress(Bitmap.CompressFormat.JPEG, 95, it), R.string.photos_error_encode) { "Could not encode the edited photo." } }
         image.recycle()
-        checkNotNull(context.contentResolver.openOutputStream(original, "wt")) { "Could not open the photo for writing." }.use { output ->
+        (context.contentResolver.openOutputStream(original, "wt") ?: throw DriveProblem("Could not open the photo for writing.", R.string.photos_error_open)).use { output ->
             encoded.inputStream().use { it.copyTo(output) }
         }
         writeExif(context, original, exif)
@@ -307,7 +307,7 @@ internal fun PhotoEditorScreen(entry: Entry, close: () -> Unit, saved: (uri: Uri
         }
     }
     if (cropping) {
-        CornerEditor(source, edit.quad ?: DocumentQuad.fullFrame(), DocumentQuad.fullFrame(), "Reset", done = { quad ->
+        CornerEditor(source, edit.quad ?: DocumentQuad.fullFrame(), DocumentQuad.fullFrame(), stringResource(R.string.photos_reset), done = { quad ->
             edit = edit.copy(quad = quad.takeUnless { it == DocumentQuad.fullFrame() })
             cropping = false
         }, cancel = { cropping = false })
@@ -321,7 +321,7 @@ internal fun PhotoEditorScreen(entry: Entry, close: () -> Unit, saved: (uri: Uri
                 if (what == PhotoHide.Eyes) withContext(Dispatchers.Default) { findEyes(image) }.let { found ->
                     eyes = found
                     edit = edit.copy(covers = edit.covers.filterNot { it.eye } + eyeCovers(found, image.width, image.height, stars))
-                    if (found.isEmpty()) error = "No faces found. Drag over the eyes to hide them."
+                    if (found.isEmpty()) error = context.getString(R.string.photos_no_faces)
                 } else withContext(Dispatchers.Default) {
                     // small pictures enlarged, as Photos' Text in the photo does: Tesseract misses letters under ~20 px
                     val k = minOf(3f, 2400f / maxOf(image.width, image.height))
@@ -329,9 +329,9 @@ internal fun PhotoEditorScreen(entry: Entry, close: () -> Unit, saved: (uri: Uri
                     Ocr.words(context, read).map { w -> PhotoCover(w.box.left / read.width, w.box.top / read.height, w.box.right / read.width, w.box.bottom / read.height, stars = false) }
                 }.let { found ->
                     words = found
-                    if (found.isEmpty()) error = "No words found. Drag over the text to hide it."
+                    if (found.isEmpty()) error = context.getString(R.string.photos_no_words)
                 }
-            }.onFailure { WriterLog.e("Photos: hide", it); error = "Could not look for them. Drag over what to hide." }
+            }.onFailure { WriterLog.e("Photos: hide", it); error = context.getString(R.string.photos_find_failed) }
             finding = false
         }
     }
@@ -344,7 +344,7 @@ internal fun PhotoEditorScreen(entry: Entry, close: () -> Unit, saved: (uri: Uri
                 if (replace) replacePhoto(context, entry, edit).let { it to settledPhotoKey(context, it) } else savePhotoCopy(context, entry, edit) to null
             } }
                 .onSuccess { (uri, newKey) -> saved(uri, newKey) }
-                .onFailure { error = it.message ?: "Could not save the edited photo." }
+                .onFailure { error = it.shownMessage(context) ?: context.getString(R.string.photos_error_save) }
             saving = false
         }
     }
@@ -383,39 +383,39 @@ internal fun PhotoEditorScreen(entry: Entry, close: () -> Unit, saved: (uri: Uri
                     Box(Modifier.width(34.dp).height(4.dp).clip(CircleShape).background(islandContentColor().copy(alpha = 0.72f)))
                 }
                 AnimatedVisibility(expanded && marking) {
-                    PaintPanel(MARKUP_COLORS, "Draw on the photo.", brushColor, { brushColor = it }, brushWidth, { brushWidth = it }) {
+                    PaintPanel(MARKUP_COLORS, stringResource(R.string.photos_draw_hint), brushColor, { brushColor = it }, brushWidth, { brushWidth = it }) {
                         edit = edit.copy(strokes = edit.strokes.dropLast(1))
                     }
                 }
                 // one row: back, the tabs and the open tab's tools, then undo all and save (the user, 22 Oct: "circular buttons keep it one row with tabs")
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    EditCircle(R.drawable.ic_chevron_left, "Back") { if (changed) discardOpen = true else close() }
+                    EditCircle(R.drawable.ic_chevron_left, stringResource(R.string.common_back)) { if (changed) discardOpen = true else close() }
                     Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        EditTab.entries.forEach { t -> ScanPill(t.label, t.icon, tab == t) { tab = t; expanded = true } }
+                        EditTab.entries.forEach { t -> ScanPill(stringResource(t.label), t.icon, tab == t) { tab = t; expanded = true } }
                         if (expanded && tab != EditTab.Markup) Box(Modifier.width(1.dp).height(28.dp).background(islandContentColor().copy(alpha = 0.3f)))
                         if (expanded) when (tab) {
                             EditTab.Adjust -> {
-                                EditCircle(R.drawable.ic_crop, "Crop and straighten", enabled = source != null && !saving) { cropping = true }
-                                EditCircle(R.drawable.ic_rotate_left, "Rotate left", enabled = !saving) { edit = edit.rotatedBy(270) }
-                                EditCircle(R.drawable.ic_rotate_right, "Rotate right", enabled = !saving) { edit = edit.rotatedBy(90) }
+                                EditCircle(R.drawable.ic_crop, stringResource(R.string.photos_crop), enabled = source != null && !saving) { cropping = true }
+                                EditCircle(R.drawable.ic_rotate_left, stringResource(R.string.photos_rotate_left), enabled = !saving) { edit = edit.rotatedBy(270) }
+                                EditCircle(R.drawable.ic_rotate_right, stringResource(R.string.photos_rotate_right), enabled = !saving) { edit = edit.rotatedBy(90) }
                             }
                             EditTab.Markup -> {}
                             EditTab.Hide -> {
-                                EditCircle(R.drawable.ic_visibility_off, "Find eyes", enabled = !finding) { find(PhotoHide.Eyes) }
-                                EditCircle(R.drawable.ic_text_fields, "Find text", enabled = !finding) { find(PhotoHide.Text) }
-                                if (words.isNotEmpty()) EditCircle(R.drawable.ic_select_all, "Hide all the text") { edit = edit.copy(covers = edit.covers + words.filterNot { it in edit.covers }) }
-                                EditCircle(R.drawable.ic_crop_square, "Black bar", selected = !stars) {
+                                EditCircle(R.drawable.ic_visibility_off, stringResource(R.string.photos_find_eyes), enabled = !finding) { find(PhotoHide.Eyes) }
+                                EditCircle(R.drawable.ic_text_fields, stringResource(R.string.photos_find_text), enabled = !finding) { find(PhotoHide.Text) }
+                                if (words.isNotEmpty()) EditCircle(R.drawable.ic_select_all, stringResource(R.string.photos_hide_all_text)) { edit = edit.copy(covers = edit.covers + words.filterNot { it in edit.covers }) }
+                                EditCircle(R.drawable.ic_crop_square, stringResource(R.string.photos_black_bar), selected = !stars) {
                                     stars = false; edit = edit.copy(covers = edit.covers.filterNot { it.eye } + eyeCovers(eyes, source?.width ?: 1, source?.height ?: 1, false)) }
-                                EditCircle(R.drawable.ic_star, "Stars", selected = stars) {
+                                EditCircle(R.drawable.ic_star, stringResource(R.string.photos_stars), selected = stars) {
                                     stars = true; edit = edit.copy(covers = edit.covers.filterNot { it.eye } + eyeCovers(eyes, source?.width ?: 1, source?.height ?: 1, true)) }
-                                EditCircle(R.drawable.ic_undo, "Show the last one again", enabled = edit.covers.isNotEmpty()) { edit = edit.copy(covers = edit.covers.dropLast(1)) }
+                                EditCircle(R.drawable.ic_undo, stringResource(R.string.photos_show_last), enabled = edit.covers.isNotEmpty()) { edit = edit.copy(covers = edit.covers.dropLast(1)) }
                             }
                         }
                     }
-                    EditCircle(R.drawable.ic_refresh, "Undo all edits", enabled = changed && !saving) { edit = PhotoEdit() }
-                    EditCircle(R.drawable.ic_save, "Save or discard", enabled = changed && !saving) { saveSheetOpen = true }
+                    EditCircle(R.drawable.ic_refresh, stringResource(R.string.photos_undo_all), enabled = changed && !saving) { edit = PhotoEdit() }
+                    EditCircle(R.drawable.ic_save, stringResource(R.string.photos_save_or_discard), enabled = changed && !saving) { saveSheetOpen = true }
                 }
-                if (hiding && expanded && error == null) Text(if (words.isNotEmpty()) "Tap words to hide them, a cover to show it again; drag to hide any part." else "Tap a cover to show it again; drag to hide any part.",
+                if (hiding && expanded && error == null) Text(stringResource(if (words.isNotEmpty()) R.string.photos_hide_hint_words else R.string.photos_hide_hint),
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp)) }
             }
@@ -424,17 +424,17 @@ internal fun PhotoEditorScreen(entry: Entry, close: () -> Unit, saved: (uri: Uri
     if (saveSheetOpen) ModalBottomSheet(onDismissRequest = { saveSheetOpen = false }, containerColor = islandColor(), contentColor = islandContentColor()) {
         Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(entry.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            DriveWideAction(R.drawable.ic_save, "Save") { saveSheetOpen = false; replace() }
-            DriveWideAction(R.drawable.ic_copy, "Save as copy") { saveSheetOpen = false; save(replace = false) }
-            DriveWideAction(R.drawable.ic_cancel, "Discard changes") { saveSheetOpen = false; close() }
+            DriveWideAction(R.drawable.ic_save, stringResource(R.string.common_save)) { saveSheetOpen = false; replace() }
+            DriveWideAction(R.drawable.ic_copy, stringResource(R.string.photos_save_copy)) { saveSheetOpen = false; save(replace = false) }
+            DriveWideAction(R.drawable.ic_cancel, stringResource(R.string.photos_discard_changes)) { saveSheetOpen = false; close() }
         }
     }
     if (discardOpen) AlertDialog(
         onDismissRequest = { discardOpen = false },
-        title = { Text("Discard edits?") },
-        text = { Text("The original photo is unchanged either way.") },
-        confirmButton = { TextButton(onClick = { discardOpen = false; close() }) { Text("Discard") } },
-        dismissButton = { TextButton(onClick = { discardOpen = false }) { Text("Keep editing") } },
+        title = { Text(stringResource(R.string.photos_discard_ask)) },
+        text = { Text(stringResource(R.string.photos_discard_body)) },
+        confirmButton = { TextButton(onClick = { discardOpen = false; close() }) { Text(stringResource(R.string.common_discard), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { TextButton(onClick = { discardOpen = false }) { Text(stringResource(R.string.photos_keep_editing), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
     )
 }
 
@@ -474,7 +474,7 @@ private fun CoverLayer(imageWidth: Int, imageHeight: Int, covers: List<PhotoCove
     }
 }
 
-private enum class EditTab(val label: String, val icon: Int) { Adjust("Adjust", R.drawable.ic_tune), Markup("Markup", R.drawable.ic_edit), Hide("Hide", R.drawable.ic_visibility_off) }
+private enum class EditTab(@androidx.annotation.StringRes val label: Int, val icon: Int) { Adjust(R.string.photos_adjust, R.drawable.ic_tune), Markup(R.string.photos_markup, R.drawable.ic_edit), Hide(R.string.common_hide, R.drawable.ic_visibility_off) }
 
 /** The editor island's round button; [selected] marks a chosen style (bar or stars). */
 @Composable

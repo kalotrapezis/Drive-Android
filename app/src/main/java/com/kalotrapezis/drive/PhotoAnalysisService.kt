@@ -118,7 +118,7 @@ internal class PhotoAnalysisService : Service() {
             job = null
             _state.value = null
             _lastError.value = result.fold({ it }, { e ->
-                if (e is kotlinx.coroutines.CancellationException) null else e.message ?: "Could not read this gallery."
+                if (e is kotlinx.coroutines.CancellationException) null else e.message ?: getString(R.string.photos_error_read_gallery)
             })
             paused.value = false
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -149,7 +149,7 @@ internal class PhotoAnalysisService : Service() {
                 onProgress(index + 1, pending.size)
             }
         }
-        return if (skipped > 0) "Skipped $skipped photos that could not be read." else null
+        return if (skipped > 0) resources.getQuantityString(R.plurals.photos_skipped, skipped, skipped) else null
     }
 
     private fun onProgress(done: Int, total: Int) {
@@ -166,11 +166,11 @@ internal class PhotoAnalysisService : Service() {
     private fun notification(done: Int, total: Int): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL_ID) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Reading photos", NotificationManager.IMPORTANCE_LOW))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, getString(R.string.photos_reading), NotificationManager.IMPORTANCE_LOW))
         }
         val isPaused = paused.value
-        val title = if (isPaused) "Reading paused" else "Reading photos"
-        val text = if (total > 0) "$done of $total" else "Looking for new photos…"
+        val title = getString(if (isPaused) R.string.photos_reading_paused else R.string.photos_reading)
+        val text = if (total > 0) getString(R.string.photos_done_of, done, total) else getString(R.string.photos_looking)
         val pausePending = android.app.PendingIntent.getBroadcast(
             this, 3, Intent(ACTION_PAUSE).setPackage(packageName),
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
@@ -185,8 +185,8 @@ internal class PhotoAnalysisService : Service() {
             .setContentText(text)
             .setProgress(total, done, total == 0 && !isPaused)
             .setOngoing(true)
-            .addAction(0, if (isPaused) "Resume" else "Pause", pausePending)
-            .addAction(0, "Stop", stopPending)
+            .addAction(0, getString(if (isPaused) R.string.common_resume else R.string.common_pause), pausePending)
+            .addAction(0, getString(R.string.common_stop), stopPending)
         if (islandSupported) {
             HyperIsland.decorate(builder, title, text, done, total, announce = !announced, business = HyperIsland.ANALYSIS)
             announced = true

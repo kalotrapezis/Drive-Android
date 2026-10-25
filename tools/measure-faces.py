@@ -17,6 +17,8 @@ Reads, and never writes:
   computer  ~/.local/share/local-drive-desktop/library.db
   phone     a copy of photo_metadata.db, pulled with
             adb shell run-as com.kalotrapezis.drive cat databases/photo_metadata.db > phone.db
+            (run-as needs a debuggable build: since 25 Oct the installed one is not; install one built with
+            ./gradlew assembleDebug -Pdebuggable first)
 """
 import argparse
 import collections

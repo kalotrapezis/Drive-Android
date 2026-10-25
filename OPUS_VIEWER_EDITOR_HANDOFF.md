@@ -78,7 +78,7 @@ Manual checks on the phone:
 - Installed app: `com.kalotrapezis.drive`, debug version `0.3.0-beta.3` from the fix worktree. The tablet was not updated or tested in this audit.
 - **Mobile view is restored to `true`. Preserve this user preference.**
 - Debug APK: `<fix worktree>/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`.
-- Writer log: `adb -s 208c8192 shell run-as com.kalotrapezis.drive cat files/logs/writer.log`.
+- Writer log: `adb -s 208c8192 shell cat /sdcard/Android/data/com.kalotrapezis.drive/files/logs/writer.log` (since 25 Oct; the installed build is not debuggable).
 - Session evidence/helper/screenshots and pulled synthetic DOCX files: `/tmp/tetra-viewer-audit/`. Logs: `/tmp/tetra-viewer-final-checks.log`, `/tmp/tetra-viewer-device-tests.log`, `/tmp/tetra-viewer-lint-baseline.log`. These temporary paths may disappear; the patch and this handoff are durable.
 - Generated QA documents were moved out of Tetra's document tree into `/sdcard/Download/Tetra-viewer-editor-QA-20261002/`. Synthetic private history/recovery was cleaned; the test APK was removed.
 - The original suite documents were not edited. Byte hashes of 01, 02 and 04 matched the copies taken before testing. The modification timestamp of 01 was touched while bringing it to Office Recent; its contents are unchanged. Other tests used generated files/copies. No medical report was accessed.

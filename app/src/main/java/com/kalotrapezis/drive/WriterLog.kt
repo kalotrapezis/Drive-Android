@@ -27,10 +27,22 @@ internal object WriterLog {
     private var file: File? = null
     private val time = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
 
+    /**
+     * Tetra's logs (this one, Maps' drives): in its own folder on the shared storage, /sdcard/Android/data/<package>/files/logs,
+     * where adb reads them without run-as — the build installed on the phone and the tablet is not debuggable (25 Oct: it ran
+     * several times faster). The app's private folder only if there is no shared storage.
+     */
+    fun dir(context: Context): File = File(context.getExternalFilesDir(null) ?: context.filesDir, "logs")
+
     /** Once per process: where the log goes, and a line saying which app and device wrote what follows. */
     fun init(context: Context) {
         if (file != null) return
-        file = File(context.filesDir, "logs/writer.log").apply { parentFile?.mkdirs() }
+        val logs = dir(context).apply { mkdirs() }
+        // the logs written before into the app's private folder, moved there once
+        File(context.filesDir, "logs").takeIf { it.isDirectory && it.canonicalPath != logs.canonicalPath }?.let { old ->
+            runCatching { if (old.copyRecursively(logs, overwrite = false) { _, _ -> OnErrorAction.SKIP }) old.deleteRecursively() }
+        }
+        file = File(logs, "writer.log")
         val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
         i("— Tetra $version on ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
         // A crash anywhere in the app: written down before the app goes (the system's own handler still runs after).
@@ -51,7 +63,7 @@ internal object WriterLog {
     /** The log as one file to send: the older part first. */
     fun export(context: Context): File? {
         val f = file ?: return null
-        val out = File(context.filesDir, "logs/Tetra Writer log.txt")
+        val out = File(dir(context), "Tetra Writer log.txt")
         synchronized(this) { out.writeText(File(f.path + ".1").takeIf { it.isFile }?.readText().orEmpty() + (f.takeIf { it.isFile }?.readText().orEmpty())) }
         return out
     }

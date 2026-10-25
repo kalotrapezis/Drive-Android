@@ -22,6 +22,9 @@ How to write here:
       desktop from source, all sample data invented), download buttons, the speed tables; docs/ is the Pages site.
       Releases: Android v0.6.0-beta.1 (release key), desktop desktop-v0.6.0-beta.21. LICENSE is now the GPL 3.0 or later
       (the user, 25 Oct: "Yes update the license"), which MuPDF's AGPL 3.0 can be combined with; the desktop was GPL 3.0 already.
+- [ ] Notes: Export as Markdown (the user, 25 Oct: "add export as markdown"): one note (its menu) or all of them (Notes'
+      island), on the phone and on the PC; a note's text is already Markdown, a checklist becomes `- [ ]` / `- [x]` lines,
+      the title the file's name and its first heading. Notes stay JSON inside Tetra (the user: "I don't care").
 - [ ] Home edit: a part made smaller fills the empty cells by itself (the user, 25 Oct: "when you make them small you have
       to rearrange them after because they leave empty space; we could make it just auto fill empty spots"). Today a part
       keeps its cell when it shrinks, so groups made small leave rows of gaps until each icon is dragged up.

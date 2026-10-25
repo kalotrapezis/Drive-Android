@@ -404,6 +404,33 @@ How to write here:
       the tablet (971f6b37, debug build; the phone not connected): first content shown when tapped on Home, Tetra ready /
       reopened / tapped at once after start. Photos on the phone and the desktop (the tablet has no photos).
 
+      **Result so far (25 Oct, 15:10):** every applet measured; Notes, Home, Files, Calendar, Timer, Data and Office's home
+      changed, each a commit (the table below: before → after and what was slow). What was done, the same few things over:
+      nothing read or worked out on the UI thread while a screen composes (dates, colours, tags, pictures, a database line);
+      the list shown first and the side work after it (a Trash sweep, today's data counts, a service check, a clean-up); a
+      read-ahead when Tetra starts, at a background priority; a small index in the app's cache so a restart does not read
+      every file again (Notes' cards, the Calendar's events, the Office home's last look) — only files whose size or time
+      changed are read again, whoever changed them (Tetra, sync, Claude's skills); one look at each file (its size and time
+      in one call); made for thousands of items (the user: "think ahead"): the lists keep what a card shows, the whole item
+      is read when opened, search indexes live only while searching, and what was deleted leaves memory (Tetra left open
+      for months does not grow). Measured and left as they are (already quick, the camera or the map is the wait): Scanner
+      341 / 142 / 397 ms, Codes 310 / 99 / 388, Text editor 200 / 116 / 224, Maps 376 / 246 / 364. Still to do: Office
+      and PDF documents (the phone's fonts now read when Office's home opens, not by the first document), Photos on the
+      phone. Unit suite 655, 0 failing.
+
+      **The biggest lever is the build, not the code:** the phone and the tablet run a debuggable build, and Android runs a
+      debuggable app's Compose several times slower. The same code built not debuggable, signed with the same debug key
+      (so it installs over the app as it is, nothing lost), on the tablet the same hour:
+
+      | Applet (Tetra ready; tapped at once after start) | debuggable | not debuggable |
+      |---|---|---|
+      | Notes | 435–438; 812 ms | 90–219; 112 ms |
+      | Calendar | 781–784; 1324 ms | 111–112; 131 ms |
+      | Data | 911–957 ms | 183–192; 327 ms |
+      | Office home | ~948 ms | 166–263; 187 ms |
+
+      A choice for the user (it changes how writer.log is read: `run-as` needs a debuggable app; File › Send log still works).
+
       Notes also has a keyboard now (the user, 25 Oct: "can we add keyboard support"), the desktop's keys: in the list Ctrl+N a
       note, Ctrl+Shift+N a checklist, Ctrl+F search, Esc a step back; in a note Esc leaves, Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) undo
       and redo, Ctrl+B / Ctrl+I bold and italic. Tried on the tablet with adb's key combinations.

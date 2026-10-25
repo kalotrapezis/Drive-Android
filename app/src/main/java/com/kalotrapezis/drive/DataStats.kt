@@ -66,6 +66,7 @@ internal object DataStats {
         if (p.getString("cleaned", "") == today.toString()) return
         p.edit().putString("cleaned", today.toString()).apply()
         runCatching { DataFiles.dropCopies().takeIf { it > 0 }?.let { WriterLog.i("Data: $it sync copies of the months removed") } }
+        runCatching { DataFiles.settlePlan().takeIf { it > 0 }?.let { WriterLog.i("Data: $it sync copies of the plan removed"); ScopedSync.soon(c, "data") } }
         val root = DataFiles.root()
         listOf(root, File(root, "usage"), File(root, "spots")).flatMap { it.listFiles().orEmpty().toList() }
             .filter { it.name.startsWith(".") && it.name.endsWith(".tmp") && System.currentTimeMillis() - it.lastModified() > 3600_000 }.forEach { it.delete() }
@@ -232,7 +233,9 @@ internal object DataStats {
             val ev = (old?.events.orEmpty() + events.filter { it.at.startsWith(m.toString().take(7)) }).distinct()
             val month = DataMonth(device, days, apps, hrs.filter { it.hour.startsWith(m.toString().take(7)) }, ev, DataFiles.deviceName(c))
             if (month.days.isEmpty() && month.events.isEmpty() && old == null) return@mapNotNull null
-            if (DataFiles.write(file, DataFiles.text(month))) changed = true
+            // stamped with when it was counted (the others say how old it is); counts unchanged keep the old stamp: no write, no sync
+            val same = old != null && runCatching { file.readText() }.getOrNull() == DataFiles.text(month.copy(at = old.at))
+            if (DataFiles.write(file, DataFiles.text(month.copy(at = if (same) old!!.at else now)))) changed = true
             month
         }
         runCatching { clean(c) }

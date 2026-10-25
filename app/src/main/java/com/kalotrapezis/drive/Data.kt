@@ -258,8 +258,9 @@ internal data class DataHour(val hour: String, val net: String, val bytes: Long)
 
 internal data class DataEvent(val at: String, val kind: String, val secs: Long = 0, val note: String = "") // a drop, a roaming country, Tetra's own sync
 
-/** A device's month of counts: the lines of Tetra/Data/usage/<yyyy-mm>.<device>.jsonl. */
-internal data class DataMonth(val device: String, val days: List<DataDay>, val apps: List<DataApp>, val hours: List<DataHour>, val events: List<DataEvent>, val name: String = "")
+/** A device's month of counts: the lines of Tetra/Data/usage/<yyyy-mm>.<device>.jsonl; [at] when it was counted (ms, 0 = before 25 Oct). */
+internal data class DataMonth(val device: String, val days: List<DataDay>, val apps: List<DataApp>, val hours: List<DataHour>, val events: List<DataEvent>, val name: String = "",
+    val at: Long = 0)
 
 /** Tetra/Data: the plan, and each device's counts in files of its own (Timer's rule: nobody writes another's file). */
 internal object DataFiles {
@@ -271,14 +272,51 @@ internal object DataFiles {
         runCatching { android.provider.Settings.Secure.getString(c.contentResolver, "bluetooth_name") }.getOrNull(), Build.MODEL).firstOrNull { !it.isNullOrBlank() }.orEmpty()
     /** A device's name as it wrote it in its files, else its id. */
     fun label(all: Map<String, List<DataMonth>>, id: String) = all[id]?.firstNotNullOfOrNull { it.name.ifEmpty { null } } ?: id
-    // a device's month: "2026-10.24129PN74G.jsonl"; sync's copies of one changed on both sides at once ("… (2).jsonl") are not it
-    private val NAME = Regex("""(\d{4}-\d{2})\.([^ ()]+)\.jsonl""")
-    private val COPY = Regex("""(\d{4}-\d{2})\.([^ ()]+) \(\d+\)\.jsonl""")
+    // a device's month: "2026-10.24129PN74G.jsonl", and sync's copies of one changed on both sides at once ("… (2).jsonl", "… (2) (3).jsonl")
+    private val MONTH = Regex("""(\d{4}-\d{2})\.([^ ()]+)((?: \(\d+\))*)\.jsonl""")
 
-    /** Sync's copies of the months (an older version of a file only its own device writes, never read): removed, here as on the computer. */
-    fun dropCopies(root: File = root()) = File(root, "usage").listFiles().orEmpty().filter { COPY.matches(it.name) }.count { it.delete() }
+    /** [a] is a newer version of a device's month than [b]: counted later, else further into the month (a day's counts only grow). */
+    fun newer(a: DataMonth, b: DataMonth) = compareValuesBy(a, b, { it.at }, { m -> m.days.maxOfOrNull { it.day } },
+        { m -> m.days.maxByOrNull { it.day }?.let { it.mobile + it.wifi + it.ethernet } }, { m -> m.hours.maxOfOrNull { it.hour } }) > 0
 
-    fun plan(root: File = root()): DataPlan? = File(root, "plan.json").takeIf { it.isFile }?.let { DataPlan.parse(it.readText()) }
+    /**
+     * Each device's months: the newest version of each (the file itself or one of sync's copies of it), and the other versions.
+     * Not always the file: on 25 Oct the computer's copy of the phone's month stayed at 10:00 while every newer one came as "(2)",
+     * "(2) (3)"… (41 % on the phone, 40 there).
+     */
+    private fun versions(root: File): List<Pair<DataMonth, List<File>>> = File(root, "usage").listFiles().orEmpty()
+        .mapNotNull { f -> MONTH.matchEntire(f.name)?.let { m -> Triple(m.groupValues[1], m.groupValues[2], f) } }
+        .groupBy({ it.first to it.second }, { it.third }).mapNotNull { (key, files) ->
+            files.sortedBy { it.name.length }.mapNotNull { f -> runCatching { parse(key.second, f.readText()) to f }.getOrNull() }
+                .reduceOrNull { x, y -> if (newer(y.first, x.first)) y else x } // the month itself first: it stays on a tie
+                ?.let { (month, file) -> month to files - file } // the newest, and the versions it beats
+        }
+
+    /** Sync's copies of the months removed, here as on the computer — except one newer than its month, until the month catches up. */
+    fun dropCopies(root: File = root()): Int = versions(root).sumOf { (_, others) -> others.count { MONTH.matchEntire(it.name)!!.groupValues[3].isNotEmpty() && it.delete() } }
+
+    private val PLAN = Regex("""plan((?: \(\d+\))*)\.json""")
+
+    /**
+     * The plan: plan.json or one of sync's copies of it, the highest `rev`; on a tie the one written by the device with mobile data
+     * (25 Oct: the tablet's own Setup, rev 1 like the phone's, with the carrier's figure as its offset — 83 % there, 41 % on the phone).
+     */
+    private fun plans(root: File): List<Pair<DataPlan, File>> {
+        val found = root.listFiles().orEmpty().filter { PLAN.matches(it.name) }.sortedBy { it.name.length } // plan.json first: it stays on a tie
+            .mapNotNull { f -> runCatching { f.readText() }.getOrNull()?.let(DataPlan::parse)?.let { it to f } }
+        if (found.map { it.first.rev to it.first.by }.distinct().size <= 1) return found
+        val mobile = all(root).mapValues { (_, l) -> l.sumOf { m -> m.days.sumOf { it.mobile } } }
+        return found.sortedWith(compareByDescending<Pair<DataPlan, File>> { it.first.rev }.thenByDescending { mobile[it.first.by] ?: 0L })
+    }
+
+    fun plan(root: File = root()): DataPlan? = plans(root).firstOrNull()?.first
+
+    /** Sync's copies of plan.json removed, the winning plan in its place (any device may change the plan, so all agree after). */
+    fun settlePlan(root: File = root()): Int {
+        val l = plans(root); val file = l.firstOrNull()?.second ?: return 0
+        if (file.name != "plan.json") write(File(root, "plan.json"), file.readText())
+        return l.count { (_, f) -> f.name != "plan.json" && f.delete() }
+    }
 
     fun savePlan(c: Context, p: DataPlan, root: File = root()) {
         val old = plan(root)
@@ -302,7 +340,7 @@ internal object DataFiles {
     fun line(e: DataEvent) = "{\"at\":\"${e.at}\",\"event\":\"${e.kind}\",\"secs\":${e.secs}" + (if (e.note.isNotEmpty()) ",\"note\":${JSONObject.quote(e.note)}" else "") + "}"
 
     fun text(m: DataMonth) = buildString {
-        if (m.name.isNotEmpty()) append("{\"deviceName\":${JSONObject.quote(m.name)}}\n")
+        if (m.name.isNotEmpty() || m.at > 0) append("{\"deviceName\":${JSONObject.quote(m.name)}" + (if (m.at > 0) ",\"counted\":${m.at}" else "") + "}\n")
         m.days.sortedBy { it.day }.forEach { append(line(it)).append('\n') }
         m.hours.sortedWith(compareBy({ it.hour }, { it.net })).forEach { append(line(it)).append('\n') }
         m.apps.sortedWith(compareBy({ it.day }, { -it.total }, { it.app })).forEach { append(line(it)).append('\n') }
@@ -311,26 +349,24 @@ internal object DataFiles {
 
     fun parse(device: String, text: String): DataMonth {
         val days = mutableListOf<DataDay>(); val apps = mutableListOf<DataApp>(); val hours = mutableListOf<DataHour>(); val events = mutableListOf<DataEvent>()
-        var name = ""
+        var name = ""; var at = 0L
         text.lineSequence().filter { it.isNotBlank() }.forEach { l ->
             val o = runCatching { JSONObject(l) }.getOrNull() ?: return@forEach
             when {
-                o.has("deviceName") -> name = o.optString("deviceName")
+                o.has("deviceName") -> { name = o.optString("deviceName"); at = o.optLong("counted") }
                 o.has("event") -> events += DataEvent(o.optString("at"), o.optString("event"), o.optLong("secs"), o.optString("note"))
                 o.has("h") -> hours += DataHour(o.optString("h"), o.optString("net"), o.optLong("bytes"))
                 o.has("app") -> apps += DataApp(LocalDate.parse(o.getString("d")), o.optString("app"), o.optString("name"), o.optString("net"), o.optLong("fg"), o.optLong("bg"), o.optLong("roam"))
                 o.has("d") -> days += DataDay(LocalDate.parse(o.getString("d")), o.optLong("mobile"), o.optLong("wifi"), o.optLong("roam"), o.optLong("hotspot"), o.optLong("via"), o.optBoolean("outsideEu"), o.optLong("eth"))
             }
         }
-        return DataMonth(device, days, apps, hours, events, name)
+        return DataMonth(device, days, apps, hours, events, name, at)
     }
 
     fun monthFile(month: String, device: String = device(), root: File = root()) = File(File(root, "usage"), "$month.$device.jsonl")
 
     /** Every device's months, by device: this one's and those sync brought (the tablet's, the computer's). */
-    fun all(root: File = root()): Map<String, List<DataMonth>> = File(root, "usage").listFiles().orEmpty()
-        .mapNotNull { f -> NAME.matchEntire(f.name)?.let { m -> m.groupValues[2] to f } }
-        .groupBy({ it.first }, { (d, f) -> runCatching { parse(d, f.readText()) }.getOrNull() }).mapValues { (_, l) -> l.filterNotNull() }
+    fun all(root: File = root()): Map<String, List<DataMonth>> = versions(root).map { it.first }.groupBy { it.device }
 
     /** One device's days from its months, merged and in order. */
     fun days(months: List<DataMonth>) = months.flatMap { it.days }.associateBy { it.day }.values.sortedBy { it.day }

@@ -2374,6 +2374,13 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       Two pages, Ruler on a tablet, cm/inches) — and Words' rulers along the top and down each page. Save a copy leaves
       the file unsaved (a redaction still to do stays to do). PdfNewDeviceTest pageSizeAndWayRound. A second emulator
       (books_tablet, read-only) while another session used the first. Not done: Design (page colour, borders).
+- [x] (pdf-handles session, 25 Oct; branch claude/pdf-handles) The user after trying it: the chosen text's handles are
+      Slides' (a dot 9 dp at the corner, reached within 28 dp; the turn's dot on a stalk), handled on the page before its
+      own taps as Slides' are; Text box › arrows ← → ↑ ↓ beside Position — a tap a point, held it goes on and faster, put
+      on when let go (one Undo); Review's and Draw's colours are Words' (white among them, More… Words' table). The eraser
+      (Delete comment) takes strokes saved in an earlier session too (they are annotations in the file): PdfNewDeviceTest
+      eraserTakesAStrokeSavedBefore. Not covered: drawings that are the page's own content (another app's, flattened) —
+      a white pen or a white-filled box covers those; real removal would need the page's content edited.
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

@@ -32,6 +32,23 @@ class PdfNewDeviceTest {
         dir.deleteRecursively()
     }
 
+    @Test fun eraserTakesAStrokeSavedBefore() {
+        // the user, 25 Oct: can the eraser take strokes from an earlier save, not only this session's?
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-erase-test").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        d.ink(0, listOf(listOf(androidx.compose.ui.geometry.Offset(100f, 100f), androidx.compose.ui.geometry.Offset(200f, 150f))), 0x000000, 2f)
+        d.save(java.io.File(dir, "base.pdf")); d.close()
+        val again = PdfDoc(f) // another day: the file as saved
+        assertEquals(1, again.comments().size)
+        assertTrue(again.deleteAt(0, androidx.compose.ui.geometry.Offset(150f, 125f)))
+        assertEquals(0, again.comments().size)
+        again.save(java.io.File(dir, "base2.pdf")); again.close()
+        val third = PdfDoc(f)
+        assertEquals("gone for good once saved", 0, third.comments().size)
+        third.close(); dir.deleteRecursively()
+    }
+
     @Test fun pageSizeAndWayRound() {
         val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-size-test").apply { deleteRecursively() }
         val d = PdfDoc(Pdf.newBlank(dir))

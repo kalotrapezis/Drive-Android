@@ -1152,6 +1152,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var textLook by remember { mutableStateOf(PdfTextLook()) } // the last look used: the next text starts with it
     var fontBefore by remember { mutableStateOf<String?>(null) } // Font's strip open: the font before it (Cancel puts it back)
     var chosen by remember { mutableStateOf<Triple<Int, android.graphics.RectF, PdfText>?>(null) } // a text put on, chosen (Slides' first tap): its page, place, words
+    val framePreview = remember(chosen?.second) { PdfFramePreview() } // where a finger or an arrow has it, until put on
     var clip by remember { mutableStateOf<Pair<android.graphics.RectF, PdfText>?>(null) } // Copy's text, for Paste
     var copiedLook by remember { mutableStateOf<PdfTextLook?>(null) } // Selection › Copy formatting, for Paste formatting (Slides')
     var tabBefore by remember { mutableStateOf("Home") } // the tab shown before a text was chosen, back when none is
@@ -1269,6 +1270,15 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         change { d.putText(i, nx, ny, nt, room ?: if (nt.framed || nt.turned) uw else maxOf(uw, s.width - nx - 18f), minH ?: if (nt.framed) uh else 0f, Offset(r.centerX(), r.centerY())) }
         chosen = d.typedAt(i, Offset(nx + 1f, ny + 1f))?.let { (nr, pt) -> Triple(i, nr, pt) }
     }
+    /** The chosen text sized from its corner's dot to [w] × [h] on the page: a fixed width from then on (a text becomes a box without a border). */
+    fun sizeChosen(w: Float, h: Float) {
+        val t = chosen?.third ?: return
+        if (t.look.turn % 90 != 0) { Toast.makeText(context, "Turned at a slant it keeps its size: Rotate › Upright to size it", Toast.LENGTH_SHORT).show(); return }
+        val (lw, lh) = if (t.look.turn % 180 == 90) h to w else w to h
+        rechange(room = lw.coerceAtLeast(12f), minH = lh.coerceAtLeast(8f), t = t.copy(framed = true))
+    }
+    /** The arrows' nudge put on where they have got to (one step of Undo for a whole press). */
+    fun nudged() { val sh = framePreview.shift; framePreview.reset(); if (sh != Offset.Zero) chosen?.second?.let { r -> rechange(x = r.left + sh.x, y = r.top + sh.y) } }
     /** The chosen text turned to [to] degrees clockwise about its middle (one undo step). */
     fun turnChosen(to: Int) {
         val (_, r, old) = chosen ?: return; val (lw, lh) = old.unturned(r)
@@ -1760,7 +1770,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                                 chosen = doc?.typedAt(i, pt)?.let { (r, t) -> Triple(i, r, t) }
                                                 pageMenu = Triple(i, down.position, pt)
                                             }
-                                        }, marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
+                                        }
+                                        // what is chosen on this page, as Slides': moved, sized, turned from its dots, before the page's own taps; a tap types in it
+                                        .pdfChosenGestures(s, chosen?.takeIf { it.first == i && typing == null }?.second, chosen?.third?.look?.turn ?: 0, framePreview,
+                                            { chosen?.let { (_, r, t) -> retype(i, r, t) } }, { dx, dy -> chosen?.second?.let { r -> rechange(x = r.left + dx, y = r.top + dy) } },
+                                            ::sizeChosen, ::turnChosen), marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
                                     if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
                                     typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook) }
                                     pageMenu?.takeIf { it.first == i }?.let { (_, spot, pt) -> OfficeMenu(spot, { pageMenu = null }) {
@@ -1779,11 +1793,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                         }
                                     } }
                                     chosen?.takeIf { it.first == i && typing == null }?.let { (_, r, t) ->
-                                        PdfChosenFrame(s, r, t.unturned(r), t.look.turn, { retype(i, r, t) }, { dx, dy -> rechange(x = r.left + dx, y = r.top + dy) }, ::turnChosen) { w, h ->
-                                            if (t.look.turn % 90 != 0) { Toast.makeText(context, "Turned at a slant it keeps its size: Rotate › Upright to size it", Toast.LENGTH_SHORT).show(); return@PdfChosenFrame }
-                                            // sized: a fixed width from then on (a text becomes a box without a border), as tall as drawn or its words
-                                            val (lw, lh) = if (t.look.turn % 180 == 90) h to w else w to h
-                                            rechange(room = lw.coerceAtLeast(12f), minH = lh.coerceAtLeast(8f), t = t.copy(framed = true)) }
+                                        PdfChosenFrame(s, r, t.unturned(r), framePreview, PDF_RED)
                                     }
                                 }
                               } }
@@ -1941,6 +1951,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 MenuChoice("Left", icon = R.drawable.ic_align_left) { position('l', null) }, MenuChoice("Centre", icon = R.drawable.ic_align_center) { position('c', null) },
                                 MenuChoice("Right", icon = R.drawable.ic_align_right) { position('r', null) }, MenuChoice("Top", icon = R.drawable.ic_vertical_align_top) { position(null, 't') },
                                 MenuChoice("Middle", icon = R.drawable.ic_vertical_align_center) { position(null, 'm') }, MenuChoice("Bottom", icon = R.drawable.ic_vertical_align_bottom) { position(null, 'b') }))
+                            // the arrows (the user, 25 Oct): a point at a tap, held it goes on; put on when let go
+                            NudgeTool(R.drawable.ic_arrow_forward, 180f, "Move left", w, { framePreview.shift += Offset(-it, 0f) }, ::nudged)
+                            NudgeTool(R.drawable.ic_arrow_forward, 0f, "Move right", w, { framePreview.shift += Offset(it, 0f) }, ::nudged)
+                            NudgeTool(R.drawable.ic_arrow_upward, 0f, "Move up", w, { framePreview.shift += Offset(0f, -it) }, ::nudged)
+                            NudgeTool(R.drawable.ic_arrow_downward, 0f, "Move down", w, { framePreview.shift += Offset(0f, it) }, ::nudged)
                             RibbonMenu("Arrange", w, R.drawable.ic_flip_to_front, preset = false, choices = listOf(
                                 MenuChoice("Bring to front", icon = R.drawable.ic_flip_to_front) { restackChosen(2) }, MenuChoice("Bring forward", icon = R.drawable.ic_flip_to_front) { restackChosen(1) },
                                 MenuChoice("Send backward", icon = R.drawable.ic_flip_to_back) { restackChosen(-1) }, MenuChoice("Send to back", icon = R.drawable.ic_flip_to_back) { restackChosen(-2) }))
@@ -1966,7 +1981,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             RibbonButton(if (tool == PdfTool.Stamp) stampName.replace(Regex("(?<=[a-z])(?=[A-Z])"), " ") else "Stamp", w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) {
                                 if (stampStrip != null) stampStrip() else tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp
                             }
-                            Swatches(w, R.drawable.ic_palette, "Colour", listOf(0xFFEB3B, 0x92D050, 0x00B0F0, 0xE53935, 0x7030A0, 0x000000).map { Color(0xFF000000.toInt() or it) }) { c ->
+                            // Words' colours, white among them (the user, 25 Oct: to cover what was drawn), and its highlighters; More… Words' table
+                            Swatches(w, R.drawable.ic_palette, "Colour", (HIGHLIGHT_COLOURS + TEXT_COLOURS).distinct()) { c ->
                                 c?.let { markColour = (it.toArgb() and 0xFFFFFF) } }
                             RibbonDivider(w)
                             ToolButton(PdfTool.Erase)
@@ -2022,7 +2038,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         }
                         if (tab == "Draw") {
                             ToolButton(PdfTool.Pen); ToolButton(PdfTool.Marker)
-                            Swatches(w, R.drawable.ic_palette, "Pen colour", listOf(0x000000, 0xE53935, 0x0070C0, 0x00B050, 0x7030A0, 0xFFC000).map { Color(0xFF000000.toInt() or it) }) { c ->
+                            // Words' text colours, white among them: a white pen covers a stroke (the user, 25 Oct)
+                            Swatches(w, R.drawable.ic_palette, "Pen colour", TEXT_COLOURS) { c ->
                                 c?.let { penColour = (it.toArgb() and 0xFFFFFF) } }
                             RibbonDivider(w)
                             listOf(1f to "Thin", 2f to "Medium", 4f to "Thick").forEach { (pt, label) -> RibbonButton(label, w, on = penWidth == pt) { penWidth = pt } }

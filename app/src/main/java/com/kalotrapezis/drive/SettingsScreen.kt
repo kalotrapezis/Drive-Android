@@ -1,5 +1,6 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.res.pluralStringResource
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Context

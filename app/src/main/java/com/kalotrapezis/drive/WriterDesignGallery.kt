@@ -1,5 +1,7 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.background

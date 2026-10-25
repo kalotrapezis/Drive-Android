@@ -1,5 +1,7 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.graphics.Bitmap

@@ -1,5 +1,7 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.horizontalScroll
 import android.Manifest

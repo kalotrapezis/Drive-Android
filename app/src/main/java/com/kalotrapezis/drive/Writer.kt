@@ -2,6 +2,8 @@
 
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType

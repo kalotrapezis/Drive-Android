@@ -1,5 +1,8 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.text.style.TextOverflow
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

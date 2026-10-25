@@ -1,4 +1,6 @@
 package com.kalotrapezis.drive
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.material3.Slider
 import java.util.UUID
 import java.util.concurrent.Executors

@@ -1,5 +1,7 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.offset

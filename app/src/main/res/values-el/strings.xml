@@ -1573,6 +1573,7 @@
     <string name="maps_home_tap_goes">Με ένα πάτημα στην Αρχική πηγαίνει</string>
     <string name="maps_tab_directions">Οδηγίες</string>
     <string name="maps_tab_saved">Αποθηκευμένα</string>
+    <string name="maps_tab_search">Εύρεση</string>
     <string name="maps_near">Κοντά σε: %1$s</string>
     <string name="maps_anywhere">Παντού</string>
     <string name="maps_search_near">Αναζήτηση κοντά σε: %1$s</string>
@@ -2104,7 +2105,7 @@
     <string name="data_setup_button">Ρύθμιση — το πρόγραμμά σας, περιαγωγή, προειδοποιήσεις</string>
     <string name="data_live_speed_bar">Ζωντανή ταχύτητα στη γραμμή κατάστασης</string>
     <string name="data_android_settings">Ρυθμίσεις δεδομένων του Android (όριο, Εξοικονόμηση δεδομένων)</string>
-    <string name="data_span_day">Ημέρα</string>
+    <string name="data_span_day">Μέρα</string>
     <string name="data_span_week">Εβδομάδα</string>
     <string name="data_span_cycle">Κύκλος</string>
     <string name="data_span_month">Μήνας</string>
@@ -2354,7 +2355,7 @@
     <string name="words_favourites">Αγαπημένα</string>
     <string name="words_favourites_empty">Πατήστε την καρδιά δίπλα σε ένα έγγραφο για να το κρατήσετε εδώ.</string>
     <string name="words_new_document">Νέο έγγραφο</string>
-    <string name="words_new_spreadsheet">Νέο υπολογιστικό φύλλο</string>
+    <string name="words_new_spreadsheet">Νέο φύλλο</string>
     <string name="words_new_pdf">Νέο PDF</string>
     <string name="words_about_words">Έγγραφα Word και LibreOffice</string>
     <string name="words_about_tables">Υπολογιστικά φύλλα Excel και LibreOffice</string>

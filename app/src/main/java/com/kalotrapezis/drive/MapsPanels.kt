@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.dp
 
 /** The bottom island's three (the user, 21 Oct: "an Island at the bottom with navigation, favorites, search"). */
 internal enum class MapsTab(@androidx.annotation.StringRes val label: Int, val icon: Int) {
-    Navigate(R.string.maps_tab_directions, R.drawable.ic_navigation), Favorites(R.string.maps_tab_saved, R.drawable.ic_favorite), Search(R.string.common_search, R.drawable.ic_search)
+    Navigate(R.string.maps_tab_directions, R.drawable.ic_navigation), Favorites(R.string.maps_tab_saved, R.drawable.ic_favorite), Search(R.string.maps_tab_search, R.drawable.ic_search)
 }
 
 @Composable internal fun MapsIsland(tab: MapsTab?, pick: (MapsTab) -> Unit) = Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {

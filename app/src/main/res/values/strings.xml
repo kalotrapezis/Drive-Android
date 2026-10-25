@@ -1575,6 +1575,7 @@
     <string name="maps_home_tap_goes">Its Home tap goes</string>
     <string name="maps_tab_directions">Directions</string>
     <string name="maps_tab_saved">Saved</string>
+    <string name="maps_tab_search">Search</string>
     <string name="maps_near">Near %1$s</string>
     <string name="maps_anywhere">Anywhere</string>
     <string name="maps_search_near">Search near %1$s</string>

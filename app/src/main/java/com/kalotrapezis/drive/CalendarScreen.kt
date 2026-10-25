@@ -212,7 +212,7 @@ internal fun Context.uiLocale(): Locale = resources.configuration.locales[0]
 
 /** "October 2026", "Οκτώβριος 2026" (the month on its own, which Greek says differently from "20 Οκτωβρίου"). */
 internal fun monthTitle(d: LocalDate, locale: Locale, year: Boolean = true): String =
-    android.icu.text.DateFormat.getInstanceForSkeleton(if (year) "MMMMy" else "MMMM", locale)
+    (if (year) android.icu.text.DateFormat.getInstanceForSkeleton("MMMMy", locale) else android.icu.text.SimpleDateFormat("LLLL", locale))
         .format(java.util.Date.from(d.atStartOfDay(ZoneId.systemDefault()).toInstant()))
 
 internal fun timeText(context: Context, t: ZonedDateTime): String =

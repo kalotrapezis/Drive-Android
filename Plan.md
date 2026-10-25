@@ -3174,6 +3174,9 @@ Send log.
    rewrote this month's file without its days** — fixed: with no access the files are left exactly as they are (events wait). Nothing was
    lost: the access back (12:59), Android's counts wrote October again; the phone removed its 3 sync copies. The computer still had
    "(2)…(7)" (beta.16 does not clean): beta.18 removes them on start. Old desktop builds (beta.14–17) and older phone backups removed.
+   13:06: Drive main (Contacts' latest) merged into `data` (c9b52f2), 0.6.0-beta.19 built (143 tests, tsc clean; both sides' code in the
+   package), installed by the user over main's beta.14 and restarted: the "(2)…(7)" copies gone on start; the computer holds the phone's
+   restored October (25 days, 128.5 GB mobile, 119.3 GB hotspot); its per-program lines go on (today's adb/head-unit rows from beta.16 stay).
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

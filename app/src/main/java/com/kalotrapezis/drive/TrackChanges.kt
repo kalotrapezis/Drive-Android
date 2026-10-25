@@ -14,9 +14,9 @@ internal object TrackChanges {
 
     /** One change, where it is: letters [from]..[to] of top-level paragraph [para] (a paragraph mark's: its end). */
     data class Change(val para: Int, val from: Int, val to: Int, val kind: Kind, val author: String, val date: String?) {
-        val label get() = when (kind) {
-            Kind.Inserted -> "Inserted"; Kind.Deleted -> "Deleted"; Kind.Formatted -> "Formatted"
-            Kind.ParagraphFormatted -> "Paragraph formatted"; Kind.ParagraphInserted -> "Paragraph inserted"; Kind.ParagraphDeleted -> "Paragraphs joined"
+        @get:androidx.annotation.StringRes val label get() = when (kind) {
+            Kind.Inserted -> R.string.words_change_inserted; Kind.Deleted -> R.string.words_change_deleted; Kind.Formatted -> R.string.words_change_formatted
+            Kind.ParagraphFormatted -> R.string.words_change_para_formatted; Kind.ParagraphInserted -> R.string.words_change_para_inserted; Kind.ParagraphDeleted -> R.string.words_change_paras_joined
         }
     }
 

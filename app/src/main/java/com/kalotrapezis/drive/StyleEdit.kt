@@ -116,56 +116,56 @@ internal fun odtHeadingStyle(n: Int, body: String) = """<style:style style:name=
  * Design › Style sets (Word's Document Formatting gallery): Normal, Title and Headings 1–3 set together, each a
  * [StyleChange] by the style's name ("Normal", "Title", "Heading 1"…).
  */
-internal enum class StyleSet(val label: String, val changes: Map<String, StyleChange>) {
-    Basic("Basic (Word)", mapOf(
+internal enum class StyleSet(@androidx.annotation.StringRes val label: Int, val changes: Map<String, StyleChange>) {
+    Basic(R.string.words_style_set_basic, mapOf(
         "Normal" to StyleChange(font = "Calibri", sizePt = 11f, color = -1, line = 1.08f, before = 0f, after = 8f),
         "Title" to StyleChange(font = "Calibri Light", sizePt = 28f, bold = false, color = -1, after = 0f),
         "Heading 1" to StyleChange(font = "Calibri Light", sizePt = 16f, bold = false, color = 0x2F5496, before = 12f, after = 0f),
         "Heading 2" to StyleChange(font = "Calibri Light", sizePt = 13f, bold = false, color = 0x2F5496, before = 2f, after = 0f),
         "Heading 3" to StyleChange(font = "Calibri Light", sizePt = 12f, bold = false, color = 0x1F3763, before = 2f, after = 0f))),
-    Classic("Classic (Times)", mapOf(
+    Classic(R.string.words_style_set_classic, mapOf(
         "Normal" to StyleChange(font = "Times New Roman", sizePt = 12f, color = -1, line = 1.15f, before = 0f, after = 6f),
         "Title" to StyleChange(font = "Times New Roman", sizePt = 24f, bold = true, color = -1, align = DocAlign.Center, after = 12f),
         "Heading 1" to StyleChange(font = "Times New Roman", sizePt = 16f, bold = true, italic = false, color = -1, before = 18f, after = 6f),
         "Heading 2" to StyleChange(font = "Times New Roman", sizePt = 14f, bold = true, italic = false, color = -1, before = 12f, after = 6f),
         "Heading 3" to StyleChange(font = "Times New Roman", sizePt = 12f, bold = true, italic = true, color = -1, before = 12f, after = 3f))),
-    Modern("Modern (Arial)", mapOf(
+    Modern(R.string.words_style_set_modern, mapOf(
         "Normal" to StyleChange(font = "Arial", sizePt = 10.5f, color = 0x262626, line = 1.2f, before = 0f, after = 8f),
         "Title" to StyleChange(font = "Arial", sizePt = 26f, bold = true, color = 0x1F4E79, after = 6f),
         "Heading 1" to StyleChange(font = "Arial", sizePt = 15f, bold = true, italic = false, color = 0x1F4E79, before = 18f, after = 6f),
         "Heading 2" to StyleChange(font = "Arial", sizePt = 12.5f, bold = true, italic = false, color = 0x2E75B6, before = 12f, after = 4f),
         "Heading 3" to StyleChange(font = "Arial", sizePt = 11f, bold = true, italic = false, color = 0x404040, before = 10f, after = 2f))),
-    Elegant("Elegant (Georgia)", mapOf(
+    Elegant(R.string.words_style_set_elegant, mapOf(
         "Normal" to StyleChange(font = "Georgia", sizePt = 11f, color = 0x333333, line = 1.3f, before = 0f, after = 10f),
         "Title" to StyleChange(font = "Georgia", sizePt = 30f, bold = false, italic = true, color = 0x7B2C2C, align = DocAlign.Center, after = 12f),
         "Heading 1" to StyleChange(font = "Georgia", sizePt = 17f, bold = false, italic = false, color = 0x7B2C2C, before = 20f, after = 6f),
         "Heading 2" to StyleChange(font = "Georgia", sizePt = 13.5f, bold = false, italic = true, color = 0x7B2C2C, before = 14f, after = 4f),
         "Heading 3" to StyleChange(font = "Georgia", sizePt = 12f, bold = true, italic = false, color = 0x333333, before = 10f, after = 2f))),
-    Word2010("Word 2010", mapOf(
+    Word2010(R.string.words_style_set_word2010, mapOf(
         "Normal" to StyleChange(font = "Calibri", sizePt = 11f, color = -1, line = 1.15f, before = 0f, after = 10f),
         "Title" to StyleChange(font = "Cambria", sizePt = 26f, bold = false, color = 0x17365D, after = 15f),
         "Heading 1" to StyleChange(font = "Cambria", sizePt = 14f, bold = true, italic = false, color = 0x365F91, before = 24f, after = 0f),
         "Heading 2" to StyleChange(font = "Cambria", sizePt = 13f, bold = true, italic = false, color = 0x4F81BD, before = 10f, after = 0f),
         "Heading 3" to StyleChange(font = "Cambria", sizePt = 11f, bold = true, italic = false, color = 0x4F81BD, before = 10f, after = 0f))),
-    Word2003("Word 2003", mapOf(
+    Word2003(R.string.words_style_set_word2003, mapOf(
         "Normal" to StyleChange(font = "Times New Roman", sizePt = 12f, color = -1, line = 1f, before = 0f, after = 0f),
         "Title" to StyleChange(font = "Arial", sizePt = 16f, bold = true, color = -1, align = DocAlign.Center, before = 12f, after = 3f),
         "Heading 1" to StyleChange(font = "Arial", sizePt = 16f, bold = true, italic = false, color = -1, before = 12f, after = 3f),
         "Heading 2" to StyleChange(font = "Arial", sizePt = 14f, bold = true, italic = true, color = -1, before = 12f, after = 3f),
         "Heading 3" to StyleChange(font = "Arial", sizePt = 13f, bold = true, italic = false, color = -1, before = 12f, after = 3f))),
-    Centered("Centred", mapOf(
+    Centered(R.string.words_style_set_centred, mapOf(
         "Normal" to StyleChange(font = "Calibri", sizePt = 11f, color = -1, line = 1.15f, before = 0f, after = 8f),
         "Title" to StyleChange(font = "Calibri Light", sizePt = 30f, bold = false, color = 0x1F3864, align = DocAlign.Center, after = 12f),
         "Heading 1" to StyleChange(font = "Calibri Light", sizePt = 18f, bold = false, italic = false, color = 0x1F3864, align = DocAlign.Center, before = 18f, after = 6f),
         "Heading 2" to StyleChange(font = "Calibri Light", sizePt = 14f, bold = false, italic = false, color = 0x2F5496, align = DocAlign.Center, before = 12f, after = 4f),
         "Heading 3" to StyleChange(font = "Calibri", sizePt = 12f, bold = true, italic = false, color = 0x2F5496, align = DocAlign.Center, before = 10f, after = 2f))),
-    Casual("Casual", mapOf(
+    Casual(R.string.words_style_set_casual, mapOf(
         "Normal" to StyleChange(font = "Trebuchet MS", sizePt = 11f, color = 0x3B3838, line = 1.25f, before = 0f, after = 8f),
         "Title" to StyleChange(font = "Trebuchet MS", sizePt = 28f, bold = true, color = 0xC55A11, after = 8f),
         "Heading 1" to StyleChange(font = "Trebuchet MS", sizePt = 16f, bold = true, italic = false, color = 0xC55A11, before = 16f, after = 4f),
         "Heading 2" to StyleChange(font = "Trebuchet MS", sizePt = 13f, bold = true, italic = false, color = 0x7F6000, before = 12f, after = 4f),
         "Heading 3" to StyleChange(font = "Trebuchet MS", sizePt = 11f, bold = true, italic = true, color = 0x7F6000, before = 10f, after = 2f))),
-    Minimalist("Minimalist", mapOf(
+    Minimalist(R.string.words_style_set_minimalist, mapOf(
         "Normal" to StyleChange(font = "Arial", sizePt = 10f, color = 0x404040, line = 1.4f, before = 0f, after = 10f),
         "Title" to StyleChange(font = "Arial", sizePt = 22f, bold = false, color = 0x000000, after = 18f),
         "Heading 1" to StyleChange(font = "Arial", sizePt = 13f, bold = false, italic = false, color = 0x000000, before = 20f, after = 8f),

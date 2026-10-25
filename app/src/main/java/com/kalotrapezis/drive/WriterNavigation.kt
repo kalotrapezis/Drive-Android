@@ -39,10 +39,10 @@ internal fun navHeadings(doc: OfficeDoc) = doc.paras.mapIndexedNotNull { i, p ->
 internal fun NavigationPane(headings: List<NavHeading>, w: Color, modifier: Modifier, go: (NavHeading) -> Unit, close: () -> Unit) {
     Column(modifier.fillMaxHeight().clip(RoundedCornerShape(16.dp)).background(Color(0xFF16191A))) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Navigation", color = w, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Tool(R.drawable.ic_close, "Close", w) { close() }
+            Text(stringResource(R.string.words_navigation), color = w, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Tool(R.drawable.ic_close, stringResource(R.string.common_close), w) { close() }
         }
-        if (headings.isEmpty()) Text("No headings — give titles a Heading style (Home › H1–H3) to see them here.", color = w.copy(alpha = 0.7f),
+        if (headings.isEmpty()) Text(stringResource(R.string.words_no_headings), color = w.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
         LazyColumn(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             items(headings, key = { it.para }) { h ->

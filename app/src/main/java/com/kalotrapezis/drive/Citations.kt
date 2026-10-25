@@ -21,7 +21,10 @@ internal data class DocSource(
     val wordType: String? = null, // Word's own source type when it is one Writer shows as another (Report as a book)
     val extra: String = "", // what Word's source has that Writer does not edit (its Guid, city, …), as the file had it
 ) {
-    enum class Type(val label: String) { Book("Book"), Article("Journal article"), Web("Web page"), Chapter("Book chapter"), Report("Report"), Thesis("Thesis"), Video("Video") }
+    /** [label]: English (an ID); [res]: the shown words. */
+    enum class Type(val label: String, @androidx.annotation.StringRes val res: Int) { Book("Book", R.string.words_source_book), Article("Journal article", R.string.words_source_article),
+        Web("Web page", R.string.words_web_page), Chapter("Book chapter", R.string.words_source_chapter), Report("Report", R.string.words_source_report),
+        Thesis("Thesis", R.string.words_source_thesis), Video("Video", R.string.words_video) }
     data class Person(val last: String, val first: String = "") {
         /** "Κ. Μ." / "J. R." from the given names, as APA writes them. */
         val initials get() = first.split(' ', '-').filter { it.isNotBlank() }.joinToString(" ") { it.take(1).uppercase() + "." }

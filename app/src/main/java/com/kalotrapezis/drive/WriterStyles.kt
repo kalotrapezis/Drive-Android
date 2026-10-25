@@ -42,7 +42,7 @@ internal fun StylesDialog(styles: DocStyles, here: StyleEntry?, basePt: Float, d
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(vertical = 20.dp)) {
-                Text("Styles", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 20.dp))
+                Text(stringResource(R.string.words_styles), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 20.dp))
                 // On white, as on the page: a style's own colour shows as it will print.
                 Surface(color = Color.White, shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f, fill = false).padding(12.dp)) {
                 Column(Modifier.fillMaxWidth().shadedScroll().padding(vertical = 4.dp)) {
@@ -59,14 +59,14 @@ internal fun StylesDialog(styles: DocStyles, here: StyleEntry?, basePt: Float, d
                                 fontStyle = if (look.italic == true) FontStyle.Italic else FontStyle.Normal,
                                 color = look.color?.takeIf { it != 0 }?.let { Color(0xFF000000 or it.toLong()) } ?: Color.Black)
                             if (on) Text("✓", color = Color(0xFF1A73E8), style = MaterialTheme.typography.titleMedium)
-                            if (styles.styleKey(entry) != null) TextButton(onClick = { edit(entry) }) { Text("Change…", color = Color(0xFF1A73E8)) }
+                            if (styles.styleKey(entry) != null) TextButton(onClick = { edit(entry) }) { Text(stringResource(R.string.words_change_more), color = Color(0xFF1A73E8), maxLines = 1) }
                         }
                         HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = Color(0x1F000000))
                     }
                 }
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = dismiss) { Text("Close") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) }
                 }
             }
         }

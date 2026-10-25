@@ -172,18 +172,18 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
         Surface(Modifier.widthIn(max = 900.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!onPage) Text("Draw", style = MaterialTheme.typography.titleLarge)
+                if (!onPage) Text(stringResource(R.string.words_tab_draw), style = MaterialTheme.typography.titleLarge)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Choice("Pen", tool == Tool.Pen) { tool = Tool.Pen }
-                    Choice("Pen 2", tool == Tool.Pen2) { tool = Tool.Pen2 }
-                    Choice("Highlighter", tool == Tool.Highlighter) { tool = Tool.Highlighter }
-                    Choice("Eraser", tool == Tool.Eraser) { tool = Tool.Eraser }
-                    Choice("Move", tool == Tool.Move) { tool = Tool.Move } // the whole drawing, dragged
-                    Choice("Undo", false) { strokes.removeLastOrNull() }
+                    Choice(stringResource(R.string.words_pen), tool == Tool.Pen) { tool = Tool.Pen }
+                    Choice(stringResource(R.string.words_pen_2), tool == Tool.Pen2) { tool = Tool.Pen2 }
+                    Choice(stringResource(R.string.words_highlighter), tool == Tool.Highlighter) { tool = Tool.Highlighter }
+                    Choice(stringResource(R.string.words_eraser), tool == Tool.Eraser) { tool = Tool.Eraser }
+                    Choice(stringResource(R.string.common_move), tool == Tool.Move) { tool = Tool.Move } // the whole drawing, dragged
+                    Choice(stringResource(R.string.common_undo), false) { strokes.removeLastOrNull() }
                     // Another page: while nothing is drawn on this one (a drawing stays on its page).
                     if (pages.size > 1) {
                         Choice("‹", false) { if (strokes.isEmpty() && pageAt > 0) { pageAt--; zoom = 1f; pan = Offset.Zero } }
-                        Text("Page ${pageAt + 1} of ${pages.size}", style = MaterialTheme.typography.labelLarge)
+                        Text(stringResource(R.string.words_page_of, pageAt + 1, pages.size), style = MaterialTheme.typography.labelLarge)
                         Choice("›", false) { if (strokes.isEmpty() && pageAt < pages.lastIndex) { pageAt++; zoom = 1f; pan = Offset.Zero } }
                     }
                 }
@@ -246,13 +246,13 @@ internal fun DrawDialog(boxPt: Float, dismiss: () -> Unit, pages: List<LaidPage>
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = dismiss) { Text("Cancel") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
                     TextButton(enabled = strokes.isNotEmpty(), onClick = {
                         if (!onPage) insert(InkPicture.png(strokes, aspect, widthPt), widthPt, widthPt * aspect, null, 0)
                         else { val (cut, box) = InkPicture.cut(strokes, aspect, widthPt)
                             val w = box.width * widthPt
                             insert(InkPicture.png(cut, box.height / box.width, w, (w * 4).toInt().coerceIn(64, 2400)), w, box.height * widthPt, box.left * widthPt to box.top * widthPt, pageAt) }
-                    }) { Text(if (initial.isEmpty()) "Insert" else "Done") }
+                    }) { Text(stringResource(if (initial.isEmpty()) R.string.words_insert else R.string.common_done)) }
                 }
             }
         }
@@ -310,7 +310,7 @@ internal fun PositionDialog(page: LaidPage, key: String, dismiss: () -> Unit, pl
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 900.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Drag it where it goes", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.words_drag_where_it_goes), style = MaterialTheme.typography.titleMedium)
                 val room = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 200.dp).coerceAtLeast(160.dp)
                 // The whole page in view (two fingers zoom in).
                 Box(Modifier.align(Alignment.CenterHorizontally).height(room).aspectRatio(1 / aspect).clip(RoundedCornerShape(8.dp)).background(Color(0xFF5F6368))) {
@@ -343,7 +343,7 @@ internal fun PositionDialog(page: LaidPage, key: String, dismiss: () -> Unit, pl
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = dismiss) { Text("Done") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_done)) }
                 }
             }
         }

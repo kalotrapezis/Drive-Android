@@ -14,9 +14,9 @@ class GalleriesTest {
     }
 
     @Test fun `page numbers and layouts fill a header and footer`() {
-        val hf = NUMBER_SPOTS.first { it.label == "Page 1 of 3" }.on(HeaderFooter(header = "Kept"))
+        val hf = NUMBER_SPOTS.first { it.label == R.string.words_spot_page_1_of_3 }.on(HeaderFooter(header = "Kept"))
         assertEquals(HeaderFooter.NumberPlace.Footer, hf.number); assertEquals("Page # of N", hf.numberFormat); assertEquals("Kept", hf.header)
-        val book = HEADER_LAYOUTS.first { it.label.startsWith("Book") }.make(HeaderFooter(), "Thesis")
+        val book = HEADER_LAYOUTS.first { it.label == R.string.words_layout_book_outer }.make(HeaderFooter(), "Thesis")
         assertEquals("Thesis", book.header); assertEquals(true, book.oddEven); assertEquals("Thesis", book.evenHeader)
         assertEquals(HeaderFooter(), HEADER_LAYOUTS.last().make(book, "Thesis"))
     }

@@ -28,20 +28,20 @@ internal fun RotateDialog(now: Float, dismiss: () -> Unit, set: (Float) -> Unit)
     var deg by remember { mutableFloatStateOf(if (now > 180f) now - 360f else now) }
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("Rotate") },
+        title = { Text(stringResource(R.string.words_rotate)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${deg.roundToInt()}° clockwise")
+                Text(stringResource(R.string.words_degrees_clockwise, deg.roundToInt()))
                 Slider(deg, { deg = it.roundToInt().toFloat() }, valueRange = -180f..180f)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(-90, -15, -1, 1, 15, 90).forEach { step -> Choice(if (step > 0) "+$step°" else "$step°", false) { deg = ((deg + step + 540f) % 360f) - 180f } }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Choice("0°", deg == 0f) { deg = 0f }; Choice("180°", deg == 180f || deg == -180f) { deg = 180f } }
                 OutlinedTextField(deg.roundToInt().toString(), { t -> t.toIntOrNull()?.let { deg = (((it % 360) + 540) % 360 - 180).toFloat() } }, singleLine = true,
-                    label = { Text("Degrees") }, modifier = Modifier.fillMaxWidth())
+                    label = { Text(stringResource(R.string.words_degrees)) }, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(onClick = { set(deg) }) { Text("Rotate") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { set(deg) }) { Text(stringResource(R.string.words_rotate)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

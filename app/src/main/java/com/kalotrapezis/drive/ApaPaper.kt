@@ -189,40 +189,39 @@ internal fun ApaPaperDialog(hasText: Boolean, today: String, dismiss: () -> Unit
     AlertDialog(
         onDismissRequest = dismiss,
         properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
-        title = { Text(if (professional) "APA 7 professional paper" else "APA 7 student paper") },
+        title = { Text(stringResource(if (professional) R.string.words_apa_professional else R.string.words_apa_student)) },
         text = {
             Column(Modifier.heightIn(max = 520.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Times New Roman 12 · margins of 1 inch · double spacing, no extra space between paragraphs · first lines indented 0.5 inch · " +
-                    "the page number top right · APA's heading levels as Heading 1–5 (4 and 5 run into their paragraph, ending in a period) · references on a new page.", style = MaterialTheme.typography.bodyMedium)
-                check("Also clear fonts, sizes and spacing set by hand", clean) { clean = it }
+                Text(stringResource(R.string.words_apa_what_it_does), style = MaterialTheme.typography.bodyMedium)
+                check(stringResource(R.string.words_apa_clean), clean) { clean = it }
                 // A professional paper (for publication): the running head on every page; its title page without course, instructor, date.
-                check("Professional paper (a running head on every page)", professional) { professional = it }
+                check(stringResource(R.string.words_apa_professional_check), professional) { professional = it }
                 if (professional) {
-                    field("Running head (a short title, up to 50 letters)", head) { head = it.take(50) }
-                    Text(ApaPaper.runningHead(head.ifBlank { t.title }).ifBlank { "SHORT TITLE" } + " — top left, in capitals; the page number top right", style = MaterialTheme.typography.bodySmall)
+                    field(stringResource(R.string.words_running_head), head) { head = it.take(50) }
+                    Text(ApaPaper.runningHead(head.ifBlank { t.title }).ifBlank { "SHORT TITLE" } + stringResource(R.string.words_running_head_where), style = MaterialTheme.typography.bodySmall)
                 }
-                check("Add a title page first", withTitle) { withTitle = it }
+                check(stringResource(R.string.words_apa_add_title_page), withTitle) { withTitle = it }
                 if (withTitle) {
-                    field("Title of the paper", t.title) { t = t.copy(title = it) }
-                    field("Your name", t.author) { t = t.copy(author = it) }
-                    field("Department", t.department) { t = t.copy(department = it) }
-                    field("University", t.university) { t = t.copy(university = it) }
+                    field(stringResource(R.string.words_paper_title), t.title) { t = t.copy(title = it) }
+                    field(stringResource(R.string.words_your_name), t.author) { t = t.copy(author = it) }
+                    field(stringResource(R.string.words_department), t.department) { t = t.copy(department = it) }
+                    field(stringResource(R.string.words_university), t.university) { t = t.copy(university = it) }
                     if (!professional) {
-                        field("Course (number and name)", t.course) { t = t.copy(course = it) }
-                        field("Instructor", t.instructor) { t = t.copy(instructor = it) }
-                        field("Due date", t.date) { t = t.copy(date = it) }
+                        field(stringResource(R.string.words_course), t.course) { t = t.copy(course = it) }
+                        field(stringResource(R.string.words_instructor), t.instructor) { t = t.copy(instructor = it) }
+                        field(stringResource(R.string.words_due_date), t.date) { t = t.copy(date = it) }
                     }
                 }
-                check("Add an abstract page (after the title page)", withAbstract) { withAbstract = it }
+                check(stringResource(R.string.words_apa_add_abstract), withAbstract) { withAbstract = it }
                 if (withAbstract) {
-                    OutlinedTextField(ab.text, { ab = ab.copy(text = it) }, label = { Text("Abstract (150–250 words, one paragraph)") }, minLines = 4, modifier = Modifier.fillMaxWidth())
-                    Text("${ab.text.split(Regex("""\s+""")).count { it.isNotBlank() }} words", style = MaterialTheme.typography.bodySmall)
-                    field("Keywords (optional, separated by commas)", ab.keywords) { ab = ab.copy(keywords = it) }
+                    OutlinedTextField(ab.text, { ab = ab.copy(text = it) }, label = { Text(stringResource(R.string.words_abstract_field)) }, minLines = 4, modifier = Modifier.fillMaxWidth())
+                    Text(wordsCount(ab.text.split(Regex("""\s+""")).count { it.isNotBlank() }), style = MaterialTheme.typography.bodySmall)
+                    field(stringResource(R.string.words_keywords_field), ab.keywords) { ab = ab.copy(keywords = it) }
                 }
             }
         },
         confirmButton = { TextButton(onClick = { apply(clean, if (withTitle && t.title.isNotBlank()) (if (professional) t.copy(course = "", instructor = "", date = "") else t) else null, if (withAbstract) ab else null,
-            if (professional) head.ifBlank { t.title }.takeIf { it.isNotBlank() } ?: "Short title" else null) }) { Text("Apply") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+            if (professional) head.ifBlank { t.title }.takeIf { it.isNotBlank() } ?: "Short title" else null) }) { Text(stringResource(R.string.common_apply)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

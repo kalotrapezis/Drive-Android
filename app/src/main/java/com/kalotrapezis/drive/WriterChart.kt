@@ -66,7 +66,7 @@ internal fun ChartDialog(start: DocChart, editing: Boolean, dismiss: () -> Unit,
     }, stacked && kind != ChartKind.Pie && kind != ChartKind.Doughnut && kind != ChartKind.Scatter, start.legend,
         catTitle.ifBlank { null }, valTitle.ifBlank { null }, labels)
     AlertDialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false), modifier = Modifier.widthIn(max = 720.dp).padding(12.dp),
-        title = { Text(if (editing) "Edit chart" else "Chart") },
+        title = { Text(stringResource(if (editing) R.string.words_edit_chart else R.string.words_chart)) },
         text = {
             Column(Modifier.shadedScroll(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 // As it will look.
@@ -81,18 +81,18 @@ internal fun ChartDialog(start: DocChart, editing: Boolean, dismiss: () -> Unit,
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ChartKind.entries.filter { it.made || it == kind }.forEach { k -> FilterChip(kind == k, { kind = k }, label = { Text(k.label) }) }
                 }
-                OutlinedTextField(title, { title = it }, singleLine = true, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(title, { title = it }, singleLine = true, label = { Text(stringResource(R.string.words_title)) }, modifier = Modifier.fillMaxWidth())
                 // Word's Chart elements: axis titles (not for a pie), data labels; and stacked.
                 if (kind != ChartKind.Pie && kind != ChartKind.Doughnut) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val bar = kind == ChartKind.Bar
-                    OutlinedTextField(catTitle, { catTitle = it }, singleLine = true, label = { Text(if (bar) "Vertical axis title" else "Horizontal axis title") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(valTitle, { valTitle = it }, singleLine = true, label = { Text(if (bar) "Horizontal axis title" else "Vertical axis title") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(catTitle, { catTitle = it }, singleLine = true, label = { Text(stringResource(if (bar) R.string.words_vertical_axis_title else R.string.words_horizontal_axis_title)) }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(valTitle, { valTitle = it }, singleLine = true, label = { Text(stringResource(if (bar) R.string.words_horizontal_axis_title else R.string.words_vertical_axis_title)) }, modifier = Modifier.weight(1f))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Data labels", style = MaterialTheme.typography.labelLarge); Switch(labels, { labels = it })
-                    if (kind != ChartKind.Pie && kind != ChartKind.Doughnut && kind != ChartKind.Scatter) { Text("Stacked", style = MaterialTheme.typography.labelLarge); Switch(stacked, { stacked = it }) }
+                    Text(stringResource(R.string.words_data_labels), style = MaterialTheme.typography.labelLarge); Switch(labels, { labels = it })
+                    if (kind != ChartKind.Pie && kind != ChartKind.Doughnut && kind != ChartKind.Scatter) { Text(stringResource(R.string.words_stacked), style = MaterialTheme.typography.labelLarge); Switch(stacked, { stacked = it }) }
                 }
-                if (kind == ChartKind.Scatter) Text("Scatter: the first column holds the x values (numbers), each series the y values.", style = MaterialTheme.typography.bodySmall)
+                if (kind == ChartKind.Scatter) Text(stringResource(R.string.words_scatter_hint), style = MaterialTheme.typography.bodySmall)
                 // The data: a row per category, a column per series (a pie shows the first).
                 val cell = Modifier.width(96.dp)
                 val first = Modifier.width(128.dp) // the categories' names
@@ -110,13 +110,13 @@ internal fun ChartDialog(start: DocChart, editing: Boolean, dismiss: () -> Unit,
                     }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { categories += "Category ${categories.size + 1}"; cells.forEach { it += "" } }) { Text("+ Category") }
-                    TextButton(enabled = categories.size > 1, onClick = { categories.removeAt(categories.lastIndex); cells.forEach { it.removeAt(it.lastIndex) } }) { Text("− Category") }
-                    TextButton(onClick = { names += "Series ${names.size + 1}"; cells += mutableStateListOf(*Array(categories.size) { "" }) }) { Text("+ Series") }
-                    TextButton(enabled = names.size > 1, onClick = { names.removeAt(names.lastIndex); cells.removeAt(cells.lastIndex) }) { Text("− Series") }
+                    TextButton(onClick = { categories += "Category ${categories.size + 1}"; cells.forEach { it += "" } }) { Text(stringResource(R.string.words_add_category)) }
+                    TextButton(enabled = categories.size > 1, onClick = { categories.removeAt(categories.lastIndex); cells.forEach { it.removeAt(it.lastIndex) } }) { Text(stringResource(R.string.words_remove_category)) }
+                    TextButton(onClick = { names += "Series ${names.size + 1}"; cells += mutableStateListOf(*Array(categories.size) { "" }) }) { Text(stringResource(R.string.words_add_series)) }
+                    TextButton(enabled = names.size > 1, onClick = { names.removeAt(names.lastIndex); cells.removeAt(cells.lastIndex) }) { Text(stringResource(R.string.words_remove_series)) }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { done(chart()) }) { Text(if (editing) "Done" else "Insert") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = { done(chart()) }) { Text(stringResource(if (editing) R.string.common_done else R.string.words_insert)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }

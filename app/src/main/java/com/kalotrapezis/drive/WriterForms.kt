@@ -85,7 +85,8 @@ internal object Forms {
         })
     }
     /** Insert › Content control's kinds, as Word's Developer tab names them. */
-    enum class New(val label: String) { PlainText("Plain text"), RichText("Rich text"), CheckBox("Check box"), DropDown("Drop-down list"), ComboBox("Combo box"), Date("Date picker"), Picture("Picture") }
+    enum class New(val label: String, @androidx.annotation.StringRes val res: Int) { PlainText("Plain text", R.string.words_cc_plain_text), RichText("Rich text", R.string.words_cc_rich_text), CheckBox("Check box", R.string.words_cc_check_box),
+        DropDown("Drop-down list", R.string.words_cc_drop_down_list), ComboBox("Combo box", R.string.words_cc_combo_box), Date("Date picker", R.string.words_cc_date_picker), Picture("Picture", R.string.words_picture) }
 
     /**
      * A new content control as Word writes one: its sdtPr ([title] as its title and tag; a list's [items]; a date's
@@ -175,10 +176,10 @@ internal fun FormBar(pr: String, text: String, w: Color, choosePicture: () -> Un
     var typing by remember { mutableStateOf(false) }
     val kind = Forms.kind(pr)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(Forms.name(pr) ?: when (kind) { Forms.Kind.Text -> "Text field"; Forms.Kind.List -> "Drop-down"; Forms.Kind.Date -> "Date"; Forms.Kind.Check -> "Check box"; Forms.Kind.Picture -> "Picture" },
+        Text(Forms.name(pr) ?: stringResource(when (kind) { Forms.Kind.Text -> R.string.words_text_field; Forms.Kind.List -> R.string.words_drop_down; Forms.Kind.Date -> R.string.words_date; Forms.Kind.Check -> R.string.words_cc_check_box; Forms.Kind.Picture -> R.string.words_picture }),
             color = w, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 6.dp))
         when (kind) {
-            Forms.Kind.Text -> TextButton(onClick = { typing = true }) { Text("Fill in", color = Color.White) }
+            Forms.Kind.Text -> TextButton(onClick = { typing = true }) { Text(stringResource(R.string.words_fill_in), color = Color.White) }
             Forms.Kind.List -> Forms.items(pr).forEach { item ->
                 TextButton(onClick = { fill(pr, item) }) { Text(item, color = if (item == text) Color(0xFF81C784) else Color.White) }
             }
@@ -186,21 +187,21 @@ internal fun FormBar(pr: String, text: String, w: Color, choosePicture: () -> Un
                 val d = Forms.date(pr) ?: LocalDate.now()
                 android.app.DatePickerDialog(context, { _, y, m, day -> LocalDate.of(y, m + 1, day).let { fill(Forms.dateTo(pr, it), Forms.dateText(pr, it)) } },
                     d.year, d.monthValue - 1, d.dayOfMonth).show()
-            }) { Text("Choose date", color = Color.White) }
-            Forms.Kind.Picture -> TextButton(onClick = choosePicture) { Text("Choose picture", color = Color.White) }
+            }) { Text(stringResource(R.string.words_choose_date), color = Color.White) }
+            Forms.Kind.Picture -> TextButton(onClick = choosePicture) { Text(stringResource(R.string.words_choose_picture), color = Color.White) }
             Forms.Kind.Check -> {
                 val on = Forms.checked(pr)
-                TextButton(onClick = { fill(Forms.checkedTo(pr, !on), Forms.box(pr, !on)) }) { Text(if (on) "Untick" else "Tick", color = Color.White) }
+                TextButton(onClick = { fill(Forms.checkedTo(pr, !on), Forms.box(pr, !on)) }) { Text(stringResource(if (on) R.string.words_untick else R.string.words_tick), color = Color.White, maxLines = 1) }
             }
         }
     }
     if (typing) {
         var value by remember { mutableStateOf(if ("w:showingPlcHdr" in pr) "" else text) }
         AlertDialog(onDismissRequest = { typing = false },
-            title = { Text(Forms.name(pr) ?: "Text field") },
+            title = { Text(Forms.name(pr) ?: stringResource(R.string.words_text_field)) },
             text = { OutlinedTextField(value, { value = it }, singleLine = tagOf(pr), modifier = Modifier.fillMaxWidth()) },
-            confirmButton = { TextButton(enabled = value.isNotEmpty(), onClick = { fill(pr, value); typing = false }) { Text("OK") } },
-            dismissButton = { TextButton(onClick = { typing = false }) { Text("Cancel") } })
+            confirmButton = { TextButton(enabled = value.isNotEmpty(), onClick = { fill(pr, value); typing = false }) { Text(stringResource(R.string.common_ok)) } },
+            dismissButton = { TextButton(onClick = { typing = false }) { Text(stringResource(R.string.common_cancel)) } })
     }
 }
 
@@ -217,20 +218,20 @@ internal fun ContentControlDialog(dismiss: () -> Unit, insert: (Forms.New, Strin
     var format by remember { mutableStateOf("d/M/yyyy") }
     val list = kind == Forms.New.DropDown || kind == Forms.New.ComboBox
     AlertDialog(onDismissRequest = dismiss,
-        title = { Text("Content control") },
+        title = { Text(stringResource(R.string.words_content_control)) },
         text = {
             androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
-                    Forms.New.entries.forEach { k -> Choice(k.label, kind == k) { kind = k } }
+                    Forms.New.entries.forEach { k -> Choice(stringResource(k.res), kind == k) { kind = k } }
                 }
-                OutlinedTextField(title, { title = it }, singleLine = true, label = { Text("Title (optional)") }, modifier = Modifier.fillMaxWidth())
-                if (list) OutlinedTextField(items, { items = it }, label = { Text("Choices, one per line") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(title, { title = it }, singleLine = true, label = { Text(stringResource(R.string.words_title_optional)) }, modifier = Modifier.fillMaxWidth())
+                if (list) OutlinedTextField(items, { items = it }, label = { Text(stringResource(R.string.words_choices_per_line)) }, minLines = 3, modifier = Modifier.fillMaxWidth())
                 if (kind == Forms.New.Date) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
                     listOf("d/M/yyyy", "dd/MM/yyyy", "d MMMM yyyy", "MMMM d, yyyy", "yyyy-MM-dd").forEach { f -> Choice(f, format == f) { format = f } }
                 }
-                Text("Filled in from the bar over the ribbon when the cursor is in it, as other forms are.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.words_cc_hint), style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(enabled = !list || items.isNotBlank(), onClick = { insert(kind, title, items.lines(), format) }) { Text("Insert") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(enabled = !list || items.isNotBlank(), onClick = { insert(kind, title, items.lines(), format) }) { Text(stringResource(R.string.words_insert)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }

@@ -180,8 +180,8 @@ internal fun IndentRuler(page: DocPage, perPt: Dp, pageX: Dp, indents: RulerInde
     }, drag ?: indents)
     drag?.let { d ->
         // While a mark moves, what it will be, in the chosen unit.
-        val v = when { d.firstLine != (indents?.firstLine ?: 0f) && d.left == indents?.left -> "First line ${WriterUnits.text(d.firstLine)}"
-            d.right != indents?.right -> "Right ${WriterUnits.text(d.right)}"; else -> "Left ${WriterUnits.text(d.left)}" }
+        val v = when { d.firstLine != (indents?.firstLine ?: 0f) && d.left == indents?.left -> stringResource(R.string.words_ruler_first_line, WriterUnits.text(d.firstLine))
+            d.right != indents?.right -> stringResource(R.string.words_ruler_right, WriterUnits.text(d.right)); else -> stringResource(R.string.words_ruler_left, WriterUnits.text(d.left)) }
         Text("$v ${WriterUnits.name}", color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.fillMaxWidth().background(RULER_BACK).padding(horizontal = 12.dp, vertical = 2.dp))
     }
 }

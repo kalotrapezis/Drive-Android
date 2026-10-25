@@ -57,22 +57,34 @@ import androidx.compose.ui.window.DialogProperties
  * Galleries in the ribbon's place (asked 15 Oct): Design's Style sets, Colours, Fonts, and Insert's WordArt, Page
  * numbers, Header & footer and Home's Multilevel list — pictures of their choices, each tapped shown on the page.
  */
-internal enum class DesignGallery(val title: String) {
-    StyleSets("Style sets"), Colours("Colours"), Fonts("Fonts"), WordArt("WordArt"), PageNumbers("Page numbers"),
-    HeaderFooter("Header & footer"), Lists("Multilevel list"), Font("Font"), DropCap("Drop cap"), LineNumbers("Line numbers")
+internal enum class DesignGallery(@androidx.annotation.StringRes val title: Int) {
+    StyleSets(R.string.words_style_sets), Colours(R.string.words_colours), Fonts(R.string.words_fonts), WordArt(R.string.words_wordart), PageNumbers(R.string.words_page_numbers),
+    HeaderFooter(R.string.words_header_footer), Lists(R.string.words_multilevel_list), Font(R.string.words_font), DropCap(R.string.words_drop_cap), LineNumbers(R.string.words_line_numbers)
 }
 
+/** [ThemeColors]' names as shown (Office's stay as they are). */
+internal fun themeColoursName(t: ThemeColors): Int? = when (t) {
+    ThemeColors.Blue -> R.string.words_theme_blue; ThemeColors.Green -> R.string.words_theme_green; ThemeColors.Red -> R.string.words_theme_red
+    ThemeColors.Violet -> R.string.words_theme_violet; ThemeColors.Grayscale -> R.string.words_theme_grayscale; else -> null
+}
+
+/** [TextWarp]'s names as shown. */
+@Composable internal fun warpName(w: TextWarp) = stringResource(when (w) {
+    TextWarp.ArchUp -> R.string.words_warp_arch_up; TextWarp.ArchDown -> R.string.words_warp_arch_down; TextWarp.Circle -> R.string.words_warp_circle
+    TextWarp.Wave -> R.string.words_warp_wave; TextWarp.SlantUp -> R.string.words_warp_slant_up; TextWarp.SlantDown -> R.string.words_warp_slant_down
+})
+
 /** Layout › Line numbers' choices (Word's; [mode] its restart, null none), cards as Insert › Page numbers' (the user, 18 Oct). */
-internal data class LineNumbering(val mode: String?, val label: String)
-internal val LINE_NUMBERINGS = listOf(LineNumbering(null, "None"), LineNumbering("continuous", "Continuous"), LineNumbering("newPage", "Restart each page"),
-    LineNumbering("newSection", "Restart each section"))
+internal data class LineNumbering(val mode: String?, @androidx.annotation.StringRes val label: Int)
+internal val LINE_NUMBERINGS = listOf(LineNumbering(null, R.string.common_none), LineNumbering("continuous", R.string.words_line_numbers_continuous), LineNumbering("newPage", R.string.words_line_numbers_each_page),
+    LineNumbering("newSection", R.string.words_line_numbers_each_section))
 
 /**
  * Insert › Drop cap's kinds (17 Oct, one strip for Words and Slides, each offering what its file can hold): none; dropped
  * beside the first lines; in the margin (Word's); raised on the first line, a bigger first letter (Slides': PowerPoint and
  * Impress have no drop cap, and every app shows a bigger letter).
  */
-internal enum class DropKind(val label: String) { None("None"), Dropped("Dropped"), Margin("In margin"), Raised("Raised") }
+internal enum class DropKind(@androidx.annotation.StringRes val label: Int) { None(R.string.common_none), Dropped(R.string.words_dropped), Margin(R.string.words_in_margin), Raised(R.string.words_raised) }
 
 /** Home › Font's gallery: a font chosen. */
 internal data class FontChoice(val name: String)
@@ -87,30 +99,30 @@ internal val ART_STYLES = listOf(0x4472C4, 0xED7D31, 0x70AD47, 0xFFC000, 0x00000
 internal data class ArtBend(val warp: TextWarp?)
 
 /** Where the page number goes and how it reads ([place] null: none). */
-internal data class NumberSpot(val label: String, val place: HeaderFooter.NumberPlace?, val align: DocAlign, val format: String = "#", val roman: Boolean = false) {
+internal data class NumberSpot(@androidx.annotation.StringRes val label: Int, val place: HeaderFooter.NumberPlace?, val align: DocAlign, val format: String = "#", val roman: Boolean = false) {
     fun on(hf: HeaderFooter) = hf.copy(number = place, numberAlign = align, numberFormat = format, roman = roman)
     /** How it reads on page 1 (of 3). */
     val shown get() = format.replace("#", if (roman) "i" else "1").replace("N", if (roman) "iii" else "3")
 }
 internal val NUMBER_SPOTS = listOf(
-    NumberSpot("Top left", HeaderFooter.NumberPlace.Header, DocAlign.Start), NumberSpot("Top centre", HeaderFooter.NumberPlace.Header, DocAlign.Center),
-    NumberSpot("Top right", HeaderFooter.NumberPlace.Header, DocAlign.End), NumberSpot("Bottom left", HeaderFooter.NumberPlace.Footer, DocAlign.Start),
-    NumberSpot("Bottom centre", HeaderFooter.NumberPlace.Footer, DocAlign.Center), NumberSpot("Bottom right", HeaderFooter.NumberPlace.Footer, DocAlign.End),
-    NumberSpot("Page 1 of 3", HeaderFooter.NumberPlace.Footer, DocAlign.Center, "Page # of N"), NumberSpot("1 / 3", HeaderFooter.NumberPlace.Footer, DocAlign.End, "# / N"),
+    NumberSpot(R.string.words_spot_top_left, HeaderFooter.NumberPlace.Header, DocAlign.Start), NumberSpot(R.string.words_spot_top_centre, HeaderFooter.NumberPlace.Header, DocAlign.Center),
+    NumberSpot(R.string.words_spot_top_right, HeaderFooter.NumberPlace.Header, DocAlign.End), NumberSpot(R.string.words_spot_bottom_left, HeaderFooter.NumberPlace.Footer, DocAlign.Start),
+    NumberSpot(R.string.words_spot_bottom_centre, HeaderFooter.NumberPlace.Footer, DocAlign.Center), NumberSpot(R.string.words_spot_bottom_right, HeaderFooter.NumberPlace.Footer, DocAlign.End),
+    NumberSpot(R.string.words_spot_page_1_of_3, HeaderFooter.NumberPlace.Footer, DocAlign.Center, "Page # of N"), NumberSpot(R.string.words_spot_one_slash_three, HeaderFooter.NumberPlace.Footer, DocAlign.End, "# / N"),
     // Roman (asked 15 Oct): a thesis's front matter, i, ii, iii.
-    NumberSpot("Bottom centre, i ii iii", HeaderFooter.NumberPlace.Footer, DocAlign.Center, roman = true), NumberSpot("Bottom right, i ii iii", HeaderFooter.NumberPlace.Footer, DocAlign.End, roman = true),
-    NumberSpot("None", null, DocAlign.End),
+    NumberSpot(R.string.words_spot_bottom_centre_roman, HeaderFooter.NumberPlace.Footer, DocAlign.Center, roman = true), NumberSpot(R.string.words_spot_bottom_right_roman, HeaderFooter.NumberPlace.Footer, DocAlign.End, roman = true),
+    NumberSpot(R.string.common_none, null, DocAlign.End),
 )
 
 /** A header-and-footer layout, filled with the document's [title]. */
-internal data class HeaderLayout(val label: String, val make: (HeaderFooter, String) -> HeaderFooter)
+internal data class HeaderLayout(@androidx.annotation.StringRes val label: Int, val make: (HeaderFooter, String) -> HeaderFooter)
 internal val HEADER_LAYOUTS = listOf(
-    HeaderLayout("Title, centred") { hf, t -> hf.copy(header = t, headerAlign = DocAlign.Center) },
-    HeaderLayout("Title left, page right") { hf, t -> hf.copy(header = t, headerAlign = DocAlign.Start, number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "#") },
-    HeaderLayout("Title right") { hf, t -> hf.copy(header = t, headerAlign = DocAlign.End) },
-    HeaderLayout("Title above, page below") { hf, t -> hf.copy(header = t, headerAlign = DocAlign.Center, number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.Center, numberFormat = "#") },
-    HeaderLayout("Book: outer edges") { hf, t -> hf.copy(header = t, headerAlign = DocAlign.End, number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.End, numberFormat = "#", oddEven = true, evenHeader = t) },
-    HeaderLayout("None") { _, _ -> HeaderFooter() },
+    HeaderLayout(R.string.words_layout_title_centred) { hf, t -> hf.copy(header = t, headerAlign = DocAlign.Center) },
+    HeaderLayout(R.string.words_layout_title_left_page_right) { hf, t -> hf.copy(header = t, headerAlign = DocAlign.Start, number = HeaderFooter.NumberPlace.Header, numberAlign = DocAlign.End, numberFormat = "#") },
+    HeaderLayout(R.string.words_layout_title_right) { hf, t -> hf.copy(header = t, headerAlign = DocAlign.End) },
+    HeaderLayout(R.string.words_layout_title_above_page_below) { hf, t -> hf.copy(header = t, headerAlign = DocAlign.Center, number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.Center, numberFormat = "#") },
+    HeaderLayout(R.string.words_layout_book_outer) { hf, t -> hf.copy(header = t, headerAlign = DocAlign.End, number = HeaderFooter.NumberPlace.Footer, numberAlign = DocAlign.End, numberFormat = "#", oddEven = true, evenHeader = t) },
+    HeaderLayout(R.string.common_none) { _, _ -> HeaderFooter() },
 )
 
 /** Home › Multilevel list: Word's everyday schemes, each level's (numFmt, lvlText). */
@@ -143,7 +155,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
     /** Drop cap: how many lines tall (the user, 17 Oct: a setting, as Word's "Lines to drop", 1–10, and LibreOffice's "Lines", 2–9) */
     dropLines: Int = 3, dropLinesChange: ((Int) -> Unit)? = null, lineModes: List<LineNumbering> = LINE_NUMBERINGS, schemes: List<ListScheme> = LIST_SCHEMES) {
     // the last card: a page of its own (Page numbers' "Your own…", Drop cap's "More…" as the user named it)
-    val moreLabel = if (what == DesignGallery.DropCap) "More…" else "Your own…"
+    val moreLabel = stringResource(if (what == DesignGallery.DropCap) R.string.common_more else R.string.words_your_own)
     fun c(rgb: Int) = Color(0xFF000000 or (rgb.toLong() and 0xFFFFFF))
     // The phone (asked 15 Oct): smaller cards, the head on its own line above them — and no keyboard over it.
     val phone = LocalConfiguration.current.screenWidthDp < 700
@@ -168,29 +180,29 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Icon(painterResource(R.drawable.ic_search), null, tint = w.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
         Box(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-            if (query.isEmpty()) Text("Search fonts", color = w.copy(alpha = 0.5f), style = MaterialTheme.typography.bodyMedium)
+            if (query.isEmpty()) Text(stringResource(R.string.words_search_fonts), color = w.copy(alpha = 0.5f), style = MaterialTheme.typography.bodyMedium)
             androidx.compose.foundation.text.BasicTextField(query, { query = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = w),
                 cursorBrush = androidx.compose.ui.graphics.SolidColor(w), modifier = Modifier.fillMaxWidth())
         }
-        if (query.isNotEmpty()) Icon(painterResource(R.drawable.ic_close), "Clear the search", tint = w, modifier = Modifier.size(18.dp).clickable { query = "" })
+        if (query.isNotEmpty()) Icon(painterResource(R.drawable.ic_close), stringResource(R.string.words_clear_search), tint = w, modifier = Modifier.size(18.dp).clickable { query = "" })
     }
     // Drop cap's lines: − n + beside the strip's name (on a phone, over the cards)
     @Composable fun lines(m: Modifier) = Row(m, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        Text("Lines", color = w, style = MaterialTheme.typography.labelLarge)
-        Tool(R.drawable.ic_remove, "Fewer lines", w, enabled = dropLines > 2) { dropLinesChange?.invoke(dropLines - 1) }
+        Text(stringResource(R.string.words_lines), color = w, maxLines = 1, style = MaterialTheme.typography.labelLarge)
+        Tool(R.drawable.ic_remove, stringResource(R.string.words_fewer_lines), w, enabled = dropLines > 2) { dropLinesChange?.invoke(dropLines - 1) }
         Text("$dropLines", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(22.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        Tool(R.drawable.ic_add, "More lines", w, enabled = dropLines < 10) { dropLinesChange?.invoke(dropLines + 1) }
+        Tool(R.drawable.ic_add, stringResource(R.string.words_more_lines), w, enabled = dropLines < 10) { dropLinesChange?.invoke(dropLines + 1) }
     }
     Column(modifier.fillMaxWidth().bottomBarPadding().imePadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
         // the head every strip has (the second walk, 18 Oct: one form): ‹ and the name first, × and ✓ at the end; a phone's on its own line
         Row(Modifier.fillMaxWidth().padding(horizontal = if (phone) 2.dp else 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            StripHead(what.title, w, cancel)
+            StripHead(stringResource(what.title), w, cancel)
             if (!phone && what == DesignGallery.Font) search(Modifier.width(320.dp))
             if (!phone && what == DesignGallery.DropCap && dropLinesChange != null) lines(Modifier.padding(start = 12.dp))
             Box(Modifier.weight(1f))
             RibbonTools {
-                Tool(R.drawable.ic_close, "Cancel", w) { cancel() }
-                Tool(R.drawable.ic_check, "OK", w, enabled = chosen != null) { ok() }
+                Tool(R.drawable.ic_close, stringResource(R.string.common_cancel), w) { cancel() }
+                Tool(R.drawable.ic_check, stringResource(R.string.common_ok), w, enabled = chosen != null) { ok() }
             }
         }
         if (phone && what == DesignGallery.Font) search(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp))
@@ -200,16 +212,16 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
         Row(Modifier.weight(1f).scrollShade(scroll).horizontalScroll(scroll).padding(horizontal = if (phone) 0.dp else 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(if (phone) 8.dp else 10.dp)) {
             when (what) {
                 // Each set as a small page: its title, a heading, a line of text, in their own looks.
-                DesignGallery.StyleSets -> StyleSet.entries.forEach { set -> card(chosen == set, click = { pick(set) }, set.label) {
+                DesignGallery.StyleSets -> StyleSet.entries.forEach { set -> card(chosen == set, click = { pick(set) }, stringResource(set.label)) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         fun look(n: String) = set.changes[n]
-                        look("Title")?.let { t -> Text("Title", style = face(t.font, 16, if (t.bold == true) FontWeight.Bold else FontWeight.Normal, t.italic == true, t.color?.takeIf { it >= 0 }?.let(::c) ?: Color(0xFF222222)), maxLines = 1) }
-                        look("Heading 1")?.let { h -> Text("Heading 1", style = face(h.font, 12, if (h.bold == true) FontWeight.Bold else FontWeight.Normal, h.italic == true, h.color?.takeIf { it >= 0 }?.let(::c) ?: Color(0xFF222222)), maxLines = 1) }
-                        look("Normal")?.let { n -> Text("Text of the paper.", style = face(n.font, 9, color = n.color?.takeIf { it >= 0 }?.let(::c) ?: Color(0xFF444444)), maxLines = 1) }
+                        look("Title")?.let { t -> Text(stringResource(R.string.words_style_title), style = face(t.font, 16, if (t.bold == true) FontWeight.Bold else FontWeight.Normal, t.italic == true, t.color?.takeIf { it >= 0 }?.let(::c) ?: Color(0xFF222222)), maxLines = 1) }
+                        look("Heading 1")?.let { h -> Text(stringResource(R.string.words_heading_1), style = face(h.font, 12, if (h.bold == true) FontWeight.Bold else FontWeight.Normal, h.italic == true, h.color?.takeIf { it >= 0 }?.let(::c) ?: Color(0xFF222222)), maxLines = 1) }
+                        look("Normal")?.let { n -> Text(stringResource(R.string.words_text_of_paper), style = face(n.font, 9, color = n.color?.takeIf { it >= 0 }?.let(::c) ?: Color(0xFF444444)), maxLines = 1) }
                     }
                 } }
                 // Each palette: its six accents as blocks, the dark and light beside them.
-                DesignGallery.Colours -> ThemeColors.entries.forEach { set -> card(chosen == set, click = { pick(set) }, set.label) {
+                DesignGallery.Colours -> ThemeColors.entries.forEach { set -> card(chosen == set, click = { pick(set) }, themeColoursName(set)?.let { stringResource(it) } ?: set.label) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp * k)) {
                         Row { set.accents.forEach { a -> Box(Modifier.size(21.dp * k, 30.dp * k).background(c(a))) } }
                         Row { listOf(set.dk2, set.lt2, set.link).forEach { a -> Box(Modifier.size(21.dp * k, 10.dp * k).background(c(a))) } }
@@ -232,7 +244,8 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                                 else if (a.shadow) androidx.compose.ui.graphics.Shadow(Color(0x99000000), androidx.compose.ui.geometry.Offset(4f, 4f), 3f) else null,
                             drawStyle = if (a.outline) androidx.compose.ui.graphics.drawscope.Stroke(3f) else null))
                     } }
-                    (listOf(null) + TextWarp.entries).forEach { warp -> card(bend == ArtBend(warp), click = { pick(ArtBend(warp)) }, warp?.label ?: "Straight") {
+                    val round = stringResource(R.string.words_round_and_round)
+                    (listOf(null) + TextWarp.entries).forEach { warp -> card(bend == ArtBend(warp), click = { pick(ArtBend(warp)) }, warp?.let { warpName(it) } ?: stringResource(R.string.words_straight)) {
                         androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
                             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF4472C4.toInt(); typeface = android.graphics.Typeface.DEFAULT_BOLD }
                             val w = size.width; val h = size.height * 0.8f
@@ -242,7 +255,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                                     val m = warp.letters(w, h); paint.textSize = m
                                     val path = android.graphics.Path(); warp.line(w, h, m).forEachIndexed { i, (x, y) -> if (i == 0) path.moveTo(x, y) else path.lineTo(x, y) }
                                     paint.textAlign = android.graphics.Paint.Align.CENTER
-                                    cv.nativeCanvas.drawTextOnPath(if (warp == TextWarp.Circle) "Round and round" else "Abcdefgh", path, 0f, 0f, paint)
+                                    cv.nativeCanvas.drawTextOnPath(if (warp == TextWarp.Circle) round else "Abcdefgh", path, 0f, 0f, paint)
                                 }
                             }
                         }
@@ -250,7 +263,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                 }
                 // Page numbers: a small page with the number where it goes.
                 // Drop cap: each kind a small paragraph showing it (asked 17 Oct: "a ribbon of cards with an example each")
-                DesignGallery.DropCap -> drops.forEach { kind -> card(chosen == kind, click = { pick(kind) }, kind.label) {
+                DesignGallery.DropCap -> drops.forEach { kind -> card(chosen == kind, click = { pick(kind) }, stringResource(kind.label)) {
                     val ink = Color(0xFF222222); val bar = Color(0xFFBDC1C6)
                     @Composable fun line(start: androidx.compose.ui.unit.Dp, width: Float = 1f) = Box(Modifier.padding(start = start).fillMaxWidth(width).height(5.dp * k).background(bar))
                     val big = TextStyle(fontFamily = OfficeFonts.family("Times New Roman"), fontSize = (38 * k).sp, lineHeight = (38 * k).sp, color = ink)
@@ -277,7 +290,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                     }
                 } }
                 // Line numbers: two small pages, the numbers in their margins as each choice counts them
-                DesignGallery.LineNumbers -> lineModes.forEach { ln -> card(chosen == ln, click = { pick(ln) }, ln.label) {
+                DesignGallery.LineNumbers -> lineModes.forEach { ln -> card(chosen == ln, click = { pick(ln) }, stringResource(ln.label)) {
                     val bar = Color(0xFFBDC1C6); val ink = Color(0xFF5F6368)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp * k)) { for (page in 0..1) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp * k)) {
                         for (i in 1..5) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -291,16 +304,16 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                     // No words under it (asked 15 Oct): the small page says where the number goes.
                     if (spot.place != null) MiniPage(header = if (spot.place == HeaderFooter.NumberPlace.Header) spot.shown to spot.align else null,
                         footer = if (spot.place == HeaderFooter.NumberPlace.Footer) spot.shown to spot.align else null, k = k)
-                    if (spot.place == null) Text(spot.label, modifier = Modifier.align(androidx.compose.ui.Alignment.Center), style = MaterialTheme.typography.labelLarge, color = Color(0xFF5F6368))
+                    if (spot.place == null) Text(stringResource(spot.label), modifier = Modifier.align(androidx.compose.ui.Alignment.Center), style = MaterialTheme.typography.labelLarge, color = Color(0xFF5F6368))
                 } }
                 // Headers and footers: a small page with the document's title and number where the layout puts them.
                 DesignGallery.HeaderFooter -> HEADER_LAYOUTS.forEach { layout -> card(chosen == layout, click = { pick(layout) }) {
                     // No words under it either: the small page shows the layout ("None" says so).
-                    val hf = layout.make(HeaderFooter(), title.ifBlank { "Title" })
+                    val hf = layout.make(HeaderFooter(), title.ifBlank { stringResource(R.string.words_title) })
                     fun num(at: HeaderFooter.NumberPlace) = if (hf.number == at) "1" to hf.numberAlign else null
                     if (layout != HEADER_LAYOUTS.last()) MiniPage(header = hf.header.takeIf { it.isNotEmpty() }?.let { it to hf.headerAlign } ?: num(HeaderFooter.NumberPlace.Header),
                         footer = num(HeaderFooter.NumberPlace.Footer), k = k, also = if (hf.header.isNotEmpty() && hf.number == HeaderFooter.NumberPlace.Header) "1" to hf.numberAlign else null)
-                    if (layout == HEADER_LAYOUTS.last()) Text(layout.label, modifier = Modifier.align(androidx.compose.ui.Alignment.Center), style = MaterialTheme.typography.labelLarge, color = Color(0xFF5F6368))
+                    if (layout == HEADER_LAYOUTS.last()) Text(stringResource(layout.label), modifier = Modifier.align(androidx.compose.ui.Alignment.Center), style = MaterialTheme.typography.labelLarge, color = Color(0xFF5F6368))
                 } }
                 // Fonts (asked 16 Oct: in the ribbon's place, as Page numbers): each written in itself, the one in use marked.
                 // then the phone's own fonts (asked 17 Oct), as WPS and LibreOffice on Android list them
@@ -308,10 +321,10 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
                     val phoneAll = remember(fonts) { OfficeFonts.phoneFamilies().filter { p -> fonts.none { it.equals(p, true) } } }
                     fun found(l: List<String>) = l.filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) }
                     val own = found(fonts); val phoneFonts = found(phoneAll)
-                    if (own.isEmpty() && phoneFonts.isEmpty()) Text("No font called “${query.trim()}”", color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium,
+                    if (own.isEmpty() && phoneFonts.isEmpty()) Text(stringResource(R.string.words_no_font_called, query.trim()), color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.align(androidx.compose.ui.Alignment.CenterVertically).padding(16.dp))
                     (own + phoneFonts).forEachIndexed { i, f ->
-                        if (i == own.size) Text("Phone\nfonts", color = w, style = MaterialTheme.typography.labelMedium, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterVertically))
+                        if (i == own.size) Text(stringResource(R.string.words_phone_fonts), color = w, style = MaterialTheme.typography.labelMedium, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterVertically))
                         card(chosen == FontChoice(f) || (chosen == null && f == now), click = { pick(FontChoice(f)) }, f) {
                             Column(Modifier.align(androidx.compose.ui.Alignment.Center), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
                                 Text("Aa Αα", style = face(f, 22), maxLines = 1)
@@ -334,7 +347,7 @@ internal fun DesignGalleryStrip(what: DesignGallery, chosen: Any?, cancel: () ->
             }
             // Its own words, in a window (the header's text, a format of one's own).
             if (more != null) Box(Modifier.width(110.dp * k).height(104.dp * k).clip(RoundedCornerShape(12.dp)).background(Color(0xFF2A2E30)).clickable(onClick = more).padding(10.dp * k),
-                contentAlignment = androidx.compose.ui.Alignment.Center) { Text(moreLabel, color = w, style = MaterialTheme.typography.labelLarge) }
+                contentAlignment = androidx.compose.ui.Alignment.Center) { Text(moreLabel, color = w, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
         }
     }
@@ -354,7 +367,7 @@ private fun StripDialog(title: String, dismiss: () -> Unit, cards: @Composable a
         Box(Modifier.fillMaxWidth().fillMaxHeight(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
             Column(Modifier.fillMaxWidth().bottomBarPadding().padding(if (phone) 6.dp else 12.dp).clip(MaterialTheme.shapes.extraLarge).background(Color(0xFF16191A)).padding(vertical = 6.dp)) {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    IconButton(onClick = dismiss) { Icon(painterResource(R.drawable.ic_close), "Close", tint = Color.White) }
+                    IconButton(onClick = dismiss) { Icon(painterResource(R.drawable.ic_close), stringResource(R.string.common_close), tint = Color.White) }
                     Text(title, color = Color.White, style = MaterialTheme.typography.titleSmall)
                 }
                 val scroll = androidx.compose.foundation.rememberScrollState()
@@ -369,7 +382,7 @@ private fun StripDialog(title: String, dismiss: () -> Unit, cards: @Composable a
 private fun StripCard(title: String, on: Boolean = false, click: () -> Unit, body: @Composable () -> Unit) {
     val k = if (LocalConfiguration.current.screenWidthDp < 700) 0.8f else 1f
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title + if (on) "  ✓" else "", color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, modifier = Modifier.padding(start = 4.dp))
+        Text(title + if (on) "  ✓" else "", color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 4.dp))
         Column(Modifier.width(210.dp * k).height(96.dp * k).clip(RoundedCornerShape(12.dp)).background(Color.White)
             .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33888888), RoundedCornerShape(12.dp))
             .clickable(onClick = click).padding(10.dp * k), verticalArrangement = Arrangement.spacedBy(4.dp)) { body() }
@@ -395,7 +408,7 @@ private fun CiteStyleCards(cite: CiteStyle, styles: List<CiteStyle>, pick: (Cite
 /** References › Style as a strip in the ribbon's place (asked 16 Oct: it was a list of names): each style's example, picked, the ribbon back. */
 @Composable
 internal fun CiteStyleStrip(cite: CiteStyle, styles: List<CiteStyle>, dismiss: () -> Unit, pick: (CiteStyle) -> Unit) =
-    StripDialog("Citation style", dismiss) { CiteStyleCards(cite, styles, pick) }
+    StripDialog(stringResource(R.string.words_citation_style), dismiss) { CiteStyleCards(cite, styles, pick) }
 
 /**
  * Design › Standards as a strip in the ribbon's place, as Font's and Page numbers' (asked 16 Oct): APA 7's paper, its
@@ -403,13 +416,14 @@ internal fun CiteStyleStrip(cite: CiteStyle, styles: List<CiteStyle>, dismiss: (
  */
 @Composable
 internal fun StandardsDialog(cite: CiteStyle, dismiss: () -> Unit, paper: () -> Unit, runIn: (Int) -> Unit, citeStyle: (CiteStyle) -> Unit, styles: List<CiteStyle> = CiteStyle.entries) =
-    StripDialog("Standards", dismiss) {
+    StripDialog(stringResource(R.string.words_standards), dismiss) {
         val ink = stripInk()
-        StripCard("APA 7 paper", click = paper) { Text("Times New Roman 12, double spacing, 1-inch margins, page numbers; title page, abstract, running head", style = ink) }
-        for ((level, italic) in listOf(4 to false, 5 to true)) StripCard("Heading level $level", click = { runIn(level) }) {
+        val results = stringResource(R.string.words_runin_sample_heading); val runsOn = stringResource(R.string.words_runin_sample_text)
+        StripCard(stringResource(R.string.words_apa_paper), click = paper) { Text(stringResource(R.string.words_apa_paper_about), style = ink) }
+        for ((level, italic) in listOf(4 to false, 5 to true)) StripCard(stringResource(R.string.words_heading_level_n, level), click = { runIn(level) }) {
             Text(androidx.compose.ui.text.buildAnnotatedString {
-                withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold, fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal)) { append("    Results of the test. ") }
-                append("The text runs on after the heading, in the same paragraph.")
+                withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold, fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal)) { append(results) }
+                append(runsOn)
             }, style = ink)
         }
         Box(Modifier.padding(top = 22.dp).width(1.dp).height(100.dp).background(Color.White.copy(alpha = 0.3f)))

@@ -69,16 +69,16 @@ internal fun TableSplitDialog(start: Pair<Int, Int>, dismiss: () -> Unit, split:
     var rows by remember { mutableIntStateOf(start.second) }
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("Split cell") },
+        title = { Text(stringResource(R.string.words_split_cell)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Stepper("Columns", columns, 1..10) { columns = it }
-                Stepper("Rows", rows, 1..10) { rows = it }
-                Text("Its text stays in the first new cell.", style = MaterialTheme.typography.bodySmall)
+                Stepper(stringResource(R.string.words_columns), columns, 1..10) { columns = it }
+                Stepper(stringResource(R.string.words_rows), rows, 1..10) { rows = it }
+                Text(stringResource(R.string.words_split_text_stays), style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(enabled = columns * rows > 1, onClick = { split(columns, rows) }) { Text("Split") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(enabled = columns * rows > 1, onClick = { split(columns, rows) }) { Text(stringResource(R.string.words_split)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -90,7 +90,7 @@ internal fun TableSplitDialog(start: Pair<Int, Int>, dismiss: () -> Unit, split:
         TextButton(enabled = value < range.last, onClick = { set(value + 1) }) { Text("+", style = MaterialTheme.typography.titleLarge) }
     }
 
-private enum class PropTab(val label: String) { Table("Table"), Row("Row"), Column("Column"), Cell("Cell"), Borders("Borders") }
+private enum class PropTab(@androidx.annotation.StringRes val label: Int) { Table(R.string.words_table), Row(R.string.words_row), Column(R.string.words_column), Cell(R.string.words_cell), Borders(R.string.words_borders) }
 
 /**
  * Everything else about a table (asked 2026-09-28: the ribbon keeps the everyday tools, ⋯ opens the rest, in tabs by
@@ -107,56 +107,56 @@ internal fun TablePropertiesDialog(table: DocTable, row: Int, cell: Int, dismiss
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Table properties", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.words_table_properties), style = MaterialTheme.typography.titleLarge)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    PropTab.entries.forEach { t -> Choice(t.label, tab == t) { tab = t } }
+                    PropTab.entries.forEach { t -> Choice(stringResource(t.label), tab == t) { tab = t } }
                 }
                 Column(Modifier.weight(1f).fillMaxWidth().shadedScroll(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     when (tab) {
                         PropTab.Table -> {
-                            Section("Alignment on the page") {
-                                listOf("left" to "Left", "center" to "Centre", "right" to "Right").forEach { (v, l) ->
+                            Section(stringResource(R.string.words_alignment_on_page)) {
+                                listOf("left" to stringResource(R.string.words_left), "center" to stringResource(R.string.words_centre), "right" to stringResource(R.string.words_right)).forEach { (v, l) ->
                                     Choice(l, TableEdit.align(draft) == v) { draft = TableEdit.withAlign(draft, v) }
                                 }
                             }
-                            Section("Style") {
+                            Section(stringResource(R.string.words_style)) {
                                 TableEdit.LOOKS.forEach { look -> LookChip(look) { draft = TableEdit.withLook(draft, look) } }
                             }
                         }
                         PropTab.Row -> {
                             val props = draft.rows[r].props
                             val height = TableEdit.rowHeight(props)
-                            Section("Height of row ${r + 1}") {
-                                Choice("As its text", height == null) { draft = rowSet(draft, r) { TableEdit.withRowHeight(it, null, "atLeast") } }
-                                Choice("At least", height?.second == "atLeast") { draft = rowSet(draft, r) { TableEdit.withRowHeight(it, height?.first ?: 20f, "atLeast") } }
-                                Choice("Exactly", height?.second == "exact") { draft = rowSet(draft, r) { TableEdit.withRowHeight(it, height?.first ?: 20f, "exact") } }
+                            Section(stringResource(R.string.words_row_height_n, r + 1)) {
+                                Choice(stringResource(R.string.words_as_its_text), height == null) { draft = rowSet(draft, r) { TableEdit.withRowHeight(it, null, "atLeast") } }
+                                Choice(stringResource(R.string.words_at_least), height?.second == "atLeast") { draft = rowSet(draft, r) { TableEdit.withRowHeight(it, height?.first ?: 20f, "atLeast") } }
+                                Choice(stringResource(R.string.words_exactly), height?.second == "exact") { draft = rowSet(draft, r) { TableEdit.withRowHeight(it, height?.first ?: 20f, "exact") } }
                             }
-                            if (height != null) CmField("Height", height.first) { pt -> draft = rowSet(draft, r) { TableEdit.withRowHeight(it, pt, height.second) } }
-                            Toggle("Repeat as header row at the top of each page", TableEdit.isHeader(props)) { on -> draft = rowSet(draft, r) { TableEdit.withHeader(it, on) } }
-                            Toggle("Keep the row on one page", TableEdit.keepsTogether(props)) { on -> draft = rowSet(draft, r) { TableEdit.withKeepTogether(it, on) } }
+                            if (height != null) CmField(stringResource(R.string.words_height), height.first) { pt -> draft = rowSet(draft, r) { TableEdit.withRowHeight(it, pt, height.second) } }
+                            Toggle(stringResource(R.string.words_repeat_header_row), TableEdit.isHeader(props)) { on -> draft = rowSet(draft, r) { TableEdit.withHeader(it, on) } }
+                            Toggle(stringResource(R.string.words_keep_row_together), TableEdit.keepsTogether(props)) { on -> draft = rowSet(draft, r) { TableEdit.withKeepTogether(it, on) } }
                         }
                         PropTab.Column -> {
                             val width = TableEdit.columnWidth(draft, r, c)
-                            if (width == null) Text("This table does not say how wide its columns are.")
+                            if (width == null) Text(stringResource(R.string.words_no_column_widths))
                             else {
-                                CmField("Width of this column", width) { pt -> draft = TableEdit.withColumnWidth(draft, r, c, pt) }
-                                Text("The other columns share what it gives or takes, so the table keeps its width.", style = MaterialTheme.typography.bodySmall)
+                                CmField(stringResource(R.string.words_column_width), width) { pt -> draft = TableEdit.withColumnWidth(draft, r, c, pt) }
+                                Text(stringResource(R.string.words_column_width_hint), style = MaterialTheme.typography.bodySmall)
                             }
                         }
                         PropTab.Cell -> if (here != null) {
                             val whole = TableEdit.wholeCell(draft, r, c)
                             fun set(f: (String) -> String) { draft = TableEdit.withCells(draft, whole) { it.copy(props = f(it.props)) } }
-                            Section("Text in the cell") {
-                                listOf("top" to "Top", "center" to "Centre", "bottom" to "Bottom").forEach { (v, l) ->
+                            Section(stringResource(R.string.words_text_in_cell)) {
+                                listOf("top" to stringResource(R.string.words_top), "center" to stringResource(R.string.words_centre), "bottom" to stringResource(R.string.words_bottom)).forEach { (v, l) ->
                                     Choice(l, TableEdit.vAlign(here.props) == v) { set { p -> TableEdit.withVAlign(p, v) } }
                                 }
                             }
-                            Section("Direction") {
-                                listOf(null to "Across", "btLr" to "Upwards", "tbRl" to "Downwards").forEach { (v, l) ->
+                            Section(stringResource(R.string.words_direction)) {
+                                listOf(null to stringResource(R.string.words_across), "btLr" to stringResource(R.string.words_upwards), "tbRl" to stringResource(R.string.words_downwards)).forEach { (v, l) ->
                                     Choice(l, TableEdit.textDirection(here.props) == v) { set { p -> TableEdit.withTextDirection(p, v) } }
                                 }
                             }
-                            Section("Shading") {
+                            Section(stringResource(R.string.words_shading)) {
                                 ColorDots(TableEdit.shading(here.props)) { fill -> set { p -> TableEdit.withShading(p, fill) } }
                             }
                         }
@@ -164,29 +164,29 @@ internal fun TablePropertiesDialog(table: DocTable, row: Int, cell: Int, dismiss
                             var color by remember { mutableIntStateOf(0x000000) }
                             var sz by remember { mutableIntStateOf(4) }
                             val line = TableEdit.Line(color, sz)
-                            Section("Whole table") {
-                                Choice("All lines", false) { draft = TableEdit.withTableBorders(draft, line, line) }
-                                Choice("Outside only", false) { draft = TableEdit.withTableBorders(draft, line, null) }
-                                Choice("Rows only", false) { draft = TableEdit.withTableBorders(draft, line, line, insideV = false) }
-                                Choice("No lines", false) { draft = TableEdit.withTableBorders(draft, null, null) }
+                            Section(stringResource(R.string.words_whole_table)) {
+                                Choice(stringResource(R.string.words_all_lines), false) { draft = TableEdit.withTableBorders(draft, line, line) }
+                                Choice(stringResource(R.string.words_outside_only), false) { draft = TableEdit.withTableBorders(draft, line, null) }
+                                Choice(stringResource(R.string.words_rows_only), false) { draft = TableEdit.withTableBorders(draft, line, line, insideV = false) }
+                                Choice(stringResource(R.string.words_no_lines), false) { draft = TableEdit.withTableBorders(draft, null, null) }
                             }
-                            Section("This cell") {
+                            Section(stringResource(R.string.words_this_cell)) {
                                 val whole = TableEdit.wholeCell(draft, r, c)
-                                Choice("Box", false) { draft = TableEdit.withCells(draft, whole) { it.copy(props = TableEdit.withCellBorders(it.props, line)) } }
-                                Choice("No lines", false) { draft = TableEdit.withCells(draft, whole) { it.copy(props = TableEdit.withCellBorders(it.props, null)) } }
-                                Choice("As the table", false) { draft = TableEdit.withCells(draft, whole) { it.copy(props = TableEdit.cellProp(it.props, "tcBorders", null)) } }
+                                Choice(stringResource(R.string.words_box), false) { draft = TableEdit.withCells(draft, whole) { it.copy(props = TableEdit.withCellBorders(it.props, line)) } }
+                                Choice(stringResource(R.string.words_no_lines), false) { draft = TableEdit.withCells(draft, whole) { it.copy(props = TableEdit.withCellBorders(it.props, null)) } }
+                                Choice(stringResource(R.string.words_as_the_table), false) { draft = TableEdit.withCells(draft, whole) { it.copy(props = TableEdit.cellProp(it.props, "tcBorders", null)) } }
                             }
-                            Section("Line colour") { ColorDots(color, none = false) { color = it ?: 0 } }
-                            Section("Line width") {
+                            Section(stringResource(R.string.words_line_colour)) { ColorDots(color, none = false) { color = it ?: 0 } }
+                            Section(stringResource(R.string.words_line_width)) {
                                 listOf(2 to "¼ pt", 4 to "½ pt", 8 to "1 pt", 12 to "1½ pt", 18 to "2¼ pt").forEach { (v, l) -> Choice(l, sz == v) { sz = v } }
                             }
-                            Text("Pick the colour and width first, then which lines.", style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.words_borders_hint), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = dismiss) { Text("Cancel") }
-                    TextButton(onClick = { apply(draft) }) { Text("OK") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
+                    TextButton(onClick = { apply(draft) }) { Text(stringResource(R.string.common_ok)) }
                 }
             }
         }
@@ -208,46 +208,46 @@ internal fun ParagraphDialog(look: ParaLook, dismiss: () -> Unit, style: String?
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Paragraph", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.words_paragraph), style = MaterialTheme.typography.titleLarge)
                 // what it will look like, in sight while the choices below scroll (asked 16 Oct: a preview)
                 ParagraphPreview(draft, draft.box, Modifier.padding(top = 10.dp))
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Section("Line spacing") {
+                    Section(stringResource(R.string.words_line_spacing)) {
                         LINE_SPACINGS.forEach { m ->
                             Choice(plain(m), draft.lineExact == null && kotlin.math.abs(draft.lineMultiple - m) < 0.01f) {
                                 draft = draft.copy(lineMultiple = m, lineExact = null, lineAtLeast = false)
                             }
                         }
                         // What the paragraph has when it is none of these (Word's 1.08, an exact height): shown, and back with a tap.
-                        val own = look.lineExact?.let { "${if (look.lineAtLeast) "At least" else "Exactly"} ${plain(Math.round(it * 10) / 10f)} pt" }
+                        val own = look.lineExact?.let { stringResource(if (look.lineAtLeast) R.string.words_at_least_pt else R.string.words_exactly_pt, plain(Math.round(it * 10) / 10f)) }
                             ?: plain(Math.round(look.lineMultiple * 100) / 100f).takeIf { LINE_SPACINGS.none { m -> kotlin.math.abs(look.lineMultiple - m) < 0.01f } }
                         own?.let { Choice(it, draft.lineExact == look.lineExact && draft.lineAtLeast == look.lineAtLeast && draft.lineMultiple == look.lineMultiple) {
                             draft = draft.copy(lineMultiple = look.lineMultiple, lineExact = look.lineExact, lineAtLeast = look.lineAtLeast)
                         } }
                     }
-                    Section("Space between paragraphs") {
-                        PtField("Before", draft.before) { draft = draft.copy(before = it) }
-                        PtField("After", draft.after) { draft = draft.copy(after = it) }
+                    Section(stringResource(R.string.words_space_between)) {
+                        PtField(stringResource(R.string.words_before), draft.before) { draft = draft.copy(before = it) }
+                        PtField(stringResource(R.string.words_after), draft.after) { draft = draft.copy(after = it) }
                     }
-                    Section("Indent") {
-                        CmField("Left", draft.left, least = 0f) { draft = draft.copy(left = it) }
-                        CmField("Right", draft.right, least = 0f) { draft = draft.copy(right = it) }
+                    Section(stringResource(R.string.words_indent)) {
+                        CmField(stringResource(R.string.words_left), draft.left, least = 0f) { draft = draft.copy(left = it) }
+                        CmField(stringResource(R.string.words_right), draft.right, least = 0f) { draft = draft.copy(right = it) }
                     }
-                    Section("First line") {
-                        Choice("None", draft.firstLine == 0f) { draft = draft.copy(firstLine = 0f) }
-                        Choice("Indented", draft.firstLine > 0f) { draft = draft.copy(firstLine = if (draft.firstLine > 0f) draft.firstLine else 1.25f * CM) }
-                        Choice("Hanging", draft.firstLine < 0f) { draft = draft.copy(firstLine = if (draft.firstLine < 0f) draft.firstLine else -1.25f * CM) }
+                    Section(stringResource(R.string.words_first_line)) {
+                        Choice(stringResource(R.string.common_none), draft.firstLine == 0f) { draft = draft.copy(firstLine = 0f) }
+                        Choice(stringResource(R.string.words_indented), draft.firstLine > 0f) { draft = draft.copy(firstLine = if (draft.firstLine > 0f) draft.firstLine else 1.25f * CM) }
+                        Choice(stringResource(R.string.words_hanging), draft.firstLine < 0f) { draft = draft.copy(firstLine = if (draft.firstLine < 0f) draft.firstLine else -1.25f * CM) }
                     }
-                    if (draft.firstLine != 0f) CmField(if (draft.firstLine > 0f) "Indented by" else "Hanging by", kotlin.math.abs(draft.firstLine)) { v ->
+                    if (draft.firstLine != 0f) CmField(stringResource(if (draft.firstLine > 0f) R.string.words_indented_by else R.string.words_hanging_by), kotlin.math.abs(draft.firstLine)) { v ->
                         draft = draft.copy(firstLine = if (draft.firstLine < 0f) -v else v)
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Word's Modify Style from here: the style itself changed, so every paragraph in it follows
-                    if (editStyle != null && style != null) TextButton(onClick = editStyle) { Text("Edit style “$style”", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                    if (editStyle != null && style != null) TextButton(onClick = editStyle) { Text(stringResource(R.string.words_edit_style, style), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = dismiss) { Text("Cancel") }
-                    TextButton(onClick = { apply(draft) }) { Text("OK") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
+                    TextButton(onClick = { apply(draft) }) { Text(stringResource(R.string.common_ok)) }
                 }
             }
         }
@@ -315,29 +315,29 @@ internal fun BordersDialog(look: ParaLook, dismiss: () -> Unit, line: () -> Unit
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Borders", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.words_borders), style = MaterialTheme.typography.titleLarge)
                 ParagraphPreview(look, box, Modifier.padding(top = 10.dp))
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Section("Sides") {
-                        Choice("Top", box.top != null) { box = box.copy(top = if (box.top == null) pen else null) }
-                        Choice("Bottom", box.bottom != null) { box = box.copy(bottom = if (box.bottom == null) pen else null) }
-                        Choice("Left", box.left != null) { box = box.copy(left = if (box.left == null) pen else null) }
-                        Choice("Right", box.right != null) { box = box.copy(right = if (box.right == null) pen else null) }
-                        Choice("Between", box.between != null) { box = box.copy(between = if (box.between == null) pen else null) }
+                    Section(stringResource(R.string.words_sides)) {
+                        Choice(stringResource(R.string.words_top), box.top != null) { box = box.copy(top = if (box.top == null) pen else null) }
+                        Choice(stringResource(R.string.words_bottom), box.bottom != null) { box = box.copy(bottom = if (box.bottom == null) pen else null) }
+                        Choice(stringResource(R.string.words_left), box.left != null) { box = box.copy(left = if (box.left == null) pen else null) }
+                        Choice(stringResource(R.string.words_right), box.right != null) { box = box.copy(right = if (box.right == null) pen else null) }
+                        Choice(stringResource(R.string.words_between), box.between != null) { box = box.copy(between = if (box.between == null) pen else null) }
                     }
-                    Section("All at once") {
-                        Choice("Box", box.top != null && box.bottom != null && box.left != null && box.right != null && box.between == null) { box = ParaBox(top = pen, left = pen, bottom = pen, right = pen) }
-                        Choice("All", box.between != null && box.top != null && box.left != null) { box = ParaBox(top = pen, left = pen, bottom = pen, right = pen, between = pen) }
-                        Choice("None", box.isEmpty) { box = ParaBox() }
+                    Section(stringResource(R.string.words_all_at_once)) {
+                        Choice(stringResource(R.string.words_box), box.top != null && box.bottom != null && box.left != null && box.right != null && box.between == null) { box = ParaBox(top = pen, left = pen, bottom = pen, right = pen) }
+                        Choice(stringResource(R.string.common_all), box.between != null && box.top != null && box.left != null) { box = ParaBox(top = pen, left = pen, bottom = pen, right = pen, between = pen) }
+                        Choice(stringResource(R.string.common_none), box.isEmpty) { box = ParaBox() }
                     }
-                    Section("Line") {
-                        for ((label, st) in listOf("Solid" to "single", "Double" to "double", "Dotted" to "dotted", "Dashed" to "dashed"))
+                    Section(stringResource(R.string.words_line)) {
+                        for ((label, st) in listOf(stringResource(R.string.words_line_solid) to "single", stringResource(R.string.words_line_double) to "double", stringResource(R.string.words_line_dotted) to "dotted", stringResource(R.string.words_line_dashed) to "dashed"))
                             Choice(label, pen.style == st) { restyle(pen.copy(style = st, width = if (st == "double") maxOf(pen.width, 1.5f) else pen.width)) }
                     }
-                    Section("Thickness") {
-                        for ((label, pt) in listOf("Thin" to 0.5f, "Medium" to 1.5f, "Thick" to 3f)) Choice(label, pen.width == pt) { restyle(pen.copy(width = pt)) }
+                    Section(stringResource(R.string.words_thickness)) {
+                        for ((label, pt) in listOf(stringResource(R.string.words_thin) to 0.5f, stringResource(R.string.words_medium) to 1.5f, stringResource(R.string.words_thick) to 3f)) Choice(label, pen.width == pt) { restyle(pen.copy(width = pt)) }
                     }
-                    Section("Colour") {
+                    Section(stringResource(R.string.words_colour)) {
                         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             for (c in listOf(0x000000, 0x7F7F7F, 0xC00000, 0xED7D31, 0xFFC000, 0x70AD47, 0x4472C4, 0x2F5496, 0x7030A0)) {
                                 val on = (pen.color and 0xFFFFFF) == c
@@ -349,10 +349,10 @@ internal fun BordersDialog(look: ParaLook, dismiss: () -> Unit, line: () -> Unit
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = line) { Text("Horizontal line") }
+                    TextButton(onClick = line) { Text(stringResource(R.string.words_horizontal_line)) }
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = dismiss) { Text("Cancel") }
-                    TextButton(onClick = { apply(box) }) { Text("OK") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
+                    TextButton(onClick = { apply(box) }) { Text(stringResource(R.string.common_ok)) }
                 }
             }
         }
@@ -374,55 +374,55 @@ internal fun StyleDialog(entry: StyleEntry, look: ParaLook, basePt: Float, dismi
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Style: ${entry.name}", style = MaterialTheme.typography.titleLarge)
-                Text("Every paragraph in this style changes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.words_style_named, entry.name), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.words_style_changes_all), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ParagraphPreview(d, d.box, Modifier.padding(top = 10.dp))
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Section("Font") {
+                    Section(stringResource(R.string.words_font)) {
                         (STYLE_FONTS + listOfNotNull(d.font?.takeIf { f -> STYLE_FONTS.none { it.equals(f, true) } })).forEach { f -> Choice(f, d.font.equals(f, true)) { d = d.copy(font = f) } }
                     }
-                    Section("Size and look") {
-                        PtField("Size", d.sizePt ?: basePt) { if (it >= 1f) d = d.copy(sizePt = it) }
-                        Choice("Bold", d.bold == true) { d = d.copy(bold = d.bold != true) }
-                        Choice("Italic", d.italic == true) { d = d.copy(italic = d.italic != true) }
+                    Section(stringResource(R.string.words_size_and_look)) {
+                        PtField(stringResource(R.string.words_size), d.sizePt ?: basePt) { if (it >= 1f) d = d.copy(sizePt = it) }
+                        Choice(stringResource(R.string.words_bold), d.bold == true) { d = d.copy(bold = d.bold != true) }
+                        Choice(stringResource(R.string.words_italic), d.italic == true) { d = d.copy(italic = d.italic != true) }
                     }
-                    Section("Colour") {
-                        Choice("Automatic", d.color == null) { d = d.copy(color = null) }
+                    Section(stringResource(R.string.words_colour)) {
+                        Choice(stringResource(R.string.words_automatic), d.color == null) { d = d.copy(color = null) }
                         STYLE_COLORS.forEach { c ->
                             Box(Modifier.size(34.dp).clip(CircleShape).background(Color(0xFF000000 or c.toLong()))
                                 .border(if (d.color == c) 3.dp else 1.dp, if (d.color == c) MaterialTheme.colorScheme.primary else Color(0x55888888), CircleShape)
                                 .clickable { d = d.copy(color = c) })
                         }
                     }
-                    Section("Alignment") {
-                        listOf(DocAlign.Start to "Left", DocAlign.Center to "Centre", DocAlign.End to "Right", DocAlign.Justify to "Justify").forEach { (a, l) -> Choice(l, d.align == a) { d = d.copy(align = a) } }
+                    Section(stringResource(R.string.words_alignment)) {
+                        listOf(DocAlign.Start to stringResource(R.string.words_left), DocAlign.Center to stringResource(R.string.words_centre), DocAlign.End to stringResource(R.string.words_right), DocAlign.Justify to stringResource(R.string.words_justify)).forEach { (a, l) -> Choice(l, d.align == a) { d = d.copy(align = a) } }
                     }
-                    Section("Line spacing") {
+                    Section(stringResource(R.string.words_line_spacing)) {
                         LINE_SPACINGS.forEach { m -> Choice(plain(m), d.lineExact == null && kotlin.math.abs(d.lineMultiple - m) < 0.01f) { d = d.copy(lineMultiple = m, lineExact = null) } }
                         if (look.lineExact == null && LINE_SPACINGS.none { kotlin.math.abs(look.lineMultiple - it) < 0.01f })
                             Choice(plain(Math.round(look.lineMultiple * 100) / 100f), d.lineExact == null && d.lineMultiple == look.lineMultiple) { d = d.copy(lineMultiple = look.lineMultiple) }
                     }
-                    Section("Space between paragraphs") {
-                        PtField("Before", d.before) { d = d.copy(before = it) }
-                        PtField("After", d.after) { d = d.copy(after = it) }
+                    Section(stringResource(R.string.words_space_between)) {
+                        PtField(stringResource(R.string.words_before), d.before) { d = d.copy(before = it) }
+                        PtField(stringResource(R.string.words_after), d.after) { d = d.copy(after = it) }
                     }
-                    Section("Indent") {
-                        CmField("Left", d.left, least = 0f) { d = d.copy(left = it) }
-                        Choice("First line: none", d.firstLine == 0f) { d = d.copy(firstLine = 0f) }
-                        Choice("Indented", d.firstLine > 0f) { d = d.copy(firstLine = if (d.firstLine > 0f) d.firstLine else 1.25f * CM) }
-                        Choice("Hanging", d.firstLine < 0f) { d = d.copy(firstLine = if (d.firstLine < 0f) d.firstLine else -1.25f * CM) }
+                    Section(stringResource(R.string.words_indent)) {
+                        CmField(stringResource(R.string.words_left), d.left, least = 0f) { d = d.copy(left = it) }
+                        Choice(stringResource(R.string.words_first_line_none), d.firstLine == 0f) { d = d.copy(firstLine = 0f) }
+                        Choice(stringResource(R.string.words_indented), d.firstLine > 0f) { d = d.copy(firstLine = if (d.firstLine > 0f) d.firstLine else 1.25f * CM) }
+                        Choice(stringResource(R.string.words_hanging), d.firstLine < 0f) { d = d.copy(firstLine = if (d.firstLine < 0f) d.firstLine else -1.25f * CM) }
                     }
-                    if (d.firstLine != 0f) CmField(if (d.firstLine > 0f) "Indented by" else "Hanging by", kotlin.math.abs(d.firstLine)) { v -> d = d.copy(firstLine = if (d.firstLine < 0f) -v else v) }
+                    if (d.firstLine != 0f) CmField(stringResource(if (d.firstLine > 0f) R.string.words_indented_by else R.string.words_hanging_by), kotlin.math.abs(d.firstLine)) { v -> d = d.copy(firstLine = if (d.firstLine < 0f) -v else v) }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = dismiss) { Text("Cancel") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
                     TextButton(onClick = {
                         fun <T> changed(a: T, b: T) = b.takeIf { it != a }
                         apply(StyleChange(font = changed(look.font, d.font), sizePt = changed(look.sizePt ?: basePt, d.sizePt), bold = changed(look.bold == true, d.bold == true),
                             italic = changed(look.italic == true, d.italic == true), color = if (d.color != look.color) d.color ?: -1 else null,
                             align = changed(look.align ?: DocAlign.Start, d.align), line = d.lineMultiple.takeIf { d.lineExact == null && (look.lineExact != null || it != look.lineMultiple) },
                             before = changed(look.before, d.before), after = changed(look.after, d.after), left = changed(look.left, d.left), firstLine = changed(look.firstLine, d.firstLine)))
-                    }) { Text("OK") }
+                    }) { Text(stringResource(R.string.common_ok)) }
                 }
             }
         }
@@ -438,39 +438,39 @@ internal fun HeaderFooterDialog(now: HeaderFooter, rich: Boolean, dismiss: () ->
     var d by remember { mutableStateOf(now) }
     // Several lines each (Enter): the first carries the page number.
     @Composable fun aligns(on: DocAlign, set: (DocAlign) -> Unit) =
-        listOf(DocAlign.Start to "Left", DocAlign.Center to "Centre", DocAlign.End to "Right").forEach { (a, l) -> Choice(l, on == a) { set(a) } }
+        listOf(DocAlign.Start to stringResource(R.string.words_left), DocAlign.Center to stringResource(R.string.words_centre), DocAlign.End to stringResource(R.string.words_right)).forEach { (a, l) -> Choice(l, on == a) { set(a) } }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Header, footer and page numbers", style = MaterialTheme.typography.titleLarge)
-                if (rich) Text("This document's header or footer has more than a line of text (a logo, a table…). Setting it here puts this in its place.",
+                Text(stringResource(R.string.words_header_footer_numbers), style = MaterialTheme.typography.titleLarge)
+                if (rich) Text(stringResource(R.string.words_header_rich),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp))
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    OutlinedTextField(d.header, { d = d.copy(header = it) }, label = { Text(if (d.oddEven) "Header (odd pages)" else "Header") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
-                    Section("Header stands") { aligns(d.headerAlign) { d = d.copy(headerAlign = it) } }
-                    OutlinedTextField(d.footer, { d = d.copy(footer = it) }, label = { Text(if (d.oddEven) "Footer (odd pages)" else "Footer") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
-                    Section("Footer stands") { aligns(d.footerAlign) { d = d.copy(footerAlign = it) } }
-                    Section("Page number") {
-                        Choice("None", d.number == null) { d = d.copy(number = null) }
-                        Choice("At the top", d.number == HeaderFooter.NumberPlace.Header) { d = d.copy(number = HeaderFooter.NumberPlace.Header) }
-                        Choice("At the bottom", d.number == HeaderFooter.NumberPlace.Footer) { d = d.copy(number = HeaderFooter.NumberPlace.Footer) }
+                    OutlinedTextField(d.header, { d = d.copy(header = it) }, label = { Text(stringResource(if (d.oddEven) R.string.words_header_odd else R.string.words_header)) }, maxLines = 4, modifier = Modifier.fillMaxWidth())
+                    Section(stringResource(R.string.words_header_stands)) { aligns(d.headerAlign) { d = d.copy(headerAlign = it) } }
+                    OutlinedTextField(d.footer, { d = d.copy(footer = it) }, label = { Text(stringResource(if (d.oddEven) R.string.words_footer_odd else R.string.words_footer)) }, maxLines = 4, modifier = Modifier.fillMaxWidth())
+                    Section(stringResource(R.string.words_footer_stands)) { aligns(d.footerAlign) { d = d.copy(footerAlign = it) } }
+                    Section(stringResource(R.string.words_page_number)) {
+                        Choice(stringResource(R.string.common_none), d.number == null) { d = d.copy(number = null) }
+                        Choice(stringResource(R.string.words_at_the_top), d.number == HeaderFooter.NumberPlace.Header) { d = d.copy(number = HeaderFooter.NumberPlace.Header) }
+                        Choice(stringResource(R.string.words_at_the_bottom), d.number == HeaderFooter.NumberPlace.Footer) { d = d.copy(number = HeaderFooter.NumberPlace.Footer) }
                     }
                     if (d.number != null) {
-                        Section("Number stands") { aligns(d.numberAlign) { d = d.copy(numberAlign = it) } }
-                        Section("Written as") { HeaderFooter.FORMATS.forEach { f -> Choice(f.replace("#", "1").replace("N", "3"), d.numberFormat == f) { d = d.copy(numberFormat = f) } } }
+                        Section(stringResource(R.string.words_number_stands)) { aligns(d.numberAlign) { d = d.copy(numberAlign = it) } }
+                        Section(stringResource(R.string.words_written_as)) { HeaderFooter.FORMATS.forEach { f -> Choice(f.replace("#", "1").replace("N", "3"), d.numberFormat == f) { d = d.copy(numberFormat = f) } } }
                     }
-                    Toggle("A different first page (a title page without header, footer or number)", d.firstDifferent) { d = d.copy(firstDifferent = it) }
+                    Toggle(stringResource(R.string.words_first_page_different), d.firstDifferent) { d = d.copy(firstDifferent = it) }
                     // Word's "Different odd & even pages": even pages their own words, left and right the other way round.
-                    Toggle("Different odd and even pages", d.oddEven) { d = d.copy(oddEven = it, evenHeader = d.evenHeader.ifEmpty { d.header }, evenFooter = d.evenFooter.ifEmpty { d.footer }) }
+                    Toggle(stringResource(R.string.words_odd_even_different), d.oddEven) { d = d.copy(oddEven = it, evenHeader = d.evenHeader.ifEmpty { d.header }, evenFooter = d.evenFooter.ifEmpty { d.footer }) }
                     if (d.oddEven) {
-                        OutlinedTextField(d.evenHeader, { d = d.copy(evenHeader = it) }, label = { Text("Header (even pages)") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(d.evenFooter, { d = d.copy(evenFooter = it) }, label = { Text("Footer (even pages)") }, maxLines = 4, modifier = Modifier.fillMaxWidth())
-                        Text("On even pages what stands left stands right, and the number goes to the other side (a book's outer edge).", style = MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(d.evenHeader, { d = d.copy(evenHeader = it) }, label = { Text(stringResource(R.string.words_header_even)) }, maxLines = 4, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(d.evenFooter, { d = d.copy(evenFooter = it) }, label = { Text(stringResource(R.string.words_footer_even)) }, maxLines = 4, modifier = Modifier.fillMaxWidth())
+                        Text(stringResource(R.string.words_odd_even_hint), style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = dismiss) { Text("Cancel") }
-                    TextButton(onClick = { apply(d) }) { Text("OK") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
+                    TextButton(onClick = { apply(d) }) { Text(stringResource(R.string.common_ok)) }
                 }
             }
         }
@@ -497,7 +497,7 @@ private fun rowSet(t: DocTable, r: Int, f: (String) -> String) = t.copy(rows = t
     shape = CircleShape, color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
     contentColor = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
     modifier = Modifier.clip(CircleShape).clickable(onClick = click),
-) { Text(label, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge) }
+) { Text(label, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
 
 @Composable private fun Toggle(label: String, on: Boolean, set: (Boolean) -> Unit) =
     Row(Modifier.fillMaxWidth().clickable { set(!on) }, verticalAlignment = Alignment.CenterVertically) {
@@ -526,7 +526,10 @@ private fun rowSet(t: DocTable, r: Int, f: (String) -> String) = t.copy(rows = t
         }
     }
     Spacer(Modifier.height(2.dp))
-    Text(look.name, style = MaterialTheme.typography.labelSmall)
+    Text(when (look.name) { // TableEdit.LOOKS' names, as shown
+        "Plain" -> stringResource(R.string.words_look_plain); "Blue" -> stringResource(R.string.words_theme_blue); "Green" -> stringResource(R.string.words_theme_green)
+        "Orange" -> stringResource(R.string.words_look_orange); "Grey" -> stringResource(R.string.words_look_grey); "Lines" -> stringResource(R.string.words_lines); else -> look.name
+    }, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 /** A length in the chosen unit (centimetres, or inches — Writer › View), kept in points. */
@@ -611,25 +614,25 @@ internal fun cellHomePages(tint: Color, cell: DocCell, sel: androidx.compose.ui.
     val para = cell.paras.firstOrNull() ?: DocPara(emptyList())
     val pt = sizeOf(para, look).let { kotlin.math.round(it).toInt() }
     return listOf({
-        Tool(R.drawable.ic_format_bold, "Bold", tint, on = look.bold) { apply { it.copy(bold = !look.bold) } }
-        Tool(R.drawable.ic_format_italic, "Italic", tint, on = look.italic) { apply { it.copy(italic = !look.italic) } }
-        Tool(R.drawable.ic_format_underlined, "Underline", tint, on = look.underline) { apply { it.copy(underline = !look.underline) } }
-        Tool(R.drawable.ic_format_strikethrough, "Strikethrough", tint, on = look.strike) { apply { it.copy(strike = !look.strike) } }
+        Tool(R.drawable.ic_format_bold, stringResource(R.string.words_bold), tint, on = look.bold) { apply { it.copy(bold = !look.bold) } }
+        Tool(R.drawable.ic_format_italic, stringResource(R.string.words_italic), tint, on = look.italic) { apply { it.copy(italic = !look.italic) } }
+        Tool(R.drawable.ic_format_underlined, stringResource(R.string.words_underline), tint, on = look.underline) { apply { it.copy(underline = !look.underline) } }
+        Tool(R.drawable.ic_format_strikethrough, stringResource(R.string.words_strikethrough), tint, on = look.strike) { apply { it.copy(strike = !look.strike) } }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Tool(R.drawable.ic_remove, "Smaller text", tint, enabled = pt > 6) { apply { it.copy(sizePt = (pt - 1).toFloat()) } }
+            Tool(R.drawable.ic_remove, stringResource(R.string.words_smaller_text), tint, enabled = pt > 6) { apply { it.copy(sizePt = (pt - 1).toFloat()) } }
             Text("$pt", color = tint, style = MaterialTheme.typography.labelLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
-            Tool(R.drawable.ic_add, "Bigger text", tint, enabled = pt < 72) { apply { it.copy(sizePt = (pt + 1).toFloat()) } }
+            Tool(R.drawable.ic_add, stringResource(R.string.words_bigger_text), tint, enabled = pt < 72) { apply { it.copy(sizePt = (pt + 1).toFloat()) } }
         }
     }, {
-        Swatches(tint, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { c ->
+        Swatches(tint, R.drawable.ic_format_color_text, stringResource(R.string.words_text_colour), TEXT_COLOURS) { c ->
             apply { it.copy(color = c?.let { k -> k.toArgb() and 0xFFFFFF }) }
         }
-        Swatches(tint, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { c ->
+        Swatches(tint, R.drawable.ic_highlighter, stringResource(R.string.words_highlight), HIGHLIGHT_COLOURS) { c ->
             apply { it.copy(highlight = c?.let { k -> k.toArgb() and 0xFFFFFF }) }
         }
     }, {
         listOf(DocAlign.Start to R.drawable.ic_align_left, DocAlign.Center to R.drawable.ic_align_center, DocAlign.End to R.drawable.ic_align_right, DocAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
-            Tool(icon, "Align ${a.name.lowercase(Locale.ROOT)}", tint, on = para.align == a) { change(alignCell(cell, sel.min, sel.max, a)) }
+            Tool(icon, stringResource(when (a) { DocAlign.Center -> R.string.words_align_center; DocAlign.End -> R.string.words_align_end; DocAlign.Justify -> R.string.words_align_justify; else -> R.string.words_align_start }), tint, on = para.align == a) { change(alignCell(cell, sel.min, sel.max, a)) }
         }
     })
 }
@@ -651,11 +654,11 @@ internal fun transformedPicture(img: DocImage, bytes: ByteArray, turn: Int, flip
 
 /** Insert › Symbol (Word's Ω): what a phone keyboard lacks, a tap puts it at the cursor. */
 private val SYMBOLS = listOf(
-    "Punctuation" to "«»“”‘’„…–—•·¶§†‡‰′″",
-    "Money" to "€$£¥¢₿",
-    "Signs" to "©®™°№℮✓✗★☆",
-    "Maths" to "±×÷≠≈≤≥∞√∑∏∫∂∆πµΩ∈∉∩∪⊂⊃∅∀∃¬∧∨½¼¾⅓²³¹",
-    "Arrows" to "←→↑↓↔⇐⇒⇔↵",
+    R.string.words_symbols_punctuation to "«»“”‘’„…–—•·¶§†‡‰′″",
+    R.string.words_symbols_money to "€$£¥¢₿",
+    R.string.words_symbols_signs to "©®™°№℮✓✗★☆",
+    R.string.words_symbols_maths to "±×÷≠≈≤≥∞√∑∏∫∂∆πµΩ∈∉∩∪⊂⊃∅∀∃¬∧∨½¼¾⅓²³¹",
+    R.string.words_symbols_arrows to "←→↑↓↔⇐⇒⇔↵",
 )
 
 /**
@@ -665,33 +668,33 @@ private val SYMBOLS = listOf(
 @Composable
 internal fun LinkDialog(showText: Boolean, startUrl: String?, startText: String?, linked: Boolean, dismiss: () -> Unit, remove: () -> Unit,
     slides: List<String>? = null, /** Slides: "The slide it came from" offered too (PowerPoint's Last Slide Viewed: "#back") */ back: Boolean = false,
-    /** what [slides] are called (Tables: its sheets) */ place: String = "Slide in this deck", done: (String, String) -> Unit) {
+    /** what [slides] are called (Tables: its sheets) */ place: String = stringResource(R.string.words_slide_in_deck), done: (String, String) -> Unit) {
     val startSlide = if (startUrl == "#back") -1 else startUrl?.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()
     var url by remember { mutableStateOf(startUrl?.takeIf { startSlide == null } ?: "https://") }
     var text by remember { mutableStateOf(startText ?: "") }
     var slide by remember { mutableStateOf(startSlide) } // Slides: a slide chosen, not a web address
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("Link") },
+        title = { Text(stringResource(R.string.words_link)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (showText) OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Text to show") })
+                if (showText) OutlinedTextField(text, { text = it }, singleLine = true, label = { Text(stringResource(R.string.words_text_to_show)) })
                 if (slides != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Choice("Web page", slide == null) { slide = null }
+                    Choice(stringResource(R.string.words_web_page), slide == null) { slide = null }
                     Choice(place, slide != null && slide != -1) { slide = slide?.takeIf { it >= 0 } ?: 0 }
-                    if (back) Choice("The slide it came from", slide == -1) { slide = -1 }
+                    if (back) Choice(stringResource(R.string.words_slide_came_from), slide == -1) { slide = -1 }
                 }
-                if (slide == null) OutlinedTextField(url, { url = it }, singleLine = true, label = { Text("Address") })
+                if (slide == null) OutlinedTextField(url, { url = it }, singleLine = true, label = { Text(stringResource(R.string.words_address)) })
                 else if (slide != -1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     slides.orEmpty().forEachIndexed { i, name -> Choice("${i + 1}. $name", slide == i) { slide = i } }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { val to = slide?.let { if (it == -1) "#back" else "#$it" } ?: url; done(text.ifBlank { slide?.let { if (it == -1) "Back" else slides?.getOrNull(it) } ?: url }, to) }) { Text("OK") } },
+        confirmButton = { TextButton(onClick = { val to = slide?.let { if (it == -1) "#back" else "#$it" } ?: url; done(text.ifBlank { slide?.let { if (it == -1) "Back" else slides?.getOrNull(it) } ?: url }, to) }) { Text(stringResource(R.string.common_ok)) } },
         dismissButton = {
             Row {
-                if (linked) TextButton(onClick = remove) { Text("Remove link") }
-                TextButton(onClick = dismiss) { Text("Cancel") }
+                if (linked) TextButton(onClick = remove) { Text(stringResource(R.string.words_remove_link)) }
+                TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
             }
         },
     )
@@ -702,16 +705,16 @@ internal fun SymbolDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Symbol", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.words_symbol), style = MaterialTheme.typography.titleLarge)
                 Column(Modifier.weight(1f, fill = false).shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    SYMBOLS.forEach { (title, chars) -> Section(title) {
+                    SYMBOLS.forEach { (title, chars) -> Section(stringResource(title)) {
                         chars.codePoints().toArray().forEach { c -> val s = String(Character.toChars(c))
                             Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).clickable { insert(s) },
                                 contentAlignment = Alignment.Center) { Text(s, style = MaterialTheme.typography.titleLarge) }
                         }
                     } }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Close") } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } }
             }
         }
     }
@@ -734,9 +737,9 @@ internal fun DateDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Date and time", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.padding(vertical = 12.dp)) { Section("Put in the text") { forms.forEach { s -> Choice(s, false) { insert(s) } } } }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Cancel") } }
+                Text(stringResource(R.string.words_date_time), style = MaterialTheme.typography.titleLarge)
+                Column(Modifier.padding(vertical = 12.dp)) { Section(stringResource(R.string.words_put_in_text)) { forms.forEach { s -> Choice(s, false) { insert(s) } } } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } }
             }
         }
     }
@@ -744,28 +747,28 @@ internal fun DateDialog(dismiss: () -> Unit, insert: (String) -> Unit) {
 
 /** Insert › Comment: who writes it (remembered) and what it says. */
 @Composable
-internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = "Comment", start: String = "", confirm: String = "Add", label: String = "Comment", add: (String, String) -> Unit) {
+internal fun NewCommentDialog(name: String, dismiss: () -> Unit, title: String = stringResource(R.string.words_comment), start: String = "", confirm: String = stringResource(R.string.common_add), label: String = stringResource(R.string.words_comment), add: (String, String) -> Unit) {
     var author by remember { mutableStateOf(name) }
     var text by remember { mutableStateOf(start) }
     AlertDialog(onDismissRequest = dismiss, title = { Text(title) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text(stringResource(R.string.words_your_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(text, { text = it }, label = { Text(label) }, minLines = 3, modifier = Modifier.fillMaxWidth())
         } },
         confirmButton = { TextButton(enabled = author.isNotBlank() && text.isNotBlank(), onClick = { add(author.trim(), text.trim()) }) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /** A footnote's or endnote's words, to write or change; Delete takes the note out with its number. */
 @Composable
 internal fun NoteDialog(note: DocNote, number: String, dismiss: () -> Unit, save: (String) -> Unit, delete: () -> Unit) {
     var text by remember { mutableStateOf(note.paras.joinToString("\n") { it.text }) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text((if (note.end) "Endnote " else "Footnote ") + number) },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(if (note.end) R.string.words_endnote_n else R.string.words_footnote_n, number)) },
         text = { OutlinedTextField(text, { text = it }, minLines = 3, modifier = Modifier.fillMaxWidth()) },
-        confirmButton = { TextButton(onClick = { save(text) }) { Text("Done") } },
+        confirmButton = { TextButton(onClick = { save(text) }) { Text(stringResource(R.string.common_done)) } },
         dismissButton = { Row {
-            TextButton(onClick = delete) { Text("Delete note", color = Color(0xFFE57373)) }
-            TextButton(onClick = dismiss) { Text("Cancel") }
+            TextButton(onClick = delete) { Text(stringResource(R.string.words_delete_note), color = Color(0xFFE57373)) }
+            TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
         } })
 }
 
@@ -773,13 +776,13 @@ internal fun NoteDialog(note: DocNote, number: String, dismiss: () -> Unit, save
 @Composable
 internal fun ReviewerNameDialog(name: String, dismiss: () -> Unit, done: (String) -> Unit) {
     var author by remember { mutableStateOf(name) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Track changes") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.words_track_changes)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Your changes are shown with your name, as Word shows each reviewer's.")
-            OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text(stringResource(R.string.words_track_name_hint))
+            OutlinedTextField(author, { author = it.replace("\n", " ") }, label = { Text(stringResource(R.string.words_your_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         } },
-        confirmButton = { TextButton(enabled = author.isNotBlank(), onClick = { done(author.trim()) }) { Text("Track changes") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(enabled = author.isNotBlank(), onClick = { done(author.trim()) }) { Text(stringResource(R.string.words_track_changes)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /** A comment's date as the phone says dates, or null. */
@@ -797,13 +800,13 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
             Text(x.author.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase().ifEmpty { "?" }, color = Color.White, style = MaterialTheme.typography.labelSmall)
         }
         Column(Modifier.weight(1f).padding(start = 8.dp)) {
-            Text(x.author.ifBlank { "Comment" }, style = MaterialTheme.typography.labelLarge)
+            Text(x.author.ifBlank { stringResource(R.string.words_comment) }, style = MaterialTheme.typography.labelLarge)
             commentDate(x)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Color(0xFF5F6368)) }
         }
     }
     Column(Modifier.padding(start = 12.dp, top = 10.dp, end = 4.dp, bottom = 2.dp)) {
         who(c)
-        if (c.done) Text("Resolved", style = MaterialTheme.typography.labelSmall, color = Color(0xFF188038), modifier = Modifier.padding(top = 2.dp))
+        if (c.done) Text(stringResource(R.string.words_resolved), style = MaterialTheme.typography.labelSmall, color = Color(0xFF188038), modifier = Modifier.padding(top = 2.dp))
         Text(c.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp, end = 8.dp))
         // Its replies, under it (Word's thread).
         act.repliesOf(c).forEach { r ->
@@ -815,11 +818,11 @@ internal fun CommentCard(c: DocComment, here: Boolean, act: CommentActions, modi
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             // Four of them in the pane's width: closer than a button's own padding.
             val tight = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
-            TextButton(onClick = { act.edit(c) }, contentPadding = tight) { Text("Edit", color = Color(0xFF1A73E8), maxLines = 1) }
-            TextButton(onClick = { act.reply(c) }, contentPadding = tight) { Text("Reply", color = Color(0xFF1A73E8), maxLines = 1) }
+            TextButton(onClick = { act.edit(c) }, contentPadding = tight) { Text(stringResource(R.string.common_edit), color = Color(0xFF1A73E8), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            TextButton(onClick = { act.reply(c) }, contentPadding = tight) { Text(stringResource(R.string.words_reply), color = Color(0xFF1A73E8), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             // Slides' comments have none (PowerPoint's older list and Impress keep no resolved state)
-            if (act.resolve != null) TextButton(onClick = { act.resolve.invoke(c) }, contentPadding = tight) { Text(if (c.done) "Reopen" else "Resolve", color = Color(0xFF1A73E8), maxLines = 1) }
-            TextButton(onClick = { act.delete(c) }, contentPadding = tight) { Text("Delete", color = Color(0xFF1A73E8), maxLines = 1) }
+            if (act.resolve != null) TextButton(onClick = { act.resolve.invoke(c) }, contentPadding = tight) { Text(stringResource(if (c.done) R.string.words_reopen else R.string.words_resolve), color = Color(0xFF1A73E8), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            TextButton(onClick = { act.delete(c) }, contentPadding = tight) { Text(stringResource(R.string.common_delete), color = Color(0xFF1A73E8), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }
@@ -881,10 +884,10 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
                 modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.86f).clickable(interactionSource = null, indication = null) {}) {
                 Column(Modifier.systemBarsPadding().padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Comments", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        TextButton(onClick = dismiss) { Text("Close") }
+                        Text(stringResource(R.string.words_comments), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) }
                     }
-                    if (comments.isEmpty()) Text("No comments", modifier = Modifier.padding(top = 12.dp))
+                    if (comments.isEmpty()) Text(stringResource(R.string.words_no_comments_short), modifier = Modifier.padding(top = 12.dp))
                     Column(Modifier.shadedScroll().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         comments.forEach { c -> CommentCard(c, c == here, act) }
                     }
@@ -894,27 +897,34 @@ internal fun CommentSidebar(comments: List<DocComment>, here: DocComment?, dismi
     }
 }
 
+/** [LineDash.CHOICES]' word for [k] as shown ([name]: the English one, kept for anything new). */
+@Composable private fun dashName(k: String?, name: String) = when (k) {
+    null -> stringResource(R.string.words_line_solid); "sysDot" -> stringResource(R.string.words_dash_round_dot); "sysDash" -> stringResource(R.string.words_dash_square_dot)
+    "dash" -> stringResource(R.string.words_dash_dash); "dashDot" -> stringResource(R.string.words_dash_dash_dot); "lgDash" -> stringResource(R.string.words_dash_long)
+    "lgDashDot" -> stringResource(R.string.words_dash_long_dot); "lgDashDotDot" -> stringResource(R.string.words_dash_long_dot_dot); else -> name
+}
+
 /** Word's Insert › Shapes gallery, its groups in its order (DrawingML's preset names). */
 internal val SHAPE_GROUPS = listOf(
-    "Lines" to listOf("line", "lineArrow", "lineArrows"),
-    "Rectangles" to listOf("rect", "roundRect", "snip1Rect", "snip2SameRect", "snip2DiagRect", "snipRoundRect", "round1Rect", "round2SameRect", "round2DiagRect"),
-    "Basic shapes" to listOf("ellipse", "triangle", "rtTriangle", "parallelogram", "trapezoid", "diamond", "pentagon", "hexagon", "heptagon", "octagon", "decagon",
+    R.string.words_shapes_lines to listOf("line", "lineArrow", "lineArrows"),
+    R.string.words_shapes_rectangles to listOf("rect", "roundRect", "snip1Rect", "snip2SameRect", "snip2DiagRect", "snipRoundRect", "round1Rect", "round2SameRect", "round2DiagRect"),
+    R.string.words_shapes_basic to listOf("ellipse", "triangle", "rtTriangle", "parallelogram", "trapezoid", "diamond", "pentagon", "hexagon", "heptagon", "octagon", "decagon",
         "dodecagon", "pie", "chord", "teardrop", "frame", "halfFrame", "corner", "diagStripe", "plus", "plaque", "can", "cube", "bevel", "donut", "noSmoking",
         "blockArc", "foldedCorner", "smileyFace", "heart", "lightningBolt", "sun", "moon", "cloud", "arc", "bracketPair", "bracePair", "leftBracket", "rightBracket",
         "leftBrace", "rightBrace"),
-    "Block arrows" to listOf("rightArrow", "leftArrow", "upArrow", "downArrow", "leftRightArrow", "upDownArrow", "quadArrow", "leftRightUpArrow", "bentArrow",
+    R.string.words_shapes_block_arrows to listOf("rightArrow", "leftArrow", "upArrow", "downArrow", "leftRightArrow", "upDownArrow", "quadArrow", "leftRightUpArrow", "bentArrow",
         "uturnArrow", "leftUpArrow", "bentUpArrow", "curvedRightArrow", "curvedLeftArrow", "curvedUpArrow", "curvedDownArrow", "stripedRightArrow",
         "notchedRightArrow", "homePlate", "chevron", "rightArrowCallout", "downArrowCallout", "leftArrowCallout", "upArrowCallout", "leftRightArrowCallout",
         "quadArrowCallout", "circularArrow"),
-    "Equation shapes" to listOf("mathPlus", "mathMinus", "mathMultiply", "mathDivide", "mathEqual", "mathNotEqual"),
-    "Flowchart" to listOf("flowChartProcess", "flowChartAlternateProcess", "flowChartDecision", "flowChartInputOutput", "flowChartPredefinedProcess",
+    R.string.words_shapes_equation to listOf("mathPlus", "mathMinus", "mathMultiply", "mathDivide", "mathEqual", "mathNotEqual"),
+    R.string.words_shapes_flowchart to listOf("flowChartProcess", "flowChartAlternateProcess", "flowChartDecision", "flowChartInputOutput", "flowChartPredefinedProcess",
         "flowChartInternalStorage", "flowChartDocument", "flowChartMultidocument", "flowChartTerminator", "flowChartPreparation", "flowChartManualInput",
         "flowChartManualOperation", "flowChartConnector", "flowChartOffpageConnector", "flowChartPunchedCard", "flowChartPunchedTape", "flowChartSummingJunction",
         "flowChartOr", "flowChartCollate", "flowChartSort", "flowChartExtract", "flowChartMerge", "flowChartOnlineStorage", "flowChartDelay",
         "flowChartMagneticTape", "flowChartMagneticDisk", "flowChartMagneticDrum", "flowChartDisplay"),
-    "Stars and banners" to listOf("irregularSeal1", "irregularSeal2", "star4", "star5", "star6", "star7", "star8", "star10", "star12", "star16", "star24", "star32",
+    R.string.words_shapes_stars to listOf("irregularSeal1", "irregularSeal2", "star4", "star5", "star6", "star7", "star8", "star10", "star12", "star16", "star24", "star32",
         "ribbon2", "ribbon", "ellipseRibbon2", "ellipseRibbon", "verticalScroll", "horizontalScroll", "wave", "doubleWave"),
-    "Callouts" to listOf("wedgeRectCallout", "wedgeRoundRectCallout", "wedgeEllipseCallout", "cloudCallout", "borderCallout1", "borderCallout2", "borderCallout3",
+    R.string.words_shapes_callouts to listOf("wedgeRectCallout", "wedgeRoundRectCallout", "wedgeEllipseCallout", "cloudCallout", "borderCallout1", "borderCallout2", "borderCallout3",
         "accentCallout1", "accentCallout2", "accentCallout3", "callout1", "callout2", "callout3", "accentBorderCallout1", "accentBorderCallout2", "accentBorderCallout3"),
 )
 
@@ -939,7 +949,7 @@ internal fun ShapeStyles(fill: Int?, line: Int?, pick: (fill: Int?, line: Int?) 
         { c -> mix(c, 0xFFFFFFFF.toInt(), 0.8f) to c },            // light fill, its outline
         { c -> mix(c, 0xFF000000.toInt(), 0.5f) to null },         // dark fill
     )
-    Section("Styles") {
+    Section(stringResource(R.string.words_styles)) {
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 7) {
             for (look in looks) for (c in base) {
                 val (f, l) = look(c)
@@ -984,20 +994,20 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 720.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Shapes", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.words_shapes), style = MaterialTheme.typography.titleLarge)
                 Column(Modifier.weight(1f, fill = false).shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     @Composable fun swatches(title: String, chosen: Int?, set: (Int?) -> Unit) = Section(title) {
-                        Choice("None", chosen == null) { set(null) }
+                        Choice(stringResource(R.string.common_none), chosen == null) { set(null) }
                         colors.forEach { c -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color(c))
                             .border(3.dp, if (chosen?.let { it or 0xFF000000.toInt() } == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
                             .clickable { set(c) }) }
                     }
                     ShapeStyles(fill, line) { f, l -> fill = f; line = l }
-                    swatches("Fill", fill?.let { it or 0xFF000000.toInt() }) { fill = it }
-                    swatches("Outline", line) { line = it }
-                    (listOfNotNull(("Recently used" to recent).takeIf { recent.isNotEmpty() }) + SHAPE_GROUPS).forEach { (title, kinds) ->
+                    swatches(stringResource(R.string.words_fill), fill?.let { it or 0xFF000000.toInt() }) { fill = it }
+                    swatches(stringResource(R.string.words_outline), line) { line = it }
+                    (listOfNotNull((R.string.words_recently_used to recent).takeIf { recent.isNotEmpty() }) + SHAPE_GROUPS).forEach { (title, kinds) ->
                         val shown = kinds.filter { !odt || (it != "line" && !it.startsWith("lineArrow")) }
-                        if (shown.isNotEmpty()) Section(title) {
+                        if (shown.isNotEmpty()) Section(stringResource(title)) {
                             shown.forEach { kind ->
                                 Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).clickable { put(kind) }.padding(7.dp)) {
                                     val preview = remember(kind, fill, line) { ShapePicture(kind, fill, line ?: if (fill == null) 0xFF000000.toInt() else null, 1.5f) }
@@ -1012,7 +1022,7 @@ internal fun ShapesDialog(odt: Boolean, dismiss: () -> Unit, insert: (kind: Stri
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text("Close") } }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } }
             }
         }
     }
@@ -1040,40 +1050,40 @@ internal fun ShapeOptionsDialog(start: ShapeOptions, dismiss: () -> Unit, apply:
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Shape options", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.words_shape_options), style = MaterialTheme.typography.titleLarge)
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     @Composable fun swatches(title: String, chosen: Int?, set: (Int?) -> Unit) = Section(title) {
-                        Choice("None", chosen == null) { set(null) }
+                        Choice(stringResource(R.string.common_none), chosen == null) { set(null) }
                         colors.forEach { c -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color(c)).border(1.dp, Color(0x55888888), CircleShape)
                             .border(3.dp, if (chosen?.let { it or 0xFF000000.toInt() } == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
                             .clickable { set(c) }) }
                     }
                     ShapeStyles(o.fill, o.line) { f, l -> o = o.copy(fill = f, line = l) }
-                    swatches("Fill", o.fill) { o = o.copy(fill = it) }
-                    swatches("Outline", o.line) { o = o.copy(line = it) }
-                    if (o.line != null) Section("Outline width") {
+                    swatches(stringResource(R.string.words_fill), o.fill) { o = o.copy(fill = it) }
+                    swatches(stringResource(R.string.words_outline), o.line) { o = o.copy(line = it) }
+                    if (o.line != null) Section(stringResource(R.string.words_outline_width)) {
                         listOf(0.25f, 0.5f, 0.75f, 1f, 1.5f, 2.25f, 3f, 4.5f, 6f).forEach { w -> Choice("${if (w % 1f == 0f) w.toInt() else w} pt", o.lineWidth == w) { o = o.copy(lineWidth = w) } }
                     }
-                    if (o.line != null) Section("Dash") { LineDash.CHOICES.forEach { (k, name) -> Choice(name, o.dash == k) { o = o.copy(dash = k) } } }
-                    Section("Shadow") { Choice("None", !o.shadow) { o = o.copy(shadow = false) }; Choice("Offset: bottom right", o.shadow) { o = o.copy(shadow = true) } }
-                    Section("Size ($unitName)") {
+                    if (o.line != null) Section(stringResource(R.string.words_dash_type)) { LineDash.CHOICES.forEach { (k, name) -> Choice(dashName(k, name), o.dash == k) { o = o.copy(dash = k) } } }
+                    Section(stringResource(R.string.words_shadow)) { Choice(stringResource(R.string.common_none), !o.shadow) { o = o.copy(shadow = false) }; Choice(stringResource(R.string.words_shadow_offset), o.shadow) { o = o.copy(shadow = true) } }
+                    Section(stringResource(R.string.words_size_unit, unitName)) {
                         OutlinedTextField(wText, { v -> wText = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it > 0f }?.let { n ->
                             val w = n * unit; o = if (locked) { val h = o.heightPt * w / o.widthPt.coerceAtLeast(0.1f); hText = shown(h); o.copy(widthPt = w, heightPt = h) } else o.copy(widthPt = w) } },
-                            label = { Text("Width") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 130.dp))
+                            label = { Text(stringResource(R.string.words_width)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 130.dp))
                         OutlinedTextField(hText, { v -> hText = v; v.replace(',', '.').toFloatOrNull()?.takeIf { it > 0f }?.let { n ->
                             val h = n * unit; o = if (locked) { val w = o.widthPt * h / o.heightPt.coerceAtLeast(0.1f); wText = shown(w); o.copy(widthPt = w, heightPt = h) } else o.copy(heightPt = h) } },
-                            label = { Text("Height") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 130.dp))
-                        Choice("Lock proportions", locked) { locked = !locked }
+                            label = { Text(stringResource(R.string.words_height)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.widthIn(max = 130.dp))
+                        Choice(stringResource(R.string.words_lock_proportions), locked) { locked = !locked }
                     }
-                    Section("Rotation") {
-                        OutlinedTextField(degText, { v -> degText = v; v.toFloatOrNull()?.let { o = o.copy(degrees = ((it % 360f) + 360f) % 360f) } }, label = { Text("Degrees") }, singleLine = true,
+                    Section(stringResource(R.string.words_rotation)) {
+                        OutlinedTextField(degText, { v -> degText = v; v.toFloatOrNull()?.let { o = o.copy(degrees = ((it % 360f) + 360f) % 360f) } }, label = { Text(stringResource(R.string.words_degrees)) }, singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.widthIn(max = 130.dp))
                     }
-                    OutlinedTextField(o.alt, { o = o.copy(alt = it) }, label = { Text("Alt text (what it shows, for screen readers)") }, maxLines = 3, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(o.alt, { o = o.copy(alt = it) }, label = { Text(stringResource(R.string.words_alt_text)) }, maxLines = 3, modifier = Modifier.fillMaxWidth())
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = dismiss) { Text("Cancel") }
-                    TextButton(onClick = { apply(o) }) { Text("OK") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
+                    TextButton(onClick = { apply(o) }) { Text(stringResource(R.string.common_ok)) }
                 }
             }
         }

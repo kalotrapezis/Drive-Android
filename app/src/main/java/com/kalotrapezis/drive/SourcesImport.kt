@@ -10,7 +10,11 @@ import org.json.JSONObject
  * is skipped and said so.
  */
 internal object SourcesImport {
-    data class Result(val sources: List<DocSource>, val skipped: List<String>)
+    data class Result(val sources: List<DocSource>, val skipped: List<Skip>)
+    /** A source left out: its [number] in the file (from 1), and whether it was [untitled] (else not a source at all). */
+    data class Skip(val number: Int, val untitled: Boolean)
+    /** Not a Tetra sources file: the message is English, for the log; the app says it in its own words. */
+    class NotSourcesFile : IllegalArgumentException("This is not a Tetra sources file (no \"sources\" list).")
 
     fun read(text: String): Result {
         // Pasted from a chat: the JSON may come inside ``` marks or with a sentence round it — from the first { or [ on.
@@ -20,12 +24,12 @@ internal object SourcesImport {
         } ?: text
         val root = runCatching { JSONObject(json) }.getOrNull()
         val list = root?.optJSONArray("sources") ?: runCatching { JSONArray(json) }.getOrNull()
-            ?: throw IllegalArgumentException("This is not a Tetra sources file (no \"sources\" list).")
-        val out = ArrayList<DocSource>(); val skipped = ArrayList<String>()
+            ?: throw NotSourcesFile()
+        val out = ArrayList<DocSource>(); val skipped = ArrayList<Skip>()
         for (i in 0 until list.length()) {
-            val o = list.optJSONObject(i) ?: run { skipped += "#${i + 1}: not a source"; null } ?: continue
+            val o = list.optJSONObject(i) ?: run { skipped += Skip(i + 1, false); null } ?: continue
             val title = o.optString("title").trim()
-            if (title.isEmpty()) { skipped += "#${i + 1}: no title"; continue }
+            if (title.isEmpty()) { skipped += Skip(i + 1, true); continue }
             fun s(vararg names: String) = names.firstNotNullOfOrNull { n -> o.optString(n).trim().takeIf { it.isNotEmpty() && it != "null" } }.orEmpty()
             val type = when (s("type").lowercase()) {
                 "article", "journal", "journal article", "paper" -> DocSource.Type.Article

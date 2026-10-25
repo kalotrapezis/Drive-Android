@@ -39,11 +39,11 @@ internal object PageSetup {
     val SIZES = listOf("A4" to (595.3f to 841.9f), "Letter" to (612f to 792f), "Legal" to (612f to 1008f), "A5" to (419.5f to 595.3f), "A3" to (841.9f to 1190.6f))
     /** Word's margin presets (top, bottom, left, right); Normal is also APA's 1 inch. */
     val MARGINS = listOf(
-        "Normal (1 in, APA)" to floatArrayOf(72f, 72f, 72f, 72f),
-        "Narrow" to floatArrayOf(36f, 36f, 36f, 36f),
-        "Moderate" to floatArrayOf(72f, 72f, 54f, 54f),
-        "Wide" to floatArrayOf(72f, 72f, 144f, 144f),
-        "2.5 cm" to floatArrayOf(70.87f, 70.87f, 70.87f, 70.87f),
+        R.string.words_margins_normal to floatArrayOf(72f, 72f, 72f, 72f),
+        R.string.words_margins_narrow to floatArrayOf(36f, 36f, 36f, 36f),
+        R.string.words_margins_moderate to floatArrayOf(72f, 72f, 54f, 54f),
+        R.string.words_margins_wide to floatArrayOf(72f, 72f, 144f, 144f),
+        R.string.words_margins_25cm to floatArrayOf(70.87f, 70.87f, 70.87f, 70.87f),
     )
     fun sizeName(p: DocPage) = SIZES.firstOrNull { (_, s) -> near(minOf(p.width, p.height), s.first) && near(maxOf(p.width, p.height), s.second) }?.first
     fun landscape(p: DocPage) = p.width > p.height
@@ -158,29 +158,29 @@ internal fun PageSetupDialog(now: DocPage, dismiss: () -> Unit, apply: (DocPage)
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 640.dp).systemBarsPadding().imePadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
-                Text("Page setup", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.words_page_setup), style = MaterialTheme.typography.titleLarge)
                 Column(Modifier.weight(1f, fill = false).fillMaxWidth().shadedScroll().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Section("Margins") {
+                    Section(stringResource(R.string.words_margins)) {
                         PageSetup.MARGINS.forEach { (name, m) ->
-                            Choice(name, abs(p.top - m[0]) < 1f && abs(p.bottom - m[1]) < 1f && abs(p.left - m[2]) < 1f && abs(p.right - m[3]) < 1f) {
+                            Choice(stringResource(name), abs(p.top - m[0]) < 1f && abs(p.bottom - m[1]) < 1f && abs(p.left - m[2]) < 1f && abs(p.right - m[3]) < 1f) {
                                 p = p.copy(top = m[0], bottom = m[1], left = m[2], right = m[3])
                             }
                         }
                     }
                     // The four, as numbers (each keyed to the page, so a preset shows at once).
                     androidx.compose.runtime.key(p.top, p.bottom, p.left, p.right) {
-                        Section("Custom (${WriterUnits.name})") {
-                            CmField("Top", p.top) { p = p.copy(top = it) }
-                            CmField("Bottom", p.bottom) { p = p.copy(bottom = it) }
-                            CmField("Left", p.left) { p = p.copy(left = it) }
-                            CmField("Right", p.right) { p = p.copy(right = it) }
+                        Section(stringResource(R.string.words_custom_unit, WriterUnits.name)) {
+                            CmField(stringResource(R.string.words_top), p.top) { p = p.copy(top = it) }
+                            CmField(stringResource(R.string.words_bottom), p.bottom) { p = p.copy(bottom = it) }
+                            CmField(stringResource(R.string.words_left), p.left) { p = p.copy(left = it) }
+                            CmField(stringResource(R.string.words_right), p.right) { p = p.copy(right = it) }
                         }
                     }
-                    Section("Orientation") {
-                        Choice("Portrait", !PageSetup.landscape(p)) { if (PageSetup.landscape(p)) p = p.copy(width = p.height, height = p.width) }
-                        Choice("Landscape", PageSetup.landscape(p)) { if (!PageSetup.landscape(p)) p = p.copy(width = p.height, height = p.width) }
+                    Section(stringResource(R.string.words_orientation)) {
+                        Choice(stringResource(R.string.words_portrait), !PageSetup.landscape(p)) { if (PageSetup.landscape(p)) p = p.copy(width = p.height, height = p.width) }
+                        Choice(stringResource(R.string.words_landscape), PageSetup.landscape(p)) { if (!PageSetup.landscape(p)) p = p.copy(width = p.height, height = p.width) }
                     }
-                    Section("Size") {
+                    Section(stringResource(R.string.words_size)) {
                         PageSetup.SIZES.forEach { (name, s) ->
                             Choice(name, PageSetup.sizeName(p) == name) {
                                 p = if (PageSetup.landscape(p)) p.copy(width = s.second, height = s.first) else p.copy(width = s.first, height = s.second)
@@ -190,8 +190,8 @@ internal fun PageSetupDialog(now: DocPage, dismiss: () -> Unit, apply: (DocPage)
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = dismiss) { Text("Cancel") }
-                    TextButton(enabled = p.textWidth > 72f, onClick = { apply(p) }) { Text("OK") }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
+                    TextButton(enabled = p.textWidth > 72f, onClick = { apply(p) }) { Text(stringResource(R.string.common_ok)) }
                 }
             }
         }

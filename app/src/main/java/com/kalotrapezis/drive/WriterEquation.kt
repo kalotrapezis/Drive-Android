@@ -51,7 +51,7 @@ internal fun EquationDialog(start: MathNode?, dismiss: () -> Unit, done: (MathNo
     AlertDialog(
         onDismissRequest = dismiss,
         properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
-        title = { Text(if (start == null) "Insert equation" else "Edit equation") },
+        title = { Text(stringResource(if (start == null) R.string.words_insert_equation else R.string.words_edit_equation)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // The equation as it will be drawn.
@@ -63,9 +63,9 @@ internal fun EquationDialog(start: MathNode?, dismiss: () -> Unit, done: (MathNo
                         Canvas(Modifier.padding(horizontal = 12.dp).size((drawn.widthPt * k).dp, (drawn.heightPt * k).dp)) {
                             drawIntoCanvas { c -> drawn.setBounds(0, 0, size.width.toInt(), size.height.toInt()); drawn.draw(c.nativeCanvas) }
                         }
-                    } else Text("Type below, e.g. x^2 + y^2 = r^2", color = Color(0xFF5F6368))
+                    } else Text(stringResource(R.string.words_equation_type_below), color = Color(0xFF5F6368))
                 }
-                OutlinedTextField(typed, { typed = it }, label = { Text("Equation (linear: x^2, a/b, sqrt(x), \\alpha)") }, modifier = Modifier.fillMaxWidth(),
+                OutlinedTextField(typed, { typed = it }, label = { Text(stringResource(R.string.words_equation_linear)) }, modifier = Modifier.fillMaxWidth(),
                     // Letters as typed: a keyboard's capitals and corrections turn i into I.
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None, autoCorrectEnabled = false))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -77,11 +77,11 @@ internal fun EquationDialog(start: MathNode?, dismiss: () -> Unit, done: (MathNo
                         }
                     }
                 }
-                Text("Brackets after ^ _ / and inside sqrt( ) group without showing; ∑ takes what follows up to + − =.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.words_equation_hint), style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(enabled = math != null && typed.text.isNotBlank(), onClick = { math?.let(done) }) { Text(if (start == null) "Insert" else "Done") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(enabled = math != null && typed.text.isNotBlank(), onClick = { math?.let(done) }) { Text(stringResource(if (start == null) R.string.words_insert else R.string.common_done)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -99,7 +99,7 @@ internal fun EquationBar(math: MathNode, color: Color, changed: (MathNode) -> Un
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Equation", color = color, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
+            Text(stringResource(R.string.words_equation), color = color, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
             androidx.compose.foundation.text.BasicTextField(typed, { typed = it }, singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = if (parsed == null && typed.text.isNotBlank()) Color(0xFFE57373) else color),
                 cursorBrush = androidx.compose.ui.graphics.SolidColor(color),

@@ -54,46 +54,46 @@ internal fun SourceDialog(start: DocSource?, dismiss: () -> Unit, save: (DocSour
         Text(label, style = MaterialTheme.typography.labelLarge)
         list.forEachIndexed { i, (last, first) ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                field("Surname (or organisation)", last, { list[i] = it to list[i].second }, Modifier.weight(1f))
-                field("Given names", first, { list[i] = list[i].first to it }, Modifier.weight(1f))
+                field(stringResource(R.string.words_surname), last, { list[i] = it to list[i].second }, Modifier.weight(1f))
+                field(stringResource(R.string.words_given_names), first, { list[i] = list[i].first to it }, Modifier.weight(1f))
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Choice("+ Add", false) { list += "" to "" }
-            if (list.size > 1) Choice("− Last", false) { list.removeAt(list.lastIndex) }
+            Choice(stringResource(R.string.words_plus_add), false) { list += "" to "" }
+            if (list.size > 1) Choice(stringResource(R.string.words_minus_last), false) { list.removeAt(list.lastIndex) }
         }
     }
     AlertDialog(
         onDismissRequest = dismiss,
         properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false), // a form half filled is not lost to a stray tap
-        title = { Text(if (start == null) "New source" else "Edit source") },
+        title = { Text(stringResource(if (start == null) R.string.words_new_source else R.string.words_edit_source)) },
         text = {
             Column(Modifier.heightIn(max = 520.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DocSource.Type.entries.forEach { t -> Choice(t.label, type == t) { type = t } }
+                    DocSource.Type.entries.forEach { t -> Choice(stringResource(t.res), type == t) { type = t } }
                 }
-                people("Authors", authors)
-                field("Year", year, { year = it })
-                field(if (type == DocSource.Type.Chapter) "Chapter title" else if (type == DocSource.Type.Web) "Page title" else "Title", title, { title = it })
+                people(stringResource(R.string.words_authors), authors)
+                field(stringResource(R.string.words_year), year, { year = it })
+                field(stringResource(if (type == DocSource.Type.Chapter) R.string.words_chapter_title else if (type == DocSource.Type.Web) R.string.words_page_title else R.string.words_title), title, { title = it })
                 when (type) {
                     DocSource.Type.Article -> {
-                        field("Journal", container, { container = it })
+                        field(stringResource(R.string.words_journal), container, { container = it })
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            field("Volume", volume, { volume = it }, Modifier.weight(1f)); field("Issue", issue, { issue = it }, Modifier.weight(1f)); field("Pages", pages, { pages = it }, Modifier.weight(1f))
+                            field(stringResource(R.string.words_volume), volume, { volume = it }, Modifier.weight(1f)); field(stringResource(R.string.words_issue), issue, { issue = it }, Modifier.weight(1f)); field(stringResource(R.string.words_pages), pages, { pages = it }, Modifier.weight(1f))
                         }
                     }
                     DocSource.Type.Chapter -> {
-                        field("Book title", container, { container = it })
-                        people("Editors of the book", editors)
-                        field("Pages", pages, { pages = it }); field("Publisher", publisher, { publisher = it })
+                        field(stringResource(R.string.words_book_title), container, { container = it })
+                        people(stringResource(R.string.words_book_editors), editors)
+                        field(stringResource(R.string.words_pages), pages, { pages = it }); field(stringResource(R.string.words_publisher), publisher, { publisher = it })
                     }
-                    DocSource.Type.Web -> field("Web site", container, { container = it })
-                    DocSource.Type.Report -> { field("Report number (e.g. Report No. 12)", container, { container = it }); field("Publisher", publisher, { publisher = it }) }
-                    DocSource.Type.Thesis -> { field("Kind (e.g. Master's thesis, Doctoral dissertation)", container, { container = it }); field("University", publisher, { publisher = it }) }
-                    DocSource.Type.Video -> field("Where (e.g. YouTube)", container, { container = it })
-                    DocSource.Type.Book -> { field("Edition (e.g. 2nd)", edition, { edition = it }); field("Publisher", publisher, { publisher = it }) }
+                    DocSource.Type.Web -> field(stringResource(R.string.words_web_site), container, { container = it })
+                    DocSource.Type.Report -> { field(stringResource(R.string.words_report_number), container, { container = it }); field(stringResource(R.string.words_publisher), publisher, { publisher = it }) }
+                    DocSource.Type.Thesis -> { field(stringResource(R.string.words_thesis_kind), container, { container = it }); field(stringResource(R.string.words_university), publisher, { publisher = it }) }
+                    DocSource.Type.Video -> field(stringResource(R.string.words_video_where), container, { container = it })
+                    DocSource.Type.Book -> { field(stringResource(R.string.words_edition), edition, { edition = it }); field(stringResource(R.string.words_publisher), publisher, { publisher = it }) }
                 }
-                field("DOI or web address", doi, { doi = it })
+                field(stringResource(R.string.words_doi_or_address), doi, { doi = it })
             }
         },
         confirmButton = {
@@ -102,9 +102,9 @@ internal fun SourceDialog(start: DocSource?, dismiss: () -> Unit, save: (DocSour
                 save((start ?: DocSource("")).copy(type = type, authors = list(authors), year = year.trim(), title = title.trim(), container = container.trim(),
                     publisher = publisher.trim(), volume = volume.trim(), issue = issue.trim(), pages = pages.trim(), edition = edition.trim(), doi = doi.trim(),
                     editors = if (type == DocSource.Type.Chapter) list(editors) else emptyList()))
-            }) { Text("Save") }
+            }) { Text(stringResource(R.string.common_save)) }
         },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -120,10 +120,10 @@ internal fun CitationDialog(sources: List<DocSource>, pages: Boolean, multiple: 
     var hide by remember { mutableStateOf(startHide) } // Word's Suppress: 'n' the author, 'y' the year
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text(if (startTags.isEmpty()) "Insert citation" else "Change citation") },
+        title = { Text(stringResource(if (startTags.isEmpty()) R.string.words_insert_citation else R.string.words_change_citation)) },
         text = {
             Column(Modifier.heightIn(max = 480.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (sources.isEmpty()) Text("No sources yet.", style = MaterialTheme.typography.bodyMedium)
+                if (sources.isEmpty()) Text(stringResource(R.string.words_no_sources), style = MaterialTheme.typography.bodyMedium)
                 Apa.sorted(sources).forEach { s ->
                     fun pick(on: Boolean) { if (!on) chosen -= s.tag else { if (!multiple) chosen.clear(); chosen += s.tag } }
                     Row(Modifier.fillMaxWidth().clickable { pick(s.tag !in chosen) }, verticalAlignment = Alignment.CenterVertically) {
@@ -134,17 +134,17 @@ internal fun CitationDialog(sources: List<DocSource>, pages: Boolean, multiple: 
                         }
                     }
                 }
-                Choice("+ New source…", false, newSource)
-                if (pages && chosen.size == 1) OutlinedTextField(page, { page = it }, singleLine = true, label = { Text("Page(s), for a quotation (e.g. 12 or 12-14)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                Choice(stringResource(R.string.words_plus_new_source), false, newSource)
+                if (pages && chosen.size == 1) OutlinedTextField(page, { page = it }, singleLine = true, label = { Text(stringResource(R.string.words_quote_pages)) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 // Word's Edit Citation › Suppress (the author named in the sentence already, say): Word files' citations only
                 if (pages && chosen.isNotEmpty()) Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Choice("No author", 'n' in hide) { hide = if ('n' in hide) hide - 'n' else hide + 'n' }
-                    Choice("No year", 'y' in hide) { hide = if ('y' in hide) hide - 'y' else hide + 'y' }
+                    Choice(stringResource(R.string.words_no_author), 'n' in hide) { hide = if ('n' in hide) hide - 'n' else hide + 'n' }
+                    Choice(stringResource(R.string.words_no_year), 'y' in hide) { hide = if ('y' in hide) hide - 'y' else hide + 'y' }
                 }
             }
         },
-        confirmButton = { TextButton(enabled = chosen.isNotEmpty(), onClick = { insert(chosen.mapNotNull { t -> sources.firstOrNull { it.tag == t } }, page.trim(), hide) }) { Text(if (startTags.isEmpty()) "Insert" else "Change") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(enabled = chosen.isNotEmpty(), onClick = { insert(chosen.mapNotNull { t -> sources.firstOrNull { it.tag == t } }, page.trim(), hide) }) { Text(stringResource(if (startTags.isEmpty()) R.string.words_insert else R.string.words_change)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -154,29 +154,29 @@ internal fun SourcesDialog(sources: List<DocSource>, cited: Set<String>, dismiss
     paste: () -> Unit = {}, askClaude: () -> Unit = {}, delete: (DocSource) -> Unit) {
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("Sources") },
+        title = { Text(stringResource(R.string.words_sources)) },
         text = {
             Column(Modifier.heightIn(max = 480.dp).shadedScroll(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (sources.isEmpty()) Text("No sources yet.", style = MaterialTheme.typography.bodyMedium)
+                if (sources.isEmpty()) Text(stringResource(R.string.words_no_sources), style = MaterialTheme.typography.bodyMedium)
                 Apa.sorted(sources).forEach { s ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).clickable { edit(s) }) {
                             Text(Apa.entry(s).joinToString("") { it.text }, style = MaterialTheme.typography.bodyMedium, maxLines = 3)
-                            if (s.tag in cited) Text("Cited", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            if (s.tag in cited) Text(stringResource(R.string.words_cited), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
-                        TextButton(onClick = { edit(s) }) { Text("Edit") }
-                        if (s.tag !in cited) TextButton(onClick = { delete(s) }) { Text("Delete") }
+                        TextButton(onClick = { edit(s) }) { Text(stringResource(R.string.common_edit)) }
+                        if (s.tag !in cited) TextButton(onClick = { delete(s) }) { Text(stringResource(R.string.common_delete)) }
                     }
                 }
-                Choice("+ New source…", false) { edit(null) }
+                Choice(stringResource(R.string.words_plus_new_source), false) { edit(null) }
                 // A Tetra sources file (TETRA_SOURCES_FORMAT.md): the research's references, into this draft at once.
-                Choice("Import sources file…", false) { import() }
+                Choice(stringResource(R.string.words_import_sources_file), false) { import() }
                 // With Claude (the tetra-sources skill): ask in the Claude app, copy its answer, paste it here.
-                Choice("Ask Claude for sources…", false) { askClaude() }
-                Choice("Paste sources (copied from Claude)", false) { paste() }
+                Choice(stringResource(R.string.words_ask_claude_sources_more), false) { askClaude() }
+                Choice(stringResource(R.string.words_paste_sources_claude), false) { paste() }
             }
         },
-        confirmButton = { TextButton(onClick = dismiss) { Text("Done") } },
+        confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_done)) } },
     )
 }
 
@@ -185,13 +185,13 @@ internal fun SourcesDialog(sources: List<DocSource>, cited: Set<String>, dismiss
 @Composable
 internal fun CitationBar(cite: String, sources: List<DocSource>, color: androidx.compose.ui.graphics.Color, edit: (DocSource?, String) -> Unit, change: () -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Citation", color = color, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
+        Text(stringResource(R.string.words_citation), color = color, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
         Citations.parse(cite).first.forEach { t ->
             val s = sources.firstOrNull { it.tag == t }
             TextButton(onClick = { edit(s, t) }) {
-                Text(if (s != null) "Edit " + Apa.citeNames(s) + ", " + s.year.ifBlank { "n.d." } else "$t: new source", color = color, maxLines = 1)
+                Text(if (s != null) stringResource(R.string.words_edit_named, Apa.citeNames(s) + ", " + s.year.ifBlank { "n.d." }) else stringResource(R.string.words_new_source_tag, t), color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        TextButton(onClick = change) { Text("Change…", color = color) }
+        TextButton(onClick = change) { Text(stringResource(R.string.words_change_more), color = color, maxLines = 1) }
     }
 }

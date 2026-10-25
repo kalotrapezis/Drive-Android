@@ -42,33 +42,33 @@ internal fun PageBorderDialog(now: PageBorder?, dismiss: () -> Unit, set: (Borde
     var sides by remember { mutableStateOf(now?.sides ?: "tlbr") }
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("Page borders") },
+        title = { Text(stringResource(R.string.words_page_borders)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Line", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.words_line), style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("single" to "Solid", "double" to "Double", "dotted" to "Dotted", "dashed" to "Dashed").forEach { (s, label) -> Choice(label, style == s) { style = s } }
+                    listOf("single" to stringResource(R.string.words_line_solid), "double" to stringResource(R.string.words_line_double), "dotted" to stringResource(R.string.words_line_dotted), "dashed" to stringResource(R.string.words_line_dashed)).forEach { (s, label) -> Choice(label, style == s) { style = s } }
                 }
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(0.5f to "½ pt", 1f to "1 pt", 1.5f to "1½ pt", 3f to "3 pt", 4.5f to "4½ pt").forEach { (v, label) -> Choice(label, width == v) { width = v } }
                 }
-                Text("Colour", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.words_colour), style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     BORDER_COLORS.forEach { c ->
                         Box(Modifier.size(28.dp).clip(CircleShape).background(Color(0xFF000000 or c.toLong()))
                             .then(if (color == c) Modifier.border(3.dp, Color(0xFF1A73E8), CircleShape) else Modifier).clickable { color = c })
                     }
                 }
-                Text("Sides", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.words_sides), style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Choice("Box", sides == "tlbr") { sides = "tlbr" }
-                    listOf('t' to "Top", 'b' to "Bottom", 'l' to "Left", 'r' to "Right").forEach { (c, label) ->
+                    Choice(stringResource(R.string.words_box), sides == "tlbr") { sides = "tlbr" }
+                    listOf('t' to stringResource(R.string.words_top), 'b' to stringResource(R.string.words_bottom), 'l' to stringResource(R.string.words_left), 'r' to stringResource(R.string.words_right)).forEach { (c, label) ->
                         Choice(label, c in sides) { sides = if (c in sides) sides.replace(c.toString(), "") else "tlbr".filter { it in sides + c } }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(enabled = sides.isNotEmpty(), onClick = { set(Border(width, color, style), sides) }) { Text("Apply") } },
-        dismissButton = { Row { if (now != null) TextButton(onClick = { set(null, "") }) { Text("No border") }; TextButton(onClick = dismiss) { Text("Cancel") } } },
+        confirmButton = { TextButton(enabled = sides.isNotEmpty(), onClick = { set(Border(width, color, style), sides) }) { Text(stringResource(R.string.common_apply)) } },
+        dismissButton = { Row { if (now != null) TextButton(onClick = { set(null, "") }) { Text(stringResource(R.string.words_no_border)) }; TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } } },
     )
 }

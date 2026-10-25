@@ -41,13 +41,13 @@ internal fun KeyboardBar(tint: Color, bold: Boolean, italic: Boolean, underline:
     highlight: (Color?) -> Unit, dictate: () -> Unit, more: () -> Unit, hideKeyboard: () -> Unit) {
     val scroll = rememberScrollState()
     Row(Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Tool(R.drawable.ic_format_bold, "Bold", tint, on = bold, click = toggleBold)
-        Tool(R.drawable.ic_format_italic, "Italic", tint, on = italic, click = toggleItalic)
-        Tool(R.drawable.ic_format_underlined, "Underline", tint, on = underline, click = toggleUnderline)
-        Swatches(tint, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS, highlight)
-        Tool(R.drawable.ic_mic, "Dictate", tint, click = dictate)
-        Tool(R.drawable.ic_more_horiz, "More", tint, click = more)
-        Tool(R.drawable.ic_keyboard_hide, "Hide keyboard", tint, click = hideKeyboard)
+        Tool(R.drawable.ic_format_bold, stringResource(R.string.words_bold), tint, on = bold, click = toggleBold)
+        Tool(R.drawable.ic_format_italic, stringResource(R.string.words_italic), tint, on = italic, click = toggleItalic)
+        Tool(R.drawable.ic_format_underlined, stringResource(R.string.words_underline), tint, on = underline, click = toggleUnderline)
+        Swatches(tint, R.drawable.ic_highlighter, stringResource(R.string.words_highlight), HIGHLIGHT_COLOURS, highlight)
+        Tool(R.drawable.ic_mic, stringResource(R.string.words_dictate), tint, click = dictate)
+        Tool(R.drawable.ic_more_horiz, stringResource(R.string.words_more_tools), tint, click = more)
+        Tool(R.drawable.ic_keyboard_hide, stringResource(R.string.words_hide_keyboard), tint, click = hideKeyboard)
     }
 }
 
@@ -62,7 +62,7 @@ internal fun rememberDictation(said: (String) -> Unit): (() -> Unit)? {
         result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.takeIf { it.isNotBlank() }?.let(said)
     }
     val intent = remember { Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        .putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak — it goes in at the cursor") }
+        .putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.words_dictate_prompt)) }
     val available = remember { intent.resolveActivity(context.packageManager) != null }
     return if (available) { { WriterLog.i("dictation"); launcher.launch(intent) } } else null
 }
@@ -124,9 +124,9 @@ internal fun rememberReadAloud(): ReadAloud {
 @Composable
 internal fun ReadAloudBar(reader: ReadAloud, paragraph: String?, tint: Color) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Reading aloud", color = tint, style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(R.string.words_reading_aloud), color = tint, style = MaterialTheme.typography.labelLarge)
         Text(paragraph.orEmpty(), color = tint.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
-        TextButton(onClick = { reader.stop() }) { Text("Stop", color = tint) }
+        TextButton(onClick = { reader.stop() }) { Text(stringResource(R.string.common_stop), color = tint, maxLines = 1) }
     }
 }

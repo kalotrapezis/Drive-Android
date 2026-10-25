@@ -86,19 +86,19 @@ internal data class HyphenOptions(val zonePt: Float = 18f /* Word's 0.25" */, va
 @Composable
 internal fun HyphenOptionsDialog(now: HyphenOptions, dismiss: () -> Unit, done: (HyphenOptions) -> Unit) {
     var o by remember { mutableStateOf(now) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Hyphenation options") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.words_hyphenation_options)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Hyphenation zone (from the right margin)", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.words_hyphenation_zone), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(9f to "0.13\"", 18f to "0.25\"", 36f to "0.5\"", 54f to "0.75\"").forEach { (pt, label) -> Choice(label, o.zonePt == pt) { o = o.copy(zonePt = pt) } }
             }
-            Text("Lines in a row ending in a hyphen", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.words_hyphen_limit), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(0, 1, 2, 3).forEach { n -> Choice(if (n == 0) "No limit" else "$n", o.limit == n) { o = o.copy(limit = n) } }
+                listOf(0, 1, 2, 3).forEach { n -> Choice(if (n == 0) stringResource(R.string.words_no_limit) else "$n", o.limit == n) { o = o.copy(limit = n) } }
             }
-            Choice("Hyphenate words in CAPS", o.caps) { o = o.copy(caps = !o.caps) }
-            Text("Word and LibreOffice follow these; the pages here break words as Android does.", style = MaterialTheme.typography.bodySmall)
+            Choice(stringResource(R.string.words_hyphenate_caps), o.caps) { o = o.copy(caps = !o.caps) }
+            Text(stringResource(R.string.words_hyphenation_hint), style = MaterialTheme.typography.bodySmall)
         } },
-        confirmButton = { TextButton(onClick = { done(o) }) { Text("Done") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = { done(o) }) { Text(stringResource(R.string.common_done)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }

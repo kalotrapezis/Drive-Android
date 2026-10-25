@@ -53,18 +53,18 @@ internal fun DropCapDialog(now: DropCap?, odt: Boolean, nowFont: String?, nowCol
     val step = if (WriterUnits.inches) 0.05f * 72f else 0.1f * 28.3465f
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("Drop cap") },
+        title = { Text(stringResource(R.string.words_drop_cap)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Position", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.words_position), style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Choice("None", place == 0) { place = 0 }
-                    Choice("Dropped", place == 1) { place = 1 }
-                    if (!odt && !raised) Choice("In margin", place == 2) { place = 2 }
-                    if (raised) Choice("Raised", place == 3) { place = 3 }
+                    Choice(stringResource(R.string.common_none), place == 0) { place = 0 }
+                    Choice(stringResource(R.string.words_dropped), place == 1) { place = 1 }
+                    if (!odt && !raised) Choice(stringResource(R.string.words_in_margin), place == 2) { place = 2 }
+                    if (raised) Choice(stringResource(R.string.words_raised), place == 3) { place = 3 }
                 }
-                if (odt && !raised) Text("An OpenDocument file has no drop cap in the margin.", style = MaterialTheme.typography.bodySmall)
-                if (raised) Text("PowerPoint and LibreOffice have no drop cap. Dropped puts the letter in a text box of its own beside the first lines (it stays where it is when the words change); Raised makes it bigger, on the first line.", style = MaterialTheme.typography.bodySmall)
+                if (odt && !raised) Text(stringResource(R.string.words_odt_no_margin_drop), style = MaterialTheme.typography.bodySmall)
+                if (raised) Text(stringResource(R.string.words_slides_drop_cap_hint), style = MaterialTheme.typography.bodySmall)
                 if (place != 0) {
                     @Composable fun stepper(label: String, value: String, less: () -> Unit, more: () -> Unit) = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(label, modifier = Modifier.width(150.dp))
@@ -72,25 +72,25 @@ internal fun DropCapDialog(now: DropCap?, odt: Boolean, nowFont: String?, nowCol
                         Text(value, textAlign = TextAlign.Center, modifier = Modifier.width(64.dp))
                         Choice("+", false, more)
                     }
-                    stepper(if (place == 3) "Lines tall" else "Lines to drop", "$lines", { lines = (lines - 1).coerceAtLeast(2) }, { lines = (lines + 1).coerceAtMost(10) })
-                    if (place != 3) stepper("Distance from text", "%.2f".format(Locale.ROOT, WriterUnits.of(distance)).trimEnd('0').trimEnd('.') + " " + WriterUnits.name,
+                    stepper(stringResource(if (place == 3) R.string.words_lines_tall else R.string.words_lines_to_drop), "$lines", { lines = (lines - 1).coerceAtLeast(2) }, { lines = (lines + 1).coerceAtMost(10) })
+                    if (place != 3) stepper(stringResource(R.string.words_distance_from_text), "%.2f".format(Locale.ROOT, WriterUnits.of(distance)).trimEnd('0').trimEnd('.') + " " + WriterUnits.name,
                         { distance = (distance - step).coerceAtLeast(0f) }, { distance = (distance + step).coerceAtMost(72f) })
                     // The letter's own look (asked 2026-09-30): its font and colour, as the text's letters have theirs.
-                    Text("Font", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.words_font), style = MaterialTheme.typography.labelLarge)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Choice("As the text", font == null) { font = null }
+                        Choice(stringResource(R.string.words_as_the_text), font == null) { font = null }
                         (STYLE_FONTS + listOfNotNull(font?.takeIf { f -> STYLE_FONTS.none { it.equals(f, true) } })).forEach { f -> Choice(f, font.equals(f, true)) { font = f } }
                     }
-                    Text("Colour", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.words_colour), style = MaterialTheme.typography.labelLarge)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Choice("Automatic", color == null) { color = null }
+                        Choice(stringResource(R.string.words_automatic), color == null) { color = null }
                         DROP_COLORS.forEach { c -> Box(Modifier.size(32.dp).clip(CircleShape).background(Color(0xFF000000 or c.toLong()))
                             .border(3.dp, if (color == c) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape).clickable { color = c }) }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { apply(if (place == 0) null else DropCap(lines, place == 2, distance, now?.length ?: 1, place == 3), font, color) }) { Text("OK") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { apply(if (place == 0) null else DropCap(lines, place == 2, distance, now?.length ?: 1, place == 3), font, color) }) { Text(stringResource(R.string.common_ok)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

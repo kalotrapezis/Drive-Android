@@ -794,7 +794,8 @@ internal object WriterBridge {
         }
         return rich.copy(blocks = blocks)
     }
-    enum class Case(val label: String) { Sentence("Sentence case."), Lower("lowercase"), Upper("UPPERCASE"), Words("Capitalise Each Word") }
+    /** [label]: English, for Slides' menu; [text]: the shown words. */
+    enum class Case(val label: String, @androidx.annotation.StringRes val text: Int) { Sentence("Sentence case.", R.string.words_case_sentence), Lower("lowercase", R.string.words_case_lower), Upper("UPPERCASE", R.string.words_case_upper), Words("Capitalise Each Word", R.string.words_case_words) }
 
     /** [s] in [case], letter for letter (so each keeps its look); a letter whose case is longer (ß → SS) stays as it was. */
     fun inCase(s: String, case: Case, sentenceStart: Boolean, locale: java.util.Locale = java.util.Locale.getDefault()): String {
@@ -1113,7 +1114,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 }.let { File(root, it) }
             } }
             made.onSuccess { f -> WriterLog.i("PDF: made from ${uris.size} photos"); openPdf(Uri.fromFile(f).toString()) }
-                .onFailure { WriterLog.e("PDF: from photos", it); android.widget.Toast.makeText(photosContext, it.message ?: "Could not make the PDF.", android.widget.Toast.LENGTH_LONG).show() }
+                .onFailure { WriterLog.e("PDF: from photos", it); android.widget.Toast.makeText(photosContext, it.message ?: photosContext.getString(R.string.words_pdf_not_made), android.widget.Toast.LENGTH_LONG).show() }
         }
     }
     val pick = rememberOfficePicker { f -> Uri.fromFile(f).toString().let { if (Pdf.isPdf(f.name)) openPdf(it) else if (Slides.isSlides(f.name)) openSlides(it) else if (Sheets.isSheet(f.name)) openSheet(it) else open(it) } }
@@ -1121,7 +1122,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     /** A new PDF in Documents, a blank A4 page, opened editing. */
     fun newPdf() {
         runCatching { Pdf.newBlank(File(root, "Documents")).also { JustMade.mark(it); WriterLog.i("PDF: a new blank PDF"); openPdf(Uri.fromFile(it).toString()) } }
-            .onFailure { WriterLog.e("PDF: a new PDF could not be made", it); android.widget.Toast.makeText(context, "Could not make the PDF.", android.widget.Toast.LENGTH_LONG).show() }
+            .onFailure { WriterLog.e("PDF: a new PDF could not be made", it); android.widget.Toast.makeText(context, context.getString(R.string.words_pdf_not_made), android.widget.Toast.LENGTH_LONG).show() }
     }
     /** A new presentation in Documents, opened editing: the app's empty deck (a title slide), or one of [template]. */
     fun newPresentation(template: File?) {
@@ -1133,19 +1134,20 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
             openSlides(Uri.fromFile(f).toString())
         }.onFailure { WriterLog.e("Slides: a new presentation could not be made", it) }
     }
+    val blank = stringResource(R.string.words_blank)
     if (choosingTemplate) {
-        val options = remember { listOf<Pair<File?, SlideTheme?>>(null to SlidesThemes.BUILT_IN.first().copy(name = "Blank")) + SlidesTemplates.files().map { it to SlidesThemes.fromFile(it) } }
+        val options = remember { listOf<Pair<File?, SlideTheme?>>(null to SlidesThemes.BUILT_IN.first().copy(name = blank)) + SlidesTemplates.files().map { it to SlidesThemes.fromFile(it) } }
         androidx.compose.ui.window.Dialog(onDismissRequest = { choosingTemplate = false }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.widthIn(max = 720.dp).padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.padding(20.dp)) {
-                    Text("New presentation", style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.words_new_presentation), style = MaterialTheme.typography.titleLarge)
                     Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {
                         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), maxItemsInEachRow = 2) {
-                            options.forEach { (f, t) -> ThemeCard(t ?: SlidesThemes.BUILT_IN.first().copy(name = f?.nameWithoutExtension ?: "Blank"), false, Modifier.weight(1f)) { choosingTemplate = false; newPresentation(f) } }
+                            options.forEach { (f, t) -> ThemeCard(t ?: SlidesThemes.BUILT_IN.first().copy(name = f?.nameWithoutExtension ?: blank), false, Modifier.weight(1f)) { choosingTemplate = false; newPresentation(f) } }
                             if (options.size % 2 == 1) Spacer(Modifier.weight(1f)) // a last one alone keeps its size
                         }
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = { choosingTemplate = false }) { Text("Cancel") } }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = { choosingTemplate = false }) { Text(stringResource(R.string.common_cancel)) } }
                 }
             }
         }
@@ -1164,11 +1166,11 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                     tint = if (pdf) PDF_RED else if (deck) POWERPOINT_ORANGE else if (sheet) EXCEL_GREEN else WORD_BLUE, modifier = Modifier.size(28.dp))
                 Column(Modifier.weight(1f)) {
                     Text(f.file.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(f.relative.substringBeforeLast('/', "Files").let { "$it · " } + java.text.DateFormat.getDateInstance().format(java.util.Date(f.modified)),
+                    Text(f.relative.substringBeforeLast('/', stringResource(R.string.app_files)).let { "$it · " } + java.text.DateFormat.getDateInstance().format(java.util.Date(f.modified)),
                         style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 androidx.compose.material3.IconButton(onClick = { runCatching { metadata.setFavorite(f.relative, !fav) }; favs = loadFavs() }) {
-                    Icon(painterResource(if (fav) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = if (fav) "Remove from favourites" else "Add to favourites",
+                    Icon(painterResource(if (fav) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = if (fav) stringResource(R.string.words_unfavourite) else stringResource(R.string.words_favourite),
                         tint = androidx.compose.material3.LocalContentColor.current) // a white heart, filled when it is one (asked 17 Oct)
                 }
             }
@@ -1180,26 +1182,26 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
         // each list's title apart from its rows, so on a tablet both titles share a row and both lists start level (asked 17 Oct)
         val recentsTitle: @Composable (Modifier) -> Unit = { m ->
             Column(m.padding(top = 14.dp, bottom = 2.dp)) {
-                Text("Recent documents", style = MaterialTheme.typography.titleMedium)
-                if (total > (files?.size ?: 0)) Text("Those opened lately first, then the $OFFICE_RECENT newest of each kind — documents, spreadsheets, presentations, PDFs — of $total; the rest are in Files.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.words_recent_documents), style = MaterialTheme.typography.titleMedium)
+                if (total > (files?.size ?: 0)) Text(stringResource(R.string.words_recent_about, OFFICE_RECENT, total), style = MaterialTheme.typography.bodySmall)
             }
         }
         val recents: @Composable (Modifier) -> Unit = { m ->
             Column(m, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!hasAccess) {
-                    Text("Tetra needs access to all files to list your documents.", style = MaterialTheme.typography.bodyMedium)
-                    Button(onClick = grant) { Text("Allow access") }
+                    Text(stringResource(R.string.words_needs_access), style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = grant) { Text(stringResource(R.string.words_allow_access)) }
                 } else when (val list = files) {
                     null -> LoadingSpinner()
-                    else -> if (list.isEmpty()) Text("No documents, spreadsheets, presentations or PDFs in Tetra's Files yet.", style = MaterialTheme.typography.bodyMedium)
+                    else -> if (list.isEmpty()) Text(stringResource(R.string.words_no_office_files), style = MaterialTheme.typography.bodyMedium)
                         else list.forEach { f -> androidx.compose.runtime.key(f.relative) { officeRow(f) } }
                 }
             }
         }
         val favouritesTitle: @Composable (Modifier) -> Unit = { m ->
             Column(m.padding(top = 14.dp, bottom = 2.dp)) {
-                Text("Favourites", style = MaterialTheme.typography.titleMedium)
-                if (hasAccess && favs?.isEmpty() == true) Text("Tap the heart beside a document to keep it here.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.words_favourites), style = MaterialTheme.typography.titleMedium)
+                if (hasAccess && favs?.isEmpty() == true) Text(stringResource(R.string.words_favourites_empty), style = MaterialTheme.typography.bodySmall)
             }
         }
         val favourites: @Composable (Modifier) -> Unit = { m ->
@@ -1215,19 +1217,19 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
                 // (plain rows: a FlowRow asks the cards' BoxWithConstraints for intrinsic sizes, which crashes)
                 val cards = listOf<@Composable (Modifier) -> Unit>(
-                    { m -> NewDocCard("Words", "New document", WORD_BLUE, m, { open(null) }) { pick(OfficePick.Words) } },
-                    { m -> NewDocCard("Tables", "New spreadsheet", EXCEL_GREEN, m, { openSheet(NEW_SHEET) }) { pick(OfficePick.Tables) } },
+                    { m -> NewDocCard(stringResource(R.string.app_words), stringResource(R.string.words_new_document), stringResource(R.string.words_about_words), WORD_BLUE, m, { open(null) }) { pick(OfficePick.Words) } },
+                    { m -> NewDocCard(stringResource(R.string.app_tables), stringResource(R.string.words_new_spreadsheet), stringResource(R.string.words_about_tables), EXCEL_GREEN, m, { openSheet(NEW_SHEET) }) { pick(OfficePick.Tables) } },
                     // a new presentation: the app's empty deck (a title slide) in Documents, opened editing
                     // with templates in Documents/Templates: which to start from first (asked 16 Oct: a school's, a company's)
-                    { m -> NewDocCard("Slides", "New presentation", POWERPOINT_ORANGE, m, {
+                    { m -> NewDocCard(stringResource(R.string.app_slides), stringResource(R.string.words_new_presentation), stringResource(R.string.words_about_slides), POWERPOINT_ORANGE, m, {
                         if (SlidesTemplates.files().isNotEmpty()) choosingTemplate = true else newPresentation(null)
                     }) { pick(OfficePick.Slides) } },
                     // a new PDF (asked 24 Oct: New opened the photo picker, taken for a broken Open): a blank A4 page, or photos a page each
                     { m -> Box(m) {
-                        NewDocCard("PDF", "New PDF", PDF_RED, Modifier.fillMaxWidth(), { newPdfMenu = true }) { pick(OfficePick.Pdf) }
+                        NewDocCard(stringResource(R.string.app_pdf), stringResource(R.string.words_new_pdf), stringResource(R.string.words_about_pdf), PDF_RED, Modifier.fillMaxWidth(), { newPdfMenu = true }) { pick(OfficePick.Pdf) }
                         DropdownMenu(newPdfMenu, { newPdfMenu = false }) {
-                            DropdownMenuItem(text = { Text("Blank page (A4)") }, leadingIcon = { Icon(painterResource(R.drawable.ic_note_add), null) }, onClick = { newPdfMenu = false; newPdf() })
-                            DropdownMenuItem(text = { Text("From photos") }, leadingIcon = { Icon(painterResource(R.drawable.ic_gallery), null) }, onClick = { newPdfMenu = false; photosToPdf.launch(arrayOf("image/*")) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.words_blank_page_a4)) }, leadingIcon = { Icon(painterResource(R.drawable.ic_note_add), null) }, onClick = { newPdfMenu = false; newPdf() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.words_from_photos)) }, leadingIcon = { Icon(painterResource(R.drawable.ic_gallery), null) }, onClick = { newPdfMenu = false; photosToPdf.launch(arrayOf("image/*")) })
                         }
                     } },
                 )
@@ -1249,7 +1251,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
                 } }
             }
         }
-        ModuleHeader("Office", back, Modifier.align(Alignment.TopCenter), art = R.drawable.office_art)
+        ModuleHeader(stringResource(R.string.app_office), back, Modifier.align(Alignment.TopCenter), art = R.drawable.office_art)
     }
 }
 
@@ -1257,7 +1259,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
 @Composable private fun LoadingSpinner() = Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator() }
 
 /** An Office app's card: New on the left, Open (the picker for its kind of file, asked 17 Oct) on the right; one without New opens all over. */
-@Composable private fun NewDocCard(app: String, label: String, color: Color, modifier: Modifier, new: (() -> Unit)?, open: () -> Unit) = Surface(
+@Composable private fun NewDocCard(app: String, label: String, about: String, color: Color, modifier: Modifier, new: (() -> Unit)?, open: () -> Unit) = Surface(
     shape = MaterialTheme.shapes.extraLarge, color = color, contentColor = Color.White, modifier = modifier.height(104.dp),
 ) {
     Row {
@@ -1267,9 +1269,9 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
                 Icon(painterResource(if (new != null) R.drawable.ic_note_add else R.drawable.ic_folder), contentDescription = null, modifier = Modifier.size(24.dp))
                 Column {
-                    Text(app, style = if (wide) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall, maxLines = 1)
-                    Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                    if (wide) Text(when (app) { "Words" -> "Word and LibreOffice documents"; "Tables" -> "Excel and LibreOffice spreadsheets"; "PDF" -> "View, edit, fill and sign"; else -> "PowerPoint and LibreOffice presentations" },
+                    Text(app, style = if (wide) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (wide) Text(about,
                         style = MaterialTheme.typography.labelSmall, color = androidx.compose.material3.LocalContentColor.current.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -1278,7 +1280,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
             Box(Modifier.padding(vertical = 16.dp).width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.3f)))
             Column(Modifier.width(60.dp).fillMaxHeight().clickable(onClick = open), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Icon(painterResource(R.drawable.ic_folder), contentDescription = null, modifier = Modifier.size(24.dp))
-                Text("Open", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+                Text(stringResource(R.string.common_open), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -1327,7 +1329,7 @@ internal fun keepPrevious(context: Context, file: File) {
 internal fun freeCopyName(dir: File, stem: String, ext: String): File =
     generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem (copy).$ext" else "$stem (copy $it).$ext") }.first { !it.exists() }
 
-private enum class WriterTab(val label: String) { File("File"), Home("Home"), Insert("Insert"), Draw("Draw"), Design("Design"), Layout("Layout"), References("References"), Review("Review"), View("View"), Picture("Image"), Table("Table"), Selection("Selection") }
+private enum class WriterTab(@androidx.annotation.StringRes val label: Int) { File(R.string.words_tab_file), Home(R.string.words_tab_home), Insert(R.string.words_tab_insert), Draw(R.string.words_tab_draw), Design(R.string.words_tab_design), Layout(R.string.words_tab_layout), References(R.string.words_tab_references), Review(R.string.words_tab_review), View(R.string.words_tab_view), Picture(R.string.words_tab_image), Table(R.string.words_tab_table), Selection(R.string.words_tab_selection) }
 private data class TableCellRef(val key: String, val row: Int, val cell: Int)
 /** A cell being typed in: [cell] holds its looks as they are changed, [value] the text in the box. */
 private data class TableCellEdit(val ref: TableCellRef, val value: TextFieldValue, val cell: DocCell)
@@ -1607,7 +1609,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (draft != null) {
                 state.setRichTextDocument(WriterBridge.toEditor(draft.copy(basePt = doc.basePt), pictures, documentStyles))
                 meta = meta.copy(paras = draft.paras, comments = draft.comments, sources = draft.sources) // the draft's paragraph formatting, comments and sources, not the file's
-                dirty = true; message = "Your unsaved changes are back"
+                dirty = true; message = context.getString(R.string.words_unsaved_back)
                 WriterLog.i("draft restored")
             }
             state.history.clear(); undone.clear(); redone.clear()
@@ -1615,11 +1617,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             state.selection = androidx.compose.ui.text.TextRange(0)
             base = snapshot()
             loaded = true
-        }.onFailure { WriterLog.e("could not open", it); failed = it.message ?: "This file could not be read." }
+        }.onFailure { WriterLog.e("could not open", it); failed = it.message ?: context.getString(R.string.words_file_could_not_be_read) }
     }
     // The log: the mode, the tab and what Writer said (the taps are the ribbon's; see WriterLog).
     LaunchedEffect(viewing, reading) { WriterLog.i(if (reading) "reading mode at $readingZoom%" else if (viewing) "view mode" else "edit mode") }
-    LaunchedEffect(tab) { WriterLog.i("tab ${tab.label}") }
+    LaunchedEffect(tab) { WriterLog.i("tab ${tab.name}") }
     DisposableEffect(Unit) { onDispose { WriterLog.i("closed${if (dirty) " (changes kept as a draft)" else ""}") } }
     /**
      * The package just written ([bytes], from [saved]) becomes the one Writer works from: a picture or shape added in
@@ -1815,7 +1817,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     temp.writeBytes(bytes)
                     // AutoSave keeps the file as it was opened, once: three Versions would not outlast a minute of saves.
                     if (!copy && !(auto && versionKept)) keepPrevious(context, f)
-                    check(temp.renameTo(target)) { "Could not save ${target.name}." }
+                    check(temp.renameTo(target)) { context.getString(R.string.words_could_not_save_name, target.name) }
                     // Its time is now (the phone's storage was seen keeping the old one): sync and the hash cache know it changed.
                     target.setLastModified(System.currentTimeMillis())
                     target to bytes
@@ -1825,10 +1827,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 WriterLog.i("${if (auto) "autosaved" else "saved"} ${target.name} (${bytes.size / 1024} KB${if (copy) ", a copy" else ""})")
                 if (!copy) versionKept = true
                 finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey)
-                if (!auto) message = if (dirty) "Saved — newer changes are still unsaved" else if (copy) "Saved as ${target.name} — the original is as it was" else "Saved"
+                if (!auto) message = if (dirty) context.getString(R.string.words_saved_newer_unsaved) else if (copy) context.getString(R.string.words_saved_as_copy, target.name) else context.getString(R.string.words_saved)
                 if (!dirty) then()
-            }.onFailure { WriterLog.e("could not save", it); message = (if (auto) "AutoSave: " else "") + (it.message ?: "Could not save.") }
-            } catch (error: Exception) { WriterLog.e("finish save", error); message = error.message ?: "Could not finish saving." }
+            }.onFailure { WriterLog.e("could not save", it); message = (it.message ?: context.getString(R.string.words_could_not_save)).let { m -> if (auto) context.getString(R.string.words_autosave_failed, m) else m } }
+            } catch (error: Exception) { WriterLog.e("finish save", error); message = error.message ?: context.getString(R.string.words_could_not_finish_saving) }
             finally { saving = false }
         }
     }
@@ -1837,7 +1839,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun saveNew(typed: String) {
         if (saving) return
         val clean = typed.trim().removeSuffix(".${kind.extension}")
-        if (clean.isEmpty() || '/' in clean) { message = "That is not a file name."; return }
+        if (clean.isEmpty() || '/' in clean) { message = context.getString(R.string.words_not_a_file_name); return }
         saving = true
         scope.launch {
             try {
@@ -1849,18 +1851,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val source = original
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    check(dir.isDirectory || dir.mkdirs()) { "Could not make ${dir.name}." }
-                    check(!target.exists()) { "${target.name} is already there. Choose another name." }
+                    check(dir.isDirectory || dir.mkdirs()) { context.getString(R.string.words_could_not_make_folder, dir.name) }
+                    check(!target.exists()) { context.getString(R.string.words_name_taken, target.name) }
                     OfficeFormats.write(doc, kind, source).also { bytes ->
                         val temp = File(target.parentFile, ".${target.name}.tetra-saving")
                         temp.writeBytes(bytes)
-                        check(temp.renameTo(target)) { "Could not save ${target.name}." }
+                        check(temp.renameTo(target)) { context.getString(R.string.words_could_not_save_name, target.name) }
                     }
                 }
             }
-            result.onSuccess { bytes -> WriterLog.i("saved new ${target.name} (${bytes.size / 1024} KB)"); naming = false; finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey); message = if (dirty) "Saved — newer changes are still unsaved" else "Saved as ${target.name}" }
+            result.onSuccess { bytes -> WriterLog.i("saved new ${target.name} (${bytes.size / 1024} KB)"); naming = false; finishSave(target, bytes, doc, savedStyleEdits, oldDraftKey); message = if (dirty) context.getString(R.string.words_saved_newer_unsaved) else context.getString(R.string.words_saved_as, target.name) }
                 .onFailure { WriterLog.e("could not save new", it); message = it.message }
-            } catch (error: Exception) { WriterLog.e("finish save new", error); message = error.message ?: "Could not finish saving." }
+            } catch (error: Exception) { WriterLog.e("finish save new", error); message = error.message ?: context.getString(R.string.words_could_not_finish_saving) }
             finally { saving = false }
         }
     }
@@ -1872,13 +1874,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val stem = name.substringBeforeLast('.')
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    check(dir.isDirectory || dir.mkdirs()) { "Could not make ${dir.name}." }
+                    check(dir.isDirectory || dir.mkdirs()) { context.getString(R.string.words_could_not_make_folder, dir.name) }
                     val target = generateSequence(1) { it + 1 }.map { File(dir, if (it == 1) "$stem.pdf" else "$stem ($it).pdf") }.first { !it.exists() }
                     target.outputStream().use { OfficePdf.write(doc, DocStyles.of(kind, original), it) { img -> img.bytes ?: img.part?.let { p -> packageParts[p] } } }
                     target
                 }
             }
-            result.onSuccess { message = "Saved ${it.name} in ${dir.name}" }.onFailure { message = it.message ?: "Could not make the PDF." }
+            result.onSuccess { message = context.getString(R.string.words_saved_in, it.name, dir.name) }.onFailure { message = it.message ?: context.getString(R.string.words_pdf_not_made) }
         }
     }
     /** File › Print: the pages as Export PDF makes them, to Android's printing (a printer, or Save as PDF). */
@@ -1887,7 +1889,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val doc = current()
             val pdf = withContext(Dispatchers.IO) { runCatching {
                 File(context.cacheDir, "print.pdf").also { f -> f.outputStream().use { OfficePdf.write(doc, DocStyles.of(kind, original), it) { img -> img.bytes ?: img.part?.let { p -> packageParts[p] } } } }
-            }.onFailure { WriterLog.e("print", it) }.getOrNull() } ?: run { message = "Could not make the pages to print."; return@launch }
+            }.onFailure { WriterLog.e("print", it) }.getOrNull() } ?: run { message = context.getString(R.string.words_print_failed); return@launch }
             val manager = context.getSystemService(android.print.PrintManager::class.java) ?: return@launch
             manager.print(name.substringBeforeLast('.'), PdfPrintAdapter(pdf, name.substringBeforeLast('.')), null)
             WriterLog.i("print ${pdf.length() / 1024} KB")
@@ -1897,32 +1899,32 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun rename(typed: String) {
         val f = currentFile() ?: return
         val clean = typed.trim().removeSuffix(".${kind.extension}")
-        if (clean.isEmpty() || '/' in clean) { message = "That is not a file name."; return }
+        if (clean.isEmpty() || '/' in clean) { message = context.getString(R.string.words_not_a_file_name); return }
         val target = File(f.parentFile, "$clean.${kind.extension}")
         if (target == f) { renaming = false; return }
-        if (target.exists()) { message = "${target.name} is already there. Choose another name."; return }
+        if (target.exists()) { message = context.getString(R.string.words_name_taken, target.name); return }
         scope.launch {
             val ok = withContext(Dispatchers.IO) { draftMutex.withLock { runCatching {
                 val oldDraft = draftFile(context, draftKey, kind); val oldVersions = versionsDir(context, f)
-                check(f.renameTo(target)) { "Could not rename ${f.name}." }
+                check(f.renameTo(target)) { context.getString(R.string.words_could_not_rename_name, f.name) }
                 if (oldDraft.isFile) oldDraft.renameTo(draftFile(context, Uri.fromFile(target).toString(), kind))
                 if (oldVersions.isDirectory) oldVersions.renameTo(versionsDir(context, target))
             }.onFailure { WriterLog.e("rename", it) }.isSuccess } }
-            if (!ok) { message = "Could not rename it."; return@launch }
+            if (!ok) { message = context.getString(R.string.words_could_not_rename); return@launch }
             uri = Uri.fromFile(target).toString(); name = target.name; renaming = false
-            WriterLog.i("renamed to ${target.name}"); message = "Renamed ${target.name}"
+            WriterLog.i("renamed to ${target.name}"); message = context.getString(R.string.words_renamed, target.name)
         }
     }
     /** Versions › This session: the working copy as it was then, back in the editor (one step of Undo). */
     fun restoreSession(copy: File) = change {
         val bytes = runCatching { copy.readBytes() }.getOrNull() ?: return@change
-        val doc = runCatching { OfficeFormats.read(bytes, kind) }.onFailure { WriterLog.e("session copy", it) }.getOrNull() ?: run { message = "That copy could not be read."; return@change }
+        val doc = runCatching { OfficeFormats.read(bytes, kind) }.onFailure { WriterLog.e("session copy", it) }.getOrNull() ?: run { message = context.getString(R.string.words_copy_unreadable); return@change }
         original = bytes; packageParts = OfficeFormats.unzip(bytes); documentStyles = DocStyles.of(kind, bytes)
         pictures.clear()
         meta = doc.copy(unsupported = meta.unsupported)
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles))
         dirty = true; styleEdits++
-        message = "This version is the document now — Undo returns to before"
+        message = context.getString(R.string.words_version_restored)
         WriterLog.i("version ${copy.name} brought back")
     }
     /**
@@ -1949,7 +1951,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun insertPicture(picked: android.net.Uri) {
         scope.launch {
             val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
-            if (img == null) { message = "Could not add that picture."; return@launch }
+            if (img == null) { message = context.getString(R.string.words_picture_not_added); return@launch }
             pictures[img.key] = img
             val at = placePicture(img)
             state.selection = androidx.compose.ui.text.TextRange(at + 1) // the cursor after it
@@ -1967,14 +1969,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     fun insertOnlineVideo(url: String) = scope.launch { insertVideo(url, withContext(Dispatchers.IO) { OfficeVideo.poster(url) }) }
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked -> picked ?: return@rememberLauncherForActivityResult
-        scope.launch { withContext(Dispatchers.IO) { OfficeVideo.fromPhone(context, picked, File(context.cacheDir, "word-videos")) }?.let { insertVideo(it.first, it.second) } ?: run { message = "That video could not be read" } }
+        scope.launch { withContext(Dispatchers.IO) { OfficeVideo.fromPhone(context, picked, File(context.cacheDir, "word-videos")) }?.let { insertVideo(it.first, it.second) } ?: run { message = context.getString(R.string.words_video_unreadable) } }
     }
     var playing by remember { mutableStateOf<Pair<String, String>?>(null) } // Picture › Play: the video playing in its frame while editing (its key, its film)
     /** A video's film to play: a web address or a copy on the phone as it is, else its part taken out of the file. */
     suspend fun filmOf(m: String): String? = if (m.startsWith("http") || File(m).isFile) m
         else withContext(Dispatchers.IO) { packageParts[m]?.let { b -> File(context.cacheDir, "film-${m.substringAfterLast('/')}").apply { writeBytes(b) }.path } }
     fun play(key: String, m: String) = scope.launch {
-        filmOf(m)?.let { playing = key to it; WriterLog.i("a video played") } ?: run { message = "Its film could not be found" }
+        filmOf(m)?.let { playing = key to it; WriterLog.i("a video played") } ?: run { message = context.getString(R.string.words_film_not_found) }
     }
     /** A picture changed by the Picture tab: read back in, so its line makes room for its new size; the selection stays. */
     fun changePicture(key: String, img: DocImage) = change {
@@ -2026,7 +2028,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val old = pictures[key] ?: return@rememberLauncherForActivityResult
         if (picked != null) scope.launch {
             val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
-            if (img == null) { message = "Could not use that picture."; return@launch }
+            if (img == null) { message = context.getString(R.string.words_picture_not_used); return@launch }
             changePicture(key, DocImage(key, null, old.widthPt, old.widthPt * img.heightPt / img.widthPt, null, img.bytes, img.extension, PictureXml.wrapOf(old)))
             // a picture control's picture: filled now (its placeholder state gone)
             if (current().paras.any { p -> p.runs.any { it.image?.key == key && it.control != null } }) change<Unit> { meta = Forms.pictureFilled(current(), key); state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection) }
@@ -2040,7 +2042,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val bytes = img.bytes ?: img.part?.let { packageParts[it] } ?: return
         scope.launch {
             val out = withContext(Dispatchers.Default) { runCatching { transformedPicture(img, bytes, turn, flip) }.getOrNull() }
-            if (out == null) { message = "Words cannot turn this kind of picture."; return@launch }
+            if (out == null) { message = context.getString(R.string.words_cannot_rotate_picture); return@launch }
             changePicture(key, out)
             state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
         }
@@ -2073,7 +2075,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     /** A paragraph style put on the chosen paragraphs: the file's own (or a heading level), shown at once as it looks. */
     fun applyStyle(style: StyleEntry) = change {
-        val at = chosen()?.first ?: run { message = "Put the cursor in a paragraph of text"; return@change }
+        val at = chosen()?.first ?: run { message = context.getString(R.string.words_cursor_in_paragraph); return@change }
         val cur = current()
         meta = cur.copy(paras = cur.paras.mapIndexed { i, p ->
             if (i !in at || p.table != null) p else p.copy(heading = style.heading, keep = (p.keep ?: DocKeep()).copy(style = style.id).takeIf { !it.isEmpty })
@@ -2103,7 +2105,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val now = state.toRichTextDocument()
         val cur = current()
         val here = WriterBridge.paragraphsAt(state.annotatedString.text, now, cursor, cursor).singleOrNull()
-            ?.takeIf { now.blocks.count { !it.isLineBreak } == cur.paras.size } ?: run { message = "Put the cursor in a paragraph of text"; return@change }
+            ?.takeIf { now.blocks.count { !it.isLineBreak } == cur.paras.size } ?: run { message = context.getString(R.string.words_cursor_in_paragraph); return@change }
         meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> when {
             p.table != null -> p
             i == here -> (if (split != null && !atStart) p.copy(heading = split.heading, keep = split.keep?.let { k -> k.copy(parts = k.parts.filter { it.first != "sectPr" }) }?.takeIf { !it.isEmpty }) else p).let {
@@ -2136,7 +2138,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val cur = current()
         meta = cur.copy(paras = cur.paras.mapIndexed { i, p -> if (i !in at || p.table != null) p else p.copy(keep = OfficeFormats.withBorders(p.keep, kind, box)) })
         dirty = true
-        message = "Borders — they show on the pages"
+        message = context.getString(R.string.words_borders_on_pages)
     }
     /** Insert › Drop Cap on the paragraph at the cursor (null: taken off); the pages show it. */
     var dropCapPage by remember { mutableStateOf<Pair<Int, DropCap?>?>(null) } // the options page: its paragraph, as it is
@@ -2147,7 +2149,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         dirty = true
         // The letters' colour is the editor's too: shown again.
         if (font != null || color != null) state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
-        message = if (drop == null) "Drop cap taken off" else "Drop cap — it shows on the pages"
+        message = if (drop == null) context.getString(R.string.words_drop_cap_off) else context.getString(R.string.words_drop_cap_on_pages)
     }
     /** Word's horizontal line: an empty paragraph with a line under it after this one, and a new paragraph to go on in. */
     fun horizontalLine() = change {
@@ -2212,7 +2214,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val (from, to) = chosenOrWord()
         val cur = current()
         val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), from, to)
-        if (spans.isEmpty() || state.toRichTextDocument().blocks.count { !it.isLineBreak } != cur.paras.size) { message = "Choose some words first"; return@change }
+        if (spans.isEmpty() || state.toRichTextDocument().blocks.count { !it.isLineBreak } != cur.paras.size) { message = context.getString(R.string.words_choose_words_first); return@change }
         val initials = author.split(' ').filter { it.isNotBlank() }.joinToString("") { it.take(1) }.uppercase()
         meta = OfficeFormats.withComment(cur, spans, DocComment(OfficeFormats.newCommentId(cur, kind), author, java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString(), text, initials = initials))
         dirty = true
@@ -2233,15 +2235,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     /** References › Sources › Import: a Tetra sources file's references added (none twice), the list brought up to date. */
     fun importSourcesText(text: () -> String?) {
-        val read = runCatching { text()?.let(SourcesImport::read) ?: throw IllegalArgumentException("Nothing to import.") }
-        val r = read.getOrNull() ?: run { message = read.exceptionOrNull()?.message ?: "That file could not be read."; WriterLog.w("sources import", read.exceptionOrNull()); return }
+        val read = runCatching { text()?.let(SourcesImport::read) ?: throw IllegalArgumentException(context.getString(R.string.words_nothing_to_import)) }
+        val r = read.getOrNull() ?: run { message = read.exceptionOrNull()?.let { if (it is SourcesImport.NotSourcesFile) context.getString(R.string.words_not_sources_file) else it.message } ?: context.getString(R.string.words_file_unreadable); WriterLog.w("sources import", read.exceptionOrNull()); return }
         change {
             val cur = current()
             val added = ArrayList<DocSource>()
             for (s in r.sources) if (!SourcesImport.same(s, cur.sources + added)) added += s.copy(tag = Citations.tagFor(kind, s, (cur.sources + added).map { it.tag }, cur.citeStyle))
             meta = Citations.update(cur.copy(sources = cur.sources + added), kind)
             dirty = true; reshow()
-            message = "${added.size} sources added" + (if (r.sources.size > added.size) ", ${r.sources.size - added.size} already here" else "") + (if (r.skipped.isNotEmpty()) "; skipped: ${r.skipped.joinToString()}" else "")
+            message = context.resources.getQuantityString(R.plurals.words_sources_added, added.size, added.size) + (if (r.sources.size > added.size) context.resources.getQuantityString(R.plurals.words_sources_already_here, r.sources.size - added.size, r.sources.size - added.size) else "") + (if (r.skipped.isNotEmpty()) context.getString(R.string.words_sources_skipped, r.skipped.joinToString { context.getString(if (it.untitled) R.string.words_skipped_no_title else R.string.words_skipped_not_source, it.number) }) else "")
             WriterLog.i("sources import: ${r.sources.size} read, ${added.size} added, skipped ${r.skipped}")
         }
     }
@@ -2250,7 +2252,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** The sources Claude made (tetra-sources skill), copied from its answer. */
     fun pasteSources() = importSourcesText {
         context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
-            ?: throw IllegalArgumentException("Nothing copied: copy Claude's answer (the JSON) first.")
+            ?: throw IllegalArgumentException(context.getString(R.string.words_nothing_copied_json))
     }
     /** A request for the Claude app (Android's share sheet): this paper's sources as a Tetra sources file. */
     fun askClaudeForSources() {
@@ -2265,7 +2267,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             if (have.isNotEmpty()) append("\nIt already cites (leave these out):\n$have")
         }
         WriterLog.i("ask Claude for sources: ${cur.sources.size} known")
-        context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, ask), "Ask Claude for sources"))
+        context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, ask), context.getString(R.string.words_ask_claude_sources)))
     }
     fun deleteSource(s: DocSource) = change { meta = current().let { it.copy(sources = it.sources.filter { x -> x.tag != s.tag }) }; dirty = true }
     fun insertCitation(chosenSources: List<DocSource>, page: String, hide: Set<Char> = emptySet()) = change {
@@ -2286,7 +2288,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val cur = current()
         meta = Citations.insertList(cur, kind, chosen()?.first?.minOrNull() ?: cur.paras.size)
         dirty = true; reshow()
-        message = "References — in APA's order, from the sources cited"
+        message = context.getString(R.string.words_references_updated)
     }
     // References › Caption (Phase 2, asked 2026-10-13): "Figure 1: …" under the picture or table at the cursor, its number
     // Word's SEQ field (renumbered by Update fields), in the document's Caption style (Word's own when it has none).
@@ -2300,12 +2302,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val caption = DocPara(listOf(DocRun("$label "), number) + if (text.isBlank()) emptyList() else listOf(DocRun(": ${text.trim()}")), keep = style?.let { DocKeep(it) })
         meta = Fields.update(cur.copy(paras = cur.paras.take(at) + caption + cur.paras.drop(at)))
         WriterLog.i("caption: $label at paragraph $at")
-        dirty = true; reshow(); message = "Caption inserted"
+        dirty = true; reshow(); message = context.getString(R.string.words_caption_inserted)
     }
     var pageStarts by remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) } // (paragraph, page number) where each later page begins
     /** The page a paragraph is on, as the pages laid it out last (Print layout); null when there are no pages. */
     fun pageOfPara(j: Int): Int? = if (!onPage) null else (pageStarts.lastOrNull { it.first <= j }?.second ?: 1)
-    fun updateCitations() = change { meta = Fields.update(Citations.update(current(), kind), ::pageOfPara); dirty = true; reshow(); message = "Citations, references and numbers updated" }
+    fun updateCitations() = change { meta = Fields.update(Citations.update(current(), kind), ::pageOfPara); dirty = true; reshow(); message = context.getString(R.string.words_citations_updated) }
     // References › Cross-reference (Phase 2): a caption's words or its page, kept up to date by Update fields — Word's REF
     // and PAGEREF fields to a hidden _Ref bookmark on the caption (Word's own way).
     var crossRefOpen by remember { mutableStateOf(false) }
@@ -2332,7 +2334,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             q.copy(keep = keep.copy(parts = keep.parts.filter { it.first != key } + (key to (marks + name).joinToString(" "))))
         } })
         WriterLog.i("cross-reference: $how of paragraph $target ($name)")
-        dirty = true; reshow(); message = "Cross-reference inserted"
+        dirty = true; reshow(); message = context.getString(R.string.words_cross_reference_inserted)
     }
     // References › Footnotes (asked 2026-09-30): a note's number in the text; its words in a bar and a dialog.
     /** Each note's reference, where it is in the editor: the note and its number. */
@@ -2427,7 +2429,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val (from, to) = chosenOrWord()
         val sel = state.selection
         val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), from, to)
-        if (spans.isEmpty()) { message = "Choose some words first"; return@change }
+        if (spans.isEmpty()) { message = context.getString(R.string.words_choose_words_first); return@change }
         meta = WriterBridge.restyled(current(), spans) { OfficeFormats.withFont(it, kind, name) }
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
@@ -2438,7 +2440,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val (from, to) = chosenOrWord()
         val sel = state.selection
         val spans = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(state.annotatedString.text, state.toRichTextDocument()), from, to)
-        if (spans.isEmpty()) { message = "Choose some words first"; return@change }
+        if (spans.isEmpty()) { message = context.getString(R.string.words_choose_words_first); return@change }
         meta = WriterBridge.restyled(current(), spans) { LetterLooks.withSpacing(it, kind, pt) }
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), sel)
@@ -2502,16 +2504,16 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
     fun pastePlain() {
         val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
-        if (text.isNullOrEmpty()) { message = "Nothing copied yet"; return }
+        if (text.isNullOrEmpty()) { message = context.getString(R.string.words_nothing_copied); return }
         if (state.selection.collapsed) state.addTextAfterSelection(text) else state.replaceSelectedText(text)
         dirty = true
         WriterLog.i("pasted text only: ${text.length} letters")
     }
     fun pickPainter() {
         if (painter != null) { painter = null; WriterLog.i("format painter off"); return }
-        painter = runAt(state.selection.min) ?: run { message = "Put the cursor in the words whose look to copy"; null }
+        painter = runAt(state.selection.min) ?: run { message = context.getString(R.string.words_painter_cursor); null }
         painter?.let { WriterLog.i("format painter: bold ${it.bold}, italic ${it.italic}, size ${it.sizePt}, colour ${it.color?.let { c -> "%06X".format(c) }}") }
-        if (painter != null) message = "Now choose the words to paint"
+        if (painter != null) message = context.getString(R.string.words_painter_choose)
     }
     LaunchedEffect(painter) {
         val look = painter ?: return@LaunchedEffect
@@ -2569,12 +2571,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // A Word file that says to track changes (Word's trackRevisions) opens with them on, as in Word
     LaunchedEffect(loaded) {
         if (!loaded || kind != OfficeKind.Docx || !PageDesign.tracksRevisions(original)) return@LaunchedEffect
-        if (prefs.getString("author", "").isNullOrBlank()) askingName = true else { tracking = true; message = "This document tracks changes — your edits are marked" }
+        if (prefs.getString("author", "").isNullOrBlank()) askingName = true else { tracking = true; message = context.getString(R.string.words_document_tracks) }
     }
     /** Track changes on or off, and remembered in the Word file as Word remembers it. */
     fun setTracking(on: Boolean) {
         tracking = on
-        message = if (on) "Track changes on — your edits are marked" else "Track changes off"
+        message = if (on) context.getString(R.string.words_tracking_on) else context.getString(R.string.words_tracking_off)
         if (kind != OfficeKind.Docx || PageDesign.tracksRevisions(original) == on) return
         runCatching { original = OfficeFormats.zip(PageDesign.trackRevisions(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), on), null); dirty = true }
             .onFailure { WriterLog.e("track changes setting", it) }
@@ -2625,14 +2627,14 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun nextMisspelled() {
         val at = state.selection.max
         val next = spellingShown.firstOrNull { it.first.first >= at } ?: spellingShown.firstOrNull()
-        if (next == null) { message = if (spelling) "No spelling mistakes found" else "Spelling is off"; return }
+        if (next == null) { message = if (spelling) context.getString(R.string.words_no_spelling_mistakes) else context.getString(R.string.words_spelling_off); return }
         state.selection = androidx.compose.ui.text.TextRange(next.first.first, next.first.last + 1)
     }
     /** The next (or previous) change, selected. */
     fun goChange(forward: Boolean, from: Int = state.selection.min) {
         val starts = changesShown.map { it.second to it.third }.distinct().sortedBy { it.first }
         val to = if (forward) starts.firstOrNull { it.first > from } else starts.lastOrNull { it.first < from }
-        if (to == null) { message = if (starts.isEmpty()) "No tracked changes" else if (forward) "No more changes after this" else "No changes before this"; return }
+        if (to == null) { message = context.getString(if (starts.isEmpty()) R.string.words_no_tracked_changes else if (forward) R.string.words_no_changes_after else R.string.words_no_changes_before); return }
         state.selection = androidx.compose.ui.text.TextRange(to.first, to.second)
     }
     /** The changes at the cursor (or in the selection) accepted or rejected — or all of them — then on to the next. */
@@ -2641,12 +2643,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val sel = state.selection
         val chosen = if (all) emptyList() else if (sel.collapsed) listOfNotNull(changeAt(sel.min))
             else changesShown.filter { (_, a, z) -> a < sel.max && z > sel.min || a == z && a in sel.min..sel.max }.map { it.first }.distinct()
-        if (!all && chosen.isEmpty()) { message = "No change here — Next finds one"; return@change }
+        if (!all && chosen.isEmpty()) { message = context.getString(R.string.words_no_change_here); return@change }
         val at = if (all) sel.min else changesShown.filter { it.first in chosen }.minOfOrNull { it.second } ?: sel.min // before meta changes (it is read again then)
         meta = if (all) TrackChanges.all(cur, accept) else TrackChanges.decide(cur, chosen, accept)
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), androidx.compose.ui.text.TextRange(at.coerceIn(0, state.annotatedString.text.length)))
-        message = when { all && accept -> "All changes accepted"; all -> "All changes rejected"; accept -> "Accepted"; else -> "Rejected" }
+        message = context.getString(when { all && accept -> R.string.words_all_accepted; all -> R.string.words_all_rejected; accept -> R.string.words_accepted; else -> R.string.words_rejected })
         if (!all) goChange(true, at - 1)
     }
     /**
@@ -2661,13 +2663,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val n = levels ?: Contents.levelsOf(cur, kind)
         meta = runCatching { Contents.insert(cur, kind, documentStyles, at, n) { d, pages ->
             OfficePages.layout(d, documentStyles, pages) { img -> img.bytes ?: img.part?.let { parts[it] } } } }
-            .onFailure { WriterLog.e("contents", it) }.getOrNull() ?: run { message = "The contents could not be made."; return@change }
+            .onFailure { WriterLog.e("contents", it) }.getOrNull() ?: run { message = context.getString(R.string.words_contents_failed); return@change }
         dirty = true
         state.setRichTextDocument(WriterBridge.toEditor(meta, pictures, documentStyles), state.selection)
-        message = "Contents from ${cur.paras.count { it.heading in 1..n }} headings, ${if (n == 1) "level 1" else "levels 1–$n"}"
+        message = cur.paras.count { it.heading in 1..n }.let { h -> if (n == 1) context.getString(R.string.words_contents_made_level1, h) else context.getString(R.string.words_contents_made_levels, h, n) }
     }
     fun chooseParagraphs(then: (Set<Int>, ParaLook) -> Unit) {
-        chosen()?.let { (at, look) -> then(at, look) } ?: run { message = "Put the cursor in a paragraph of text" }
+        chosen()?.let { (at, look) -> then(at, look) } ?: run { message = context.getString(R.string.words_cursor_in_paragraph) }
     }
     /** Home › Multilevel list: Writer's numbered lists counted as [levels] say; the list at the cursor becomes one of them. */
     fun setNumbering(levels: List<Pair<String, String>>) {
@@ -2731,7 +2733,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         placePicture(img)
         val shift = if (start != null && cursor.min >= start) 1 else 0
         state.selection = androidx.compose.ui.text.TextRange(cursor.min + shift, cursor.max + shift)
-        message = "Drawn in front of the text — the pages show it in its place"
+        message = context.getString(R.string.words_drawn_in_front)
     }
     // Insert › Signature (the user, 22 Oct: "does Word has sign by hand or image? … make that as well"): one signature, the PDF
     // editor's too, kept in the app (never in a file but where it is put), drawn once or taken from a picture of it
@@ -2745,7 +2747,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         // a picture box in front of the text (the user: "like an image box you can move rotate resize"): dragged, sized and
         // turned with its handles, as Draw's drawings
         putDrawing(bytes, 150f, 150f * o.outHeight / o.outWidth.coerceAtLeast(1), null, null, key = SIGNATURE_KEY + java.util.UUID.randomUUID())
-        message = "Signature put in: drag it where it goes; its handles size and turn it"
+        message = context.getString(R.string.words_signature_in)
         WriterLog.i("signature put in")
     }
     val pickSignature = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
@@ -2760,7 +2762,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 px[i] = if (l > 170) 0 else (c and 0xFFFFFF) or (((255 - l) * 255 / 255).coerceIn(80, 255) shl 24) }
             bmp.setPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
             signatureFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-        }.onSuccess { insertSignature() }.onFailure { message = "Could not use that picture." }
+        }.onSuccess { insertSignature() }.onFailure { message = context.getString(R.string.words_picture_not_used) }
     }
     // Pictures in front of or behind the text (asked 2026-10-01: a cover's logos showed as tiny marks in the corner):
     // drawn on the page in their place, as the pages show them — from the pages' layout, measured from their paragraph's
@@ -2788,7 +2790,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val parts = packageParts
         val index = IntArray(doc.paras.size) { -1 }
         return withContext(Dispatchers.Default) { runCatching { OfficePages.layout(doc, documentStyles, pageIndexOf = index) { img -> img.bytes ?: img.part?.let { parts[it] } } }
-            .onFailure { WriterLog.e("draw", it) }.getOrNull() }?.let { it to index } ?: run { message = "The page could not be laid out."; null }
+            .onFailure { WriterLog.e("draw", it) }.getOrNull() }?.let { it to index } ?: run { message = context.getString(R.string.words_page_not_laid_out); null }
     }
     /**
      * Draw › Draw on page: the page the cursor is on, as the pages show it, to draw over (‹ › for another); the drawing
@@ -2810,18 +2812,18 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val others = pictures.values.filter { it.key != key && PictureXml.wrapOf(it) != PictureWrap.InLine }.map { PictureXml.zOf(it) }
         // Word counts from about 251 million, LibreOffice from 0: below 0 the others go up one instead.
         val z = if (front) (others.maxOrNull() ?: PictureXml.zOf(img)) + 1 else (others.minOrNull() ?: PictureXml.zOf(img)) - 1
-        val moved = PictureXml.withZ(img, z.coerceAtLeast(0)) ?: run { message = "Just put in: a moment, then it can be arranged."; return }
+        val moved = PictureXml.withZ(img, z.coerceAtLeast(0)) ?: run { message = context.getString(R.string.words_wait_arrange); return }
         change {
             if (z < 0) pictures.values.toList().filter { it.key != key && PictureXml.wrapOf(it) != PictureWrap.InLine }
                 .forEach { o -> PictureXml.withZ(o, PictureXml.zOf(o) + 1)?.let { pictures[o.key] = it } }
             changePicture(key, moved)
         }
-        message = if (front) "In front of the others — it shows on the pages" else "Behind the others — it shows on the pages"
+        message = context.getString(if (front) R.string.words_in_front_of_others else R.string.words_behind_others)
     }
     /** Arrange › Align: [key] against the margins ("left", "center", "right", "top", "middle", "bottom"), staying put the other way. */
     fun align(key: String, how: String) = scope.launch {
         val (laid, _) = laidOut(current()) ?: return@launch
-        val page = laid.firstOrNull { p -> p.floats.any { it.key == key } } ?: run { message = "It is not on a page (in a table's cell?)"; return@launch }
+        val page = laid.firstOrNull { p -> p.floats.any { it.key == key } } ?: run { message = context.getString(R.string.words_not_on_a_page); return@launch }
         val f = page.floats.first { it.key == key }
         val pg = page.page
         val x = when (how) { "left" -> pg.left; "center" -> pg.left + (pg.textWidth - f.w) / 2; "right" -> pg.width - pg.right - f.w; else -> f.x }
@@ -2856,7 +2858,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var grouping by remember { mutableStateOf<String?>(null) } // the first one chosen: the next one tapped joins it
     fun rotate(key: String, deg: Float) {
         val img = pictures[key] ?: return
-        val turned = Arrange.rotated(img, deg) ?: run { message = if (img.raw?.startsWith("<draw:g") == true) "A LibreOffice group turns piece by piece: Ungroup it first." else "Just put in: a moment, then it can be rotated."; return }
+        val turned = Arrange.rotated(img, deg) ?: run { message = context.getString(if (img.raw?.startsWith("<draw:g") == true) R.string.words_odt_group_rotate else R.string.words_wait_rotate); return }
         changePicture(key, turned)
         WriterLog.i("rotate $key to $deg°")
     }
@@ -2871,28 +2873,28 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun groupWith(first: String, second: String) = scope.launch {
         grouping = null
         val a = pictures[first]; val b = pictures[second]
-        if (a?.raw == null || b?.raw == null) { message = "Just put in: a moment, then it can be grouped."; return@launch }
+        if (a?.raw == null || b?.raw == null) { message = context.getString(R.string.words_wait_group); return@launch }
         val (laid, _) = laidOut(current()) ?: return@launch
         val pa = laid.indexOfFirst { p -> p.floats.any { it.key == first } }; val pb = laid.indexOfFirst { p -> p.floats.any { it.key == second } }
-        if (pa < 0 || pb < 0) { message = "Both must float on the pages (Wrap text: not in line)"; return@launch }
-        if (pa != pb) { message = "Both must be on the same page"; return@launch }
+        if (pa < 0 || pb < 0) { message = context.getString(R.string.words_group_must_float); return@launch }
+        if (pa != pb) { message = context.getString(R.string.words_group_same_page); return@launch }
         fun box(k: String) = laid[pa].floats.first { it.key == k }.let { floatArrayOf(it.x, it.y, it.w, it.h) }
         val g = (if (kind == OfficeKind.Odt) Arrange::odtGroup else Arrange::group)(listOf(a to box(first), b to box(second)), PictureXml.wrapOf(a) ?: PictureWrap.Square, maxOf(PictureXml.zOf(a), PictureXml.zOf(b)), "g" + java.util.UUID.randomUUID())
-            ?: run { message = "Words cannot group these (an older kind of drawing?)"; return@launch }
+            ?: run { message = context.getString(R.string.words_cannot_group); return@launch }
         // The document read from the editor first (it finds its pictures by their keys), then the map changed.
         swapPictures { r -> when (r.image?.key) { first -> listOf(r.copy(image = g)); second -> emptyList(); else -> null } }
         pictures.remove(first); pictures.remove(second); pictures[g.key] = g
-        message = "Grouped — moved, wrapped and arranged as one"
+        message = context.getString(R.string.words_grouped)
         WriterLog.i("group $first + $second -> ${g.key}")
     }
     fun ungroup(key: String) = scope.launch {
         val img = pictures[key] ?: return@launch
         val (laid, _) = laidOut(current()) ?: return@launch
-        val f = laid.flatMap { it.floats }.firstOrNull { it.key == key } ?: run { message = "It is not on a page (in a table's cell?)"; return@launch }
-        val pieces = (if (img.raw?.startsWith("<draw:g") == true) Arrange::odtUngroup else Arrange::ungroup)(img, f.x, f.y, PictureXml.wrapOf(img) ?: PictureWrap.Square, PictureXml.zOf(img)) ?: run { message = "Words cannot take this group apart"; return@launch }
+        val f = laid.flatMap { it.floats }.firstOrNull { it.key == key } ?: run { message = context.getString(R.string.words_not_on_a_page); return@launch }
+        val pieces = (if (img.raw?.startsWith("<draw:g") == true) Arrange::odtUngroup else Arrange::ungroup)(img, f.x, f.y, PictureXml.wrapOf(img) ?: PictureWrap.Square, PictureXml.zOf(img)) ?: run { message = context.getString(R.string.words_cannot_ungroup); return@launch }
         swapPictures { r -> if (r.image?.key == key) pieces.map { r.copy(image = it) } else null }
         pictures.remove(key); pieces.forEach { pictures[it.key] = it }
-        message = "Ungrouped into ${pieces.size}"
+        message = context.getString(R.string.words_ungrouped_into, pieces.size)
         WriterLog.i("ungroup $key -> ${pieces.size}")
     }
     // The second one tapped while grouping: joined to the first.
@@ -2902,7 +2904,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun position(key: String) = scope.launch {
         val (laid, _) = laidOut(current()) ?: return@launch
         positioning = laid.firstOrNull { p -> p.floats.any { it.key == key } }?.let { it to key }
-            ?: run { message = "It is not on a page (in a table's cell?)"; null }
+            ?: run { message = context.getString(R.string.words_not_on_a_page); null }
     }
     /** A drawing made in Writer (its strokes ride in its PNG), drawn on again: on its page if it is placed on one, else in its box. */
     fun editDrawing(key: String) {
@@ -2931,7 +2933,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun applyApa(clean: Boolean, title: ApaTitle?, abstract: ApaAbstract? = null, runningHead: String? = null) = change {
         val entries = documentStyles.paragraphStyles()
         val parts = runCatching { ApaPaper.file(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, documentStyles, runningHead) }
-            .onFailure { WriterLog.e("apa", it) }.getOrNull() ?: run { message = "The document could not be set up."; return@change }
+            .onFailure { WriterLog.e("apa", it) }.getOrNull() ?: run { message = context.getString(R.string.words_document_not_set_up); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         var cur = current()
@@ -2951,7 +2953,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         if (Citations.find(cur, kind) != null) cur = Citations.update(cur, kind) // the references on a page of their own
         meta = cur
         dirty = true; styleEdits++; reshow()
-        message = "APA 7 — shown on the pages (the eye at the top)"
+        message = context.getString(R.string.words_apa_shown)
     }
     /** Design › APA level 4 / 5: the paragraph at the cursor's heading run into it (the chosen words, from its start, if any). */
     fun apaRunIn(level: Int) = change {
@@ -2959,12 +2961,12 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val sel = state.selection
         val span = WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), sel.min, maxOf(sel.max, sel.min + 1)).firstOrNull()
             ?: WriterBridge.paragraphSpans(WriterBridge.blockPlaces(t, state.toRichTextDocument()), (sel.min - 1).coerceAtLeast(0), sel.min).firstOrNull()
-            ?: run { message = "Put the cursor in the heading's paragraph"; return@change }
+            ?: run { message = context.getString(R.string.words_cursor_in_heading); return@change }
         val (para, from, to) = span
         val length = if (!sel.collapsed && from == 0 && to > 0) to else null
-        val done = ApaPaper.runIn(current(), para, level, length) ?: run { message = "Nothing here to make a heading of"; return@change }
+        val done = ApaPaper.runIn(current(), para, level, length) ?: run { message = context.getString(R.string.words_nothing_for_heading); return@change }
         meta = done; dirty = true; reshow()
-        message = "APA level $level: bold${if (level == 5) " italic" else ""}, ending in a period, the text after it on the same line"
+        message = context.getString(if (level == 5) R.string.words_apa_runin_italic else R.string.words_apa_runin, level)
         WriterLog.i("apa run-in level $level at paragraph $para (${length ?: "auto"})")
     }
     var pageBordering by remember { mutableStateOf(false) }
@@ -2972,28 +2974,28 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun setDesign(color: Int?, border: Border?, sides: String = sheet.border?.sides ?: "tlbr") = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) PageDesign.docx(it, color, border, sides) else PageDesign.odt(it, color, border, sides) } }
-            .onFailure { WriterLog.e("design", it) }.getOrNull() ?: run { message = "The page could not be changed."; return@change }
+            .onFailure { WriterLog.e("design", it) }.getOrNull() ?: run { message = context.getString(R.string.words_page_not_changed); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        message = "Shown on the pages (the eye at the top)"
+        message = context.getString(R.string.words_shown_on_pages)
     }
     /** Design › Watermark: [text] across every page (null: none), into the file's headers as it will be written. */
     fun setWatermark(text: String?, picture: Watermark.Picture? = null) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) Watermark.docx(it, text, sheet, picture) else Watermark.odt(it, text, sheet, picture) } }
-            .onFailure { WriterLog.e("watermark", it) }.getOrNull() ?: run { message = "The watermark could not be set."; return@change }
+            .onFailure { WriterLog.e("watermark", it) }.getOrNull() ?: run { message = context.getString(R.string.words_watermark_not_set); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        message = if (text == null && picture == null) "Watermark taken away" else "Shown on the pages (the eye at the top)"
+        message = if (text == null && picture == null) context.getString(R.string.words_watermark_removed) else context.getString(R.string.words_shown_on_pages)
         WriterLog.i("watermark: ${text ?: picture?.let { "picture ${it.bytes.size / 1024} KB" } ?: "none"}")
     }
     /** Design › Watermark › Picture watermark: a picture of the phone's behind every page, washed out (Word's way). */
     val pickWatermark = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
         if (picked != null) scope.launch {
             val img = withContext(Dispatchers.IO) { runCatching { preparePicture(context, picked) }.getOrNull() }
-            if (img?.bytes == null) { message = "Could not use that picture."; return@launch }
+            if (img?.bytes == null) { message = context.getString(R.string.words_picture_not_used); return@launch }
             setWatermark(null, Watermark.Picture(img.bytes, img.extension, img.heightPt / img.widthPt))
         }
     }
@@ -3002,7 +3004,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun setPage(page: DocPage) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) PageSetup.docx(it, page) else PageSetup.odt(it, page, documentStyles.page) } }
-            .onFailure { WriterLog.e("page", it) }.getOrNull() ?: run { message = "The page could not be set."; return@change }
+            .onFailure { WriterLog.e("page", it) }.getOrNull() ?: run { message = context.getString(R.string.words_page_not_set); return@change }
         // The sections a section break ends (their sectPr rides on their last paragraph) take it too.
         if (kind == OfficeKind.Docx) current().let { cur -> if (cur.paras.any { p -> p.keep?.parts?.any { it.first == "sectPr" } == true })
             meta = cur.copy(paras = cur.paras.map { p -> p.keep?.takeIf { k -> k.parts.any { it.first == "sectPr" } }?.let { k ->
@@ -3038,11 +3040,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** Layout › Hyphenation: automatic or none, into the file as it will be written; the pages break words by it. */
     fun setHyphenation(on: Boolean) = change {
         val parts = runCatching { PageDesign.hyphenation(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, on) }
-            .onFailure { WriterLog.e("hyphenation", it) }.getOrNull() ?: run { message = "Hyphenation could not be set."; return@change }
+            .onFailure { WriterLog.e("hyphenation", it) }.getOrNull() ?: run { message = context.getString(R.string.words_hyphenation_not_set); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        if (on) message = "Automatic hyphenation — the pages show it (the eye at the top)"
+        if (on) message = context.getString(R.string.words_hyphenation_on)
     }
     /** The paragraphs at the cursor (or chosen) made bullets or numbers in place (see [WriterBridge.listKind]). */
     fun switchList(ordered: Boolean) = change {
@@ -3059,7 +3061,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** Layout › Hyphenation options (Word's zone, consecutive limit, capitals), into the file as it will be written. */
     fun setHyphenOptions(o: HyphenOptions) = change {
         val parts = runCatching { HyphenOptions.write(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, o) }
-            .onFailure { WriterLog.e("hyphenation options", it) }.getOrNull() ?: run { message = "Hyphenation options could not be set."; return@change }
+            .onFailure { WriterLog.e("hyphenation options", it) }.getOrNull() ?: run { message = context.getString(R.string.words_hyphenation_options_not_set); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         dirty = true; styleEdits++
         WriterLog.i("hyphenation options: $o")
@@ -3067,11 +3069,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     /** Layout › Line numbers ([restart]: Word's, or null for none), into the file as it will be written; the pages show them. */
     fun setLineNumbers(restart: String?) = change {
         val parts = runCatching { PageSetup.lineNumbers(OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)), kind, restart) }
-            .onFailure { WriterLog.e("line numbers", it) }.getOrNull() ?: run { message = "The line numbers could not be set."; return@change }
+            .onFailure { WriterLog.e("line numbers", it) }.getOrNull() ?: run { message = context.getString(R.string.words_line_numbers_not_set); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        if (restart != null && designGallery == null) message = "Line numbers — they show on the pages (the eye at the top)"
+        if (restart != null && designGallery == null) message = context.getString(R.string.words_line_numbers_on)
     }
     var datePage by remember { mutableStateOf(false) }
     /** Symbol or date typed at the cursor, over what is chosen (as typing; the editor's own undo). */
@@ -3080,21 +3082,21 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     fun setHeaderFooter(hf: HeaderFooter) = change {
         val parts = runCatching { OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind)).let {
             if (kind == OfficeKind.Docx) HeaderFooterEdit.docx(it, hf, documentStyles.page) else HeaderFooterEdit.odt(it, hf, documentStyles.page) } }
-            .onFailure { WriterLog.e("header", it) }.getOrNull() ?: run { message = "The header could not be set."; return@change }
+            .onFailure { WriterLog.e("header", it) }.getOrNull() ?: run { message = context.getString(R.string.words_header_not_set); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         dirty = true; styleEdits++
-        if (designGallery == null) message = "Shown on the pages (the eye at the top)"
+        if (designGallery == null) message = context.getString(R.string.words_shown_on_pages)
     }
     /** A style's own definition changed (every paragraph with it changes), in the file's styles; shown at once. */
     fun editStyle(entry: StyleEntry, edit: StyleChange) = change {
-        val key = documentStyles.styleKey(entry) ?: run { message = "This style cannot be changed here."; return@change }
+        val key = documentStyles.styleKey(entry) ?: run { message = context.getString(R.string.words_style_cannot_change); return@change }
         val cur = current()
         val parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
         val path = stylesPath(parts, kind)
-        val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = "This document has no styles to change."; return@change }
+        val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = context.getString(R.string.words_no_styles); return@change }
         parts[path] = runCatching { if (kind == OfficeKind.Docx) StyleEdit.docx(xml, key, entry.heading, documentStyles.normalId, edit) else StyleEdit.odt(xml, key, entry.heading, edit) }
-            .onFailure { WriterLog.e("style", it) }.getOrNull()?.toByteArray() ?: run { message = "This style could not be changed."; return@change }
+            .onFailure { WriterLog.e("style", it) }.getOrNull()?.toByteArray() ?: run { message = context.getString(R.string.words_style_not_changed); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         meta = cur
@@ -3120,19 +3122,19 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }
             } else fonts?.let { f -> val path = stylesPath(parts, kind); parts[path] = StyleSet.apply(StyleSet.fontsOnly(f), String(parts.getValue(path), Charsets.UTF_8), kind, documentStyles).toByteArray() }
         }.onFailure { WriterLog.e("theme", it) }.isSuccess
-        if (!done) { message = "The theme could not be changed."; return@change }
+        if (!done) { message = context.getString(R.string.words_theme_failed); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         meta = cur
         dirty = true; styleEdits++
         state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
-        message = (colors?.label?.let { "Colours: $it" } ?: "") + (fonts?.label?.let { "Fonts: $it" } ?: "")
+        message = (colors?.let { context.getString(R.string.words_colours_set, themeColoursName(it)?.let(context::getString) ?: it.label) } ?: "") + (fonts?.label?.let { context.getString(R.string.words_fonts_set, it) } ?: "")
         WriterLog.i("theme: ${colors?.name} ${fonts?.name}")
     }
     /** References › Style (and Design › Standards): every citation and the list written again in [c]. */
     fun setCiteStyle(c: CiteStyle) = change {
         meta = Fields.update(Citations.update(current().copy(citeStyle = c), kind), ::pageOfPara); dirty = true; styleEdits++; reshow()
-        message = "Citations and the list in ${c.label}"; WriterLog.i("citation style ${c.name}")
+        message = context.getString(R.string.words_citations_in_style, c.label); WriterLog.i("citation style ${c.name}")
     }
     fun putTextBox(lines: List<String>, art: Int?, effects: TextEffects = TextEffects(), warp: TextWarp? = null): String {
         val (w, h) = (if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
@@ -3155,15 +3157,15 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         val cur = current()
         val parts = OfficeFormats.unzip(original ?: OfficeFormats.write(OfficeDoc(emptyList()), kind))
         val path = stylesPath(parts, kind)
-        val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = "This document has no styles to change."; return@change }
+        val xml = parts[path]?.let { String(it, Charsets.UTF_8) } ?: run { message = context.getString(R.string.words_no_styles); return@change }
         parts[path] = runCatching { set.applyTo(xml, kind, documentStyles) }.onFailure { WriterLog.e("style set", it) }.getOrNull()?.toByteArray()
-            ?: run { message = "The style set could not be applied."; return@change }
+            ?: run { message = context.getString(R.string.words_style_set_failed); return@change }
         original = OfficeFormats.zip(parts, if (kind == OfficeKind.Odt) "mimetype" else null)
         documentStyles = DocStyles.of(kind, original)
         meta = cur
         dirty = true; styleEdits++
         state.selection.let { sel -> state.setRichTextDocument(WriterBridge.toEditor(cur, pictures, documentStyles), sel) }
-        message = "${set.label}: Normal, Title and the headings"
+        message = context.getString(R.string.words_style_set_done, context.getString(set.label))
     }
     /** A gallery's card tapped: the document as it was, then this choice on it (a live preview; OK keeps it). */
     var dropAt by remember { mutableStateOf<Int?>(null) } // Insert › Drop cap's paragraph while its strip is open
@@ -3278,13 +3280,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     previous = { go(at - 1) }, next = { go(if (state.selection.collapsed) at else at + 1) }, replacing = replacing, setReplacing = { replacing = it },
                     replacement = replacement, setReplacement = { replacement = it },
                     replace = { matches.getOrNull(at)?.let { m -> replaceKeepingLook(m.first, m.last + 1, replacement) } },
-                    replaceAll = { state.history.group { matches.asReversed().forEach { m -> replaceKeepingLook(m.first, m.last + 1, replacement) } }; message = "Replaced ${matches.size}" },
+                    replaceAll = { state.history.group { matches.asReversed().forEach { m -> replaceKeepingLook(m.first, m.last + 1, replacement) } }; message = context.getString(R.string.words_replaced_count, matches.size) },
                     close = { finding = false })
             } else
             // Word's top bar: back, the name (a dot while unsaved), find, undo and redo.
             androidx.compose.animation.AnimatedVisibility(barShown, Modifier.onSizeChanged { barPx = it.height }) { Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Tool(R.drawable.ic_chevron_left, "Back", w) { leave() }
+                Tool(R.drawable.ic_chevron_left, stringResource(R.string.common_back), w) { leave() }
                 // The words, counted as one types (Word's status bar, Phase 2): of the selection too when there is one, worked
                 // out a moment after typing stops (a thesis is long); a tap shows all the counts (File › About this file).
                 val text = state.annotatedString.text
@@ -3295,13 +3297,13 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
                     Text((if (dirty) "• " else "") + name, color = w, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     // A phone: under the name. A tablet has room beside it (words and characters).
-                    if (phone && loaded) Text(TextCounts.label(all.words, part?.words), color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                    if (phone && loaded) Text(TextCounts.label(all.words, part?.words), color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.clickable { details = true })
                 }
                 if (!phone && loaded) {
-                    Text((if (part == null) "${plural(all.words, "word")} · ${plural(all.withSpaces, "character")}"
-                        else "%,d of ${plural(all.words, "word")} · %,d of ${plural(all.withSpaces, "character")}".format(part.words, part.withSpaces))
-                        + (if (file != null && !viewing) " · " + saveState(saving, dirty) + (if (autoSave && dirty && !saving) " (AutoSave on)" else "") else "")
+                    Text((if (part == null) "${wordsCount(all.words)} · ${charactersCount(all.withSpaces)}"
+                        else stringResource(R.string.words_count_of, part.words, wordsCount(all.words)) + " · " + stringResource(R.string.words_count_of, part.withSpaces, charactersCount(all.withSpaces)))
+                        + (if (file != null && !viewing) " · " + saveState(saving, dirty) + (if (autoSave && dirty && !saving) stringResource(R.string.words_autosave_on_suffix) else "") else "")
                         + (file?.extension?.let { " · .$it" } ?: ""),
                         color = w.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1,
                         modifier = Modifier.clickable { details = true }.padding(horizontal = 8.dp))
@@ -3311,23 +3313,23 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 // a tablet or bigger: the open document's heart, the Office home's Favourites (the user, 18 Oct)
                 FavouriteHeart(file, w)
                 if (reading) {
-                    Tool(R.drawable.ic_remove, "Smaller text", w, enabled = readingZoom > 100) { readingZoom -= 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
-                    Tool(R.drawable.ic_add, "Bigger text", w, enabled = readingZoom < 260) { readingZoom += 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
-                    RibbonButton("Close reading", w, R.drawable.ic_close) { reading = false }
+                    Tool(R.drawable.ic_remove, stringResource(R.string.words_smaller_text), w, enabled = readingZoom > 100) { readingZoom -= 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
+                    Tool(R.drawable.ic_add, stringResource(R.string.words_bigger_text), w, enabled = readingZoom < 260) { readingZoom += 20; context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putInt("readingZoom", readingZoom).apply() }
+                    RibbonButton(stringResource(R.string.words_close_reading), w, R.drawable.ic_close) { reading = false }
                 } else if (viewing) {
-                    Tool(R.drawable.ic_menu_book, "Reading mode", w, enabled = loaded) { viewing = false; reading = true }
-                    Tool(R.drawable.ic_view_list, "Navigation", w, enabled = loaded, on = navOpen) { navOpen = !navOpen }
-                    Tool(R.drawable.ic_view_column, "Two pages", w, enabled = loaded, on = pagesAcross == 2) { pagesAcross = if (pagesAcross == 2) 1 else 2 }
-                    Tool(R.drawable.ic_share, "Share", w, enabled = file?.isFile == true) { file?.let { shareDriveFile(context, it) } }
-                    if (dirty) Tool(R.drawable.ic_save, "Save", w, enabled = loaded) { save() }
-                    RibbonButton("Edit", w, R.drawable.ic_edit, enabled = loaded) { viewing = false }
+                    Tool(R.drawable.ic_menu_book, stringResource(R.string.words_reading_mode), w, enabled = loaded) { viewing = false; reading = true }
+                    Tool(R.drawable.ic_view_list, stringResource(R.string.words_navigation), w, enabled = loaded, on = navOpen) { navOpen = !navOpen }
+                    Tool(R.drawable.ic_view_column, stringResource(R.string.words_two_pages), w, enabled = loaded, on = pagesAcross == 2) { pagesAcross = if (pagesAcross == 2) 1 else 2 }
+                    Tool(R.drawable.ic_share, stringResource(R.string.common_share), w, enabled = file?.isFile == true) { file?.let { shareDriveFile(context, it) } }
+                    if (dirty) Tool(R.drawable.ic_save, stringResource(R.string.common_save), w, enabled = loaded) { save() }
+                    RibbonButton(stringResource(R.string.common_edit), w, R.drawable.ic_edit, enabled = loaded) { viewing = false }
                 } else {
-                Tool(R.drawable.ic_search, "Find and replace", w, enabled = loaded) { finding = true }
-                Tool(R.drawable.ic_undo, "Undo", w, enabled = state.history.canUndo || undone.isNotEmpty()) { undo() }
-                Tool(R.drawable.ic_redo, "Redo", w, enabled = state.history.canRedo || redone.isNotEmpty()) { redo() }
-                Tool(R.drawable.ic_save, "Save", w, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
+                Tool(R.drawable.ic_search, stringResource(R.string.words_find_replace), w, enabled = loaded) { finding = true }
+                Tool(R.drawable.ic_undo, stringResource(R.string.common_undo), w, enabled = state.history.canUndo || undone.isNotEmpty()) { undo() }
+                Tool(R.drawable.ic_redo, stringResource(R.string.common_redo), w, enabled = state.history.canRedo || redone.isNotEmpty()) { redo() }
+                Tool(R.drawable.ic_save, stringResource(R.string.common_save), w, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
                 // Done at the far right, back to the pages, as Tables' and Slides' (17 Oct; it was an eye, "Pages", before Find)
-                Tool(R.drawable.ic_check, "Done", w, enabled = loaded) { commitCell(); viewing = true }
+                Tool(R.drawable.ic_check, stringResource(R.string.common_done), w, enabled = loaded) { commitCell(); viewing = true }
                 }
                 }
             }
@@ -3335,9 +3337,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 val copyOnly = meta.blocking.isNotEmpty()
                 Surface(color = if (copyOnly) Category.Office.color.copy(alpha = 0.22f) else Color(0xFF2A2E30), contentColor = Color.White,
                     shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { details = true }) {
-                    Text(if (copyOnly && meta.blocking == setOf(LegacyDocs.OLDER)) "An older ${name.substringAfterLast('.').uppercase()} file: saving makes ${name.substringBeforeLast('.')}.docx beside it; the original stays as it is."
-                        else if (copyOnly) "Words does not show everything in this document (${meta.blocking.take(3).joinToString()}${if (meta.blocking.size > 3) "…" else ""}). Saving makes a copy; the original stays as it is."
-                        else "Saving here simplifies ${meta.simplified.joinToString()} to Writer's own.",
+                    Text(if (copyOnly && meta.blocking == setOf(LegacyDocs.OLDER)) stringResource(R.string.words_older_file_banner, name.substringAfterLast('.').uppercase(), name.substringBeforeLast('.'))
+                        else if (copyOnly) stringResource(R.string.words_copy_only_banner, meta.blocking.take(3).joinToString() + if (meta.blocking.size > 3) "…" else "")
+                        else stringResource(R.string.words_simplifies_banner, meta.simplified.joinToString()),
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }
             }
@@ -3346,7 +3348,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / meta.basePt).sp.toDp() }, Modifier.fillMaxSize(), goPage,
                     covered = if (galleryViewing != null) (if (LocalConfiguration.current.screenWidthDp < 700) 110.dp else 210.dp) else 0.dp,
                     across = pagesAcross, fitWidth = fitWidth, film = ::filmOf) }
-                    ?: Text("Laying out the pages…", color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
+                    ?: Text(stringResource(R.string.words_laying_out), color = w.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center))
             } else
             // The page: white, as the document will print — its own colours must show as they are.
             Column(Modifier.weight(1f).fillMaxWidth().padding(top = if (OfficeUi.top && !viewing && !reading) with(density) { islandPx.toDp() } else 0.dp)) {
@@ -3444,7 +3446,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         else if (reading) Modifier.align(Alignment.TopCenter).width(readingWidth) else Modifier.fillMaxWidth()).heightIn(min = 520.dp)) {
                     when {
                         failed != null -> Text(failed!!, color = ink, modifier = Modifier.padding(24.dp))
-                        !loaded -> Text("Opening…", color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
+                        !loaded -> Text(stringResource(R.string.words_opening), color = ink.copy(alpha = 0.5f), modifier = Modifier.padding(24.dp))
                         else -> Box(Modifier.fillMaxWidth()) {
                             var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
                             var unstyled by remember { mutableStateOf(false) }
@@ -3594,11 +3596,11 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     // How the section after a break starts is said by that section's own sectPr (the next one's).
                                     val sections = if (meta.paras.any { p -> p.keep?.parts?.any { it.first == "sectPr" } == true }) documentStyles.sections(meta.paras) else emptyList()
                                     looks.indices.mapNotNull { i -> if (i == 0) null else listOfNotNull(
-                                        "Page break".takeIf { looks[i]?.pageBreakBefore == true },
-                                        (if (sections.getOrNull(i)?.continuous == true) "Section break (continuous)" else "Section break (next page)")
+                                        context.getString(R.string.words_page_break).takeIf { looks[i]?.pageBreakBefore == true },
+                                        context.getString(if (sections.getOrNull(i)?.continuous == true) R.string.words_section_break_continuous else R.string.words_section_break_next_page)
                                             .takeIf { meta.paras[i - 1].keep?.parts?.any { it.first == "sectPr" } == true },
-                                        "Column break".takeIf { looks[i]?.columnBreakBefore == true },
-                                        "Section break".takeIf { kind == OfficeKind.Odt && OdtSections.tags(meta.paras[i]) != OdtSections.tags(meta.paras[i - 1]) },
+                                        context.getString(R.string.words_column_break).takeIf { looks[i]?.columnBreakBefore == true },
+                                        context.getString(R.string.words_section_break).takeIf { kind == OfficeKind.Odt && OdtSections.tags(meta.paras[i]) != OdtSections.tags(meta.paras[i - 1]) },
                                     ).takeIf { it.isNotEmpty() }?.let { i to it.joinToString(" · ") } }.toMap()
                                 }
                                 val breaks = breakNames.keys.toList()
@@ -3628,7 +3630,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 if (starts.isNotEmpty()) Box(Modifier.matchParentSize().padding(margins)) {
                                     breaks.forEach { i -> starts.getOrNull(i)?.takeIf { it <= text.length }?.let { o ->
                                         val y = with(density) { l.getLineTop(l.getLineForOffset(o)).toDp() }
-                                        Text(breakNames[i].orEmpty() + (pageStarts.firstOrNull { it.first == i }?.let { " · Page ${it.second}" } ?: ""), color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
+                                        Text(breakNames[i].orEmpty() + (pageStarts.firstOrNull { it.first == i }?.let { " · " + stringResource(R.string.words_page_n, it.second) } ?: ""), color = Color(0xFF80868B), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = y - 14.dp).background(paper).padding(horizontal = 4.dp))
                                     } }
                                 }
                                 // The first page's header, faded in the margin above the text (Word shows it so while editing the text).
@@ -3649,7 +3651,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                     }
                                     Box(Modifier.matchParentSize().padding(margins)) {
                                         pageMarks.forEach { (y, n) ->
-                                            Text("Page $n", color = Color(0xFF1A73E8), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = with(density) { y.toDp() } - 14.dp).background(paper).padding(horizontal = 4.dp))
+                                            Text(stringResource(R.string.words_page_n, n), color = Color(0xFF1A73E8), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).offset(y = with(density) { y.toDp() } - 14.dp).background(paper).padding(horizontal = 4.dp))
                                         }
                                     }
                                 }
@@ -3690,7 +3692,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     if (mergeFrom?.key == img.key) { mergeTo = ref; return@let } // choosing where the merge ends
                                                     selectedCell = ref
                                                     val cell = table.rows[area.row].cells[area.cell]
-                                                    if (cell.paras.any { p -> p.table != null || p.runs.any { it.image != null } }) message = "This cell has nested content; its text is kept."
+                                                    if (cell.paras.any { p -> p.table != null || p.runs.any { it.image != null } }) message = context.getString(R.string.words_cell_nested)
                                                     else WriterBridge.cellText(cell).let { text -> cellEdit = TableCellEdit(ref, TextFieldValue(text, androidx.compose.ui.text.TextRange(text.length)), cell) }
                                                 }
                                             }
@@ -3904,10 +3906,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             // A note's number, the cursor at it: the note's words (Edit opens them).
             hereNote?.let { (n, number, _) ->
                 Row(Modifier.fillMaxWidth().clickable { noteEditing = n to number }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text((if (n.end) "Endnote " else "Footnote ") + number, color = w, style = MaterialTheme.typography.labelLarge)
-                    Text(n.paras.joinToString(" ") { it.text }.ifBlank { "(empty)" }, color = w.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    Text(stringResource(if (n.end) R.string.words_endnote_n else R.string.words_footnote_n, number), color = w, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    Text(n.paras.joinToString(" ") { it.text }.ifBlank { stringResource(R.string.words_empty) }, color = w.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
-                    Text("Edit", color = w, style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.common_edit), color = w, style = MaterialTheme.typography.labelLarge)
                 }
             }
             // A citation, the cursor in it: each of its sources (a tap edits it), and Change (its sources or page).
@@ -3917,10 +3919,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             // A word that looks misspelled, the cursor in it: the spell checker's suggestions, a tap puts one in.
             hereWord?.let { (r, w, suggestions) ->
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(painterResource(R.drawable.ic_spellcheck), contentDescription = "Spelling", tint = Color(0xFFE57373), modifier = Modifier.size(20.dp))
-                    if (suggestions.isEmpty()) Text("No suggestions", color = w.let { Color.White.copy(alpha = 0.6f) }, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 10.dp))
+                    Icon(painterResource(R.drawable.ic_spellcheck), contentDescription = stringResource(R.string.words_spelling), tint = Color(0xFFE57373), modifier = Modifier.size(20.dp))
+                    if (suggestions.isEmpty()) Text(stringResource(R.string.words_no_suggestions), color = w.let { Color.White.copy(alpha = 0.6f) }, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 10.dp))
                     suggestions.forEach { sug -> TextButton(onClick = { replaceWord(r, sug) }) { Text(sug, color = Color.White) } }
-                    TextButton(onClick = { ignored = ignored + w }) { Text("Ignore", color = Color.White.copy(alpha = 0.7f)) }
+                    TextButton(onClick = { ignored = ignored + w }) { Text(stringResource(R.string.words_ignore), color = Color.White.copy(alpha = 0.7f)) }
                 }
             }
             // The form field the cursor is in: its choices, a date, a tick (a text field fills by typing, or Fill in).
@@ -3930,7 +3932,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             hereChange?.let { c ->
                 Row(Modifier.fillMaxWidth().clickable { tab = WriterTab.Review }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF000000 or TrackChanges.color(c.author).toLong())))
-                    Text(c.label + (if (c.author.isNotBlank()) " · " + c.author else "") + (c.date?.let { d -> runCatching { " · " + java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
+                    Text(stringResource(c.label) + (if (c.author.isNotBlank()) " · " + c.author else "") + (c.date?.let { d -> runCatching { " · " + java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
                         .format(java.time.OffsetDateTime.parse(d).atZoneSameInstant(java.time.ZoneId.systemDefault())) }.getOrNull() } ?: ""),
                         color = w, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
                 }
@@ -3941,7 +3943,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFFFFB300)))
                     Text((if (c.author.isNotBlank()) c.author + ": " else "") + c.text.replace('\n', ' '), color = w, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
-                    Text("Open", color = w, style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.common_open), color = w, style = MaterialTheme.typography.labelLarge)
                 }
             }
             if (reader.speaking) ReadAloudBar(reader, readingParas.getOrNull(reader.at), w)
@@ -3951,63 +3953,65 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 KeyboardBar(w, boldHere(span), span.fontStyle == FontStyle.Italic, span.textDecoration?.contains(TextDecoration.Underline) == true,
                     { toggleBold(span) }, { toggleItalic(span) }, { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) },
                     { c -> if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c)) },
-                    { dictate?.invoke() ?: run { message = "This phone has no voice typing" } }, { ribbonOverKeyboard = true }, { keyboard?.hide() })
+                    { dictate?.invoke() ?: run { message = context.getString(R.string.words_no_voice_typing) } }, { ribbonOverKeyboard = true }, { keyboard?.hide() })
             } else OfficeStripFrame(w, Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth()) {
             val selectedObject = selectedPicture?.second?.let { pictures[it] }
+            val tabNames = WriterTab.entries.map { stringResource(it.label) }
+            val objectTab = selectedObject?.let { objectKindName(PictureXml.kind(it)) }
             // Selection first, where the hand is when words are chosen (asked 14 Oct, after trying it last).
             OfficeTabRow((listOf(WriterTab.Selection) + WriterTab.entries.filter { it != WriterTab.Selection }).filter { t -> when (t) {
                 WriterTab.Selection -> selectionTabShown || tab == WriterTab.Selection
                 WriterTab.Picture -> selectedObject != null && selectedObject.table == null
                 WriterTab.Table -> selectedObject?.table != null
                 else -> true
-            } }, tab, w, WORD_BLUE, { tab = it }, contextual = if (selectedObject?.table != null) WriterTab.Table else WriterTab.Picture, label = { t -> if (t == WriterTab.Picture && selectedObject != null) PictureXml.kind(selectedObject) else t.label }) {
-                if (ribbonOverKeyboard) Tool(R.drawable.ic_more_horiz, "Back to the keyboard bar", w, on = true) { ribbonOverKeyboard = false }
+            } }, tab, w, WORD_BLUE, { tab = it }, contextual = if (selectedObject?.table != null) WriterTab.Table else WriterTab.Picture, label = { t -> if (t == WriterTab.Picture && objectTab != null) objectTab else tabNames[t.ordinal] }) {
+                if (ribbonOverKeyboard) Tool(R.drawable.ic_more_horiz, stringResource(R.string.words_back_to_keyboard_bar), w, on = true) { ribbonOverKeyboard = false }
                 // a picture, shape or table chosen: ✕ lets go of it, as Slides' and Tables' rows have (the tablet walk, 18 Oct)
                 else if (selectedObject != null) androidx.compose.material3.IconButton(onClick = { state.selection = androidx.compose.ui.text.TextRange(state.selection.max); tab = WriterTab.Home },
-                    modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Close", modifier = Modifier.size(16.dp)) }
+                    modifier = Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_close), modifier = Modifier.size(16.dp)) }
             }
             // The tools of a tab in pages that fit the width, swiped one page at a time (asked 2026-09-27), with dots.
             val span = state.currentSpanStyle
             val para = state.currentParagraphStyle
             val pages: List<@Composable () -> Unit> = when (tab) {
                 WriterTab.File -> listOf({
-                    RibbonButton("Save", w, R.drawable.ic_save, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
-                    RibbonButton("Save a copy", w, R.drawable.ic_copy, enabled = loaded && file != null) { commitCell(); save(asCopy = true) }
-                    RibbonButton("AutoSave", w, R.drawable.ic_history, on = autoSave) {
+                    RibbonButton(stringResource(R.string.common_save), w, R.drawable.ic_save, enabled = loaded && (dirty || file == null || cellEdit != null)) { commitCell(); save() }
+                    RibbonButton(stringResource(R.string.words_save_copy), w, R.drawable.ic_copy, enabled = loaded && file != null) { commitCell(); save(asCopy = true) }
+                    RibbonButton(stringResource(R.string.words_autosave), w, R.drawable.ic_history, on = autoSave) {
                         autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
-                        message = if (!autoSave) "AutoSave off — Save when you want the file changed" else if (file == null) "AutoSave on — once the document has a name" else if (meta.blocking.isNotEmpty()) "AutoSave on — but this file is saved only as a copy" else "AutoSave on"
+                        message = context.getString(if (!autoSave) R.string.words_autosave_off_msg else if (file == null) R.string.words_autosave_on_unnamed else if (meta.blocking.isNotEmpty()) R.string.words_autosave_on_copy else R.string.words_autosave_on)
                     }
                     // a phone: the Office home's favourite here (a tablet has the heart in the top bar; the user, 18 Oct)
                     FavouriteFileButton(file, w)
                 }, {
-                    RibbonButton("Save as", w, R.drawable.ic_save, enabled = loaded) { commitCell(); naming = true }
-                    RibbonButton("Rename", w, R.drawable.ic_edit, enabled = loaded && file != null) { renaming = true }
+                    RibbonButton(stringResource(R.string.words_save_as), w, R.drawable.ic_save, enabled = loaded) { commitCell(); naming = true }
+                    RibbonButton(stringResource(R.string.common_rename), w, R.drawable.ic_edit, enabled = loaded && file != null) { renaming = true }
                     // as Tables' and Slides' (17 Oct): Versions, Export PDF, Print · Share, another app · About, log · Settings
-                    RibbonButton("Versions", w, R.drawable.ic_history, enabled = loaded) { showVersions = true }
-                    RibbonButton("Export PDF", w, R.drawable.ic_file, enabled = loaded) { exportPdf() }
-                    RibbonButton("Print", w, R.drawable.ic_print, enabled = loaded) { commitCell(); print() }
+                    RibbonButton(stringResource(R.string.words_versions), w, R.drawable.ic_history, enabled = loaded) { showVersions = true }
+                    RibbonButton(stringResource(R.string.words_export_pdf), w, R.drawable.ic_file, enabled = loaded) { exportPdf() }
+                    RibbonButton(stringResource(R.string.common_print), w, R.drawable.ic_print, enabled = loaded) { commitCell(); print() }
                 }, {
-                    RibbonButton("Share", w, R.drawable.ic_share, enabled = file?.isFile == true) {
+                    RibbonButton(stringResource(R.string.common_share), w, R.drawable.ic_share, enabled = file?.isFile == true) {
                         file?.let { shareDriveFile(context, it) }
-                        if (dirty) message = "Shared as last saved — your newest changes are not in it yet"
+                        if (dirty) message = context.getString(R.string.words_shared_last_saved)
                     }
-                    RibbonButton("Open in another app", w, R.drawable.ic_open_with, enabled = file?.isFile == true) {
+                    RibbonButton(stringResource(R.string.words_open_in_another_app), w, R.drawable.ic_open_with, enabled = file?.isFile == true) {
                         file?.let { openElsewhere(context, it) }
-                        if (dirty) message = "Opened as last saved — your newest changes are not in it yet"
+                        if (dirty) message = context.getString(R.string.words_opened_last_saved)
                     }
-                    RibbonButton("About this file", w, R.drawable.ic_info, enabled = loaded) { details = true }
+                    RibbonButton(stringResource(R.string.words_about_file), w, R.drawable.ic_info, enabled = loaded) { details = true }
                     // The log (asked 2026-10-01), to send when something goes wrong: what was done, not the words.
-                    RibbonButton("Send log", w, R.drawable.ic_share) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
+                    RibbonButton(stringResource(R.string.words_send_log), w, R.drawable.ic_share) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
                     // Office's settings (asked 16 Oct): the ribbon's place and size — Tetra's Settings › Office has them all
-                    RibbonButton("Settings", w, R.drawable.ic_settings) { officeSettings = true }
+                    RibbonButton(stringResource(R.string.common_settings), w, R.drawable.ic_settings) { officeSettings = true }
                 })
                 // Typing in a table cell: Home formats the cell's text.
                 WriterTab.Home -> cellEdit?.let { e -> cellHomePages(w, WriterBridge.withCellText(e.cell, e.value.text), e.value.selection,
                     { p, r -> r.sizePt ?: documentStyles.look(p).sizePt ?: meta.basePt }) { c -> cellEdit = e.copy(cell = c) } } ?: listOf({
-                    Tool(R.drawable.ic_format_bold, "Bold", w, on = boldHere(span)) { toggleBold(span) }
-                    Tool(R.drawable.ic_format_italic, "Italic", w, on = span.fontStyle == FontStyle.Italic) { toggleItalic(span) }
-                    Tool(R.drawable.ic_format_underlined, "Underline", w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
-                    Tool(R.drawable.ic_format_strikethrough, "Strikethrough", w, on = span.textDecoration?.contains(TextDecoration.LineThrough) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) }
+                    Tool(R.drawable.ic_format_bold, stringResource(R.string.words_bold), w, on = boldHere(span)) { toggleBold(span) }
+                    Tool(R.drawable.ic_format_italic, stringResource(R.string.words_italic), w, on = span.fontStyle == FontStyle.Italic) { toggleItalic(span) }
+                    Tool(R.drawable.ic_format_underlined, stringResource(R.string.words_underline), w, on = span.textDecoration?.contains(TextDecoration.Underline) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.Underline)) }
+                    Tool(R.drawable.ic_format_strikethrough, stringResource(R.string.words_strikethrough), w, on = span.textDecoration?.contains(TextDecoration.LineThrough) == true) { state.toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) }
                     // Superscript and subscript: read back in at once, so they show smaller as a file's do.
                     listOf("X²" to androidx.compose.ui.text.style.BaselineShift.Superscript, "X₂" to androidx.compose.ui.text.style.BaselineShift.Subscript).forEach { (label, shift) ->
                         val sign = Math.signum(span.baselineShift?.multiplier ?: 0f)
@@ -4044,25 +4048,25 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     FontButton(hereFont, w, enabled = !onObject) { openGallery(DesignGallery.Font) }
                     SizeStepper("$pt", w, pt > 8, pt < 72, { setPt(pt - 1) }, { setPt(pt + 1) })
                 }, {
-                    Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { c ->
+                    Swatches(w, R.drawable.ic_format_color_text, stringResource(R.string.words_text_colour), TEXT_COLOURS) { c ->
                         if (c == null) span.color.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(color = it)) } else state.addSpanStyle(SpanStyle(color = c))
                     }
-                    Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { c ->
+                    Swatches(w, R.drawable.ic_highlighter, stringResource(R.string.words_highlight), HIGHLIGHT_COLOURS) { c ->
                         if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { state.removeSpanStyle(SpanStyle(background = it)) } else state.addSpanStyle(SpanStyle(background = c))
                     }
                     // Change case (Word's Aa): the chosen letters, or the word at the cursor.
-                    RibbonMenu("Aa", w, preset = false, title = "Change case", choices = WriterBridge.Case.entries.map { c -> MenuChoice(c.label) { change {
+                    RibbonMenu("Aa", w, preset = false, title = stringResource(R.string.words_change_case), choices = WriterBridge.Case.entries.map { c -> MenuChoice(stringResource(c.text)) { change {
                         val text = state.annotatedString.text
                         val sel = state.selection
                         val (from, to) = chosenOrWord()
                         state.setRichTextDocument(WriterBridge.changeCase(text, state.toRichTextDocument(), from, to, c), sel)
                     } } })
                     // Character spacing (Word's Font › Advanced › Spacing): the chosen words, or the word at the cursor, closer or wider
-                    RibbonMenu("Spacing", w, R.drawable.ic_format_letter_spacing, title = "Character spacing", choices = CHARACTER_SPACINGS.map { (label, pt) -> MenuChoice(label) { setSpacing(pt) } })
+                    RibbonMenu(stringResource(R.string.words_spacing), w, R.drawable.ic_format_letter_spacing, title = stringResource(R.string.words_character_spacing), choices = CHARACTER_SPACINGS.mapIndexed { i, (_, pt) -> MenuChoice(stringResource(CHARACTER_SPACING_NAMES[i])) { setSpacing(pt) } })
                     // Format painter: the look of the letters at the cursor, painted on the next words chosen.
-                    Tool(R.drawable.ic_format_paint, "Format painter", w, on = painter != null) { pickPainter() }
+                    Tool(R.drawable.ic_format_paint, stringResource(R.string.words_format_painter), w, on = painter != null) { pickPainter() }
                     // Clear formatting: the chosen letters (or, with none chosen, the paragraph) back to their style's look.
-                    Tool(R.drawable.ic_format_clear, "Clear formatting", w) { change {
+                    Tool(R.drawable.ic_format_clear, stringResource(R.string.words_clear_formatting), w) { change {
                         val text = state.annotatedString.text
                         val rich = state.toRichTextDocument()
                         val sel = state.selection
@@ -4074,40 +4078,40 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 }, {
                     // The everyday styles; every other (Subtitle, Quote, Heading 4–6, the document's own) behind Styles….
                     val styles = documentStyles.paragraphStyles()
-                    listOf(styles[0] to "Normal", styles[1] to "Title", styles.first { it.heading == 1 } to "H1", styles.first { it.heading == 2 } to "H2", styles.first { it.heading == 3 } to "H3").forEach { (style, label) ->
+                    listOf(styles[0] to stringResource(R.string.words_style_normal), styles[1] to stringResource(R.string.words_style_title), styles.first { it.heading == 1 } to "H1", styles.first { it.heading == 2 } to "H2", styles.first { it.heading == 3 } to "H3").forEach { (style, label) ->
                         RibbonButton(label, w, on = hereStyle == style) { applyStyle(style) }
                     }
-                    RibbonButton("Styles…", w) { stylesPage = true }
+                    RibbonButton(stringResource(R.string.words_styles_more), w) { stylesPage = true }
                 }, {
                     // a numbered item made a bullet (and back) is switched in the document itself, at its level: the library's
                     // toggles moved it a level out instead, still numbered — an empty one even after taking it out first (16 Oct)
-                    Tool(R.drawable.ic_format_list_bulleted, "Bullets", w, on = state.isUnorderedList) { if (state.isOrderedList) switchList(false) else state.toggleUnorderedList() }
-                    Tool(R.drawable.ic_format_list_numbered, "Numbering", w, on = state.isOrderedList) { if (state.isUnorderedList) switchList(true) else state.toggleOrderedList() }
-                    Tool(R.drawable.ic_format_indent_decrease, "Decrease indent", w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
-                    Tool(R.drawable.ic_format_indent_increase, "Increase indent", w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
-                    RibbonButton("Multilevel", w, R.drawable.ic_format_list_numbered) { openGallery(DesignGallery.Lists) }
+                    Tool(R.drawable.ic_format_list_bulleted, stringResource(R.string.words_bullets), w, on = state.isUnorderedList) { if (state.isOrderedList) switchList(false) else state.toggleUnorderedList() }
+                    Tool(R.drawable.ic_format_list_numbered, stringResource(R.string.words_numbering), w, on = state.isOrderedList) { if (state.isUnorderedList) switchList(true) else state.toggleOrderedList() }
+                    Tool(R.drawable.ic_format_indent_decrease, stringResource(R.string.words_decrease_indent), w, enabled = state.canDecreaseListLevel) { state.decreaseListLevel() }
+                    Tool(R.drawable.ic_format_indent_increase, stringResource(R.string.words_increase_indent), w, enabled = state.canIncreaseListLevel) { state.increaseListLevel() }
+                    RibbonButton(stringResource(R.string.words_multilevel), w, R.drawable.ic_format_list_numbered) { openGallery(DesignGallery.Lists) }
                 }, {
                     listOf(TextAlign.Start to R.drawable.ic_align_left, TextAlign.Center to R.drawable.ic_align_center, TextAlign.End to R.drawable.ic_align_right, TextAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
                         val on = para.textAlign == a || (a == TextAlign.Start && (para.textAlign == TextAlign.Unspecified || para.textAlign == TextAlign.Left))
-                        Tool(icon, "Align ${a.toString().lowercase(Locale.ROOT)}", w, on = on) { state.addParagraphStyle(ParagraphStyle(textAlign = a, textDirection = androidx.compose.ui.text.style.TextDirection.Content)) }
+                        Tool(icon, stringResource(when (a) { TextAlign.Center -> R.string.words_align_center; TextAlign.End -> R.string.words_align_end; TextAlign.Justify -> R.string.words_align_justify; else -> R.string.words_align_start }), w, on = on) { state.addParagraphStyle(ParagraphStyle(textAlign = a, textDirection = androidx.compose.ui.text.style.TextDirection.Content)) }
                     }
                 }, {
                     // Line spacing (the pages and the file show it; the editor keeps its own lines) and the ⋯ page.
-                    Tool(R.drawable.ic_format_line_spacing, "Line spacing", w) { chooseParagraphs { at, look -> paragraphPage = at to look } }
+                    Tool(R.drawable.ic_format_line_spacing, stringResource(R.string.words_line_spacing), w) { chooseParagraphs { at, look -> paragraphPage = at to look } }
                     LINE_SPACINGS.forEach { m ->
                         RibbonButton(plain(m), w) {
-                            chooseParagraphs { at, look -> setSpacing(at, look, look.copy(lineMultiple = m, lineExact = null)); message = "Line spacing ${plain(m)} — it shows on the pages" }
+                            chooseParagraphs { at, look -> setSpacing(at, look, look.copy(lineMultiple = m, lineExact = null)); message = context.getString(R.string.words_line_spacing_set, plain(m)) }
                         }
                     }
                 }, {
                     // Borders (Word's, for paragraphs): a centred panel with a preview — the sides, their line, thickness and colour
-                    RibbonButton("Borders", w, R.drawable.ic_border_bottom) { chooseParagraphs { at, look -> bordersPage = at to look } }
-                    RibbonButton("More…", w, R.drawable.ic_more_vert) { chooseParagraphs { at, look -> paragraphPage = at to look } }
+                    RibbonButton(stringResource(R.string.words_borders), w, R.drawable.ic_border_bottom) { chooseParagraphs { at, look -> bordersPage = at to look } }
+                    RibbonButton(stringResource(R.string.common_more), w, R.drawable.ic_more_vert) { chooseParagraphs { at, look -> paragraphPage = at to look } }
                 })
                 // Word's groups, in its order: Pages, Tables, Illustrations, Links, Comments, Header & Footer, Text, Symbols.
                 WriterTab.Insert -> listOf({
-                    RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
-                    RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
+                    RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
+                    RibbonButton(stringResource(R.string.words_page_break), w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
                     RibbonDivider(w)
                     TableSizeButton(w, WORD_BLUE, enabled = loaded) { rows, columns ->
                         val table = if (kind == OfficeKind.Odt) TableEdit.newOdtTable(rows, columns, "Table " + java.util.UUID.randomUUID().toString().take(6))
@@ -4120,54 +4124,54 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         tab = WriterTab.Table
                     }
                 }, {
-                    RibbonButton("Picture", w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                    RibbonMenu("Signature", w, R.drawable.ic_draw, enabled = loaded, preset = false, choices = listOf(
-                        MenuChoice(if (signatureFile.isFile) "Put my signature" else "Draw my signature", icon = R.drawable.ic_draw) { insertSignature() },
-                        MenuChoice("Draw a new one", icon = R.drawable.ic_edit, opens = true) { drawingSignature = true },
-                        MenuChoice("From a picture of it", icon = R.drawable.ic_gallery, opens = true) { pickSignature.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }))
-                    RibbonButton("Shapes", w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
+                    RibbonButton(stringResource(R.string.words_picture), w, R.drawable.ic_gallery, enabled = loaded) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                    RibbonMenu(stringResource(R.string.words_signature), w, R.drawable.ic_draw, enabled = loaded, preset = false, choices = listOf(
+                        MenuChoice(stringResource(if (signatureFile.isFile) R.string.words_put_my_signature else R.string.words_draw_my_signature), icon = R.drawable.ic_draw) { insertSignature() },
+                        MenuChoice(stringResource(R.string.words_draw_new_one), icon = R.drawable.ic_edit, opens = true) { drawingSignature = true },
+                        MenuChoice(stringResource(R.string.words_from_picture_of_it), icon = R.drawable.ic_gallery, opens = true) { pickSignature.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }))
+                    RibbonButton(stringResource(R.string.words_shapes), w, R.drawable.ic_category, enabled = loaded) { shapesPage = true }
                     // Word's Online Video, or a film from the phone kept in the file (LibreOffice's media frame; in a .docx beside its picture)
                     VideoButton(w, enabled = loaded, phone = { pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }, online = ::insertOnlineVideo)
                 }, {
-                    RibbonButton("Text box", w, R.drawable.ic_text_box, enabled = loaded) { boxing = null to "" }
-                    RibbonButton("WordArt", w, R.drawable.ic_format_color_text, enabled = loaded) { openGallery(DesignGallery.WordArt) }
-                    RibbonButton("Chart", w, R.drawable.ic_bar_chart, enabled = loaded) { charting = null to WORD_SAMPLE_CHART }
+                    RibbonButton(stringResource(R.string.words_text_box), w, R.drawable.ic_text_box, enabled = loaded) { boxing = null to "" }
+                    RibbonButton(stringResource(R.string.words_wordart), w, R.drawable.ic_format_color_text, enabled = loaded) { openGallery(DesignGallery.WordArt) }
+                    RibbonButton(stringResource(R.string.words_chart), w, R.drawable.ic_bar_chart, enabled = loaded) { charting = null to WORD_SAMPLE_CHART }
                 }, {
-                    RibbonButton(if (state.isLink) "Edit link" else "Link", w, R.drawable.ic_link) { linking = true }
-                    RibbonButton("Comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
+                    RibbonButton(stringResource(if (state.isLink) R.string.words_edit_link else R.string.words_link), w, R.drawable.ic_link) { linking = true }
+                    RibbonButton(stringResource(R.string.words_comment), w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
                 }, {
                     // Header, footer and page numbers: one page for all three (APA: the number top right).
-                    RibbonButton("Header & footer", w, R.drawable.ic_page_header, enabled = loaded) { openGallery(DesignGallery.HeaderFooter) }
-                    RibbonButton("Page numbers", w, R.drawable.ic_numbers, enabled = loaded) { openGallery(DesignGallery.PageNumbers) }
+                    RibbonButton(stringResource(R.string.words_header_footer), w, R.drawable.ic_page_header, enabled = loaded) { openGallery(DesignGallery.HeaderFooter) }
+                    RibbonButton(stringResource(R.string.words_page_numbers), w, R.drawable.ic_numbers, enabled = loaded) { openGallery(DesignGallery.PageNumbers) }
                 }, {
                     // Word's Drop Cap: a strip of cards in the ribbon's place (17 Oct, as Slides'), the one tapped shown at once; More…: its options
-                    RibbonButton("Drop cap", w, R.drawable.ic_drop_cap, enabled = loaded) { chooseParagraphs { at, _ -> dropAt = at.min()
+                    RibbonButton(stringResource(R.string.words_drop_cap), w, R.drawable.ic_drop_cap, enabled = loaded) { chooseParagraphs { at, _ -> dropAt = at.min()
                         dropLines = DropCap.of(current().paras.getOrNull(at.min())?.keep)?.lines ?: 3; openGallery(DesignGallery.DropCap) } }
-                    RibbonButton("Date", w, R.drawable.ic_calendar_today, enabled = loaded) { datePage = true }
+                    RibbonButton(stringResource(R.string.words_date), w, R.drawable.ic_calendar_today, enabled = loaded) { datePage = true }
                     // A new line in the same paragraph — Shift+Enter in Word, which a phone keyboard does not have.
-                    RibbonButton("Line break", w, R.drawable.ic_wrap_text) { change {
+                    RibbonButton(stringResource(R.string.words_line_break), w, R.drawable.ic_wrap_text) { change {
                         state.addTextAfterSelection(LINE_BREAK.toString())
                         val at = state.selection
                         state.setRichTextDocument(WriterBridge.toEditor(current(), pictures, documentStyles), at) // shown as a new line at once
                     } }
                 }, {
-                    RibbonButton("Symbol", w, R.drawable.ic_special_character, enabled = loaded) { symbolPage = true }
-                    RibbonButton("Equation", w, R.drawable.ic_functions, enabled = loaded) { equationOpen = "" to null }
-                    RibbonButton("Content control", w, R.drawable.ic_check_box, enabled = loaded) { controlNew = true }
+                    RibbonButton(stringResource(R.string.words_symbol), w, R.drawable.ic_special_character, enabled = loaded) { symbolPage = true }
+                    RibbonButton(stringResource(R.string.words_equation), w, R.drawable.ic_functions, enabled = loaded) { equationOpen = "" to null }
+                    RibbonButton(stringResource(R.string.words_content_control), w, R.drawable.ic_check_box, enabled = loaded) { controlNew = true }
                 })
                 WriterTab.Selection -> listOf({
-                    RibbonButton("Cut", w, R.drawable.ic_content_cut, enabled = !state.selection.collapsed) { copyChosen(true) }
-                    RibbonButton("Copy", w, R.drawable.ic_copy, enabled = !state.selection.collapsed) { copyChosen(false) }
-                    RibbonButton("Paste", w, R.drawable.ic_content_paste) { textToolbar.paste?.invoke()?.also { dirty = true; WriterLog.i("pasted with its look") } ?: pastePlain() }
+                    RibbonButton(stringResource(R.string.common_cut), w, R.drawable.ic_content_cut, enabled = !state.selection.collapsed) { copyChosen(true) }
+                    RibbonButton(stringResource(R.string.common_copy), w, R.drawable.ic_copy, enabled = !state.selection.collapsed) { copyChosen(false) }
+                    RibbonButton(stringResource(R.string.common_paste), w, R.drawable.ic_content_paste) { textToolbar.paste?.invoke()?.also { dirty = true; WriterLog.i("pasted with its look") } ?: pastePlain() }
                 }, {
-                    RibbonButton("Paste text only", w, R.drawable.ic_content_paste) { pastePlain() }
-                    RibbonButton("Select all", w, R.drawable.ic_select_all) { textToolbar.selectAll?.invoke() ?: run { state.selection = androidx.compose.ui.text.TextRange(0, state.annotatedString.length) } }
+                    RibbonButton(stringResource(R.string.words_paste_text_only), w, R.drawable.ic_content_paste) { pastePlain() }
+                    RibbonButton(stringResource(R.string.common_select_all), w, R.drawable.ic_select_all) { textToolbar.selectAll?.invoke() ?: run { state.selection = androidx.compose.ui.text.TextRange(0, state.annotatedString.length) } }
                 }, {
-                    RibbonButton("Copy formatting", w, R.drawable.ic_format_paint) {
+                    RibbonButton(stringResource(R.string.words_copy_formatting), w, R.drawable.ic_format_paint) {
                         copiedLook = runAt(state.selection.min)
-                        message = if (copiedLook != null) "Formatting copied — choose other words, then Paste formatting" else "No formatting here to copy"
+                        message = context.getString(if (copiedLook != null) R.string.words_formatting_copied else R.string.words_no_formatting_to_copy)
                     }
-                    RibbonButton("Paste formatting", w, R.drawable.ic_format_paint, enabled = copiedLook != null) { copiedLook?.let { paint(it, state.selection) } }
+                    RibbonButton(stringResource(R.string.words_paste_formatting), w, R.drawable.ic_format_paint, enabled = copiedLook != null) { copiedLook?.let { paint(it, state.selection) } }
                 })
                 WriterTab.Picture -> {
                     val (at, key) = selectedPicture ?: (0 to "")
@@ -4177,66 +4181,66 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     if (img != null && PictureXml.kind(img) == "Signature") {
                         val floating = editable && PictureXml.wrapOf(img) != PictureWrap.InLine
                         listOf({
-                            RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
-                            RibbonButton("Position", w, R.drawable.ic_open_with, enabled = floating) { position(key) }
-                            RibbonButton("Rotate", w, R.drawable.ic_rotate_right, enabled = floating) { rotating = key }
+                            RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
+                            RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with, enabled = floating) { position(key) }
+                            RibbonButton(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, enabled = floating) { rotating = key }
                         }, {
-                            RibbonButton("Wrap text", w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
-                            RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front, enabled = floating) { arrange(key, front = true) }
-                            RibbonButton("Send to back", w, R.drawable.ic_flip_to_back, enabled = floating) { arrange(key, front = false) }
+                            RibbonButton(stringResource(R.string.words_wrap_text), w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
+                            RibbonButton(stringResource(R.string.words_bring_to_front), w, R.drawable.ic_flip_to_front, enabled = floating) { arrange(key, front = true) }
+                            RibbonButton(stringResource(R.string.words_send_to_back), w, R.drawable.ic_flip_to_back, enabled = floating) { arrange(key, front = false) }
                         }, {
-                            RibbonButton("Redraw", w, R.drawable.ic_draw) { redoSignature = key; drawingSignature = true }
-                            RibbonButton("Delete", w, R.drawable.ic_delete) { state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)) }
+                            RibbonButton(stringResource(R.string.words_redraw), w, R.drawable.ic_draw) { redoSignature = key; drawingSignature = true }
+                            RibbonButton(stringResource(R.string.common_delete), w, R.drawable.ic_delete) { state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)) }
                         })
                     } else {
                     val hasBytes = img != null && pictureBytes(img) != null
                     // A drawing made in Writer: drawn on again (its strokes ride in its picture).
                     val drawn = remember(key, img) { img?.let { pictureBytes(it) }?.let { InkPicture.strokesOf(it) } != null }
                     listOf({
-                        img?.let(PictureXml::video)?.let { m -> RibbonButton("Play", w, R.drawable.ic_play) { play(key, m) } }
-                        if (drawn) RibbonButton("Edit drawing", w, R.drawable.ic_draw) { editDrawing(key) }
-                        img?.chart?.let { ch -> RibbonButton("Edit data", w, R.drawable.ic_bar_chart) { charting = key to ch } }
-                        img?.math?.let { m -> RibbonButton("Edit equation", w, R.drawable.ic_functions) { equationOpen = key to m } }
+                        img?.let(PictureXml::video)?.let { m -> RibbonButton(stringResource(R.string.words_play), w, R.drawable.ic_play) { play(key, m) } }
+                        if (drawn) RibbonButton(stringResource(R.string.words_edit_drawing), w, R.drawable.ic_draw) { editDrawing(key) }
+                        img?.chart?.let { ch -> RibbonButton(stringResource(R.string.words_edit_data), w, R.drawable.ic_bar_chart) { charting = key to ch } }
+                        img?.math?.let { m -> RibbonButton(stringResource(R.string.words_edit_equation), w, R.drawable.ic_functions) { equationOpen = key to m } }
                         // a WordArt Writer made: its words, colour, effects and bend, all to change (Word's Text Effects after)
-                        img?.box?.let { paras -> RibbonButton("Edit text", w, R.drawable.ic_edit, enabled = editable) {
+                        img?.box?.let { paras -> RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit, enabled = editable) {
                             if (TextWarp.art(img.raw) != null) artEditing = key to paras.joinToString("\n") { it.text } else boxing = key to paras.joinToString("\n") { it.text } } }
                         // a shape's own words (Word's Add Text): typed in the box's window, in the shape's middle
                         if (img != null && img.box == null && img.group == null && ShapePicture.of(img)?.geometry?.let { it != "line" && it != "straightConnector1" } == true)
-                            RibbonButton("Add text", w, R.drawable.ic_edit, enabled = editable) { boxing = key to "" }
+                            RibbonButton(stringResource(R.string.words_add_text), w, R.drawable.ic_edit, enabled = editable) { boxing = key to "" }
                         // A shape (or a text box's frame): its fill, outline, size, angle and alt text in one page.
-                        if (img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton("Shape options", w, R.drawable.ic_tune, enabled = editable) { shapeOptions = key }
-                        RibbonButton("Size", w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
-                        RibbonButton("Crop", w, R.drawable.ic_crop, enabled = hasBytes && editable) {
+                        if (img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton(stringResource(R.string.words_shape_options), w, R.drawable.ic_tune, enabled = editable) { shapeOptions = key }
+                        RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio, enabled = editable) { sizing = true }
+                        RibbonButton(stringResource(R.string.words_crop), w, R.drawable.ic_crop, enabled = hasBytes && editable) {
                             scope.launch {
                                 cropping = withContext(Dispatchers.IO) { pictureBytes(img!!)?.let { runCatching { OfficePages.croppedPicture(img, it, 2400) }.getOrNull() } }
-                                if (cropping == null) message = "Words cannot crop this kind of picture."
+                                if (cropping == null) message = context.getString(R.string.words_cannot_crop)
                             }
                         }
                     }, {
-                        RibbonButton("Wrap text", w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
+                        RibbonButton(stringResource(R.string.words_wrap_text), w, R.drawable.ic_wrap_text, enabled = editable) { wrapping = true }
                         // Floating ones are dragged where they go on their page.
-                        RibbonButton("Position", w, R.drawable.ic_open_with, enabled = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine) { position(key) }
+                        RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with, enabled = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine) { position(key) }
                     }, {
                         // Arrange (Word's): which floating picture is over which, and lined up with the margins.
                         val floating = editable && img?.let { PictureXml.wrapOf(it) } != PictureWrap.InLine
-                        RibbonButton("Bring to front", w, R.drawable.ic_flip_to_front, enabled = floating) { arrange(key, front = true) }
-                        RibbonButton("Send to back", w, R.drawable.ic_flip_to_back, enabled = floating) { arrange(key, front = false) }
-                        RibbonButton("Rotate", w, R.drawable.ic_rotate_right, enabled = floating) { rotating = key }
-                        if (img?.group != null) RibbonButton("Ungroup", w, R.drawable.ic_group_objects, enabled = floating) { ungroup(key) }
-                        else RibbonButton(if (grouping == key) "Tap another…" else "Group", w, R.drawable.ic_group_objects, enabled = floating, on = grouping == key) {
-                            grouping = if (grouping == key) null else key.also { message = "Now tap the other picture or shape to group with it" }
+                        RibbonButton(stringResource(R.string.words_bring_to_front), w, R.drawable.ic_flip_to_front, enabled = floating) { arrange(key, front = true) }
+                        RibbonButton(stringResource(R.string.words_send_to_back), w, R.drawable.ic_flip_to_back, enabled = floating) { arrange(key, front = false) }
+                        RibbonButton(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, enabled = floating) { rotating = key }
+                        if (img?.group != null) RibbonButton(stringResource(R.string.words_ungroup), w, R.drawable.ic_group_objects, enabled = floating) { ungroup(key) }
+                        else RibbonButton(stringResource(if (grouping == key) R.string.words_tap_another else R.string.words_group), w, R.drawable.ic_group_objects, enabled = floating, on = grouping == key) {
+                            grouping = if (grouping == key) null else key.also { message = context.getString(R.string.words_tap_other_to_group) }
                         }
-                        RibbonMenu("Align", w, R.drawable.ic_align_horizontal_center, enabled = floating, preset = false, choices =
-                            listOf("left" to "Align left", "center" to "Align centre", "right" to "Align right", "top" to "Align top", "middle" to "Align middle", "bottom" to "Align bottom")
+                        RibbonMenu(stringResource(R.string.words_align), w, R.drawable.ic_align_horizontal_center, enabled = floating, preset = false, choices =
+                            listOf("left" to stringResource(R.string.words_align_left), "center" to stringResource(R.string.words_align_centre), "right" to stringResource(R.string.words_align_right), "top" to stringResource(R.string.words_align_top), "middle" to stringResource(R.string.words_align_middle), "bottom" to stringResource(R.string.words_align_bottom))
                                 .map { (how, label) -> MenuChoice(label) { align(key, how) } })
                     }, {
-                        RibbonButton("Turn left", w, R.drawable.ic_rotate_left, enabled = hasBytes && editable) { transform(-90, false) }
-                        RibbonButton("Turn right", w, R.drawable.ic_rotate_right, enabled = hasBytes && editable) { transform(90, false) }
-                        RibbonButton("Flip", w, R.drawable.ic_flip, enabled = hasBytes && editable) { transform(0, true) }
+                        RibbonButton(stringResource(R.string.words_turn_left), w, R.drawable.ic_rotate_left, enabled = hasBytes && editable) { transform(-90, false) }
+                        RibbonButton(stringResource(R.string.words_turn_right), w, R.drawable.ic_rotate_right, enabled = hasBytes && editable) { transform(90, false) }
+                        RibbonButton(stringResource(R.string.words_flip), w, R.drawable.ic_flip, enabled = hasBytes && editable) { transform(0, true) }
                     }, {
-                        RibbonButton("Replace", w, R.drawable.ic_gallery, enabled = editable) { replacePicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                        RibbonButton("Save as", w, R.drawable.ic_save, enabled = hasBytes) { savePicture(img!!) }
-                        RibbonButton("Delete", w, R.drawable.ic_delete) { state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)) }
+                        RibbonButton(stringResource(R.string.words_replace), w, R.drawable.ic_gallery, enabled = editable) { replacePicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                        RibbonButton(stringResource(R.string.words_save_as), w, R.drawable.ic_save, enabled = hasBytes) { savePicture(img!!) }
+                        RibbonButton(stringResource(R.string.common_delete), w, R.drawable.ic_delete) { state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)) }
                     })
                     }
                 }
@@ -4258,90 +4262,91 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val from = mergeFrom?.takeIf { it.key == selectedPicture?.second }
                     if (from != null) listOf({
                         val n = table?.let { t -> TableEdit.cellsBetween(t, from.row to from.cell, (mergeTo ?: from).let { it.row to it.cell }).size } ?: 0
-                        Text(if (mergeTo == null) "Tap the last cell to merge" else "$n cells", color = w, style = MaterialTheme.typography.labelLarge)
-                        RibbonButton("Merge", w, R.drawable.ic_cell_merge, enabled = mergeTo != null && n > 1) {
+                        Text(if (mergeTo == null) stringResource(R.string.words_tap_last_cell) else pluralStringResource(R.plurals.words_n_cells, n, n), color = w, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        RibbonButton(stringResource(R.string.words_merge), w, R.drawable.ic_cell_merge, enabled = mergeTo != null && n > 1) {
                             val to = mergeTo!!
-                            change("These cells cannot be merged.") { t, _ -> TableEdit.merge(t, from.row to from.cell, to.row to to.cell) }
+                            change(context.getString(R.string.words_cells_cannot_merge)) { t, _ -> TableEdit.merge(t, from.row to from.cell, to.row to to.cell) }
                             selectedCell = from; mergeFrom = null; mergeTo = null
                         }
-                        RibbonButton("Cancel", w, R.drawable.ic_close) { mergeFrom = null; mergeTo = null }
+                        RibbonButton(stringResource(R.string.common_cancel), w, R.drawable.ic_close) { mergeFrom = null; mergeTo = null }
                     }) else listOf({
                         // The table's numbers as a chart under it (asked 2026-10-14), its look chosen in the chart's own dialog.
-                        RibbonButton("Make chart", w, R.drawable.ic_bar_chart, enabled = table != null) {
+                        RibbonButton(stringResource(R.string.words_make_chart), w, R.drawable.ic_bar_chart, enabled = table != null) {
                             commitCell()
                             val key = selectedPicture?.second
                             val made = key?.let { pictures[it]?.table }?.let { OfficeCharts.fromTable(it) }
-                            if (made == null) message = "The table has no numbers to chart." else { chartUnder = key; charting = null to made }
+                            if (made == null) message = context.getString(R.string.words_no_numbers_to_chart) else { chartUnder = key; charting = null to made }
                         }
                     }, {
                         // Everyday tools on the ribbon, the rest behind ⋯ (asked 2026-09-28); three to a page, as a phone fits them.
-                        RibbonButton("Row above", w, R.drawable.ic_add_row_above, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = false) } }
-                        RibbonButton("Row below", w, R.drawable.ic_add_row_below, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = true) } }
-                        RibbonButton("Merge", w, R.drawable.ic_cell_merge, enabled = table != null) { commitCell(); mergeFrom = here(); mergeTo = null }
+                        RibbonButton(stringResource(R.string.words_row_above), w, R.drawable.ic_add_row_above, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = false) } }
+                        RibbonButton(stringResource(R.string.words_row_below), w, R.drawable.ic_add_row_below, enabled = table != null) { change { t, c -> TableEdit.insertRow(t, c.row, c.cell, below = true) } }
+                        RibbonButton(stringResource(R.string.words_merge), w, R.drawable.ic_cell_merge, enabled = table != null) { commitCell(); mergeFrom = here(); mergeTo = null }
                     }, {
-                        RibbonButton("Column left", w, R.drawable.ic_add_column_left, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = false) } }
-                        RibbonButton("Column right", w, R.drawable.ic_add_column_right, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = true) } }
-                        RibbonButton("Split", w, R.drawable.ic_call_split, enabled = table != null) { commitCell(); tableDialog = "split" }
+                        RibbonButton(stringResource(R.string.words_column_left), w, R.drawable.ic_add_column_left, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = false) } }
+                        RibbonButton(stringResource(R.string.words_column_right), w, R.drawable.ic_add_column_right, enabled = table != null) { change { t, c -> TableEdit.insertColumn(t, c.row, c.cell, right = true) } }
+                        RibbonButton(stringResource(R.string.words_split), w, R.drawable.ic_call_split, enabled = table != null) { commitCell(); tableDialog = "split" }
                     }, {
-                        RibbonButton("Delete row", w, R.drawable.ic_delete_row, enabled = table != null && table.rows.size > 1) { change("The last row stays.") { t, c -> TableEdit.deleteRow(t, c.row, c.cell) }; selectedCell = null }
-                        RibbonButton("Delete column", w, R.drawable.ic_delete_column, enabled = table != null && TableEdit.gridCount(table) > 1) { change("This column cannot be taken away.") { t, c -> TableEdit.deleteColumn(t, c.row, c.cell) }; selectedCell = null }
-                        RibbonButton("Delete table", w, R.drawable.ic_delete, enabled = selectedPicture != null) {
+                        RibbonButton(stringResource(R.string.words_delete_row), w, R.drawable.ic_delete_row, enabled = table != null && table.rows.size > 1) { change(context.getString(R.string.words_last_row_stays)) { t, c -> TableEdit.deleteRow(t, c.row, c.cell) }; selectedCell = null }
+                        RibbonButton(stringResource(R.string.words_delete_column), w, R.drawable.ic_delete_column, enabled = table != null && TableEdit.gridCount(table) > 1) { change(context.getString(R.string.words_column_cannot_delete)) { t, c -> TableEdit.deleteColumn(t, c.row, c.cell) }; selectedCell = null }
+                        RibbonButton(stringResource(R.string.words_delete_table), w, R.drawable.ic_delete, enabled = selectedPicture != null) {
                             commitCell()
                             state.removeTextRange(androidx.compose.ui.text.TextRange(at, at + 1)); tab = WriterTab.Home
                         }
                     }, {
-                        TableEdit.LOOKS.take(4).forEach { look -> LookChip(look) { if (word) change { t, _ -> TableEdit.withLook(t, look) } else message = "Table styles are for Word files for now." } }
+                        TableEdit.LOOKS.take(4).forEach { look -> LookChip(look) { if (word) change { t, _ -> TableEdit.withLook(t, look) } else message = context.getString(R.string.words_table_styles_word_only) } }
                     }, {
-                        Swatches(w, R.drawable.ic_format_color_fill, "Shading", CELL_FILLS) { color ->
+                        Swatches(w, R.drawable.ic_format_color_fill, stringResource(R.string.words_shading), CELL_FILLS) { color ->
                             if (word) change { t, c -> TableEdit.withCells(t, TableEdit.wholeCell(t, c.row, c.cell)) { it.copy(props = TableEdit.withShading(it.props, color?.let { k -> (k.toArgb() and 0xFFFFFF) })) } }
-                            else message = "Shading is for Word files for now."
+                            else message = context.getString(R.string.words_shading_word_only)
                         }
-                        RibbonButton("More…", w, R.drawable.ic_more_vert, enabled = table != null && word) { commitCell(); tableDialog = "props" }
+                        RibbonButton(stringResource(R.string.common_more), w, R.drawable.ic_more_vert, enabled = table != null && word) { commitCell(); tableDialog = "props" }
                     })
                 }
                 // Word's Design: the page's background — its colour and a box round it.
                 WriterTab.Design -> listOf({
                     // A paper's standards in one window (asked 15 Oct): APA 7's paper and run-in headings, the citation style.
-                    RibbonButton("Standards", w, R.drawable.ic_school, enabled = loaded) { standards = true }
+                    RibbonButton(stringResource(R.string.words_standards), w, R.drawable.ic_school, enabled = loaded) { standards = true }
                     // Word's Document Formatting gallery, Colours and Fonts (its theme): windows of pictures of the choices.
-                    RibbonButton("Style set", w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.StyleSets) }
-                    RibbonButton("Colours", w, R.drawable.ic_format_color_text, enabled = loaded && kind == OfficeKind.Docx) { openGallery(DesignGallery.Colours) }
-                    RibbonButton("Fonts", w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.Fonts) }
+                    RibbonButton(stringResource(R.string.words_style_set), w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.StyleSets) }
+                    RibbonButton(stringResource(R.string.words_colours), w, R.drawable.ic_format_color_text, enabled = loaded && kind == OfficeKind.Docx) { openGallery(DesignGallery.Colours) }
+                    RibbonButton(stringResource(R.string.words_fonts), w, R.drawable.ic_style, enabled = loaded) { openGallery(DesignGallery.Fonts) }
                 }, {
                     // Word's Paragraph Spacing: the Normal style's (every paragraph that has it, headings keeping their own space).
-                    RibbonMenu("Paragraph spacing", w, R.drawable.ic_format_line_spacing, enabled = loaded, choices = SPACING_SETS.map { (label, after, line) ->
-                        MenuChoice(label, detail = "After ${plain(after)} pt · line ${plain(line)}") {
+                    RibbonMenu(stringResource(R.string.words_paragraph_spacing), w, R.drawable.ic_format_line_spacing, enabled = loaded, choices = SPACING_SETS.map { (name, after, line) ->
+                        val label = stringResource(name)
+                        MenuChoice(label, detail = stringResource(R.string.words_spacing_detail, plain(after), plain(line))) {
                             editStyle(documentStyles.paragraphStyles()[0], StyleChange(line = line, before = 0f, after = after))
-                            message = "$label — every Normal paragraph; shown on the pages"
+                            message = context.getString(R.string.words_spacing_set_done, label)
                         } })
                 }, {
                     // Word's Watermark: its words, one of your own, or none.
                     run {
                         val now = documentStyles.section.watermark
                         val picture = documentStyles.section.watermarkPicture != null
-                        RibbonMenu("Watermark", w, R.drawable.ic_branding_watermark, enabled = loaded, on = now != null || picture, choices =
+                        RibbonMenu(stringResource(R.string.words_watermark), w, R.drawable.ic_branding_watermark, enabled = loaded, on = now != null || picture, choices =
                             Watermark.PRESETS.map { t -> MenuChoice(t, checked = t == now) { setWatermark(t) } } +
-                            MenuChoice("Custom watermark…", opens = true) { watermarking = true } +
-                            MenuChoice("Picture watermark…", checked = picture, opens = true, icon = R.drawable.ic_gallery) { pickWatermark.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } +
-                            listOfNotNull(MenuChoice("Remove watermark", opens = true, icon = R.drawable.ic_delete) { setWatermark(null) }.takeIf { now != null || picture }))
+                            MenuChoice(stringResource(R.string.words_custom_watermark), opens = true) { watermarking = true } +
+                            MenuChoice(stringResource(R.string.words_picture_watermark), checked = picture, opens = true, icon = R.drawable.ic_gallery) { pickWatermark.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) } +
+                            listOfNotNull(MenuChoice(stringResource(R.string.words_remove_watermark), opens = true, icon = R.drawable.ic_delete) { setWatermark(null) }.takeIf { now != null || picture }))
                     }
-                    Swatches(w, R.drawable.ic_format_color_fill, "Page colour", PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
+                    Swatches(w, R.drawable.ic_format_color_fill, stringResource(R.string.words_page_colour), PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
                         setDesign(c?.let { it.toArgb() and 0xFFFFFF }, sheet.border?.line)
                     }
-                    RibbonButton("Page borders", w, R.drawable.ic_border_outer, enabled = loaded, on = sheet.border != null) { pageBordering = true }
+                    RibbonButton(stringResource(R.string.words_page_borders), w, R.drawable.ic_border_outer, enabled = loaded, on = sheet.border != null) { pageBordering = true }
                 })
                 WriterTab.Draw -> listOf({
                     // On the page (asked 2026-09-30): drawn over the page as it is, put there in front of the text.
-                    RibbonButton("Draw on page", w, R.drawable.ic_draw, enabled = loaded) { drawOnPage() }
+                    RibbonButton(stringResource(R.string.words_draw_on_page), w, R.drawable.ic_draw, enabled = loaded) { drawOnPage() }
                     // A drawing box: drawn in, then put in front of the text at its paragraph.
-                    RibbonButton("Drawing box", w, R.drawable.ic_ink_pen, enabled = loaded) { drawing = Drawing(boxPt = sheet.textWidth.coerceAtMost(450f)) }
+                    RibbonButton(stringResource(R.string.words_drawing_box), w, R.drawable.ic_ink_pen, enabled = loaded) { drawing = Drawing(boxPt = sheet.textWidth.coerceAtMost(450f)) }
                 })
                 WriterTab.Layout -> listOf({
                     // Word's Layout: margins, orientation, size (one page for all three), then breaks.
-                    RibbonButton("Margins", w, R.drawable.ic_margin, enabled = loaded) { pagePage = true }
-                    RibbonButton("Portrait", w, R.drawable.ic_crop_portrait, enabled = loaded, on = !PageSetup.landscape(sheet)) {
+                    RibbonButton(stringResource(R.string.words_margins), w, R.drawable.ic_margin, enabled = loaded) { pagePage = true }
+                    RibbonButton(stringResource(R.string.words_portrait), w, R.drawable.ic_crop_portrait, enabled = loaded, on = !PageSetup.landscape(sheet)) {
                         if (PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
-                    RibbonButton("Landscape", w, R.drawable.ic_crop_landscape, enabled = loaded, on = PageSetup.landscape(sheet)) {
+                    RibbonButton(stringResource(R.string.words_landscape), w, R.drawable.ic_crop_landscape, enabled = loaded, on = PageSetup.landscape(sheet)) {
                         if (!PageSetup.landscape(sheet)) setPage(sheet.copy(width = sheet.height, height = sheet.width)) }
                 }, {
                     // Word's Layout › Paragraph: the indents and the space before and after, as number boxes (asked: as OnlyOffice's)
@@ -4350,88 +4355,88 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     val step = if (WriterUnits.name == "in") 7.2f else 0.25f * WriterUnits.pt // a tenth of an inch, a quarter centimetre
                     @Composable fun box(label: String, shown: String, down: () -> Unit, up: () -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(label, color = w, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 8.dp))
-                        Tool(R.drawable.ic_remove, "Less: $label", w, enabled = here != null && loaded) { down() }
+                        Tool(R.drawable.ic_remove, stringResource(R.string.words_less_of, label), w, enabled = here != null && loaded) { down() }
                         Text(shown, color = w, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.widthIn(min = 44.dp))
-                        Tool(R.drawable.ic_add, "More: $label", w, enabled = here != null && loaded) { up() }
+                        Tool(R.drawable.ic_add, stringResource(R.string.words_more_of, label), w, enabled = here != null && loaded) { up() }
                     }
                     val look = here?.second ?: ParaLook()
-                    box("Left", WriterUnits.text(look.left) + " " + WriterUnits.name, { set { it.copy(left = maxOf(0f, it.left - step)) } }, { set { it.copy(left = it.left + step) } })
-                    box("Right", WriterUnits.text(look.right) + " " + WriterUnits.name, { set { it.copy(right = maxOf(0f, it.right - step)) } }, { set { it.copy(right = it.right + step) } })
-                    box("Before", "${Math.round(look.before)} pt", { set { it.copy(before = maxOf(0f, it.before - 6f)) } }, { set { it.copy(before = it.before + 6f) } })
-                    box("After", "${Math.round(look.after)} pt", { set { it.copy(after = maxOf(0f, it.after - 6f)) } }, { set { it.copy(after = it.after + 6f) } })
+                    box(stringResource(R.string.words_left), WriterUnits.text(look.left) + " " + WriterUnits.name, { set { it.copy(left = maxOf(0f, it.left - step)) } }, { set { it.copy(left = it.left + step) } })
+                    box(stringResource(R.string.words_right), WriterUnits.text(look.right) + " " + WriterUnits.name, { set { it.copy(right = maxOf(0f, it.right - step)) } }, { set { it.copy(right = it.right + step) } })
+                    box(stringResource(R.string.words_before), "${Math.round(look.before)} pt", { set { it.copy(before = maxOf(0f, it.before - 6f)) } }, { set { it.copy(before = it.before + 6f) } })
+                    box(stringResource(R.string.words_after), "${Math.round(look.after)} pt", { set { it.copy(after = maxOf(0f, it.after - 6f)) } }, { set { it.copy(after = it.after + 6f) } })
                 }, {
-                    RibbonButton("Size", w, R.drawable.ic_fit_page, enabled = loaded) { pagePage = true }
+                    RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_fit_page, enabled = loaded) { pagePage = true }
                     // Columns: the pages show them (the editor keeps one column of text).
-                    RibbonMenu(if (sheet.columns > 1) "Columns: ${sheet.columns}" else "Columns", w, R.drawable.ic_view_column, enabled = loaded, title = "Columns", choices =
-                        listOf(1 to "One", 2 to "Two", 3 to "Three").map { (n, label) -> MenuChoice(label, checked = n == sheet.columns) {
-                            if (n != sheet.columns || sectioned()) { setColumns(n); if (n > 1) message = "$label columns — they show on the pages (the eye at the top)" } } })
+                    RibbonMenu(if (sheet.columns > 1) stringResource(R.string.words_columns_n, sheet.columns) else stringResource(R.string.words_columns), w, R.drawable.ic_view_column, enabled = loaded, title = stringResource(R.string.words_columns), choices =
+                        listOf(1 to stringResource(R.string.words_one), 2 to stringResource(R.string.words_two), 3 to stringResource(R.string.words_three)).map { (n, label) -> MenuChoice(label, checked = n == sheet.columns) {
+                            if (n != sheet.columns || sectioned()) { setColumns(n); if (n > 1) message = context.getString(R.string.words_columns_done, label) } } })
                 }, {
-                    RibbonButton("Page break", w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
-                    RibbonButton("Blank page", w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
+                    RibbonButton(stringResource(R.string.words_page_break), w, R.drawable.ic_insert_page_break, enabled = loaded) { insertPageBreak(false) }
+                    RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add, enabled = loaded) { insertPageBreak(true) }
                     // Layout › Breaks (Phase 2): a column break; section breaks — a new page, or on down the same one.
-                    RibbonMenu("Breaks", w, R.drawable.ic_insert_page_break, enabled = loaded, preset = false, choices = listOf(
-                        MenuChoice("Column break") { insertPageBreak(false, column = true); WriterLog.i("column break") },
-                        MenuChoice("Section break · next page") { insertPageBreak(false, section = "nextPage") },
-                        MenuChoice("Section break · continuous") { insertPageBreak(false, section = "continuous") }))
+                    RibbonMenu(stringResource(R.string.words_breaks), w, R.drawable.ic_insert_page_break, enabled = loaded, preset = false, choices = listOf(
+                        MenuChoice(stringResource(R.string.words_column_break)) { insertPageBreak(false, column = true); WriterLog.i("column break") },
+                        MenuChoice(stringResource(R.string.words_section_break_next_page_menu)) { insertPageBreak(false, section = "nextPage") },
+                        MenuChoice(stringResource(R.string.words_section_break_continuous_menu)) { insertPageBreak(false, section = "continuous") }))
                 }, {
                     // Word's Line Numbers: none, continuous, restart each page, restart each section (Word only); the pages show them.
                     run {
                         val now = documentStyles.section.lineNumbers?.restart
                         // a tablet or phone: cards on the pages' strip, as Insert › Page numbers (the user, 18 Oct); a desktop: its menu
-                        if (!OfficeUi.top) RibbonButton("Line numbers", w, R.drawable.ic_format_list_numbered, enabled = loaded, on = now != null) { openGallery(DesignGallery.LineNumbers) }
-                        else RibbonMenu("Line numbers", w, R.drawable.ic_format_list_numbered, enabled = loaded, on = now != null, choices =
-                            (listOf(null to "None", "continuous" to "Continuous", "newPage" to "Restart each page") + if (kind == OfficeKind.Docx) listOf("newSection" to "Restart each section") else emptyList())
+                        if (!OfficeUi.top) RibbonButton(stringResource(R.string.words_line_numbers), w, R.drawable.ic_format_list_numbered, enabled = loaded, on = now != null) { openGallery(DesignGallery.LineNumbers) }
+                        else RibbonMenu(stringResource(R.string.words_line_numbers), w, R.drawable.ic_format_list_numbered, enabled = loaded, on = now != null, choices =
+                            (listOf(null to stringResource(R.string.common_none), "continuous" to stringResource(R.string.words_line_numbers_continuous), "newPage" to stringResource(R.string.words_line_numbers_each_page)) + if (kind == OfficeKind.Docx) listOf("newSection" to stringResource(R.string.words_line_numbers_each_section)) else emptyList())
                                 .map { (mode, label) -> MenuChoice(label, checked = mode == now) { if (mode != now) setLineNumbers(mode) } })
                     }
                     // Word's Hyphenation: automatic on or off for the whole document (the pages break words at lines' ends), and by
                     // hand an optional hyphen at the cursor (Word's Ctrl + -): the word breaks there only at a line's end
                     val now = documentStyles.hyphenate
-                    RibbonButton(if (now) "Hyphenation: on" else "Hyphenation: off", w, R.drawable.ic_hyphenation, enabled = loaded, on = now) { setHyphenation(!now) }
-                    RibbonButton("Optional hyphen", w, R.drawable.ic_hyphenation, enabled = loaded) { typeIn("\u00AD"); message = "An optional hyphen: the word breaks there at a line's end" }
-                    RibbonButton("Hyphenation options", w, R.drawable.ic_tune, enabled = loaded) { hyphenOptions = true }
+                    RibbonButton(stringResource(if (now) R.string.words_hyphenation_on_button else R.string.words_hyphenation_off_button), w, R.drawable.ic_hyphenation, enabled = loaded, on = now) { setHyphenation(!now) }
+                    RibbonButton(stringResource(R.string.words_optional_hyphen), w, R.drawable.ic_hyphenation, enabled = loaded) { typeIn("\u00AD"); message = context.getString(R.string.words_optional_hyphen_msg) }
+                    RibbonButton(stringResource(R.string.words_hyphenation_options), w, R.drawable.ic_tune, enabled = loaded) { hyphenOptions = true }
                 })
                 WriterTab.References -> listOf({
                     val has = remember(meta.paras) { Contents.find(meta, kind) != null }
-                    RibbonButton(if (has) "Update table" else "Table of contents", w, R.drawable.ic_toc, enabled = loaded) { insertContents() }
+                    RibbonButton(stringResource(if (has) R.string.words_update_contents else R.string.words_table_of_contents), w, R.drawable.ic_toc, enabled = loaded) { insertContents() }
                     // how many heading levels it lists (Word's Show levels): a tap makes it, or makes it again, with that many
                     val levels = remember(meta) { Contents.levelsOf(meta, kind) }
-                    Text("Levels", color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 4.dp))
+                    Text(stringResource(R.string.words_levels), color = w.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 4.dp))
                     for (n in 1..4) RibbonButton("$n", w, enabled = loaded, on = has && levels == n) { insertContents(n) }
                 }, {
                     // Word's Footnotes group.
-                    RibbonButton("Insert footnote", w, R.drawable.ic_superscript, enabled = loaded) { insertNote(false) }
-                    RibbonButton("Insert endnote", w, R.drawable.ic_last_page, enabled = loaded) { insertNote(true) }
-                    RibbonButton("Note numbers", w, R.drawable.ic_tune, enabled = loaded) { noteNumbering = true }
+                    RibbonButton(stringResource(R.string.words_insert_footnote), w, R.drawable.ic_superscript, enabled = loaded) { insertNote(false) }
+                    RibbonButton(stringResource(R.string.words_insert_endnote), w, R.drawable.ic_last_page, enabled = loaded) { insertNote(true) }
+                    RibbonButton(stringResource(R.string.words_note_numbers), w, R.drawable.ic_tune, enabled = loaded) { noteNumbering = true }
                 }, {
                     // Word's Citations & Bibliography, APA 7.
-                    RibbonButton("Insert citation", w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }
-                    RibbonButton("Sources", w, R.drawable.ic_checklist, enabled = loaded) { sourcesOpen = true }
+                    RibbonButton(stringResource(R.string.words_insert_citation), w, R.drawable.ic_format_quote, enabled = loaded) { citing = true }
+                    RibbonButton(stringResource(R.string.words_sources), w, R.drawable.ic_checklist, enabled = loaded) { sourcesOpen = true }
                 }, {
                     // With Claude (tetra-sources skill): ask in the Claude app, then paste its answer — the research's references at once.
-                    RibbonButton("Ask Claude", w, R.drawable.ic_share, enabled = loaded) { askClaudeForSources() }
-                    RibbonButton("Paste sources", w, R.drawable.ic_content_paste, enabled = loaded) { pasteSources() }
+                    RibbonButton(stringResource(R.string.words_ask_claude), w, R.drawable.ic_share, enabled = loaded) { askClaudeForSources() }
+                    RibbonButton(stringResource(R.string.words_paste_sources), w, R.drawable.ic_content_paste, enabled = loaded) { pasteSources() }
                 }, {
                     val listed = remember(meta.paras) { Citations.find(meta, kind) != null }
-                    RibbonButton(if (listed) "Update references" else "References list", w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
+                    RibbonButton(stringResource(if (listed) R.string.words_update_references else R.string.words_references_list), w, R.drawable.ic_format_list_bulleted, enabled = loaded) { if (listed) updateCitations() else insertReferenceList() }
                     // References › Style (Word's): the citations and the list written again in it — a strip of the styles, each
                     // with its example, in the ribbon's place (asked 16 Oct: it was a list of names)
                     RibbonButton(meta.citeStyle.label, w, R.drawable.ic_format_quote, enabled = loaded) { citeStyling = true }
                 }, {
                     // Captions and their numbers (Word's Insert Caption and F9).
-                    RibbonButton("Caption", w, R.drawable.ic_label, enabled = loaded) { captionOpen = true }
-                    RibbonButton("Cross-reference", w, R.drawable.ic_link, enabled = loaded && kind == OfficeKind.Docx) { crossRefOpen = true }
+                    RibbonButton(stringResource(R.string.words_caption), w, R.drawable.ic_label, enabled = loaded) { captionOpen = true }
+                    RibbonButton(stringResource(R.string.words_cross_reference), w, R.drawable.ic_link, enabled = loaded && kind == OfficeKind.Docx) { crossRefOpen = true }
                 }, {
-                    RibbonButton("Update fields", w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
+                    RibbonButton(stringResource(R.string.words_update_fields), w, R.drawable.ic_refresh, enabled = loaded) { updateCitations() }
                 })
                 WriterTab.Review -> listOf({
                     // Word's Proofing group: spelling marked as one types (on or off), and the next word marked.
-                    RibbonButton("Spelling", w, R.drawable.ic_spellcheck, enabled = loaded, on = spelling) {
+                    RibbonButton(stringResource(R.string.words_spelling), w, R.drawable.ic_spellcheck, enabled = loaded, on = spelling) {
                         spelling = !spelling; prefs.edit().putBoolean("spelling", spelling).apply()
-                        message = if (spelling) "Spelling on — Greek and English, the phone's own checker" else "Spelling off"
+                        message = context.getString(if (spelling) R.string.words_spelling_on_msg else R.string.words_spelling_off_msg)
                     }
-                    Tool(R.drawable.ic_chevron_right, "Next spelling mistake", w, enabled = loaded && spelling) { nextMisspelled() }
+                    Tool(R.drawable.ic_chevron_right, stringResource(R.string.words_next_spelling_mistake), w, enabled = loaded && spelling) { nextMisspelled() }
                     // Word's Speech group: Read aloud from the cursor, a paragraph at a time (Greek or English each).
-                    RibbonButton(if (reader.speaking) "Stop reading" else "Read aloud", w, R.drawable.ic_volume_up, enabled = loaded, on = reader.speaking) {
+                    RibbonButton(stringResource(if (reader.speaking) R.string.words_stop_reading else R.string.words_read_aloud), w, R.drawable.ic_volume_up, enabled = loaded, on = reader.speaking) {
                         if (reader.speaking) reader.stop() else {
                             val doc = current()
                             // Equations said in words, in their paragraph's language (one of only maths: the document's).
@@ -4441,77 +4446,77 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                 p.runs.joinToString("") { r -> r.image?.math?.let { " " + OfficeMath.spoken(it, greek) + " " } ?: r.text.replace(OBJECT_MARK.toString(), "") } } }
                             val sel = state.selection.min
                             val from = WriterBridge.paragraphsAt(state.annotatedString.text, state.toRichTextDocument(), sel, sel).minOrNull() ?: 0
-                            if (!reader.read(readingParas, from)) message = "This phone cannot read aloud (no text-to-speech)"
+                            if (!reader.read(readingParas, from)) message = context.getString(R.string.words_no_tts)
                         }
                     }
                 }, {
                     // Word's Tracking group: recording on or off (Word files: an OpenDocument's changes are not kept yet).
-                    RibbonButton("Track changes", w, R.drawable.ic_track_changes, enabled = loaded && kind == OfficeKind.Docx, on = tracking) {
+                    RibbonButton(stringResource(R.string.words_track_changes), w, R.drawable.ic_track_changes, enabled = loaded && kind == OfficeKind.Docx, on = tracking) {
                         if (tracking) setTracking(false)
                         else if (prefs.getString("author", "").isNullOrBlank()) askingName = true
                         else setTracking(true)
                     }
                 }, {
                     // Word's Changes group: go through them, each accepted or rejected, or all at once.
-                    Tool(R.drawable.ic_chevron_left, "Previous change", w, enabled = loaded) { goChange(false) }
-                    Tool(R.drawable.ic_chevron_right, "Next change", w, enabled = loaded) { goChange(true) }
-                    RibbonButton("Accept", w, R.drawable.ic_check, enabled = loaded && hereChange != null) { decideChanges(true) }
-                    RibbonButton("Reject", w, R.drawable.ic_close, enabled = loaded && hereChange != null) { decideChanges(false) }
+                    Tool(R.drawable.ic_chevron_left, stringResource(R.string.words_previous_change), w, enabled = loaded) { goChange(false) }
+                    Tool(R.drawable.ic_chevron_right, stringResource(R.string.words_next_change), w, enabled = loaded) { goChange(true) }
+                    RibbonButton(stringResource(R.string.words_accept), w, R.drawable.ic_check, enabled = loaded && hereChange != null) { decideChanges(true) }
+                    RibbonButton(stringResource(R.string.words_reject), w, R.drawable.ic_close, enabled = loaded && hereChange != null) { decideChanges(false) }
                 }, {
                     val any = changesShown.isNotEmpty()
-                    RibbonButton("Accept all", w, R.drawable.ic_done_all, enabled = loaded && any) { decideChanges(true, all = true) }
-                    RibbonButton("Reject all", w, R.drawable.ic_remove_done, enabled = loaded && any) { decideChanges(false, all = true) }
+                    RibbonButton(stringResource(R.string.words_accept_all), w, R.drawable.ic_done_all, enabled = loaded && any) { decideChanges(true, all = true) }
+                    RibbonButton(stringResource(R.string.words_reject_all), w, R.drawable.ic_remove_done, enabled = loaded && any) { decideChanges(false, all = true) }
                 }, {
-                    RibbonButton("Comments", w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
-                        if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = "No comments in this document" } else commentsOpen = true
+                    RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
+                        if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = context.getString(R.string.words_no_comments) } else commentsOpen = true
                     }
                     // Word's Comments group (asked: reply and resolve from Review): a new one, the one before or after the cursor, and the one at it
-                    RibbonButton("New comment", w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
+                    RibbonButton(stringResource(R.string.words_new_comment), w, R.drawable.ic_comment, enabled = loaded) { commenting = true }
                     fun goComment(on: Boolean) {
                         val at = state.selection.min
                         val starts = commentsShown.map { it.second.first }.distinct().sorted()
                         (if (on) starts.firstOrNull { it > at } ?: starts.firstOrNull() else starts.lastOrNull { it < at } ?: starts.lastOrNull())
-                            ?.let { state.selection = androidx.compose.ui.text.TextRange(it); goText = it to System.nanoTime() } ?: run { message = "No comments in this document" }
+                            ?.let { state.selection = androidx.compose.ui.text.TextRange(it); goText = it to System.nanoTime() } ?: run { message = context.getString(R.string.words_no_comments) }
                     }
-                    Tool(R.drawable.ic_chevron_left, "Previous comment", w, enabled = loaded && commentsShown.isNotEmpty()) { goComment(false) }
-                    Tool(R.drawable.ic_chevron_right, "Next comment", w, enabled = loaded && commentsShown.isNotEmpty()) { goComment(true) }
+                    Tool(R.drawable.ic_chevron_left, stringResource(R.string.words_previous_comment), w, enabled = loaded && commentsShown.isNotEmpty()) { goComment(false) }
+                    Tool(R.drawable.ic_chevron_right, stringResource(R.string.words_next_comment), w, enabled = loaded && commentsShown.isNotEmpty()) { goComment(true) }
                 }, {
                     val c = hereComment
-                    RibbonButton("Reply", w, R.drawable.ic_comment, enabled = loaded && c != null) { replyTo = c }
-                    RibbonButton(if (c?.done == true) "Reopen" else "Resolve", w, R.drawable.ic_check, enabled = loaded && c != null) { c?.let(::resolveComment) }
-                    RibbonButton("Delete comment", w, R.drawable.ic_delete, enabled = loaded && c != null) { c?.let { deleteComment(it.id) } }
+                    RibbonButton(stringResource(R.string.words_reply), w, R.drawable.ic_comment, enabled = loaded && c != null) { replyTo = c }
+                    RibbonButton(stringResource(if (c?.done == true) R.string.words_reopen else R.string.words_resolve), w, R.drawable.ic_check, enabled = loaded && c != null) { c?.let(::resolveComment) }
+                    RibbonButton(stringResource(R.string.words_delete_comment), w, R.drawable.ic_delete, enabled = loaded && c != null) { c?.let { deleteComment(it.id) } }
                 })
                 WriterTab.View -> listOf({
-                    RibbonButton("Navigation", w, R.drawable.ic_view_list, enabled = loaded, on = navOpen) { navOpen = !navOpen }
+                    RibbonButton(stringResource(R.string.words_navigation), w, R.drawable.ic_view_list, enabled = loaded, on = navOpen) { navOpen = !navOpen }
                     // The comments: a pane beside the page on a tablet (shown or hidden), a sidebar on a phone.
-                    RibbonButton("Comments", w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
-                        if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = "No comments in this document" } else commentsOpen = true
+                    RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_comment, enabled = loaded, on = paneOn) {
+                        if (tablet) { panelHidden = !panelHidden; if (meta.comments.isEmpty()) message = context.getString(R.string.words_no_comments) } else commentsOpen = true
                     }
                 }, {
                     if (printPhone) {
                         // The page: its width on the screen, larger (two fingers do the same).
-                        Tool(R.drawable.ic_remove, "Zoom out", w, enabled = pageZoom > 1f) { pageZoom = (pageZoom - 0.25f).coerceAtLeast(1f) }
+                        Tool(R.drawable.ic_remove, stringResource(R.string.words_zoom_out), w, enabled = pageZoom > 1f) { pageZoom = (pageZoom - 0.25f).coerceAtLeast(1f) }
                         Text("${(pageZoom * 100).roundToInt()}%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
-                        Tool(R.drawable.ic_add, "Zoom in", w, enabled = pageZoom < 5f) { pageZoom = (pageZoom + 0.25f).coerceAtMost(5f) }
+                        Tool(R.drawable.ic_add, stringResource(R.string.words_zoom_in), w, enabled = pageZoom < 5f) { pageZoom = (pageZoom + 0.25f).coerceAtMost(5f) }
                     } else {
-                    Tool(R.drawable.ic_remove, "Zoom out", w, enabled = zoom > 70) { zoom -= 10 }
+                    Tool(R.drawable.ic_remove, stringResource(R.string.words_zoom_out), w, enabled = zoom > 70) { zoom -= 10 }
                     Text("$zoom%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
-                    Tool(R.drawable.ic_add, "Zoom in", w, enabled = zoom < 200) { zoom += 10 }
+                    Tool(R.drawable.ic_add, stringResource(R.string.words_zoom_in), w, enabled = zoom < 200) { zoom += 10 }
                     }
                     // A phone: the page as it prints (Print layout), or the text to the screen's width (Mobile view).
-                    RibbonButton("Reading mode", w, R.drawable.ic_menu_book) { commitCell(); reading = true }
+                    RibbonButton(stringResource(R.string.words_reading_mode), w, R.drawable.ic_menu_book) { commitCell(); reading = true }
                     // the pages (the eye): as wide as the screen, or two side by side
-                    RibbonButton("Fit width", w, R.drawable.ic_fit_page, on = fitWidth) { fitWidth = !fitWidth; commitCell(); viewing = true }
-                    RibbonButton("Two pages", w, R.drawable.ic_view_column, on = pagesAcross == 2) { pagesAcross = if (pagesAcross == 2) 1 else 2; commitCell(); viewing = true }
-                    if (!tablet) RibbonButton("Mobile view", w, R.drawable.ic_wrap_text, on = mobileView) {
+                    RibbonButton(stringResource(R.string.words_fit_width), w, R.drawable.ic_fit_page, on = fitWidth) { fitWidth = !fitWidth; commitCell(); viewing = true }
+                    RibbonButton(stringResource(R.string.words_two_pages), w, R.drawable.ic_view_column, on = pagesAcross == 2) { pagesAcross = if (pagesAcross == 2) 1 else 2; commitCell(); viewing = true }
+                    if (!tablet) RibbonButton(stringResource(R.string.words_mobile_view), w, R.drawable.ic_wrap_text, on = mobileView) {
                         mobileView = !mobileView
                         context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putBoolean("mobileView", mobileView).apply()
                     }
                 }, {
                     // Centimetres or inches for the rulers and every length (APA's margins are given in inches).
-                    Text("Units", color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
-                    RibbonButton("cm", w, on = !WriterUnits.inches) { WriterUnits.set(context, false) }
-                    RibbonButton("inches", w, on = WriterUnits.inches) { WriterUnits.set(context, true) }
+                    Text(stringResource(R.string.words_units), color = w.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp))
+                    RibbonButton(stringResource(R.string.words_unit_cm), w, on = !WriterUnits.inches) { WriterUnits.set(context, false) }
+                    RibbonButton(stringResource(R.string.words_unit_inches), w, on = WriterUnits.inches) { WriterUnits.set(context, true) }
                 })
             }
             // A tablet has room for a whole tab at once: its tools in one line, close together, centred (asked 2026-09-27:
@@ -4545,7 +4550,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             }) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(painterResource(R.drawable.ic_link), contentDescription = null, modifier = Modifier.size(18.dp).padding(end = 6.dp))
-                Text("Go to “${goal.value.text.take(40).trim()}”", style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(R.string.words_go_to, goal.value.text.take(40).trim()), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         OfficeMessage(message, top = 60.dp) { message = null }
@@ -4555,7 +4560,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             // picture is straightened as Photos does. ponytail: the cut picture becomes a new one — Word's own crop
             // (a:srcRect) would keep the rest.
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                CornerEditor(bitmap, DocumentQuad.fullFrame(), DocumentQuad.fullFrame(), "Reset", straightOption = true, done = { quad ->
+                CornerEditor(bitmap, DocumentQuad.fullFrame(), DocumentQuad.fullFrame(), stringResource(R.string.words_reset), straightOption = true, done = { quad ->
                     cropping = null
                     val (at, key) = selectedPicture ?: return@CornerEditor
                     val img = pictures[key] ?: return@CornerEditor
@@ -4595,37 +4600,37 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         var typed by remember { mutableStateOf(file?.nameWithoutExtension?.let { "$it (2)" } ?: "") }
         AlertDialog(
             onDismissRequest = { naming = false },
-            title = { Text("Save as") },
+            title = { Text(stringResource(R.string.words_save_as)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${kind.extension}") })
+                    OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text(stringResource(R.string.words_file_name)) }, suffix = { Text(".${kind.extension}") })
                     // A new document chooses its kind; a file stays what it is (its own package is what is written).
                     if (file == null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OfficeKind.entries.forEach { k -> RibbonButton(if (k == OfficeKind.Docx) "Word (.docx)" else "OpenDocument (.odt)", MaterialTheme.colorScheme.onSurface, on = kind == k) { kind = k } }
                     }
-                    Text(file?.parentFile?.let { "Beside ${file.name}, in ${it.name}. Words goes on with the new one." } ?: "In ${TextEditorStore(context).saveFolder} (Settings › Text editor).", style = MaterialTheme.typography.bodySmall)
+                    Text(file?.parentFile?.let { stringResource(R.string.words_save_as_beside, file.name, it.name) } ?: stringResource(R.string.words_save_as_in, TextEditorStore(context).saveFolder), style = MaterialTheme.typography.bodySmall)
                 }
             },
-            confirmButton = { TextButton(onClick = { saveNew(typed) }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { naming = false }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { saveNew(typed) }) { Text(stringResource(R.string.common_save)) } },
+            dismissButton = { TextButton(onClick = { naming = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     if (renaming) {
         var typed by remember { mutableStateOf(file?.nameWithoutExtension.orEmpty()) }
-        AlertDialog(onDismissRequest = { renaming = false }, title = { Text("Rename") },
-            text = { OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("File name") }, suffix = { Text(".${kind.extension}") }) },
-            confirmButton = { TextButton(onClick = { rename(typed) }) { Text("Rename") } },
-            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } })
+        AlertDialog(onDismissRequest = { renaming = false }, title = { Text(stringResource(R.string.common_rename)) },
+            text = { OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text(stringResource(R.string.words_file_name)) }, suffix = { Text(".${kind.extension}") }) },
+            confirmButton = { TextButton(onClick = { rename(typed) }) { Text(stringResource(R.string.common_rename)) } },
+            dismissButton = { TextButton(onClick = { renaming = false }) { Text(stringResource(R.string.common_cancel)) } })
     }
     if (leaving) AlertDialog(
         onDismissRequest = { leaving = false },
-        title = { Text("Save $name?") },
-        text = { Text(if (meta.blocking.isNotEmpty() && file != null) "It has changes that are not saved. Saving makes a copy; the original stays as it is." else "It has changes that are not saved.") },
-        confirmButton = { TextButton(onClick = { leaving = false; if (file == null) naming = true else save { exit() } }) { Text("Save") } },
+        title = { Text(stringResource(R.string.words_save_name_question, name)) },
+        text = { Text(stringResource(if (meta.blocking.isNotEmpty() && file != null) R.string.words_unsaved_copy else R.string.words_unsaved)) },
+        confirmButton = { TextButton(onClick = { leaving = false; if (file == null) naming = true else save { exit() } }) { Text(stringResource(R.string.common_save)) } },
         dismissButton = {
             Row {
-                TextButton(onClick = { leaving = false }) { Text("Cancel") }
-                TextButton(onClick = { leaving = false; draftFile(context, draftKey, kind).delete(); exit() }) { Text("Don't save", color = Color(0xFFE35A4F)) }
+                TextButton(onClick = { leaving = false }) { Text(stringResource(R.string.common_cancel)) }
+                TextButton(onClick = { leaving = false; draftFile(context, draftKey, kind).delete(); exit() }) { Text(stringResource(R.string.words_dont_save), color = Color(0xFFE35A4F)) }
             }
         },
     )
@@ -4662,10 +4667,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         var text by remember { mutableStateOf(documentStyles.section.watermark ?: "") }
         AlertDialog(
             onDismissRequest = { watermarking = false },
-            title = { Text("Watermark") },
-            text = { OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Text across every page") }) },
-            confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { watermarking = false; setWatermark(text.trim()) }) { Text("OK") } },
-            dismissButton = { TextButton(onClick = { watermarking = false }) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.words_watermark)) },
+            text = { OutlinedTextField(text, { text = it }, singleLine = true, label = { Text(stringResource(R.string.words_text_across_pages)) }) },
+            confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { watermarking = false; setWatermark(text.trim()) }) { Text(stringResource(R.string.common_ok)) } },
+            dismissButton = { TextButton(onClick = { watermarking = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     if (linking) {
@@ -4686,7 +4691,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             when (tableDialog) {
                 "split" -> TableSplitDialog(TableEdit.size(table, ref.row, ref.cell).let { (w, h) -> if (w * h > 1) w to h else 2 to 1 }, { tableDialog = null }) { cols, rows ->
                     tableDialog = null
-                    TableEdit.split(table, ref.row, ref.cell, cols, rows)?.let { changeTable(key, img, it) } ?: run { message = "This cell cannot be split." }
+                    TableEdit.split(table, ref.row, ref.cell, cols, rows)?.let { changeTable(key, img, it) } ?: run { message = context.getString(R.string.words_cell_cannot_split) }
                 }
                 "props" -> TablePropertiesDialog(table, ref.row, ref.cell, { tableDialog = null }) { tableDialog = null; changeTable(key, img, it) }
             }
@@ -4706,7 +4711,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             val painter = picturePainter(img, packageParts)
             AlertDialog(
                 onDismissRequest = { sizing = false },
-                title = { Text("Picture size") },
+                title = { Text(stringResource(R.string.words_picture_size)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         // The picture, its top left fixed; handles on its right side, bottom side and corner.
@@ -4717,7 +4722,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             val density = LocalDensity.current
                             val bw = a * fit(); val bh = d * fit()
                             with(density) {
-                                Image(painter, contentDescription = "Picture", contentScale = ContentScale.FillBounds, modifier = Modifier.size(bw.toDp(), bh.toDp()).border(1.dp, Color(0xFF1A73E8)))
+                                Image(painter, contentDescription = stringResource(R.string.words_picture), contentScale = ContentScale.FillBounds, modifier = Modifier.size(bw.toDp(), bh.toDp()).border(1.dp, Color(0xFF1A73E8)))
                                 @Composable fun Handle(x: Float, y: Float, drag: (Float, Float) -> Unit) = Box(
                                     Modifier.offset { IntOffset((x - 22.dp.toPx()).roundToInt(), (y - 22.dp.toPx()).roundToInt()) }.size(44.dp)
                                         .pointerInput(Unit) { detectDragGestures { change, delta -> change.consume(); drag(delta.x / fit(), delta.y / fit()) } },
@@ -4731,27 +4736,27 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedTextField(across, { t -> val v = t.filter(Char::isDigit).take(5); v.toIntOrNull()?.let { setA(it.toFloat(), v) } ?: run { across = v } },
-                                    singleLine = true, label = { Text("Horizontal") }, suffix = { Text("px") }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                                    singleLine = true, label = { Text(stringResource(R.string.words_horizontal)) }, suffix = { Text("px") }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
                                 OutlinedTextField(down, { t -> val v = t.filter(Char::isDigit).take(5); v.toIntOrNull()?.let { setD(it.toFloat(), v) } ?: run { down = v } },
-                                    singleLine = true, label = { Text("Vertical") }, suffix = { Text("px") }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                                    singleLine = true, label = { Text(stringResource(R.string.words_vertical)) }, suffix = { Text("px") }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
                             }
                             // The chain: on, the two sides change together.
-                            Tool(R.drawable.ic_link, if (chained) "Proportions kept" else "Proportions free", MaterialTheme.colorScheme.onSurface, on = chained) {
+                            Tool(R.drawable.ic_link, stringResource(if (chained) R.string.words_proportions_kept else R.string.words_proportions_free), MaterialTheme.colorScheme.onSurface, on = chained) {
                                 chained = !chained
                                 if (chained) setA(a) // back to the picture's own proportions
                             }
                         }
                     }
                 },
-                confirmButton = { TextButton(enabled = ok, onClick = { sizing = false; changePicture(key, PictureXml.resized(img, across.toInt() * 0.75f, down.toInt() * 0.75f)) }) { Text("OK") } },
-                dismissButton = { TextButton(onClick = { sizing = false }) { Text("Cancel") } },
+                confirmButton = { TextButton(enabled = ok, onClick = { sizing = false; changePicture(key, PictureXml.resized(img, across.toInt() * 0.75f, down.toInt() * 0.75f)) }) { Text(stringResource(R.string.common_ok)) } },
+                dismissButton = { TextButton(onClick = { sizing = false }) { Text(stringResource(R.string.common_cancel)) } },
             )
         }
         if (wrapping) {
             val now = PictureXml.wrapOf(img)
             AlertDialog(
                 onDismissRequest = { wrapping = false },
-                title = { Text("Wrap text") },
+                title = { Text(stringResource(R.string.words_wrap_text)) },
                 text = {
                     Column {
                         PictureWrap.entries.forEach { wrap ->
@@ -4761,10 +4766,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                             }
                         }
                         // ponytail: floating pictures are drawn in line; showing them in place comes with dragging.
-                        Text("The typing view shows it in line; the pages show it as chosen. Position places a floating one on its page.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                        Text(stringResource(R.string.words_wrap_hint), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                     }
                 },
-                confirmButton = { TextButton(onClick = { wrapping = false }) { Text("Close") } },
+                confirmButton = { TextButton(onClick = { wrapping = false }) { Text(stringResource(R.string.common_close)) } },
             )
         }
     }
@@ -4781,10 +4786,10 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         addComment(author, text)
     }
     editingComment?.let { c ->
-        NewCommentDialog(c.author, { editingComment = null }, title = "Edit comment", start = c.text, confirm = "Done") { _, text -> editingComment = null; editComment(c, text) }
+        NewCommentDialog(c.author, { editingComment = null }, title = stringResource(R.string.words_edit_comment), start = c.text, confirm = stringResource(R.string.common_done)) { _, text -> editingComment = null; editComment(c, text) }
     }
     replyTo?.let { parent ->
-        NewCommentDialog(remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE).getString("author", "") ?: "" }, { replyTo = null }, title = "Reply to " + parent.author.ifBlank { "comment" }) { author, text ->
+        NewCommentDialog(remember { context.getSharedPreferences("writer", Context.MODE_PRIVATE).getString("author", "") ?: "" }, { replyTo = null }, title = stringResource(R.string.words_reply_to, parent.author.ifBlank { stringResource(R.string.words_comment_lower) })) { author, text ->
             replyTo = null
             context.getSharedPreferences("writer", Context.MODE_PRIVATE).edit().putString("author", author).apply()
             replyComment(parent, author, text)
@@ -4835,7 +4840,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     boxing?.let { (key, words) ->
         // a shape's own words: named as such, and Done (it is there already)
         val shape = key?.let { pictures[it] }?.takeIf { it.box == null && ShapePicture.of(it) != null }
-        TextBoxDialog(words, { boxing = null }, title = shape?.let { "Words in the shape" }, confirm = if (key != null) "Done" else null) { text, _, _, _ ->
+        TextBoxDialog(words, { boxing = null }, title = shape?.let { stringResource(R.string.words_words_in_shape) }, confirm = if (key != null) stringResource(R.string.common_done) else null) { text, _, _, _ ->
             boxing = null
             val lines = text.split('\n')
             val old = key?.let { pictures[it] }
@@ -4859,7 +4864,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     pictures[img.key] = img
                     meta = cur.copy(paras = cur.paras.take(at) + DocPara(listOf(DocRun(OBJECT_MARK.toString(), image = img))) + cur.paras.drop(at))
                     WriterLog.i("chart from table $tk: ${ch.series.size} series × ${ch.categories.size} categories, under paragraph ${at - 1}")
-                    dirty = true; reshow(); message = "Chart made from the table"
+                    dirty = true; reshow(); message = context.getString(R.string.words_chart_from_table)
                 }
                 return@ChartDialog
             }
@@ -4884,7 +4889,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     artEditing?.let { (key, words) ->
         val old = pictures[key]
         val (rgb, fx) = TextWarp.art(old?.raw) ?: (0 to TextEffects())
-        TextBoxDialog(words, { artEditing = null }, art = true, glowAllowed = kind == OfficeKind.Docx, confirm = "Done", start = Triple(0xFF000000.toInt() or rgb, fx, TextWarp.of(old?.raw))) { text, color, effects, bend ->
+        TextBoxDialog(words, { artEditing = null }, art = true, glowAllowed = kind == OfficeKind.Docx, confirm = stringResource(R.string.common_done), start = Triple(0xFF000000.toInt() or rgb, fx, TextWarp.of(old?.raw))) { text, color, effects, bend ->
             artEditing = null
             val raw = old?.raw ?: return@TextBoxDialog
             val lines = text.split('\n')
@@ -4934,28 +4939,30 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         title = { Text(name) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (kind == OfficeKind.Docx) "Word document (.docx)" else "OpenDocument text (.odt)", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(if (kind == OfficeKind.Docx) R.string.words_kind_docx else R.string.words_kind_odt), style = MaterialTheme.typography.bodyMedium)
                 val all = remember { TextCounts.of(current().paras.joinToString("\n") { it.countedText() }) }
-                Text("${plural(all.words, "word")} · ${plural(all.chars, "character")} (${all.withSpaces} with spaces) · ${plural(current().paras.count { it.text.isNotBlank() }, "paragraph")}", style = MaterialTheme.typography.bodyMedium)
+                Text("${wordsCount(all.words)} · ${charactersCount(all.chars)} ${stringResource(R.string.words_with_spaces, all.withSpaces)} · ${paragraphsCount(current().paras.count { it.text.isNotBlank() })}", style = MaterialTheme.typography.bodyMedium)
                 // The selection's counts too, as Word's Word Count does (asked 2026-09-30: the phone's counter is here).
                 val sel = state.selection
                 if (!sel.collapsed) counted(state.annotatedString.text, sel.min, sel.max).let {
-                    Text("Selected: ${plural(it.words, "word")} · ${plural(it.chars, "character")} (${it.withSpaces} with spaces)", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.words_selected_counts, "${wordsCount(it.words)} · ${charactersCount(it.chars)} ${stringResource(R.string.words_with_spaces, it.withSpaces)}"), style = MaterialTheme.typography.bodyMedium)
                 }
-                if (meta.blocking.isNotEmpty()) Text("Words does not show: ${meta.blocking.joinToString()}. Saving makes a copy beside it; the original is never overwritten.", style = MaterialTheme.typography.bodyMedium)
-                if (meta.simplified.isNotEmpty()) Text("Simplified on saving: ${meta.simplified.joinToString()}.", style = MaterialTheme.typography.bodyMedium)
-                if (meta.unsupported.isEmpty()) Text("Words keeps everything in this document.", style = MaterialTheme.typography.bodyMedium)
-                Text("Page size, margins, headers and footers are kept as the file has them.", style = MaterialTheme.typography.bodySmall)
+                if (meta.blocking.isNotEmpty()) Text(stringResource(R.string.words_does_not_show, meta.blocking.joinToString()), style = MaterialTheme.typography.bodyMedium)
+                if (meta.simplified.isNotEmpty()) Text(stringResource(R.string.words_simplified_on_saving, meta.simplified.joinToString()), style = MaterialTheme.typography.bodyMedium)
+                if (meta.unsupported.isEmpty()) Text(stringResource(R.string.words_keeps_everything), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.words_page_kept), style = MaterialTheme.typography.bodySmall)
             }
         },
-        confirmButton = { TextButton(onClick = { details = false }) { Text("OK") } },
+        confirmButton = { TextButton(onClick = { details = false }) { Text(stringResource(R.string.common_ok)) } },
     )
     }
     Dialogs()
 }
 
-/** "1 word", "1,234 words". */
-internal fun plural(n: Int, one: String) = "%,d %s".format(n, if (n == 1) one else one + "s")
+/** "1 word", "1,234 words" (and characters, paragraphs). */
+@Composable internal fun wordsCount(n: Int) = pluralStringResource(R.plurals.words_count_words, n, n)
+@Composable internal fun charactersCount(n: Int) = pluralStringResource(R.plurals.words_count_characters, n, n)
+@Composable internal fun paragraphsCount(n: Int) = pluralStringResource(R.plurals.words_count_paragraphs, n, n)
 
 /** Word's counts: words, characters without spaces, characters with spaces (not paragraph marks or pictures). */
 internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {
@@ -4965,7 +4972,7 @@ internal class TextCounts(val words: Int, val chars: Int, val withSpaces: Int) {
             text.count { !it.isWhitespace() && it !in PICTURES }, text.count { it != '\n' && it != LINE_BREAK && it !in PICTURES })
         private val PICTURES = charArrayOf(OBJECT_MARK, EDITOR_PICTURE_CHAR, PICTURE_SPOT)
         /** The live count's words (Word's status bar): "1,234 words", or the selection's "12 of 1,234 words". */
-        fun label(all: Int, chosen: Int?) = if (chosen == null) plural(all, "word") else "%,d of %s".format(chosen, plural(all, "word"))
+        @Composable fun label(all: Int, chosen: Int?) = if (chosen == null) wordsCount(all) else stringResource(R.string.words_count_of, chosen, wordsCount(all))
     }
 }
 /** A paragraph's letters as Word counts them: a table's are its cells'. */
@@ -5025,9 +5032,9 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
     var color by remember { mutableIntStateOf(start?.first ?: colors[0]) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    AlertDialog(onDismissRequest = dismiss, title = { Text(title ?: if (art) "WordArt" else if (initial.isEmpty()) "Text box" else "Edit text") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title ?: if (art) "WordArt" else if (initial.isEmpty()) stringResource(R.string.words_text_box) else stringResource(R.string.words_edit_text)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(field, { field = it }, minLines = if (art) 1 else 3, maxLines = 10, placeholder = { Text("Its words") }, modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            OutlinedTextField(field, { field = it }, minLines = if (art) 1 else 3, maxLines = 10, placeholder = { Text(stringResource(R.string.words_its_words)) }, modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 textStyle = if (art) MaterialTheme.typography.headlineSmall.copy(color = Color(color), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     // The effects as near as the field can show them: a glow or a shadow; outlined letters hollow.
                     shadow = if (glowing) androidx.compose.ui.graphics.Shadow(Color(0xFF000000 or artGlow(color).toLong()), androidx.compose.ui.geometry.Offset.Zero, 12f)
@@ -5038,18 +5045,18 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
             }
             // Word's text effects (Format › Text Effects): an outline, a shadow, a glow (Word files only: LibreOffice has none).
             if (art) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Choice("Outline", outlined) { outlined = !outlined }
-                Choice("Shadow", shadowed) { shadowed = !shadowed }
-                if (glowAllowed) Choice("Glow", glowing) { glowing = !glowing }
+                Choice(stringResource(R.string.words_outline), outlined) { outlined = !outlined }
+                Choice(stringResource(R.string.words_shadow), shadowed) { shadowed = !shadowed }
+                if (glowAllowed) Choice(stringResource(R.string.words_glow), glowing) { glowing = !glowing }
             }
             // Word's Transform (LibreOffice's Fontwork): the words along a bend.
             if (art) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Choice("Straight", bend == null) { bend = null }
-                TextWarp.entries.forEach { b -> Choice(b.label, bend == b) { bend = b } }
+                Choice(stringResource(R.string.words_straight), bend == null) { bend = null }
+                TextWarp.entries.forEach { b -> Choice(warpName(b), bend == b) { bend = b } }
             }
         } },
-        confirmButton = { TextButton(onClick = { done(text, color, TextEffects(if (outlined) artOutline(color) else null, shadowed, if (glowing) artGlow(color) else null), bend) }, enabled = text.isNotBlank()) { Text(confirm ?: if (initial.isEmpty()) "Insert" else "Done") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = { done(text, color, TextEffects(if (outlined) artOutline(color) else null, shadowed, if (glowing) artGlow(color) else null), bend) }, enabled = text.isNotBlank()) { Text(confirm ?: if (initial.isEmpty()) stringResource(R.string.words_insert) else stringResource(R.string.common_done)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /** A picture of the document, from the file's own parts or a new picture's bytes. A chart or shape is a grey box. */
@@ -5114,26 +5121,26 @@ internal fun preparePicture(context: Context, uri: Uri): DocImage {
  */
 @Composable internal fun TableSizeButton(w: Color, accent: Color, enabled: Boolean = true, insert: (Int, Int) -> Unit) {
     var dialog by remember { mutableStateOf(false) }
-    val strip = officeStrip("Table", ok = { s -> (s.picked as? Pair<*, *>)?.let { (r, c) -> insert(r as Int, c as Int) } }) { s ->
+    val strip = officeStrip(stringResource(R.string.words_table), ok = { s -> (s.picked as? Pair<*, *>)?.let { (r, c) -> insert(r as Int, c as Int) } }) { s ->
         val (r, c) = (s.picked as? Pair<*, *>)?.let { (a, b) -> a as Int to b as Int } ?: (0 to 0)
         TableSizeGrid(4, 8, r, c, cell = 18.dp, fill = accent) { rr, cc -> s.picked = rr to cc }
         // a fixed width: the line is centred, and a label growing would move the grid under the finger
-        Text(if (r > 0) "$r × $c" else "Drag across the cells", color = w, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.padding(horizontal = 12.dp).width(160.dp))
+        Text(if (r > 0) "$r × $c" else stringResource(R.string.words_drag_across_cells), color = w, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp).width(160.dp))
     }
-    RibbonButton("Table", w, R.drawable.ic_table, enabled = enabled) { strip?.invoke() ?: run { dialog = true } }
+    RibbonButton(stringResource(R.string.words_table), w, R.drawable.ic_table, enabled = enabled) { strip?.invoke() ?: run { dialog = true } }
     if (dialog) {
         var rows by remember { mutableIntStateOf(2) }
         var columns by remember { mutableIntStateOf(2) }
-        AlertDialog(onDismissRequest = { dialog = false }, title = { Text("Insert table") },
+        AlertDialog(onDismissRequest = { dialog = false }, title = { Text(stringResource(R.string.words_insert_table)) },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     TableSizeGrid(5, 5, rows, columns, fill = accent) { r, c -> rows = r; columns = c }
                     Text("$rows × $columns", style = MaterialTheme.typography.titleMedium)
-                    Text("Drag across the grid to choose up to 5 × 5 cells.", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.words_table_grid_hint), style = MaterialTheme.typography.bodySmall)
                 }
             },
-            confirmButton = { TextButton(onClick = { dialog = false; insert(rows, columns) }) { Text("Insert") } },
-            dismissButton = { TextButton(onClick = { dialog = false }) { Text("Cancel") } })
+            confirmButton = { TextButton(onClick = { dialog = false; insert(rows, columns) }) { Text(stringResource(R.string.words_insert)) } },
+            dismissButton = { TextButton(onClick = { dialog = false }) { Text(stringResource(R.string.common_cancel)) } })
     }
 }
 
@@ -5187,18 +5194,26 @@ internal fun Modifier.dropPictures(enabled: Boolean, onDrop: (android.net.Uri) -
 }
 
 /** Whether the file is saved, for a tablet's top bar (asked 16 Oct: the room there for what is going on). */
-internal fun saveState(saving: Boolean, unsaved: Boolean) = if (saving) "Saving…" else if (unsaved) "Not saved" else "Saved"
+@Composable internal fun saveState(saving: Boolean, unsaved: Boolean) = stringResource(if (saving) R.string.words_saving else if (unsaved) R.string.words_not_saved else R.string.words_saved)
 
 /** A tablet's top bar: what is going on with the file, between its name and its tools. */
 @Composable internal fun TopInfo(parts: List<String>, tint: Color, modifier: Modifier = Modifier) =
     Text(parts.joinToString(" · "), color = tint.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = modifier.padding(horizontal = 8.dp))
 
+/** [PictureXml.kind]'s word (an English name, as an ID) as shown. */
+@Composable internal fun objectKindName(kind: String) = when (kind) {
+    "Signature" -> stringResource(R.string.words_signature); "Table" -> stringResource(R.string.words_table); "Equation" -> stringResource(R.string.words_equation)
+    "Video" -> stringResource(R.string.words_video); "Chart" -> stringResource(R.string.words_chart); "SmartArt" -> "SmartArt"; "WordArt" -> "WordArt"
+    "Text box" -> stringResource(R.string.words_text_box); "Embedded object" -> stringResource(R.string.words_embedded_object); "Shape" -> stringResource(R.string.words_shape)
+    "Image" -> stringResource(R.string.words_tab_image); else -> kind
+}
+
 /** A thin line between a ribbon's groups of tools (Words', Slides' and Tables'). */
 @Composable internal fun RibbonDivider(tint: Color) = Box(Modifier.layoutId(RIBBON_DIVIDER).padding(horizontal = 6.dp).width(1.dp).height(24.dp).background(tint.copy(alpha = 0.3f)))
 
 /** Design › Paragraph spacing: Word's sets — space after (pt) and line spacing of the Normal style. */
-private val SPACING_SETS = listOf(Triple("No paragraph space", 0f, 1f), Triple("Compact", 4f, 1f), Triple("Tight", 6f, 1.15f),
-    Triple("Open", 10f, 1.15f), Triple("Relaxed", 6f, 1.5f), Triple("Double", 8f, 2f))
+private val SPACING_SETS = listOf(Triple(R.string.words_spacing_none, 0f, 1f), Triple(R.string.words_spacing_compact, 4f, 1f), Triple(R.string.words_spacing_set_tight, 6f, 1.15f),
+    Triple(R.string.words_spacing_open, 10f, 1.15f), Triple(R.string.words_spacing_relaxed, 6f, 1.5f), Triple(R.string.words_spacing_double, 8f, 2f))
 
 /** Design › Page colour: Word's light theme tints, and white (a page coloured white is not the same as none in Word). */
 private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDED, 0xFFFFFF)
@@ -5324,7 +5339,7 @@ internal fun Modifier.shadedScroll(): Modifier = composed {
 ) {
     val c = if (enabled) tint else tint.copy(alpha = 0.35f)
     icon?.let { Icon(painterResource(it), contentDescription = null, tint = c, modifier = Modifier.size(if (OfficeUi.compact) 16.dp else 18.dp)) }
-    Text(label, color = c, style = if (OfficeUi.compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge, maxLines = 1)
+    Text(label, color = c, style = if (OfficeUi.compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 /** A paragraph's spacing in the editor (sp): before its first line, after its last, and its line's own height. */
@@ -5383,7 +5398,7 @@ internal val COLOUR_TABLE: List<List<Color>> = listOf(0x000000, 0xC00000, 0xFF00
 /** A colour strip's last tool, More…: [COLOUR_TABLE] in a window, the colour tapped [choose]n. */
 @Composable internal fun MoreColours(tint: Color, label: String, choose: (Color) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    RibbonButton("More…", tint, R.drawable.ic_more_horiz) { open = true }
+    RibbonButton(stringResource(R.string.common_more), tint, R.drawable.ic_more_horiz) { open = true }
     if (open) androidx.compose.material3.AlertDialog(onDismissRequest = { open = false }, title = { Text(label) }, text = {
         BoxWithConstraints {
             val cell = minOf(40.dp, maxWidth / COLOUR_TABLE[0].size)
@@ -5394,7 +5409,7 @@ internal val COLOUR_TABLE: List<List<Color>> = listOf(0x000000, 0xC00000, 0xFF00
                 } } }
             }
         }
-    }, confirmButton = { TextButton(onClick = { open = false }) { Text("Cancel") } })
+    }, confirmButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /** [Swatches]' picked "no colour" */
@@ -5403,8 +5418,8 @@ internal const val NO_COLOUR = "no colour"
 /** Colour dots: "no [label]" first, then [colors]; [picked] (a colour or [NO_COLOUR]) ringed. A dot is a tool's size to tap. */
 @Composable internal fun SwatchDots(tint: Color, label: String, colors: List<Color>, picked: Any?, choose: (Color?) -> Unit) {
     Box(Modifier.size(LocalToolSize.current).clip(CircleShape).then(if (picked == NO_COLOUR) Modifier.background(tint.copy(alpha = 0.18f)) else Modifier)
-        .clickable(onClickLabel = "No $label") { choose(null) }, contentAlignment = Alignment.Center) {
-        Icon(painterResource(R.drawable.ic_no_color), contentDescription = "No ${label.lowercase(Locale.ROOT)}", tint = tint, modifier = Modifier.size(22.dp))
+        .clickable(onClickLabel = stringResource(R.string.words_no_colour_of, label)) { choose(null) }, contentAlignment = Alignment.Center) {
+        Icon(painterResource(R.drawable.ic_no_color), contentDescription = stringResource(R.string.words_no_colour_of, label.lowercase()), tint = tint, modifier = Modifier.size(22.dp))
     }
     colors.forEach { c ->
         Box(Modifier.size(LocalToolSize.current).clip(CircleShape).clickable(onClickLabel = label) { choose(c) }, contentAlignment = Alignment.Center) {
@@ -5481,7 +5496,7 @@ private fun PagesView(pages: List<LaidPage>, perPt: Dp, modifier: Modifier, goTo
         }
         Surface(color = Color.Black.copy(alpha = 0.75f), contentColor = Color.White, shape = CircleShape,
             modifier = Modifier.align(Alignment.BottomCenter).bottomBarPadding().padding(bottom = 16.dp)) {
-            Text("Page ${(at + 1).coerceAtMost(pages.size)} of ${pages.size}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
+            Text(stringResource(R.string.words_page_of, (at + 1).coerceAtMost(pages.size), pages.size), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
         }
     }
 }
@@ -5520,9 +5535,11 @@ private fun NoteNumbersDialog(foot: String, end: String, word: Boolean, dismiss:
     var f by remember { mutableStateOf(foot) }
     var e by remember { mutableStateOf(end) }
     val formats = NoteFormats.ALL.filter { word || it.first != NoteFormats.CHICAGO }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Note numbers") },
+    // the preview's words, between the note numbers
+    val sample = listOf(stringResource(R.string.words_notes_sample_1), stringResource(R.string.words_notes_sample_2), stringResource(R.string.words_notes_sample_3), ".")
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.words_note_numbers)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            for ((label, now, set) in listOf(Triple("Footnotes", f) { v: String -> f = v }, Triple("Endnotes", e) { v: String -> e = v })) {
+            for ((label, now, set) in listOf(Triple(stringResource(R.string.words_footnotes), f) { v: String -> f = v }, Triple(stringResource(R.string.words_endnotes), e) { v: String -> e = v })) {
                 Text(label, style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     formats.forEach { (id, shown) -> androidx.compose.material3.FilterChip(selected = id == now, onClick = { set(id) }, label = { Text(shown) }) }
@@ -5532,13 +5549,13 @@ private fun NoteNumbersDialog(foot: String, end: String, word: Boolean, dismiss:
             Surface(color = Color.White, contentColor = Color.Black, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Text(androidx.compose.ui.text.buildAnnotatedString {
                     fun sup(t: String) { pushStyle(SpanStyle(baselineShift = androidx.compose.ui.text.style.BaselineShift.Superscript, fontSize = 0.7.em)); append(t); pop() }
-                    append("A footnote"); sup(NoteFormats.number(1, f)); append(", another"); sup(NoteFormats.number(2, f))
-                    append(" and an endnote"); sup(NoteFormats.number(1, e)); append(".")
+                    append(sample[0]); sup(NoteFormats.number(1, f)); append(sample[1]); sup(NoteFormats.number(2, f))
+                    append(sample[2]); sup(NoteFormats.number(1, e)); append(sample[3])
                 }, modifier = Modifier.padding(12.dp))
             }
         } },
-        confirmButton = { TextButton(onClick = { done(f, e) }) { Text("Done") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = { done(f, e) }) { Text(stringResource(R.string.common_done)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /** References › Caption: which label ("Figure", "Table" — Word's, and the Greek ones) and the words after its number. */
@@ -5547,36 +5564,36 @@ private fun CaptionDialog(dismiss: () -> Unit, insert: (String, String) -> Unit)
     val labels = listOf("Figure", "Table", "Equation", "Εικόνα", "Πίνακας")
     var label by remember { mutableStateOf(labels[0]) }
     var text by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Caption") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.words_caption)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 labels.forEach { l -> androidx.compose.material3.FilterChip(selected = l == label, onClick = { label = l }, label = { Text(l) }) }
             }
             OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("$label 1: …") }, modifier = Modifier.fillMaxWidth())
-            Text("Goes under the paragraph at the cursor; its number counts itself (Update fields after moving things).", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.words_caption_hint), style = MaterialTheme.typography.bodySmall)
         } },
-        confirmButton = { TextButton(onClick = { insert(label, text) }) { Text("Insert") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = { insert(label, text) }) { Text(stringResource(R.string.words_insert)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /** References › Cross-reference: one of the document's captions, shown as its words or as its page. */
 @Composable
 private fun CrossReferenceDialog(captions: List<Pair<Int, String>>, dismiss: () -> Unit, insert: (Int, String) -> Unit) {
     var how by remember { mutableStateOf("caption") }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Cross-reference") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.words_cross_reference)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // Word's "Insert reference to".
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("caption" to "Entire caption", "label" to "Only label and number", "page" to "Page number").forEach { (k, label) ->
+                listOf("caption" to stringResource(R.string.words_xref_caption), "label" to stringResource(R.string.words_xref_label), "page" to stringResource(R.string.words_xref_page)).forEach { (k, label) ->
                     androidx.compose.material3.FilterChip(selected = how == k, onClick = { how = k }, label = { Text(label) }) }
             }
-            if (captions.isEmpty()) Text("No captions yet: References › Caption puts one under a picture or table.", style = MaterialTheme.typography.bodyMedium)
+            if (captions.isEmpty()) Text(stringResource(R.string.words_no_captions), style = MaterialTheme.typography.bodyMedium)
             Column(Modifier.heightIn(max = 320.dp).shadedScroll()) {
-                captions.forEach { (i, text) -> Text(text.ifBlank { "(empty)" }, style = MaterialTheme.typography.bodyLarge, maxLines = 2,
+                captions.forEach { (i, text) -> Text(text.ifBlank { stringResource(R.string.words_empty) }, style = MaterialTheme.typography.bodyLarge, maxLines = 2,
                     modifier = Modifier.fillMaxWidth().clickable { insert(i, how) }.padding(vertical = 10.dp)) }
             }
         } },
-        confirmButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /** File › Print: a PDF already made, handed to Android's printing as it is. */
@@ -5606,23 +5623,22 @@ private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, 
             Column(Modifier.systemBarsPadding().padding(16.dp)) {
                 val shown = open
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (shown != null) TextButton(onClick = { open = null }) { Text("‹ All versions") }
-                    Text(if (shown == null) "Versions" else timeOf(shown), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(start = 4.dp))
-                    if (shown != null) Button(onClick = { keep(shown) }) { Text("Keep this one") }
-                    TextButton(onClick = dismiss) { Text("Close") }
+                    if (shown != null) TextButton(onClick = { open = null }) { Text(stringResource(R.string.words_all_versions)) }
+                    Text(if (shown == null) stringResource(R.string.words_versions) else timeOf(shown), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                    if (shown != null) Button(onClick = { keep(shown) }) { Text(stringResource(R.string.words_keep_this_one)) }
+                    TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) }
                 }
                 if (shown == null) {
-                    Text(if (entries.isEmpty()) "None yet. Words keeps a copy every few minutes while you work, and the file as it was before it saves over it."
-                        else "Open one to see its pages. Keeping one makes it the document and deletes the others.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
+                    Text(stringResource(if (entries.isEmpty()) R.string.words_versions_none else R.string.words_versions_about), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
                     Column(Modifier.shadedScroll()) {
                         entries.forEach { (f, session) ->
                             Row(Modifier.fillMaxWidth().clickable { open = f }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(painterResource(R.drawable.ic_history), contentDescription = null, modifier = Modifier.size(22.dp))
                                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(timeOf(f), style = MaterialTheme.typography.titleSmall)
-                                    Text((if (session) "While you worked — goes when the document closes" else "The file before a save") + " · ${(f.length() + 1023) / 1024} KB", style = MaterialTheme.typography.bodySmall)
+                                    Text(stringResource(if (session) R.string.words_version_session else R.string.words_version_before_save) + " · ${(f.length() + 1023) / 1024} KB", style = MaterialTheme.typography.bodySmall)
                                 }
-                                Text("Open", color = MaterialTheme.colorScheme.primary)
+                                Text(stringResource(R.string.common_open), color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -5637,7 +5653,7 @@ private fun HistoryDialog(entries: List<Pair<File, Boolean>>, kind: OfficeKind, 
                     }
                     Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF3A3A3A))) {
                         pages?.let { PagesView(it, with(LocalDensity.current) { (BASE_SP / 11f).sp.toDp() }, Modifier.fillMaxSize()) }
-                            ?: Text("Laying out the pages…", color = Color.White, modifier = Modifier.align(Alignment.Center))
+                            ?: Text(stringResource(R.string.words_laying_out), color = Color.White, modifier = Modifier.align(Alignment.Center))
                     }
                 }
             }
@@ -5655,7 +5671,7 @@ internal suspend fun savePictureToPhone(context: android.content.Context, bytes:
         bytes.size > 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "jpg"
         bytes.size > 3 && String(bytes, 0, 3, Charsets.ISO_8859_1) == "GIF" -> "gif"
         bytes.size > 12 && String(bytes, 8, 4, Charsets.ISO_8859_1) == "WEBP" -> "webp"
-        else -> return "This picture's kind can't be saved as a photo"
+        else -> return context.getString(R.string.words_picture_kind_unsaveable)
     }
     val ok = withContext(Dispatchers.IO) { runCatching {
         val values = android.content.ContentValues().apply {
@@ -5666,8 +5682,10 @@ internal suspend fun savePictureToPhone(context: android.content.Context, bytes:
         val target = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
         context.contentResolver.openOutputStream(target)!!.use { it.write(bytes) }
     }.isSuccess }
-    return if (ok) "Saved in Pictures/Tetra" else "Could not save the picture."
+    return context.getString(if (ok) R.string.words_picture_saved else R.string.words_picture_not_saved)
 }
 
 /** Home › Character spacing's choices (Word's Condensed and Expanded by, in points), shared by Words and Slides. */
 internal val CHARACTER_SPACINGS = listOf("Very tight (−1.5 pt)" to -1.5f, "Tight (−0.75 pt)" to -0.75f, "Normal" to 0f, "Loose (+1.5 pt)" to 1.5f, "Very loose (+3 pt)" to 3f)
+/** [CHARACTER_SPACINGS]' names as shown (the English ones stay for Slides). */
+internal val CHARACTER_SPACING_NAMES = listOf(R.string.words_spacing_very_tight, R.string.words_spacing_tight, R.string.words_spacing_normal, R.string.words_spacing_loose, R.string.words_spacing_very_loose)

@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.Ignore
 import org.junit.Test
 
 /** Maps (Plan.md § Maps): saved places as files, Home's six slots, and offline routing on the computer's graph. */
@@ -226,7 +227,7 @@ class MapsLimitFerryTest {
 
 class MapsAlternativesTest {
     /** Άγιος Λουκάς to the 2nd school of Κρεώνας, beside Google's two (21 Oct): the motorway and the local roads, no tracks, fastest first. */
-    @Test fun twoWaysThere() {
+    @Ignore("its places were made up before publishing; put your own back locally to run it") @Test fun twoWaysThere() {
         val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         val rs = MapsRouting.routes(dir, 37.277768, 22.585572, 37.3713423, 22.4651517, "car")
@@ -598,7 +599,7 @@ class MapsReplayTest {
 
 class MapsAddressTest {
     /** The user's house in Άγιος Λουκάς (23 Oct): no house there has a number, so its street and the village's postcode. */
-    @Test fun aVillageWithoutNumbers() {
+    @Ignore("its places were made up before publishing; put your own back locally to run it") @Test fun aVillageWithoutNumbers() {
         val root = File(System.getProperty("user.home"), "Tetra-maps")
         assumeTrue(File(root, MapsAddresses.FILE).isFile && File(root, MapsStreets.FILE).isFile)
         val pois = MapsSearch.load(root)
@@ -647,7 +648,7 @@ class MapsMainRoadsTest {
         return km
     }
 
-    @Test fun homeToMarket() {
+    @Ignore("its places were made up before publishing; put your own back locally to run it") @Test fun homeToMarket() {
         assumeTrue(File(dir, "properties").isFile)
         val home = 37.27639 to 22.58912; val market = 37.349324 to 22.584650; val skala = 37.212858 to 22.551289
         for ((name, to) in listOf("My Market" to market, "Σκάλα school" to skala)) for (main in listOf(false, true)) {

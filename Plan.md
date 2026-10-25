@@ -3049,7 +3049,12 @@ Send log.
    approved Tetra Maps again; its data backed up to Coding/backups/phone-20261025-0910)**: Android keeps per-app counts and
    device totals from 15 Jul (102 days); 4G with 5G NSA (`overrideNetwork=NR_NSA`, Data says 5G); the hotspot on (wlan2,
    tethered) and its traffic kept under the tethering UID; no Wi-Fi RTT; its name "Xiaomi 15"; Usage access **not** on
-   (unlike the tablet), so Data counts nothing until Setup's step 2 — the user's Setup (plan, renewal day) is next.
+   (unlike the tablet), so Data counts nothing until Setup's step 2. **The user's Setup (25 Oct 09:13)**: fair use 300 GB,
+   renews on the 4th, warnings 50 and 90 %, Nova's figure typed: Tetra had counted 128.4 GB mobile since 4 Oct, Nova said
+   ≈ 120.7 GB (Tetra 6 % higher: the carrier's figure lags, and the cycle's first hours are snapped to Android's 2-hour
+   buckets) — Data shows 121 GB, 40 %, 10 days left, at this pace 182 GB. **The hotspot**: 119.1 GB of the 128.4 (93 %);
+   the tablet counted 70 GB over it in October (59 %); the other 49 GB are the computer's and any guest's, which the
+   computer reports once its new Tetra runs. Seen on the phone: "Year" wrapped in the span chips — fixed, goes with the next install.
 - [x] 2. (205ad93, data-plan session, 25 Oct; Drive-Android branch claude/data-plan) Setup and usage: `Data.kt` (plan, cycles, status,
    files), `DataStats.kt` (NetworkStats → Tetra/Data/usage/<month>.<device>.jsonl hourly through SyncJob's job 4150, the
    first look back over the months Android kept; warnings 50/80/100 % and the day's budget; roaming notices with Android's

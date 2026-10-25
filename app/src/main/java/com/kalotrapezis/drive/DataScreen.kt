@@ -268,7 +268,7 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
         Row(Modifier.padding(4.dp)) {
             Span.entries.forEach { s ->
                 Surface(onClick = { pick(s) }, shape = CircleShape, color = if (s == span) dataColor() else Color.Transparent,
-                    contentColor = if (s == span) onData() else MaterialTheme.colorScheme.onSurface) { Text(s.name, Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
+                    contentColor = if (s == span) onData() else MaterialTheme.colorScheme.onSurface) { Text(s.name, Modifier.padding(horizontal = 11.dp, vertical = 8.dp), maxLines = 1, softWrap = false) }
             }
         }
     }

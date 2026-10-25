@@ -36,7 +36,7 @@
   section { padding: 56px 0 8px; }
   h2 { font-size: clamp(28px, 4vw, 40px); margin: 0 0 8px; text-align: center; }
   .sub { color: var(--muted); max-width: 760px; margin: 0 auto; text-align: center; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 16px; margin-top: 26px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; margin-top: 26px; }
   .tile { background: linear-gradient(160deg, color-mix(in srgb, var(--c) 22%, var(--card)) 0%, var(--card) 55%);
           border: 1px solid var(--line); border-radius: 22px; padding: 22px; }
   .tile img { width: 56px; height: 56px; border-radius: 14px; }
@@ -97,10 +97,20 @@
       <div class="tile" style="--c:#9AD01E"><img src="img/icons/data.png" alt=""><h3>Your data plan, watched</h3><p>Tell Tetra your plan once. It notifies you at 50 %, 80 % and 100 %, or at any steps you choose, and forecasts the end of the month before you get there.</p></div>
       <div class="tile" style="--c:#F41879"><img src="img/icons/calendar.png" alt=""><h3>Calendar and timers, with AI</h3><p>Built-in skills let Claude, ChatGPT or any assistant that can use your computer import a timetable, plan your week or start a timer. They simply edit the calendar's and timers' files.</p></div>
       <div class="tile" style="--c:#95DF6B"><img src="img/icons/gallery.png" alt=""><h3>Photos that know who and where</h3><p>Tags, live photos, and People and Documents collections from face recognition that runs on the device. Find photos by place*, and bring your Google Photos over (Takeout import on the computer).</p></div>
-      <div class="tile" style="--c:#E3141F"><img src="img/icons/scanner.png" alt=""><h3>Hide what should stay private</h3><p>Redact PDFs and photos so the hidden part is removed from the file itself, not just covered. Tetra finds the eyes in a photo and covers them with black bars or stars, and finds text to hide.</p></div>
+      <div class="tile" style="--c:#E3141F"><img src="img/icons/scanner.png" alt=""><h3>Scan any page clean</h3><p>Filters and automatic cropping find and straighten the page: all the tools you need to make a perfect digital copy, for as many pages as you like.</p></div>
+      <div class="tile" style="--c:#E3141F"><img src="img/icons/pdf.png" alt=""><h3>Hide what should stay private</h3><p>Redact PDFs and photos so the hidden part is removed from the file itself, not just covered. Tetra finds the eyes in a photo and covers them with black bars or stars, and finds text to hide.</p></div>
       <div class="tile" style="--c:#FD7D12"><img src="img/icons/office.png" alt=""><h3>Office and PDF, good enough</h3><p>Word, Excel and PowerPoint open and save as themselves, compatible enough for everyday work. PDF editing and page organising. And a phone layout you can actually use.</p></div>
       <div class="tile" style="--c:#25C4FE"><img src="img/icons/maps.png" alt=""><h3>Maps that work offline*</h3><p>Search, places, routes by car, on foot and by bike, voice guidance and Android Auto, all on the device. *Maps and finding photos by place cover Greece only for now.</p></div>
     </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>See it work</h2>
+    <img class="wide-img" src="img/card-send.jpg" alt="Files both ways: Send to computer on the phone, Send to phone on the computer" loading="lazy">
+    <img class="wide-img" src="img/card-bubble.jpg" alt="Calls on your computer: the call bubble" loading="lazy">
+    <img class="wide-img" src="img/card-home.jpg" alt="Home your way: groups, a mix, icons only, edit mode" loading="lazy">
   </div>
 </section>
 
@@ -134,9 +144,11 @@
     <div role="tabpanel" id="panel-home" aria-labelledby="tab-home">
       <p>Every applet in one place, with its shortcuts; edit mode sets their size and order.</p>
       <div class="shots">
-        <figure class="phone"><a href="img/shots/home-phone0.jpg"><img src="img/shots/home-phone0.jpg" alt="Home: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
-        <figure class="wide"><a href="img/shots/home-tablet1.jpg"><img src="img/shots/home-tablet1.jpg" alt="Home: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
-        <figure class="wide"><a href="img/shots/home-big2.jpg"><img src="img/shots/home-big2.jpg" alt="Home: Big screen (4K)" loading="lazy"></a><figcaption>Big screen (4K)</figcaption></figure>
+        <figure class="phone"><a href="img/shots/home-phone0.jpg"><img src="img/shots/home-phone0.jpg" alt="Home: Groups" loading="lazy"></a><figcaption>Groups</figcaption></figure>
+        <figure class="phone"><a href="img/shots/home-phone1.jpg"><img src="img/shots/home-phone1.jpg" alt="Home: Icons only" loading="lazy"></a><figcaption>Icons only</figcaption></figure>
+        <figure class="phone"><a href="img/shots/home-phone2.jpg"><img src="img/shots/home-phone2.jpg" alt="Home: A mix" loading="lazy"></a><figcaption>A mix</figcaption></figure>
+        <figure class="phone"><a href="img/shots/home-phone3.jpg"><img src="img/shots/home-phone3.jpg" alt="Home: Edit mode" loading="lazy"></a><figcaption>Edit mode</figcaption></figure>
+        <figure class="wide"><a href="img/shots/home-tablet4.jpg"><img src="img/shots/home-tablet4.jpg" alt="Home: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
       </div>
     </div>
     <div role="tabpanel" id="panel-photos" aria-labelledby="tab-photos" hidden>
@@ -148,11 +160,14 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" hidden>
-      <p>Tags, favourites, folder colours, a Trash, and an icon for every kind of file.</p>
+      <p>Tags, favourites, folder colours, a Trash, an icon for every kind of file, and files sent both ways.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/files-phone0.jpg"><img src="img/shots/files-phone0.jpg" alt="Files: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
+        <figure class="phone"><a href="img/shots/files-phone3.jpg"><img src="img/shots/files-phone3.jpg" alt="Files: Share › Send to computer" loading="lazy"></a><figcaption>Share › Send to computer</figcaption></figure>
+        <figure class="phone"><a href="img/shots/files-phone4.jpg"><img src="img/shots/files-phone4.jpg" alt="Files: What the computer sent" loading="lazy"></a><figcaption>What the computer sent</figcaption></figure>
         <figure class="wide"><a href="img/shots/files-tablet1.jpg"><img src="img/shots/files-tablet1.jpg" alt="Files: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
         <figure class="wide"><a href="img/shots/files-computer2.jpg"><img src="img/shots/files-computer2.jpg" alt="Files: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+        <figure class="wide"><a href="img/shots/files-computer5.jpg"><img src="img/shots/files-computer5.jpg" alt="Files: Send to phone, on the computer" loading="lazy"></a><figcaption>Send to phone, on the computer</figcaption></figure>
       </div>
     </div>
     <div role="tabpanel" id="panel-notes" aria-labelledby="tab-notes" hidden>
@@ -207,11 +222,13 @@
       </div>
     </div>
     <div role="tabpanel" id="panel-phone" aria-labelledby="tab-phone" hidden>
-      <p>The dialer: Recents, Favourites, blocking and spam lookup.</p>
+      <p>The dialer: Recents, Favourites, blocking and spam lookup; on the computer, the call bubble.</p>
       <div class="shots">
         <figure class="phone"><a href="img/shots/phone-phone0.jpg"><img src="img/shots/phone-phone0.jpg" alt="Phone: Phone" loading="lazy"></a><figcaption>Phone</figcaption></figure>
         <figure class="wide"><a href="img/shots/phone-tablet1.jpg"><img src="img/shots/phone-tablet1.jpg" alt="Phone: Tablet" loading="lazy"></a><figcaption>Tablet</figcaption></figure>
         <figure class="wide"><a href="img/shots/phone-computer2.jpg"><img src="img/shots/phone-computer2.jpg" alt="Phone: Computer" loading="lazy"></a><figcaption>Computer</figcaption></figure>
+        <figure class="wide"><a href="img/shots/phone-computer3.jpg"><img src="img/shots/phone-computer3.jpg" alt="Phone: The call bubble: someone is calling" loading="lazy"></a><figcaption>The call bubble: someone is calling</figcaption></figure>
+        <figure class="wide"><a href="img/shots/phone-computer4.jpg"><img src="img/shots/phone-computer4.jpg" alt="Phone: The call bubble: in a call, the keypad open" loading="lazy"></a><figcaption>The call bubble: in a call, the keypad open</figcaption></figure>
       </div>
     </div>
     <div role="tabpanel" id="panel-data" aria-labelledby="tab-data" hidden>

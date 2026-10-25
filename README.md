@@ -30,6 +30,8 @@ your own backups. Screenshots use invented sample data.
   edit the calendar's and timers' files, and Tetra syncs the result to your phone.
 - **Photos that know who and where.** Tags, live photos, and People and Documents collections from face recognition
   that runs on the device. Find photos by place\*, and bring your Google Photos over (Takeout import on the computer).
+- **Scan any page clean.** Filters and automatic cropping find and straighten the page: all the tools you need to make
+  a perfect digital copy, for as many pages as you like.
 - **Hide what should stay private.** Redact PDFs and photos so the hidden part is removed from the file itself, not
   just covered. Tetra finds the eyes in a photo and covers them with black bars or stars, and finds text to hide.
 - **Office and PDF, good enough.** Word, Excel and PowerPoint open and save as themselves, compatible enough for
@@ -38,6 +40,12 @@ your own backups. Screenshots use invented sample data.
   all on the device.
 
 <sub>\* Maps and finding photos by place cover Greece only for now; other countries will follow.</sub>
+
+## See it work
+
+![Files both ways: Send to computer on the phone, Send to phone on the computer](Assets/cards/card-send.jpg)
+![Calls on your computer: the call bubble](Assets/cards/card-bubble.jpg)
+![Home your way: groups, a mix, icons only, edit mode](Assets/cards/card-home.jpg)
 
 ## The applets
 

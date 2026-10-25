@@ -3039,13 +3039,17 @@ Send log.
   reader and drop detection with a fake /sys and nmcli output.
 
 ### Steps (each a commit; checked on the emulator as built, the real phone and tablet at the end)
-- [~] 1. Look on the real devices (read-only, adb). **The tablet (25 Oct 09:05, Data installed over 24 Oct's build, its data
+- [x] 1. Look on the real devices (read-only, adb). **The tablet (25 Oct 09:05, Data installed over 24 Oct's build, its data
    kept and backed up to Coding/backups/tablet-20261025-0905)**: Android keeps per-app counts from 19 Jul (98 days, 2-hour
    buckets) and device totals from 4 Jul (1-hour); the usage-access page opens straight on Tetra's own switch ("Να επιτρ. η
    πρόσβαση σε δεδομ. χρήσης εφαρμ.") — and Tetra already had the access on this HyperOS (it counted every app without it
    being switched there); its Wi-Fi on the phone's hotspot is `metered=true` in Android's own records, so Data showed "70 GB
    over the phone's hotspot" of October's 98 GB; the meter −32 dBm on "Xiaomi 15", channel 1, 400 Mb/s; no Wi-Fi RTT
-   (Wi-Fi Aware yes); its name "Xiaomi Pad 7 Pro". **The phone**: not on USB at 09:06 (only the tablet was seen) — still to do.
+   (Wi-Fi Aware yes); its name "Xiaomi Pad 7 Pro". **The phone (09:10, installed with tools/phone-install.sh; Android Auto
+   approved Tetra Maps again; its data backed up to Coding/backups/phone-20261025-0910)**: Android keeps per-app counts and
+   device totals from 15 Jul (102 days); 4G with 5G NSA (`overrideNetwork=NR_NSA`, Data says 5G); the hotspot on (wlan2,
+   tethered) and its traffic kept under the tethering UID; no Wi-Fi RTT; its name "Xiaomi 15"; Usage access **not** on
+   (unlike the tablet), so Data counts nothing until Setup's step 2 — the user's Setup (plan, renewal day) is next.
 - [x] 2. (205ad93, data-plan session, 25 Oct; Drive-Android branch claude/data-plan) Setup and usage: `Data.kt` (plan, cycles, status,
    files), `DataStats.kt` (NetworkStats → Tetra/Data/usage/<month>.<device>.jsonl hourly through SyncJob's job 4150, the
    first look back over the months Android kept; warnings 50/80/100 % and the day's budget; roaming notices with Android's

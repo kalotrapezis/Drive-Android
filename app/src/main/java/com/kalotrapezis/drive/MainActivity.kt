@@ -244,11 +244,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this) // the log from the start: a crash anywhere is written down
+        CalendarIndex.dir = cacheDir // the Calendar's events kept between starts
         CalendarAlarms.planSoon(this) // the Calendar's next reminder, from the files as they are now
+        CalendarPreload.warm(this) // and its events, so it opens with them
         ContactsPreload.warm(this) // Contacts open full, not "no contacts" for a second
         PhoneLog.warm(this) // and the Phone's Recents
         NotesStore.indexDir = cacheDir
-        Thread { if (Environment.isExternalStorageManager()) runCatching { notesStore().list() } }.start() // and Notes
+        // and Notes; at a background priority, so Home's first frames and an applet tapped at once are not kept waiting
+        Thread { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); if (Environment.isExternalStorageManager()) runCatching { notesStore().list() } }.start()
         HomeArt.warm(this) // Home's pictures made small before Home is drawn
         Thread { runCatching { TimerService.check(this) } }.start() // a timer running (here or started elsewhere): its notification
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).

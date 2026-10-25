@@ -3097,6 +3097,16 @@ Send log.
    the phone: "Phone as hotspot" read "Computer: −16 dBm · 162 Mb/s · Xiaomi 15"; speed to the computer ↓ 192 · ↑ 22 Mb/s.
    Left: the tablet's files reaching the phone and the computer (it was not connected when synced), a week of drops,
    roaming on a trip; the span-chip fix (d780018) goes with the next phone install. Merging both branches waits for the user.
+- [x] 10. (the user, 25 Oct: "why do I have to go through Setup on the tablet? why does it not sync?"; "if it is just hotspot, write
+   Hotspot") The tablet had last reached the computer at 04:12, before the plan existed; and **after an install on the phone
+   its hotspot blocks the devices on it from each other (the phone and the computer still talk) until the hotspot is turned
+   off and on** (the user) — the phone's, not Tetra's. Now: Data asks the computer for its part when it opens, the
+   quarter-hourly look and the computer's nudge carry `data`, the computer nudges when plan.json changes; a tablet never
+   offers Setup ("the phone's plan arrives with Local Sync") and Home's slot says "Hotspot 70 GB". **Hotspot is its own
+   kind** beside Mobile and Wi-Fi (orange): per app (`net: hotspot` rows from Android's metered flag, Tetra's own sync left
+   out), per 2-hour slot for yesterday and today (one summary per slot: Android's hourly history has no metered flag), in
+   the charts, the legend, the app rows, Devices, and the computer's page. Emulator: a September with Mobile 4.5 · Hotspot 36 ·
+   Wi-Fi 20 GB. Not yet on the tablet (not connected) nor the computer (needs a beta.15 package).
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

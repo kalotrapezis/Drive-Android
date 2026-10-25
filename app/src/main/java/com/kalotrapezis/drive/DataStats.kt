@@ -66,7 +66,7 @@ internal object DataStats {
     private fun floorBucket(t: Long) = t - Math.floorMod(t, BUCKET)
     private fun at(d: LocalDate, zone: ZoneId) = d.atStartOfDay(zone).toInstant().toEpochMilli()
 
-    private data class Uid(var fg: Long = 0, var bg: Long = 0, var roam: Long = 0, var metered: Long = 0)
+    private data class Uid(var fg: Long = 0, var bg: Long = 0, var roam: Long = 0, var hotFg: Long = 0, var hotBg: Long = 0)
 
     /** A query's buckets: each one's UID, bytes, foreground and roaming. */
     private inline fun each(s: NetworkStats?, f: (NetworkStats.Bucket) -> Unit) {
@@ -103,14 +103,18 @@ internal object DataStats {
             each(runCatching { nsm.querySummary(type, null, s, e) }.getOrNull()) { b ->
                 val n = b.rxBytes + b.txBytes
                 val u = byUid.getOrPut(b.uid) { Uid() }
-                if (b.state == NetworkStats.Bucket.STATE_FOREGROUND) u.fg += n else u.bg += n
+                val fg = b.state == NetworkStats.Bucket.STATE_FOREGROUND
+                // a metered Wi-Fi is a phone's hotspot (Android's hotspots say so); Tetra's own there is its sync with the phone: Wi-Fi
+                if (net == "wifi" && b.metered == NetworkStats.Bucket.METERED_YES && b.uid != Process.myUid()) { if (fg) u.hotFg += n else u.hotBg += n }
+                else if (fg) u.fg += n else u.bg += n
                 if (b.roaming == NetworkStats.Bucket.ROAMING_YES) u.roam += n
-                if (b.metered == NetworkStats.Bucket.METERED_YES) u.metered += n // a metered Wi-Fi: a phone's hotspot (Android's hotspots say so)
             }
             byUid.forEach { (uid, u) ->
-                val total = u.fg + u.bg
-                if (net == "mobile") { mobile += total; roam += u.roam; if (uid == NetworkStats.Bucket.UID_TETHERING) hotspot += total } else { wifi += total; if (uid != Process.myUid()) via += u.metered } // Tetra's own: its sync with the phone itself, never on the mobile network
-                if (total > 0) { val (app, label) = name(c, uid); apps += DataApp(d, app, label, net, u.fg, u.bg, u.roam) }
+                val total = u.fg + u.bg; val hot = u.hotFg + u.hotBg
+                if (net == "mobile") { mobile += total; roam += u.roam; if (uid == NetworkStats.Bucket.UID_TETHERING) hotspot += total } else { wifi += total + hot; via += hot }
+                val (app, label) = name(c, uid)
+                if (total > 0) apps += DataApp(d, app, label, net, u.fg, u.bg, u.roam)
+                if (hot > 0) apps += DataApp(d, app, label, "hotspot", u.hotFg, u.hotBg, 0) // the tablet's or a phone's use of another phone's hotspot
             }
         }
         // two UIDs of one package (or several system ones) are one row
@@ -127,6 +131,24 @@ internal object DataStats {
                 out.merge(h to net, b.rxBytes + b.txBytes, Long::plus)
             }
         return out.filter { it.value > 0 }.map { (k, v) -> DataHour(k.first, k.second, v) }
+    }
+
+    /**
+     * The hotspot's share of Wi-Fi by 2-hour slot, [from]..[e]: Android's per-hour history does not keep the metered flag, so
+     * one summary per slot (24 a day); asked only for yesterday and today, older slots stay as written.
+     */
+    private fun hotspotHours(nsm: NetworkStatsManager, from: Long, e: Long, zone: ZoneId): List<DataHour> {
+        val out = mutableListOf<DataHour>()
+        var t = from
+        while (t < e) {
+            var n = 0L
+            each(runCatching { nsm.querySummary(ConnectivityManager.TYPE_WIFI, null, t, t + BUCKET) }.getOrNull()) { b ->
+                if (b.metered == NetworkStats.Bucket.METERED_YES && b.uid != Process.myUid()) n += b.rxBytes + b.txBytes
+            }
+            if (n > 0) out += DataHour(Instant.ofEpochMilli(t).atZone(zone).format(HOUR), "hotspot", n)
+            t += BUCKET
+        }
+        return out
     }
 
     /** Tetra's own notes (drops, roaming countries, Tetra's sync over the hotspot), kept until written into a month. */
@@ -163,7 +185,11 @@ internal object DataStats {
                 d = d.plusDays(1)
             }
             val s = floorBucket(at(maxOf(m, keepBefore), zone)); val e = floorBucket(now) + BUCKET
-            val hrs = (old?.hours.orEmpty().filter { it.hour < Instant.ofEpochMilli(s).atZone(zone).format(HOUR) }) + if (hasAccess(c)) hours(nsm, s, e, zone) else emptyList()
+            val hs = maxOf(s, floorBucket(at(today.minusDays(1), zone)))
+            val sKey = Instant.ofEpochMilli(s).atZone(zone).format(HOUR); val hsKey = Instant.ofEpochMilli(hs).atZone(zone).format(HOUR)
+            val hotThen = days.any { it.viaHotspot > 0 && !it.day.isBefore(today.minusDays(1)) }
+            val hrs = old?.hours.orEmpty().filter { it.hour < sKey || (it.net == "hotspot" && it.hour < hsKey) } +
+                (if (hasAccess(c)) hours(nsm, s, e, zone) + (if (hotThen && hs < e) hotspotHours(nsm, hs, e, zone) else emptyList()) else emptyList())
             val ev = (old?.events.orEmpty() + events.filter { it.at.startsWith(m.toString().take(7)) }).distinct()
             val month = DataMonth(device, days, apps, hrs.filter { it.hour.startsWith(m.toString().take(7)) }, ev, DataFiles.deviceName(c))
             if (month.days.isEmpty() && month.events.isEmpty() && old == null) return@mapNotNull null

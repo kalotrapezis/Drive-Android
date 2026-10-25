@@ -1413,7 +1413,10 @@ internal fun openPhone(c: Context, tab: String? = null) = c.startActivity(Intent
         value = withContext(Dispatchers.IO) { runCatching {
             val plan = DataFiles.plan()
             val phone = DataFiles.all().values.maxByOrNull { m -> DataFiles.days(m).sumOf { it.mobile } }.orEmpty()
-            if (plan == null) "Set up" else DataRules.status(plan, DataFiles.days(phone), java.time.LocalDate.now()).let { s ->
+            // a tablet: what it took over the phone's hotspot this month; a phone: its plan
+            if (PhoneRelay.noCalls(context)) DataFiles.days(DataFiles.all()[DataFiles.device()].orEmpty()).filter { it.day.withDayOfMonth(1) == java.time.LocalDate.now().withDayOfMonth(1) }
+                .sumOf { it.viaHotspot }.takeIf { it > 0 }?.let { "Hotspot ${DataRules.bytes(it)}" }.orEmpty()
+            else if (plan == null) "Set up" else DataRules.status(plan, DataFiles.days(phone), java.time.LocalDate.now()).let { s ->
                 if (plan.limited) "${s.used * 100 / s.size.coerceAtLeast(1)} % · ${s.daysLeft} d" else DataRules.bytes(s.used)
             }
         }.getOrDefault("") }

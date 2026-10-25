@@ -200,6 +200,7 @@ internal class SyncServer(private val context: Context, private val store: SyncS
             ScopedSync.soon(context, "calendar", 0) // or an event (Claude's, the skill's): the Calendar's part, at once
             ScopedSync.soon(context, "timer", 0) // or a timer started, paused, stopped or answered on another device
             ScopedSync.soon(context, "contacts", 0) // or a contact changed on the computer (or by Claude)
+            ScopedSync.soon(context, "data", 0) // or Data's plan, set on the phone (the tablet has no plan of its own)
             Outbox.soon(context) // the computer is there: what was shared while it was away goes now
             SyncService.syncInBackground(context, gap = 60_000)
             return reply(output, 200, JSONObject().put("ok", true))

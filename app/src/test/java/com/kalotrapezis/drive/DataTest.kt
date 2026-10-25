@@ -79,6 +79,12 @@ class DataTest {
         assertEquals(null, DataRules.parseSize("lots"))
     }
 
+    @Test fun `a use in words, the hotspot apart`() {
+        assertEquals("Hotspot 70 GB · Wi-Fi 28 GB", Use(0, 70_000_000_000, 28_000_000_000).words())
+        assertEquals("Mobile 0 B · Wi-Fi 0 B", Use(0, 0, 0).words(always = true))
+        assertEquals("Mobile 1.2 GB", Use(1_200_000_000, 0, 0).words())
+    }
+
     @Test fun `the EU and outside it`() {
         assertTrue(DataRules.inEu("gr")); assertTrue(DataRules.inEu("NO"))
         assertFalse(DataRules.inEu("mk")); assertFalse(DataRules.inEu("tr"))

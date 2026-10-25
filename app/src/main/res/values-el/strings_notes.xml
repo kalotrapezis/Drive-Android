@@ -284,4 +284,23 @@
     <string name="calendar_missed">Με καθυστέρηση · %1$s</string>
     <string name="calendar_test_title">Δοκιμαστική υπενθύμιση</string>
     <string name="calendar_test_text">Σήμερα, τώρα · από τις ρυθμίσεις του Tetra</string>
+    <!-- Timer -->
+    <string name="timer_access_needed">Τα χρονόμετρα είναι μικρά αρχεία στον φάκελο του Tetra, ώστε κάθε συσκευή με την οποία συγχρονίζεστε να ξεκινά, να σταματά προσωρινά και να σταματά μαζί με αυτή. Επιτρέψτε την πρόσβαση σε όλα τα αρχεία για να χρησιμοποιήσετε το Χρονόμετρο.</string>
+    <string name="timer_allow_access">Επιτρέψτε την πρόσβαση</string>
+    <string name="timer_too_many">Έως εννέα χρονόμετρα: σταματήστε ή διαγράψτε πρώτα ένα.</string>
+    <string name="timer_could_not_start">Το χρονόμετρο δεν ξεκίνησε</string>
+    <string name="timer_hint">Ορίστε ώρες και μετά λεπτά στο ρολόι: το χρονόμετρο ξεκινά μόλις σηκώσετε το δάχτυλο από τα λεπτά. Καρφιτσώστε ένα χρονόμετρο για να μένει εδώ, έτοιμο να ξεκινήσει ξανά.</string>
+    <string name="timer_pin">Καρφίτσωμα</string>
+    <string name="timer_unpin">Ξεκαρφίτσωμα</string>
+    <string name="timer_times_up">Ο χρόνος έληξε</string>
+    <string name="timer_paused_suffix">%1$s · σε παύση</string>
+    <string name="timer_named">Χρονόμετρο %1$s</string>
+    <string name="timer_paused_left">Σε παύση · απομένουν %1$s</string>
+    <string name="timer_ends_at">Λήγει στις %1$s</string>
+    <string name="timer_channel_about">Ένα χρονόμετρο σε λειτουργία</string>
+    <string name="timer_channel_done">Το χρονόμετρο έληξε</string>
+    <string name="timer_channel_done_about">Ένα χρονόμετρο που έληξε</string>
+    <string name="timer_hours">%1$d ώ.</string>
+    <string name="timer_minutes">%1$d λ.</string>
+    <string name="timer_seconds">%1$d δ.</string>
 </resources>

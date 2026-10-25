@@ -77,9 +77,9 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
 
     if (!hasAccess) {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back") }
-            Text("Timers are small files in Tetra's folder, so every device you sync with starts, pauses and stops with this one. Allow access to all files to use the Timer.")
-            TextButton(onClick = grant) { Text("Allow access") }
+            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
+            Text(stringResource(R.string.timer_access_needed))
+            TextButton(onClick = grant) { Text(stringResource(R.string.timer_allow_access), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         return
     }
@@ -111,7 +111,7 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
         if (seconds <= 0) return@launch
         val done = withContext(Dispatchers.IO) { runCatching { TimerControl.start(context, seconds) }.onFailure { WriterLog.e("Timer: could not start", it) } }
         done.getOrNull()?.let { lastId = it.id }
-        done.exceptionOrNull()?.let { android.widget.Toast.makeText(context, it.message ?: "The timer could not start", android.widget.Toast.LENGTH_SHORT).show() }
+        done.exceptionOrNull()?.let { android.widget.Toast.makeText(context, if (it is TimerFiles.TooMany) context.getString(R.string.timer_too_many) else it.message ?: context.getString(R.string.timer_could_not_start), android.widget.Toast.LENGTH_SHORT).show() }
     }
     fun change(r: TimerRecord, action: String) = scope.launch(Dispatchers.IO) { runCatching { TimerControl.change(context, r.id, action) }.onFailure { WriterLog.e("Timer: $action failed", it) } }
 
@@ -119,7 +119,7 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
     val cards: @Composable () -> Unit = {
         val per = if (wide) 3 else 2
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (timers.isEmpty() && wide) Text("Set hours, then minutes, on the clock: the timer starts when you lift your finger from the minutes. Pin a timer to keep it here, ready to start again.",
+            if (timers.isEmpty() && wide) Text(stringResource(R.string.timer_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             timers.chunked(per).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -144,12 +144,12 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
             }) { TimePicker(clock) }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (current?.state == TimerRecord.PAUSED) Button(onClick = { change(current, TimerService.RESUME) }, modifier = Modifier.widthIn(min = 130.dp)) {
-                    Icon(painterResource(R.drawable.ic_play), contentDescription = null); Text("  Resume")
+                    Icon(painterResource(R.drawable.ic_play), contentDescription = null); Text("  " + stringResource(R.string.common_resume), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 } else Button(onClick = { current?.let { change(it, TimerService.PAUSE) } }, enabled = current != null, modifier = Modifier.widthIn(min = 130.dp)) {
-                    Icon(painterResource(R.drawable.ic_pause), contentDescription = null); Text("  Pause")
+                    Icon(painterResource(R.drawable.ic_pause), contentDescription = null); Text("  " + stringResource(R.string.common_pause), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 OutlinedButton(onClick = { current?.let { change(it, TimerService.STOP) } }, enabled = current != null, modifier = Modifier.widthIn(min = 130.dp)) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = null); Text("  Stop")
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = null); Text("  " + stringResource(R.string.common_stop), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -167,7 +167,7 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
                 cards(); picker()
                 Spacer(Modifier.navigationBarsPadding().height(24.dp))
             }
-            FilesPageHeader(title = "Timer", icon = R.drawable.ic_timer, back = back, island = true,
+            FilesPageHeader(title = stringResource(R.string.app_timer), icon = R.drawable.ic_timer, back = back, island = true,
                 modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp))
         }
     }
@@ -180,28 +180,29 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
 @Composable private fun TimerCard(r: TimerRecord, now: Instant, change: (TimerRecord, String) -> Unit) {
     val ringing = r.ringing(now)
     val ready = r.over(now) // a pinned card waiting to start again
+    val w = rememberUiWords()
     Surface(shape = MaterialTheme.shapes.extraLarge, color = if (ringing) TIMER_COLOR else MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
         Box {
             IconButton(onClick = { change(r, if (r.pinned) TimerService.UNPIN else TimerService.PIN) }, modifier = Modifier.align(Alignment.TopStart)) {
-                Icon(painterResource(R.drawable.ic_push_pin), contentDescription = if (r.pinned) "Unpin" else "Pin",
+                Icon(painterResource(R.drawable.ic_push_pin), contentDescription = stringResource(if (r.pinned) R.string.timer_unpin else R.string.timer_pin),
                     tint = if (r.pinned) (if (ringing) Color.White else TIMER_COLOR) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
             }
             IconButton(onClick = { change(r, TimerService.TRASH) }, modifier = Modifier.align(Alignment.TopEnd)) {
-                Icon(painterResource(R.drawable.ic_delete), contentDescription = "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.common_delete), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
             }
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(when { ringing -> "Time's up"; ready -> clockText(r.seconds * 1000); else -> clockText(r.leftMs(now)) },
+                Text(when { ringing -> stringResource(R.string.timer_times_up); ready -> clockText(r.seconds * 1000); else -> clockText(r.leftMs(now)) },
                     style = MaterialTheme.typography.headlineMedium, fontFamily = FontFamily.Monospace, maxLines = 1)
-                Text(r.label.ifEmpty { durationText(r.seconds) } + if (r.state == TimerRecord.PAUSED) " · paused" else "",
+                Text(r.label.ifEmpty { durationText(w, r.seconds) }.let { if (r.state == TimerRecord.PAUSED) stringResource(R.string.timer_paused_suffix, it) else it },
                     style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     when {
-                        ringing -> Button(onClick = { change(r, TimerService.OK) }, modifier = Modifier.widthIn(min = 120.dp)) { Text("OK") }
-                        ready -> FilledTonalButton(onClick = { change(r, TimerService.RESTART) }) { Icon(painterResource(R.drawable.ic_play), contentDescription = null); Text(" Start") }
-                        r.state == TimerRecord.PAUSED -> IconButton(onClick = { change(r, TimerService.RESUME) }) { Icon(painterResource(R.drawable.ic_play), contentDescription = "Resume") }
-                        else -> IconButton(onClick = { change(r, TimerService.PAUSE) }) { Icon(painterResource(R.drawable.ic_pause), contentDescription = "Pause") }
+                        ringing -> Button(onClick = { change(r, TimerService.OK) }, modifier = Modifier.widthIn(min = 120.dp)) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        ready -> FilledTonalButton(onClick = { change(r, TimerService.RESTART) }) { Icon(painterResource(R.drawable.ic_play), contentDescription = null); Text(" " + stringResource(R.string.common_start), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        r.state == TimerRecord.PAUSED -> IconButton(onClick = { change(r, TimerService.RESUME) }) { Icon(painterResource(R.drawable.ic_play), contentDescription = stringResource(R.string.common_resume)) }
+                        else -> IconButton(onClick = { change(r, TimerService.PAUSE) }) { Icon(painterResource(R.drawable.ic_pause), contentDescription = stringResource(R.string.common_pause)) }
                     }
-                    if (!ringing && !ready) IconButton(onClick = { change(r, TimerService.STOP) }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Stop") }
+                    if (!ringing && !ready) IconButton(onClick = { change(r, TimerService.STOP) }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_stop)) }
                 }
             }
         }

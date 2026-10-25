@@ -101,6 +101,8 @@ internal object TimerFiles {
 
     /** The screen holds nine (the user, 18 Oct: "The UI will fit 9 timers"). */
     const val MAX = 9
+    /** The tenth timer refused; the screen says it in the language (its message is for the log). */
+    class TooMany : IllegalStateException("Nine timers at most: stop or delete one first.")
 
     /**
      * Written beside, then renamed over: a sync or another device never reads half a timer. Each device writes only its
@@ -125,7 +127,7 @@ internal object TimerFiles {
      */
     fun start(dir: File, seconds: Long, by: String, now: Instant = Instant.now(), label: String = ""): TimerRecord {
         val all = read(dir)
-        check(all.count { it.card(now) } < MAX) { "Nine timers at most: stop or delete one first." }
+        if (all.count { it.card(now) } >= MAX) throw TooMany()
         val free = all.filter { it.free(now) }.minByOrNull { it.file?.name ?: "" }
         val r = TimerRecord(free?.id ?: newId(), seconds, TimerRecord.RUNNING, now.plusSeconds(seconds), 0.0, (free?.rev ?: 0) + 1, label, by)
         return write(dir, r)
@@ -163,9 +165,10 @@ internal object TimerFiles {
 }
 
 /** "5 min", "1 h 30 min", "45 s": a duration in words. */
-internal fun durationText(seconds: Long): String {
+internal fun durationText(w: UiWords, seconds: Long): String {
     val h = seconds / 3600; val m = seconds % 3600 / 60; val s = seconds % 60
-    return listOfNotNull(h.takeIf { it > 0 }?.let { "$it h" }, m.takeIf { it > 0 }?.let { "$it min" }, s.takeIf { it > 0 || seconds == 0L }?.let { "$it s" }).joinToString(" ")
+    return listOfNotNull(h.takeIf { it > 0 }?.let { w.get(R.string.timer_hours, it) }, m.takeIf { it > 0 }?.let { w.get(R.string.timer_minutes, it) },
+        s.takeIf { it > 0 || seconds == 0L }?.let { w.get(R.string.timer_seconds, it) }).joinToString(" ")
 }
 
 /** "4:05", "1:02:00": the time left on the clock face, rounded up so 0:00 is the end. */

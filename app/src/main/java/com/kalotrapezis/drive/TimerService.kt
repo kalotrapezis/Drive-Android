@@ -96,7 +96,7 @@ class TimerService : Service() {
         // Android wants the notification at once: the first timer's as it is, or a placeholder the tick takes away
         val now = Instant.now()
         val first = runCatching { TimerFiles.active(TimerControl.dir(), now) }.getOrDefault(emptyList()).firstOrNull()
-        val n = first?.let { notification(it, now) } ?: NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_timer).setContentTitle("Timer").setSilent(true).build()
+        val n = first?.let { notification(it, now) } ?: NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_timer).setContentTitle(getString(R.string.app_timer)).setSilent(true).build()
         foreground = first?.let { notificationId(it.id) } ?: PLACEHOLDER
         runCatching {
             if (Build.VERSION.SDK_INT >= 34) startForeground(foreground, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(foreground, n)
@@ -161,14 +161,14 @@ class TimerService : Service() {
 
     private fun notification(r: TimerRecord, now: Instant, announce: Boolean = false): Notification {
         val ringing = r.ringing(now)
-        val name = r.label.ifEmpty { "${durationText(r.seconds)} timer" }
-        val endsAt = r.ends?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofPattern(if (android.text.format.DateFormat.is24HourFormat(this)) "HH:mm" else "h:mm a"))
-        val title = when { ringing -> "Time's up"; r.state == TimerRecord.PAUSED -> "Paused · ${clockText(r.leftMs(now))} left"; else -> name }
-        val text = when { ringing -> name; r.state == TimerRecord.PAUSED -> name; else -> "Ends at $endsAt" }
+        val name = r.label.ifEmpty { getString(R.string.timer_named, durationText(uiWords(this), r.seconds)) }
+        val endsAt = r.ends?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofPattern(if (android.text.format.DateFormat.is24HourFormat(this)) "HH:mm" else "h:mm a", uiLocale()))
+        val title = when { ringing -> getString(R.string.timer_times_up); r.state == TimerRecord.PAUSED -> getString(R.string.timer_paused_left, clockText(r.leftMs(now))); else -> name }
+        val text = when { ringing -> name; r.state == TimerRecord.PAUSED -> name; else -> getString(R.string.timer_ends_at, endsAt.toString()) }
         val buttons = when {
-            ringing -> listOf(Triple(OK, "OK", action(r.id, OK)))
-            r.state == TimerRecord.PAUSED -> listOf(Triple(RESUME, "Resume", action(r.id, RESUME)), Triple(STOP, "Stop", action(r.id, STOP)))
-            else -> listOf(Triple(PAUSE, "Pause", action(r.id, PAUSE)), Triple(STOP, "Stop", action(r.id, STOP)))
+            ringing -> listOf(Triple(OK, getString(R.string.common_ok), action(r.id, OK)))
+            r.state == TimerRecord.PAUSED -> listOf(Triple(RESUME, getString(R.string.common_resume), action(r.id, RESUME)), Triple(STOP, getString(R.string.common_stop), action(r.id, STOP)))
+            else -> listOf(Triple(PAUSE, getString(R.string.common_pause), action(r.id, PAUSE)), Triple(STOP, getString(R.string.common_stop), action(r.id, STOP)))
         }
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java).putExtra(Applet.EXTRA, SCREEN)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -188,7 +188,7 @@ class TimerService : Service() {
             b.setWhen(r.ends.toEpochMilli()).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
         buttons.forEach { (_, label, pi) -> b.addAction(0, label, pi) }
         if (HyperIsland.isSupported(this)) HyperIsland.timer(b, title, text, r.ends?.toEpochMilli()?.takeIf { r.state == TimerRecord.RUNNING && !ringing },
-            if (ringing) "Time's up" else clockText(r.leftMs(now)), announce, buttons)
+            if (ringing) getString(R.string.timer_times_up) else clockText(r.leftMs(now)), announce, buttons)
         return b.build()
     }
 
@@ -252,9 +252,9 @@ class TimerService : Service() {
 
         fun channels(c: Context) {
             val nm = c.getSystemService(NotificationManager::class.java) ?: return
-            if (nm.getNotificationChannel(CHANNEL) == null) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Timer", NotificationManager.IMPORTANCE_LOW).apply { description = "A timer running" })
-            if (nm.getNotificationChannel(CHANNEL_DONE) == null) nm.createNotificationChannel(NotificationChannel(CHANNEL_DONE, "Timer done", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "A timer that has run out"; setSound(null, null) // the alarm plays its own sound
+            if (nm.getNotificationChannel(CHANNEL) == null) nm.createNotificationChannel(NotificationChannel(CHANNEL, c.getString(R.string.app_timer), NotificationManager.IMPORTANCE_LOW).apply { description = c.getString(R.string.timer_channel_about) })
+            if (nm.getNotificationChannel(CHANNEL_DONE) == null) nm.createNotificationChannel(NotificationChannel(CHANNEL_DONE, c.getString(R.string.timer_channel_done), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = c.getString(R.string.timer_channel_done_about); setSound(null, null) // the alarm plays its own sound
             })
         }
 

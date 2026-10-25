@@ -285,4 +285,23 @@
     <string name="calendar_missed">Missed · %1$s</string>
     <string name="calendar_test_title">Test reminder</string>
     <string name="calendar_test_text">Today, now · from Tetra\'s settings</string>
+    <!-- Timer -->
+    <string name="timer_access_needed">Timers are small files in Tetra\'s folder, so every device you sync with starts, pauses and stops with this one. Allow access to all files to use the Timer.</string>
+    <string name="timer_allow_access">Allow access</string>
+    <string name="timer_too_many">Nine timers at most: stop or delete one first.</string>
+    <string name="timer_could_not_start">The timer could not start</string>
+    <string name="timer_hint">Set hours, then minutes, on the clock: the timer starts when you lift your finger from the minutes. Pin a timer to keep it here, ready to start again.</string>
+    <string name="timer_pin">Pin</string>
+    <string name="timer_unpin">Unpin</string>
+    <string name="timer_times_up">Time\'s up</string>
+    <string name="timer_paused_suffix">%1$s · paused</string>
+    <string name="timer_named">%1$s timer</string>
+    <string name="timer_paused_left">Paused · %1$s left</string>
+    <string name="timer_ends_at">Ends at %1$s</string>
+    <string name="timer_channel_about">A timer running</string>
+    <string name="timer_channel_done">Timer done</string>
+    <string name="timer_channel_done_about">A timer that has run out</string>
+    <string name="timer_hours">%1$d h</string>
+    <string name="timer_minutes">%1$d min</string>
+    <string name="timer_seconds">%1$d s</string>
 </resources>

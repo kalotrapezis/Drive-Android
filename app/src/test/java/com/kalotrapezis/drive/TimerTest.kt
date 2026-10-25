@@ -37,7 +37,7 @@ class TimerTest {
         assertEquals("5:00", clockText(r.leftMs(t0)))
         assertEquals("0:01", clockText(1)) // rounded up: 0:00 is the end
         assertEquals("1:02:03", clockText(3_723_000))
-        assertEquals("1 h 30 min", durationText(5400))
+        assertEquals("1 h 30 min", durationText(EnglishWords, 5400))
     }
 
     @Test fun pauseKeepsWhatIsLeftAndResumeCountsFromThen() {

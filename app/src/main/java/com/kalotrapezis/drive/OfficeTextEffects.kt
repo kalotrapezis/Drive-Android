@@ -67,10 +67,10 @@ internal class EffectSpan(val effects: TextEffects, val fill: Int, val unit: Flo
  * wave or a slant. Word's a:prstTxWarp in the WordArt's bodyPr (with fromWordArt); LibreOffice's fontwork shape type,
  * which it draws by its name.
  */
-internal enum class TextWarp(val label: String, val word: String, val fontwork: String) {
-    ArchUp("Arch up", "textArchUp", "fontwork-arch-up-curve"), ArchDown("Arch down", "textArchDown", "fontwork-arch-down-curve"),
-    Circle("Circle", "textCircle", "fontwork-circle-curve"), Wave("Wave", "textWave1", "fontwork-wave"),
-    SlantUp("Slant up", "textSlantUp", "fontwork-slant-up"), SlantDown("Slant down", "textSlantDown", "fontwork-slant-down");
+internal enum class TextWarp(val label: String, val word: String, val fontwork: String, @androidx.annotation.StringRes val labelRes: Int) {
+    ArchUp("Arch up", "textArchUp", "fontwork-arch-up-curve", R.string.office_warp_arch_up), ArchDown("Arch down", "textArchDown", "fontwork-arch-down-curve", R.string.office_warp_arch_down),
+    Circle("Circle", "textCircle", "fontwork-circle-curve", R.string.office_warp_circle), Wave("Wave", "textWave1", "fontwork-wave", R.string.office_warp_wave),
+    SlantUp("Slant up", "textSlantUp", "fontwork-slant-up", R.string.office_warp_slant_up), SlantDown("Slant down", "textSlantDown", "fontwork-slant-down", R.string.office_warp_slant_down);
 
     /** How tall the letters are in a [w] × [h] box (before they are fitted to the bend's length). */
     fun letters(w: Float, h: Float) = when (this) { Circle -> minOf(w, h) * 0.2f; Wave -> h * 0.45f; SlantUp, SlantDown -> minOf(h * 0.4f, w * 0.15f); else -> h * 0.42f }

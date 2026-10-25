@@ -69,12 +69,12 @@ internal class OfficeFavourite(val on: Boolean, val toggle: () -> Unit)
 @Composable internal fun FavouriteHeart(file: File?, tint: androidx.compose.ui.graphics.Color) {
     if (!favouriteInTopBar()) return
     val fav = rememberOfficeFavourite(file) ?: return
-    Tool(if (fav.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border, if (fav.on) "Remove from favourites" else "Add to favourites", tint) { fav.toggle() }
+    Tool(if (fav.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border, stringResource(if (fav.on) R.string.office_favourite_remove else R.string.office_favourite_add), tint) { fav.toggle() }
 }
 
 /** A phone's File tab: the same as an item. */
 @Composable internal fun FavouriteFileButton(file: File?, tint: androidx.compose.ui.graphics.Color) {
     if (favouriteInTopBar()) return
     val fav = rememberOfficeFavourite(file) ?: return
-    RibbonButton(if (fav.on) "Remove from favourites" else "Add to favourites", tint, if (fav.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border) { fav.toggle() }
+    RibbonButton(stringResource(if (fav.on) R.string.office_favourite_remove else R.string.office_favourite_add), tint, if (fav.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border) { fav.toggle() }
 }

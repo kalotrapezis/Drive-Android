@@ -21,7 +21,7 @@ internal object LegacyDocs {
     fun read(bytes: ByteArray, name: String): OfficeDoc = when {
         bytes.size >= 8 && bytes[0] == 0xD0.toByte() && bytes[1] == 0xCF.toByte() -> WordBinary(bytes).read()
         String(bytes, 0, minOf(bytes.size, 6), Charsets.ISO_8859_1).startsWith("{\\rtf") -> Rtf(bytes).read()
-        else -> error("${name.substringAfterLast('.')} file Writer cannot read")
+        else -> name.substringAfterLast('.').let { throw OfficeReadError(R.string.office_error_cannot_read, "$it file Writer cannot read", it) }
     }
 
     /** Paragraphs and tables as they are read, in order (cells' paragraphs gathered into rows, rows into a table). */
@@ -368,10 +368,10 @@ internal object LegacyDocs {
     /** Word 97–2003's binary format ([MS-DOC]): the piece table's text, the letters' and paragraphs' properties (sprms). */
     private class WordBinary(bytes: ByteArray) {
         private val cf = Compound(bytes)
-        private val doc = cf.stream("WordDocument") ?: error("Not a Word document")
+        private val doc = cf.stream("WordDocument") ?: throw OfficeReadError(R.string.office_error_not_word, "Not a Word document")
         private val d = ByteBuffer.wrap(doc).order(ByteOrder.LITTLE_ENDIAN)
         private val flags = d.getShort(0x0A).toInt()
-        private val table = cf.stream(if (flags and 0x0200 != 0) "1Table" else "0Table") ?: error("Its table stream is missing")
+        private val table = cf.stream(if (flags and 0x0200 != 0) "1Table" else "0Table") ?: throw OfficeReadError(R.string.office_error_table_stream, "Its table stream is missing")
         private val t = ByteBuffer.wrap(table).order(ByteOrder.LITTLE_ENDIAN)
         private val b = Builder()
 
@@ -383,9 +383,9 @@ internal object LegacyDocs {
         private fun lcb(index: Int) = d.getInt(fcLcb + index * 8 + 4)
 
         init {
-            if (u16(d, 0) != 0xA5EC) error("Not a Word 97–2003 document")
-            if (u16(d, 2) < 0xC1) error("A Word 6 or 95 document: open it in Word or LibreOffice and save it as .docx")
-            if (flags and 0x0100 != 0) error("This .doc is password-protected")
+            if (u16(d, 0) != 0xA5EC) throw OfficeReadError(R.string.office_error_not_word97, "Not a Word 97–2003 document")
+            if (u16(d, 2) < 0xC1) throw OfficeReadError(R.string.office_error_word95, "A Word 6 or 95 document: open it in Word or LibreOffice and save it as .docx")
+            if (flags and 0x0100 != 0) throw OfficeReadError(R.string.office_error_doc_password, "This .doc is password-protected")
             val csw = u16(d, 32)
             lw = 34 + csw * 2 + 2
             val cslw = u16(d, 34 + csw * 2)

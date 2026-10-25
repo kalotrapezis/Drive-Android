@@ -115,8 +115,9 @@ internal class DocImage(val key: String, val part: String?, val widthPt: Float, 
 }
 
 /** How the text goes around a picture — Word's Wrap Text (asked 2026-09-27). */
-internal enum class PictureWrap(val label: String) {
-    InLine("In line with text"), Square("Square"), TopBottom("Top and bottom"), Behind("Behind text"), InFront("In front of text")
+internal enum class PictureWrap(val label: String, @androidx.annotation.StringRes val labelRes: Int) {
+    InLine("In line with text", com.kalotrapezis.drive.R.string.office_wrap_inline), Square("Square", com.kalotrapezis.drive.R.string.office_wrap_square), TopBottom("Top and bottom", com.kalotrapezis.drive.R.string.office_wrap_top_bottom),
+    Behind("Behind text", com.kalotrapezis.drive.R.string.office_wrap_behind), InFront("In front of text", com.kalotrapezis.drive.R.string.office_wrap_in_front)
 }
 
 /** A picture's own XML, changed by the Picture tab: its size and its wrapping, in each format's words. */
@@ -148,6 +149,14 @@ internal object PictureXml {
         val src = OfficeVideo.youtube(url)?.let { "https://www.youtube.com/embed/$it?feature=oembed" } ?: url
         val html = """<iframe width="${w.toInt()}" height="${h.toInt()}" src="$src" frameborder="0" allowfullscreen></iframe>"""
         return """<a:extLst><a:ext uri="{C809E66F-F1BF-436E-b5F7-EEA9579F0CBA}"><wp15:webVideoPr xmlns:wp15="http://schemas.microsoft.com/office/word/2012/wordprocessingDrawing" embeddedHtml="${esc(html)}" h="${h.toInt()}" w="${w.toInt()}"/></a:ext></a:extLst>"""
+    }
+
+    /** [kind]'s word as shown (kind's English stays the ID, compared and logged). */
+    @androidx.annotation.StringRes fun kindRes(kind: String): Int = when (kind) {
+        "Signature" -> com.kalotrapezis.drive.R.string.office_kind_signature; "Table" -> com.kalotrapezis.drive.R.string.office_kind_table; "Equation" -> com.kalotrapezis.drive.R.string.office_kind_equation
+        "Video" -> com.kalotrapezis.drive.R.string.office_kind_video; "Chart" -> com.kalotrapezis.drive.R.string.office_kind_chart; "SmartArt" -> com.kalotrapezis.drive.R.string.office_kind_smartart
+        "WordArt" -> com.kalotrapezis.drive.R.string.office_kind_wordart; "Text box" -> com.kalotrapezis.drive.R.string.office_kind_text_box; "Embedded object" -> com.kalotrapezis.drive.R.string.office_kind_object
+        "Shape" -> com.kalotrapezis.drive.R.string.office_kind_shape; else -> com.kalotrapezis.drive.R.string.office_kind_image
     }
 
     /** What it is, in a word, for the grey box shown in place of what Writer cannot draw. */
@@ -715,8 +724,28 @@ internal data class OfficeDoc(
 
     companion object {
         val SIMPLIFIED = setOf("paragraph spacing and indents", "fonts", "tab stops")
+        /** An [unsupported] note as shown (the English phrase stays the ID, compared in tests and logged); null: none known. */
+        @androidx.annotation.StringRes fun noteRes(note: String): Int? = NOTES[note]
+        /** [notes] as shown, joined as joinToString does. */
+        fun notesText(context: android.content.Context, notes: Collection<String>): String = notes.joinToString { n -> noteRes(n)?.let(context::getString) ?: n }
+        private val NOTES = mapOf(
+            "paragraph spacing and indents" to com.kalotrapezis.drive.R.string.office_note_spacing, "fonts" to com.kalotrapezis.drive.R.string.office_note_fonts, "tab stops" to com.kalotrapezis.drive.R.string.office_note_tab_stops,
+            LegacyDocs.OLDER to com.kalotrapezis.drive.R.string.office_note_older, "an unusual file layout" to com.kalotrapezis.drive.R.string.office_note_layout, "character styles" to com.kalotrapezis.drive.R.string.office_note_char_styles,
+            "columns" to com.kalotrapezis.drive.R.string.office_note_columns, "comments" to com.kalotrapezis.drive.R.string.office_note_comments, "content controls" to com.kalotrapezis.drive.R.string.office_note_content_controls,
+            "embedded objects" to com.kalotrapezis.drive.R.string.office_note_objects, "equations" to com.kalotrapezis.drive.R.string.office_note_equations, "fields (page numbers, dates, contents)" to com.kalotrapezis.drive.R.string.office_note_fields,
+            "footnotes" to com.kalotrapezis.drive.R.string.office_note_footnotes, "headers and footers" to com.kalotrapezis.drive.R.string.office_note_headers, "headings below level 6" to com.kalotrapezis.drive.R.string.office_note_deep_headings,
+            "letter or roman numbering" to com.kalotrapezis.drive.R.string.office_note_letter_numbering, "links inside the document" to com.kalotrapezis.drive.R.string.office_note_inner_links,
+            "numbered headings" to com.kalotrapezis.drive.R.string.office_note_numbered_headings, "other content" to com.kalotrapezis.drive.R.string.office_note_other_content, "other list formats" to com.kalotrapezis.drive.R.string.office_note_list_formats,
+            "other text effects" to com.kalotrapezis.drive.R.string.office_note_text_effects, "paragraphs inside list items" to com.kalotrapezis.drive.R.string.office_note_list_paragraphs, "pictures" to com.kalotrapezis.drive.R.string.office_note_pictures,
+            "pictures (WMF/EMF)" to com.kalotrapezis.drive.R.string.office_note_wmf, "sections" to com.kalotrapezis.drive.R.string.office_note_sections, "shapes and text boxes" to com.kalotrapezis.drive.R.string.office_note_shapes,
+            "symbols" to com.kalotrapezis.drive.R.string.office_note_symbols, "formatting it cannot show exactly" to com.kalotrapezis.drive.R.string.office_note_formatting)
     }
 }
+
+/** A file Office cannot read, said to the user: [res] (with [args]) on the screen, the English [english] in logs and tests. */
+internal class OfficeReadError(@androidx.annotation.StringRes val res: Int, english: String, vararg val args: Any) : IllegalStateException(english)
+/** What to show for an error opening or saving a file: an [OfficeReadError]'s words in the app's language, else its message. */
+internal fun Throwable.officeMessage(context: android.content.Context): String? = if (this is OfficeReadError) context.getString(res, *args) else message
 
 internal enum class OfficeKind(val extension: String, val mime: String) {
     Docx("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
@@ -1203,7 +1232,7 @@ internal object OfficeFormats {
                 if (!e.isDirectory) parts[e.name] = zip.readBytes()
             }
         }
-        require(parts.isNotEmpty()) { "Not a document." }
+        if (parts.isEmpty()) throw OfficeReadError(com.kalotrapezis.drive.R.string.office_error_not_document, "Not a document.")
         return parts
     }
 
@@ -1444,9 +1473,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
     }
 
     fun read(): OfficeDoc {
-        val xml = parts[docPath] ?: error("Not a Word document.")
+        val xml = parts[docPath] ?: throw OfficeReadError(com.kalotrapezis.drive.R.string.office_error_not_word, "Not a Word document.")
         val root = OfficeFormats.parse(xml).documentElement
-        if (root.namespaceURI != W) error("This Word document is in a format Writer does not read (Strict Open XML).")
+        if (root.namespaceURI != W) throw OfficeReadError(com.kalotrapezis.drive.R.string.office_error_strict, "This Word document is in a format Writer does not read (Strict Open XML).")
         if ("<w:body>" !in String(xml, Charsets.UTF_8)) notes += "an unusual file layout"
         parts[relsPath(docPath)]?.let { r ->
             OfficeFormats.parse(r).documentElement.kids().forEach {
@@ -1459,7 +1488,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             }
         }
         readStyles(); readNumbering()
-        val body = root.kid(W, "body") ?: error("Not a Word document.")
+        val body = root.kid(W, "body") ?: throw OfficeReadError(com.kalotrapezis.drive.R.string.office_error_not_word, "Not a Word document.")
         columnsArePages = root.getElementsByTagNameNS(W, "cols").let { l -> (0 until l.length).none { ((l.item(it) as Element).attr(W, "num")?.toIntOrNull() ?: 1) > 1 } }
         readComments(body)
         readNotes()
@@ -2553,7 +2582,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
     var ended = emptySet<String>() // the annotations with an end: a comment on some letters (one without is on a point)
 
     fun read(): OfficeDoc {
-        val content = OfficeFormats.parse(parts["content.xml"] ?: error("Not an OpenDocument text.")).documentElement
+        val content = OfficeFormats.parse(parts["content.xml"] ?: throw OfficeReadError(com.kalotrapezis.drive.R.string.office_error_not_odt, "Not an OpenDocument text.")).documentElement
         parts["styles.xml"]?.let { OfficeFormats.parse(it).documentElement }?.let { root ->
             root.kid(OFFICE, "styles")?.let { collect(it, false) }
             root.kid(OFFICE, "styles")?.kids()?.firstOrNull { it.localName == "default-style" && it.attr(STYLE, "family") == "paragraph" }
@@ -2561,7 +2590,7 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
             styles["paragraph/Standard"]?.text?.attr(FO, "font-size")?.let { size(it, basePt) }?.let { basePt = it }
         }
         content.kid(OFFICE, "automatic-styles")?.let { collect(it, true) }
-        val text = content.kid(OFFICE, "body")?.kid(OFFICE, "text") ?: error("Not an OpenDocument text.")
+        val text = content.kid(OFFICE, "body")?.kid(OFFICE, "text") ?: throw OfficeReadError(com.kalotrapezis.drive.R.string.office_error_not_odt, "Not an OpenDocument text.")
         ended = text.getElementsByTagNameNS(OFFICE, "annotation-end").let { l -> (0 until l.length).mapNotNull { (l.item(it) as Element).attr(OFFICE, "name") }.toSet() }
         val out = ArrayList<DocPara>()
         block(text, out, null, -1)

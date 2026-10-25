@@ -114,18 +114,17 @@ internal fun Modifier.noticePointer(): Modifier = pointerInput(Unit) {
     @Composable fun Choices(title: String, now: String, choices: List<Pair<String, String>>, pick: (String) -> Unit) = Column(Modifier.padding(bottom = 12.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp))
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for ((key, label) in choices) FilterChip(selected = now == key, onClick = { pick(key) }, label = { Text(label) })
+            for ((key, label) in choices) FilterChip(selected = now == key, onClick = { pick(key) }, label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) })
         }
     }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Settings") }, text = {
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.common_settings)) }, text = {
         Column {
-            Choices("The ribbon", OfficeUi.place, listOf("auto" to "By itself", "bottom" to "At the bottom", "top" to "At the top")) { OfficeUi.set(context, place = it) }
-            Choices("Its tools", OfficeUi.size, listOf("auto" to "By itself", "normal" to "Normal", "compact" to "Compact")) { OfficeUi.set(context, size = it) }
-            Choices("Tab marker", OfficeUi.marker, listOf("bubble" to "Bubble", "dash" to "Dash")) { OfficeUi.set(context, marker = it) }
-            Text("By itself: at the top and smaller while a mouse is in use, as on a computer; at the bottom, in reach of a hand, for a finger. Compact tools always mark the tab with the dash. " +
-                "Office's other settings (AutoSave, lengths, read aloud) are in Tetra's Settings › Office.", style = MaterialTheme.typography.bodySmall)
+            Choices(stringResource(R.string.office_settings_ribbon), OfficeUi.place, listOf("auto" to stringResource(R.string.office_by_itself), "bottom" to stringResource(R.string.office_at_bottom), "top" to stringResource(R.string.office_at_top))) { OfficeUi.set(context, place = it) }
+            Choices(stringResource(R.string.office_settings_tools), OfficeUi.size, listOf("auto" to stringResource(R.string.office_by_itself), "normal" to stringResource(R.string.office_size_normal), "compact" to stringResource(R.string.office_size_compact))) { OfficeUi.set(context, size = it) }
+            Choices(stringResource(R.string.office_settings_marker), OfficeUi.marker, listOf("bubble" to stringResource(R.string.office_marker_bubble), "dash" to stringResource(R.string.office_marker_dash))) { OfficeUi.set(context, marker = it) }
+            Text(stringResource(R.string.office_settings_note), style = MaterialTheme.typography.bodySmall)
         }
-    }, confirmButton = { TextButton(onClick = dismiss) { Text("Done") } })
+    }, confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_done)) } })
 }
 
 /** The round icon-only tools' size ([Tool]): 40 dp, and Android's 48 dp inside an Office ribbon whose tools are Normal size
@@ -156,11 +155,11 @@ internal val LocalToolSize = androidx.compose.runtime.staticCompositionLocalOf {
             // the bubble in the app's colour, as its dash (asked 17 Oct); the light contextual colour takes dark letters
             // Normal size: each tab 48 dp tall, Android's least for a finger (the user, 18 Oct); Compact as small as before
             if (bubble) Box(m.heightIn(min = 48.dp).clip(CircleShape).clickable { pick(t) }, contentAlignment = Alignment.Center) {
-                Text(label(t), color = if (!on) w else if (t == contextual) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                Text(label(t), color = if (!on) w else if (t == contextual) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(2.dp).clip(CircleShape).background(if (on) mark else Color.Transparent).padding(horizontal = 14.dp, vertical = 7.dp)) }
             else Column(m.heightIn(min = if (OfficeUi.compact) 0.dp else 48.dp).clickable { pick(t) }.padding(horizontal = 10.dp, vertical = if (OfficeUi.compact) 3.dp else 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Text(label(t), style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1)
+                Text(label(t), style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) w else w.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Box(Modifier.padding(top = 3.dp).width(if (on) 24.dp else 0.dp).height(3.dp).background(mark))
             }
         }
@@ -186,20 +185,20 @@ internal val CELL_FILLS = listOf(0xFFFFFF00, 0xFFC6EFCE, 0xFFFFC7CE, 0xFFDDEBF7,
 
 /** The font in use, its gallery a tap away — one look in every app (Words' outlined name). */
 @Composable internal fun FontButton(name: String?, w: Color, enabled: Boolean = true, click: () -> Unit) =
-    RibbonButton((name ?: "Font").take(18), w, enabled = enabled, outlined = true, click = click)
+    RibbonButton((name ?: stringResource(R.string.office_font)).take(18), w, enabled = enabled, outlined = true, click = click)
 
 /** The size: − and + a point at a time round the number (fixed width, so two digits fit as one does), as Words' Home. */
 @Composable internal fun SizeStepper(size: String, w: Color, smaller: Boolean = true, bigger: Boolean = true, shrink: () -> Unit, grow: () -> Unit) =
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Tool(R.drawable.ic_remove, "Smaller text", w, enabled = smaller, click = shrink)
+        Tool(R.drawable.ic_remove, stringResource(R.string.office_smaller_text), w, enabled = smaller, click = shrink)
         Text(size, color = w, style = MaterialTheme.typography.labelLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, modifier = Modifier.width(26.dp))
-        Tool(R.drawable.ic_add, "Bigger text", w, enabled = bigger, click = grow)
+        Tool(R.drawable.ic_add, stringResource(R.string.office_bigger_text), w, enabled = bigger, click = grow)
     }
 
 /** A strip's head, in the ribbon's place (Tables' Borders and Number, Slides' Options and Effect; 17 Oct: all alike): ‹ back, its name. */
 @Composable internal fun StripHead(title: String, w: Color, back: () -> Unit) {
-    androidx.compose.material3.IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Back", tint = w) }
-    Text(title, color = w, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(end = 8.dp))
+    androidx.compose.material3.IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back), tint = w) }
+    Text(title, color = w, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 8.dp))
 }
 
 /**
@@ -253,8 +252,8 @@ internal val LocalOfficeStrips = androidx.compose.runtime.staticCompositionLocal
             Box { val st = open ?: last[0]; if (st != null && t > 0f) {
                 @Composable fun choices(m: Modifier) = Box(m) { RibbonLine(androidx.compose.foundation.rememberScrollState()) { st.content(st) } }
                 @Composable fun okCancel() { if (st.ok != null) RibbonTools {
-                    Tool(R.drawable.ic_close, "Cancel", w) { strips.cancel() }
-                    Tool(R.drawable.ic_check, "Apply", w, enabled = st.picked != null) { strips.ok() }
+                    Tool(R.drawable.ic_close, stringResource(R.string.common_cancel), w) { strips.cancel() }
+                    Tool(R.drawable.ic_check, stringResource(R.string.common_apply), w, enabled = st.picked != null) { strips.ok() }
                 } }
                 // a phone: the name, × and ✓ where the tabs were, the choices under them (all the width for them)
                 if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 700) Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
@@ -311,22 +310,22 @@ internal class MenuChoice(val label: String, val checked: Boolean = false, val e
     val context = LocalContext.current
     val list = remember { versions(context, file) }
     val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Versions") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.office_versions)) },
         text = {
             Column {
-                Text(if (list.isEmpty()) "None yet. Each save keeps the file as it was before it, the last 3." else about ?: "The file as it was before a save. Opening one puts it in the editor; Save keeps it, $goBack.",
+                Text(if (list.isEmpty()) stringResource(R.string.office_versions_none) else about ?: stringResource(R.string.office_versions_about, goBack),
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
                 list.forEach { v ->
                     Row(Modifier.fillMaxWidth().clickable { open(v) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(painterResource(R.drawable.ic_history), contentDescription = null, modifier = Modifier.size(22.dp))
-                        Text(format.format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())) + " · ${(v.length() + 1023) / 1024} KB",
+                        Text(stringResource(R.string.office_version_line, format.format(java.util.Date(v.name.substringBefore('.').toLongOrNull() ?: v.lastModified())), (v.length() + 1023) / 1024),
                             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 12.dp))
-                        Text("Open", color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.common_open), color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = dismiss) { Text("Close") } })
+        confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } })
 }
 
 /** A right-click's menu where it was clicked ([at], from the parent's top left): rounded, its items smaller with a mouse. */
@@ -400,10 +399,10 @@ internal const val RIBBON_DIVIDER = "ribbon-divider"
 @androidx.compose.runtime.Composable
 internal fun ReplaceRow(w: Color, replacement: String, setReplacement: (String) -> Unit, found: Boolean, replace: () -> Unit, replaceAll: () -> Unit) =
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        androidx.compose.material3.OutlinedTextField(replacement, setReplacement, singleLine = true, placeholder = { androidx.compose.material3.Text("Replace with") },
+        androidx.compose.material3.OutlinedTextField(replacement, setReplacement, singleLine = true, placeholder = { androidx.compose.material3.Text(stringResource(R.string.office_replace_with)) },
             modifier = androidx.compose.ui.Modifier.weight(1f))
-        RibbonButton("Replace", w, enabled = found) { replace() }
-        RibbonButton("All", w, enabled = found) { replaceAll() }
+        RibbonButton(stringResource(R.string.office_replace), w, enabled = found) { replace() }
+        RibbonButton(stringResource(R.string.common_all), w, enabled = found) { replaceAll() }
     }
 
 /**
@@ -415,14 +414,14 @@ internal fun FindReplaceBar(w: Color, query: String, setQuery: (String) -> Unit,
     replacing: Boolean, setReplacing: (Boolean) -> Unit, replacement: String, setReplacement: (String) -> Unit, replace: () -> Unit, replaceAll: () -> Unit, close: () -> Unit) {
     Column(androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Tool(R.drawable.ic_close, "Close find", w) { close() }
+            Tool(R.drawable.ic_close, stringResource(R.string.office_close_find), w) { close() }
             val focus = remember { androidx.compose.ui.focus.FocusRequester() }
             LaunchedEffect(Unit) { focus.requestFocus() }
-            androidx.compose.material3.OutlinedTextField(query, setQuery, singleLine = true, placeholder = { androidx.compose.material3.Text("Find") },
+            androidx.compose.material3.OutlinedTextField(query, setQuery, singleLine = true, placeholder = { androidx.compose.material3.Text(stringResource(R.string.office_find)) },
                 modifier = androidx.compose.ui.Modifier.weight(1f).focusRequester(focus), suffix = { androidx.compose.material3.Text(count) })
-            Tool(R.drawable.ic_keyboard_arrow_up, "Previous", w, enabled = found) { previous() }
-            Box(androidx.compose.ui.Modifier.graphicsLayer { rotationZ = 180f }) { Tool(R.drawable.ic_keyboard_arrow_up, "Next", w, enabled = found) { next() } }
-            Tool(R.drawable.ic_swap_horiz, "Replace", w, on = replacing) { setReplacing(!replacing) }
+            Tool(R.drawable.ic_keyboard_arrow_up, stringResource(R.string.common_previous), w, enabled = found) { previous() }
+            Box(androidx.compose.ui.Modifier.graphicsLayer { rotationZ = 180f }) { Tool(R.drawable.ic_keyboard_arrow_up, stringResource(R.string.common_next), w, enabled = found) { next() } }
+            Tool(R.drawable.ic_swap_horiz, stringResource(R.string.office_replace), w, on = replacing) { setReplacing(!replacing) }
         }
         if (replacing) ReplaceRow(w, replacement, setReplacement, found, replace, replaceAll)
     }
@@ -435,16 +434,16 @@ internal fun FindReplaceBar(w: Color, query: String, setQuery: (String) -> Unit,
 @Composable
 internal fun SpellingDialog(word: String, at: String, offered: List<String>, canChange: Boolean, change: (String) -> Unit, ignore: () -> Unit, ignoreAll: () -> Unit, close: () -> Unit) {
     var choice by androidx.compose.runtime.remember(word, at) { androidx.compose.runtime.mutableStateOf(offered.firstOrNull()) }
-    androidx.compose.material3.AlertDialog(onDismissRequest = close, title = { androidx.compose.material3.Text("Spelling") },
+    androidx.compose.material3.AlertDialog(onDismissRequest = close, title = { androidx.compose.material3.Text(stringResource(R.string.office_spelling)) },
         text = { androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-            androidx.compose.material3.Text("Not in the dictionary: $word", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            androidx.compose.material3.Text(stringResource(R.string.office_not_in_dictionary, word), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
             androidx.compose.material3.Text(at, style = androidx.compose.material3.MaterialTheme.typography.bodySmall, maxLines = 3)
-            if (offered.isEmpty()) androidx.compose.material3.Text("No suggestions")
+            if (offered.isEmpty()) androidx.compose.material3.Text(stringResource(R.string.office_no_suggestions))
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
-                offered.forEach { o -> androidx.compose.material3.FilterChip(choice == o, { choice = o }, { androidx.compose.material3.Text(o) }) } } } },
+                offered.forEach { o -> androidx.compose.material3.FilterChip(choice == o, { choice = o }, { androidx.compose.material3.Text(o, maxLines = 1, overflow = TextOverflow.Ellipsis) }) } } } },
         confirmButton = { androidx.compose.foundation.layout.Row {
-            androidx.compose.material3.TextButton(enabled = choice != null && canChange, onClick = { choice?.let(change) }) { androidx.compose.material3.Text("Change") }
-            androidx.compose.material3.TextButton(onClick = ignore) { androidx.compose.material3.Text("Ignore") }
-            androidx.compose.material3.TextButton(onClick = ignoreAll) { androidx.compose.material3.Text("Ignore all") } } },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = close) { androidx.compose.material3.Text("Close") } })
+            androidx.compose.material3.TextButton(enabled = choice != null && canChange, onClick = { choice?.let(change) }) { androidx.compose.material3.Text(stringResource(R.string.office_change)) }
+            androidx.compose.material3.TextButton(onClick = ignore) { androidx.compose.material3.Text(stringResource(R.string.office_ignore)) }
+            androidx.compose.material3.TextButton(onClick = ignoreAll) { androidx.compose.material3.Text(stringResource(R.string.office_ignore_all)) } } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = close) { androidx.compose.material3.Text(stringResource(R.string.common_close)) } })
 }

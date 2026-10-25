@@ -121,7 +121,7 @@ internal fun rememberOfficePicker(opened: (File) -> Unit): (OfficePick) -> Unit 
             val into = if (k == OfficePick.Pdf) File(context.cacheDir, "pdf").apply { deleteRecursively() } else File(TetraFolder.root(Environment.getExternalStorageDirectory()), "Documents/From other apps")
             val f = withContext(Dispatchers.IO) { runCatching { OfficeOpen.file(context, uri, Environment.getExternalStorageDirectory(), into, k.types.first()) }
                 .onFailure { WriterLog.e("Office: the chosen file could not be read", it) }.getOrNull() }
-            if (f == null) Toast.makeText(context, "That file could not be opened.", Toast.LENGTH_LONG).show() else opened(f)
+            if (f == null) Toast.makeText(context, context.getString(R.string.office_open_failed), Toast.LENGTH_LONG).show() else opened(f)
         }
     }
     return { k -> kind = k; WriterLog.i("Office: open ${k.name}"); launcher.launch(k.types) }

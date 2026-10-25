@@ -423,14 +423,14 @@ internal object TableEdit {
      * Ready-made looks (a first set; asked 2026-09-28 "styles, colours"): written as the cells' own shading and lines
      * and the first row's text, so Word, LibreOffice and the pages all show the same without the table style part.
      */
-    class Look(val name: String, val header: Int?, val headerText: Int?, val band: Int?, val line: Int, val inside: Boolean = true)
+    class Look(val name: String, @androidx.annotation.StringRes val labelRes: Int, val header: Int?, val headerText: Int?, val band: Int?, val line: Int, val inside: Boolean = true)
     val LOOKS = listOf(
-        Look("Plain", null, null, null, 0x000000),
-        Look("Blue", 0x4472C4, 0xFFFFFF, 0xD9E2F3, 0x8EAADB),
-        Look("Green", 0x70AD47, 0xFFFFFF, 0xE2EFD9, 0xA8D08D),
-        Look("Orange", 0xED7D31, 0xFFFFFF, 0xFBE4D5, 0xF4B083),
-        Look("Grey", 0x7F7F7F, 0xFFFFFF, 0xEDEDED, 0xBFBFBF),
-        Look("Lines", null, null, null, 0x7F7F7F, inside = false),
+        Look("Plain", R.string.office_look_plain, null, null, null, 0x000000),
+        Look("Blue", R.string.office_look_blue, 0x4472C4, 0xFFFFFF, 0xD9E2F3, 0x8EAADB),
+        Look("Green", R.string.office_look_green, 0x70AD47, 0xFFFFFF, 0xE2EFD9, 0xA8D08D),
+        Look("Orange", R.string.office_look_orange, 0xED7D31, 0xFFFFFF, 0xFBE4D5, 0xF4B083),
+        Look("Grey", R.string.office_look_grey, 0x7F7F7F, 0xFFFFFF, 0xEDEDED, 0xBFBFBF),
+        Look("Lines", R.string.office_look_lines, null, null, null, 0x7F7F7F, inside = false),
     )
     fun withLook(t: DocTable, look: Look): DocTable {
         val line = Line(look.line, 4)

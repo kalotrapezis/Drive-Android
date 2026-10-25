@@ -5,14 +5,14 @@ package com.kalotrapezis.drive
  * scheme (two darks, two lights, six accents, the links') and its font scheme (headings', body's). Word draws theme
  * colours from it (shapes, charts, SmartArt, headings that say w:themeColor); Writer does too ([ShapePicture.theme]).
  */
-internal enum class ThemeColors(val label: String, val dk2: Int, val lt2: Int, val accents: List<Int>, val link: Int, val followed: Int) {
-    Office("Office", 0x44546A, 0xE7E6E6, listOf(0x4472C4, 0xED7D31, 0xA5A5A5, 0xFFC000, 0x5B9BD5, 0x70AD47), 0x0563C1, 0x954F72),
-    Office2007("Office 2007 – 2010", 0x1F497D, 0xEEECE1, listOf(0x4F81BD, 0xC0504D, 0x9BBB59, 0x8064A2, 0x4BACC6, 0xF79646), 0x0000FF, 0x800080),
-    Blue("Blue", 0x17406D, 0xDBEFF9, listOf(0x0F6FC6, 0x009DD9, 0x0BD0D9, 0x10CF9B, 0x7CCA62, 0xA5C249), 0xF49100, 0x85DFD0),
-    Green("Green", 0x455F51, 0xE3DED1, listOf(0x549E39, 0x8AB833, 0xC0CF3A, 0x029676, 0x4AB5C4, 0x0989B1), 0x6B9F25, 0xBA6906),
-    Red("Red", 0x323232, 0xE5C243, listOf(0xA5300F, 0xD55816, 0xE19825, 0xB19C7D, 0x7F5F52, 0xB27D49), 0x6B9F25, 0xB26B02),
-    Violet("Violet", 0x373545, 0xDCD8DC, listOf(0xAD84C6, 0x8784C7, 0x5D739A, 0x6997AF, 0x84ACB6, 0x6FAA89), 0x69A020, 0x8C8C8C),
-    Grayscale("Grayscale", 0x000000, 0xF8F8F8, listOf(0xDDDDDD, 0xB2B2B2, 0x969696, 0x808080, 0x5F5F5F, 0x4D4D4D), 0x5F5F5F, 0x919191);
+internal enum class ThemeColors(val label: String, @androidx.annotation.StringRes val labelRes: Int, val dk2: Int, val lt2: Int, val accents: List<Int>, val link: Int, val followed: Int) {
+    Office("Office", R.string.office_theme_office, 0x44546A, 0xE7E6E6, listOf(0x4472C4, 0xED7D31, 0xA5A5A5, 0xFFC000, 0x5B9BD5, 0x70AD47), 0x0563C1, 0x954F72),
+    Office2007("Office 2007 – 2010", R.string.office_theme_office2007, 0x1F497D, 0xEEECE1, listOf(0x4F81BD, 0xC0504D, 0x9BBB59, 0x8064A2, 0x4BACC6, 0xF79646), 0x0000FF, 0x800080),
+    Blue("Blue", R.string.office_theme_blue, 0x17406D, 0xDBEFF9, listOf(0x0F6FC6, 0x009DD9, 0x0BD0D9, 0x10CF9B, 0x7CCA62, 0xA5C249), 0xF49100, 0x85DFD0),
+    Green("Green", R.string.office_theme_green, 0x455F51, 0xE3DED1, listOf(0x549E39, 0x8AB833, 0xC0CF3A, 0x029676, 0x4AB5C4, 0x0989B1), 0x6B9F25, 0xBA6906),
+    Red("Red", R.string.office_theme_red, 0x323232, 0xE5C243, listOf(0xA5300F, 0xD55816, 0xE19825, 0xB19C7D, 0x7F5F52, 0xB27D49), 0x6B9F25, 0xB26B02),
+    Violet("Violet", R.string.office_theme_violet, 0x373545, 0xDCD8DC, listOf(0xAD84C6, 0x8784C7, 0x5D739A, 0x6997AF, 0x84ACB6, 0x6FAA89), 0x69A020, 0x8C8C8C),
+    Grayscale("Grayscale", R.string.office_theme_grayscale, 0x000000, 0xF8F8F8, listOf(0xDDDDDD, 0xB2B2B2, 0x969696, 0x808080, 0x5F5F5F, 0x4D4D4D), 0x5F5F5F, 0x919191);
 
     /** The scheme as names → colours (with Word's fixed darks and lights). */
     val map: Map<String, Int> get() = mapOf("dk1" to 0x000000, "lt1" to 0xFFFFFF, "dk2" to dk2, "lt2" to lt2, "hlink" to link, "folHlink" to followed) +

@@ -1872,6 +1872,12 @@ internal object LineDash {
     /** Word's list of dashes (Format Shape › Line › Dash type): its name and the shown word. */
     val CHOICES = listOf(null to "Solid", "sysDot" to "Round dot", "sysDash" to "Square dot", "dash" to "Dash", "dashDot" to "Dash dot",
         "lgDash" to "Long dash", "lgDashDot" to "Long dash dot", "lgDashDotDot" to "Long dash dot dot")
+    /** [CHOICES]' words as shown, by the dash's name (null: Solid). */
+    @androidx.annotation.StringRes fun labelRes(name: String?): Int = when (name) {
+        "sysDot" -> R.string.office_dash_round_dot; "sysDash" -> R.string.office_dash_square_dot; "dash" -> R.string.office_dash_dash
+        "dashDot" -> R.string.office_dash_dash_dot; "lgDash" -> R.string.office_dash_long_dash; "lgDashDot" -> R.string.office_dash_long_dash_dot
+        "lgDashDotDot" -> R.string.office_dash_long_dash_dot_dot; else -> R.string.office_dash_solid
+    }
     /** Android's on/off lengths for [name] on a line [width] pt wide; null: solid. */
     fun intervals(name: String, width: Float): FloatArray? {
         val d = ALL[name] ?: return null

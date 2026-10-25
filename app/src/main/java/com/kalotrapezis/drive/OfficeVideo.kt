@@ -134,7 +134,7 @@ internal fun VideoFrame(film: String, modifier: Modifier, trim: List<Int>? = nul
                     postDelayed(watch, 100) } }
         }
     }, Modifier.matchParentSize(), onRelease = { v -> (v as? android.webkit.WebView)?.destroy(); (v as? android.widget.VideoView)?.stopPlayback() })
-    Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color.Black.copy(alpha = 0.6f)).clickable(onClickLabel = "Stop the video", onClick = close),
+    Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color.Black.copy(alpha = 0.6f)).clickable(onClickLabel = stringResource(R.string.office_video_stop), onClick = close),
         contentAlignment = Alignment.Center) { Text("✕", color = Color.White) }
 }
 
@@ -143,15 +143,15 @@ internal fun VideoFrame(film: String, modifier: Modifier, trim: List<Int>? = nul
 internal fun VideoButton(tint: Color, enabled: Boolean = true, phone: (() -> Unit)?, online: (String) -> Unit) = Box {
     var addressing by remember { mutableStateOf(false) }
     // a desktop's menu, a tablet's or phone's strip (the user, 18 Oct)
-    if (phone == null) RibbonButton("Video", tint, R.drawable.ic_play, enabled = enabled) { addressing = true }
-    else RibbonMenu("Video", tint, R.drawable.ic_play, enabled = enabled, preset = false, choices = listOf(MenuChoice("From this phone") { phone() },
-        MenuChoice("Online video") { addressing = true }))
+    if (phone == null) RibbonButton(stringResource(R.string.office_video), tint, R.drawable.ic_play, enabled = enabled) { addressing = true }
+    else RibbonMenu(stringResource(R.string.office_video), tint, R.drawable.ic_play, enabled = enabled, preset = false, choices = listOf(MenuChoice(stringResource(R.string.office_video_from_phone)) { phone() },
+        MenuChoice(stringResource(R.string.office_video_online)) { addressing = true }))
     if (addressing) {
         var typed by remember { mutableStateOf("") }
-        androidx.compose.material3.AlertDialog(onDismissRequest = { addressing = false }, title = { Text("Online video") },
-            text = { androidx.compose.material3.OutlinedTextField(typed, { typed = it.trim() }, singleLine = true, label = { Text("Its address (YouTube or another site)") },
+        androidx.compose.material3.AlertDialog(onDismissRequest = { addressing = false }, title = { Text(stringResource(R.string.office_video_online)) },
+            text = { androidx.compose.material3.OutlinedTextField(typed, { typed = it.trim() }, singleLine = true, label = { Text(stringResource(R.string.office_video_address)) },
                 placeholder = { Text("https://www.youtube.com/watch?v=…") }, modifier = Modifier.fillMaxWidth()) },
-            confirmButton = { androidx.compose.material3.TextButton(enabled = '.' in typed, onClick = { addressing = false; online(if (typed.startsWith("http")) typed else "https://$typed") }) { Text("Insert") } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { addressing = false }) { Text("Cancel") } })
+            confirmButton = { androidx.compose.material3.TextButton(enabled = '.' in typed, onClick = { addressing = false; online(if (typed.startsWith("http")) typed else "https://$typed") }) { Text(stringResource(R.string.office_insert)) } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { addressing = false }) { Text(stringResource(R.string.common_cancel)) } })
     }
 }

@@ -9,10 +9,11 @@ import org.w3c.dom.Element
  * use): what a chart shows — its kind, title, categories and each series' values — read from Word's chart part or
  * LibreOffice's chart object, drawn on the pages, and written for a new one.
  */
-internal enum class ChartKind(val label: String, val made: Boolean = true) {
-    Column("Column"), Bar("Bar"), Line("Line"), Area("Area"), Pie("Pie"), Doughnut("Doughnut"), Scatter("Scatter"),
+internal enum class ChartKind(val label: String, @androidx.annotation.StringRes val labelRes: Int, val made: Boolean = true) {
+    Column("Column", R.string.office_chart_column), Bar("Bar", R.string.office_chart_bar), Line("Line", R.string.office_chart_line), Area("Area", R.string.office_chart_area),
+    Pie("Pie", R.string.office_chart_pie), Doughnut("Doughnut", R.string.office_chart_doughnut), Scatter("Scatter", R.string.office_chart_scatter),
     // read and drawn (asked 16 Oct: Excel's other charts), not offered for a new chart
-    Radar("Radar", made = false), Bubble("Bubble", made = false),
+    Radar("Radar", R.string.office_chart_radar, made = false), Bubble("Bubble", R.string.office_chart_bubble, made = false),
 }
 
 /**

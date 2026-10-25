@@ -508,6 +508,15 @@ How to write here:
       **Greek first, then the EU languages, one string file per language** (Android values-<lang>/strings.xml; the desktop
       one file per language); short words preferred, and what still doesn't fit ends with "…" (no wrapping, no shrinking);
       (4) then push to GitHub as a fuller product.
+      (5) **No more applets until "a baby can use this thing"** (the user, 25 Oct). Before any new applet:
+      (5a) Home's **default layout is a grid of small icons** (Home edit's Small size), so a new user isn't overwhelmed; the
+      big groups stay one tap away in edit mode. (5b) A **step-by-step guide with graphics** on first start: pair with the
+      computer, every permission and why it is asked (files, photos, notifications, exact alarms, contacts, phone/calls,
+      usage access, location for Maps/Wi-Fi), and how to customise Home — change, resize and move icons. Skippable, and
+      reachable again from Settings. (5c) **A first-run simulation**: a fresh install from 0 (empty app data, no pairing, a
+      new emulator and a fresh desktop data folder) to check everything still works from the very start, and fix what
+      doesn't. (6) The next big step after that: **Android as server and client, and the desktop as server and client**
+      (today the computer is the hub and devices pair only with it).
 
 - [x] (Drive `sync-one-writer`, sync-copies session, 25 Oct) Sync's "(2)", "(3)", "(4)" of a file only the phone writes (Data's
       month file): the computer took a path it had just asked for as agreed before the upload came; a late upload (a part's and

@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableIntStateOf
@@ -104,6 +105,7 @@ private fun inView(n: Note, v: NotesView) = when (v) {
     NotesView.Archived -> n.trashedAt == null && n.archivedAt != null
     NotesView.Home -> n.trashedAt == null && n.archivedAt == null
 }
+private const val FIRST_NOTES = 24 // a tablet's first screenful of cards and more
 private val accents = Regex("\\p{M}")
 private fun fold(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(accents, "").lowercase()
 
@@ -126,11 +128,19 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     var selected by remember { mutableStateOf(emptySet<String>()) }
     val remote by NotesSync.changed.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val first = remember { File(context.cacheDir, "notes-first.txt") } // the notes Home showed first last time
     LaunchedEffect(version, remote, hasAccess) {
         if (!hasAccess) return@LaunchedEffect
+        // opened before the read-ahead finished: the pinned and the first screenful at once, then everything
+        if (notes == null) withContext(Dispatchers.IO) { runCatching { store.some(first.readLines()) }.getOrNull() }?.takeIf { it.isNotEmpty() }?.let { if (notes == null) notes = it }
         val got = withContext(Dispatchers.IO) { store.list() }
         notes = got
         if (withContext(Dispatchers.IO) { store.sweep(notes = got) } > 0) notes = withContext(Dispatchers.IO) { store.list() } // after the list shows
+        withContext(Dispatchers.IO) { runCatching { first.writeText(got.filter { inView(it, NotesView.Home) }.sortedByDescending { it.updatedAt }.let { h -> h.filter { it.pinned } + h.filterNot { it.pinned }.take(FIRST_NOTES) }.joinToString("\n") { it.id }) } }
+    }
+    // search's index: each note's words without accents, made once off this thread, not on every key typed
+    val index by produceState(emptyMap<String, String>(), notes) {
+        value = withContext(Dispatchers.Default) { notes.orEmpty().associate { n -> n.id to fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" ")) } }
     }
     LaunchedEffect(version) { if (version > 0) NotesSync.soon(context) } // a change made here, in the list or an editor
     // Opening Notes is the moment to catch up — the whole sync may have been skipped (asked 2026-09-26).
@@ -172,8 +182,8 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     // A search or a label looks through every note but the Trash, whichever page it starts from (asked 2026-09-28).
     val everywhere = q.isNotEmpty() || label != null
     val trash = view == NotesView.Trash && !everywhere
-    val shown = remember(all, view, label, q) { all.filter { n -> (if (everywhere) n.trashedAt == null else inView(n, view)) && (label == null || label in n.labels) &&
-        (q.isEmpty() || fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" ")).contains(q)) }
+    val shown = remember(all, view, label, q, index) { all.filter { n -> (if (everywhere) n.trashedAt == null else inView(n, view)) && (label == null || label in n.labels) &&
+        (q.isEmpty() || (index[n.id] ?: fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" "))).contains(q)) }
         .sortedWith(if (trash) compareByDescending { it.trashedAt } else compareByDescending { it.updatedAt }) }
     // Pinned on top of Home, the rest below them (asked 2026-09-26).
     val pinned = remember(shown, view, everywhere) { if (view == NotesView.Home || everywhere) shown.filter { it.pinned } else emptyList() }

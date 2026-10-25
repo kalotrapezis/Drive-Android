@@ -62,7 +62,13 @@ internal class NotesStore(val root: File, private val deviceId: String = "tetra-
             .also { lists[root.path] = it }
     }
 
-    /** The list as [list] last read it (Tetra reads it ahead at start, NotesPreload): the screen's first frame. */
+    /** These notes only, without waiting for a whole read under way: what Notes shows first (NotesTab). */
+    fun some(ids: List<String>): List<Note> {
+        val deleted = deletedIds()
+        return ids.filter { isId(it) && it !in deleted }.mapNotNull { read(file(it)) }
+    }
+
+    /** The list as [list] last read it (Tetra reads it ahead at start): the screen's first frame. */
     fun lastList(): List<Note>? = lists[root.path]
 
     // A note's file is read again only when it changed: opening Notes read and parsed every one each time (25 Oct).

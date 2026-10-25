@@ -406,7 +406,7 @@ How to write here:
 
       | Applet | before | after | what was slow |
       |---|---|---|---|
-      | Notes (218 notes) | 1000 / 740 / 1043 ms | 435 / 315 / 608 ms | every note file read and parsed twice per open (the Trash sweep, then the list) before anything showed; four Regexes built per line of every card. Now: read ahead at start, a file read again only when it changed, the sweep after the list shows, Regexes made once. What is left is laying out ~12 cards of text (debug build) |
+      | Notes (218 notes) | 1000 / 740 / 1043 ms | 435 / 315 / 608 ms | every note file read and parsed twice per open (the Trash sweep, then the list) before anything showed; four Regexes built per line of every card. Now: read ahead at start, a file read again only when it changed, the sweep after the list shows, Regexes made once; opened before the read-ahead is done, the pinned and the first screenful (remembered from last time) show first, then the rest; search looks in an index made off the screen's thread (the user's ideas). What is left is laying out ~12 cards of text (debug build) |
 - [ ] **Next, in this order** (the user, 25 Oct): (1) wait for the two agents now running — sync's clean-up of what Data
       leaves behind, and Contacts' call history with recordings — then merge everything; (2) one agent optimises every
       other applet one by one with Contacts' speed recipe (Notes is slow to show its notes; Files, Scanner, Timer, Calendar

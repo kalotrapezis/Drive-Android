@@ -20,7 +20,8 @@ How to write here:
       drive on the user's own map data (and one desktop test) are skipped now; put real places back locally to run them.
       READMEs of both repos are landing pages with cards (Assets/cards, made on a fresh emulator `tetra_shots` and the
       desktop from source, all sample data invented), download buttons, the speed tables; docs/ is the Pages site.
-      Releases: Android v0.6.0-beta.1 (release key), desktop desktop-v0.6.0-beta.21.
+      Releases: Android v0.6.0-beta.1 (release key), desktop desktop-v0.6.0-beta.21. LICENSE is now the GPL 3.0 or later
+      (the user, 25 Oct: "Yes update the license"), which MuPDF's AGPL 3.0 can be combined with; the desktop was GPL 3.0 already.
 - [x] (contacts-lazy session, 25 Oct; merged 440a754 / Drive f5b008c) Contacts and
       the Phone open at once (the user: "slow, taps don't answer until it's all ready"). Read ahead when Tetra opens: the
       favourites and the first screenful first (their faces made small at once, ContactThumbs), then everyone; sorting,

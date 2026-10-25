@@ -166,5 +166,6 @@ name on purpose: changing it would make every existing install a different app.
 
 ## Licence
 
-Tetra is free software, and will stay free. See [LICENSE](LICENSE) and, for the libraries it bundles (MuPDF under
-the AGPL 3.0 among them), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Tetra is free software, and will stay free: [GNU GPL 3.0 or later](LICENSE) (until 25 October 2026 the GPL 2.0). The
+libraries it bundles and their licences, MuPDF under the AGPL 3.0 among them, are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

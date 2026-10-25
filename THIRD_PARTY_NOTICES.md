@@ -52,7 +52,7 @@ Camera capture uses AndroidX CameraX, licensed under Apache License 2.0.
 `app/src/main/resources/shapes/presets.txt` is converted by `tools/shape-presets.py` from LibreOffice's
 `share/filter/oox-drawingml-cs-presets` (LibreOffice 26.2), the preset shape definitions of ECMA-376 (Office Open XML)
 in LibreOffice's custom-shape notation. LibreOffice is licensed under the Mozilla Public License 2.0, which allows
-this file to be combined with GPL 2.0 or later code: https://www.mozilla.org/MPL/2.0/ — source:
+this file to be combined with Tetra's GPL 3.0 code: https://www.mozilla.org/MPL/2.0/ — source:
 https://git.libreoffice.org/core/+/refs/heads/master/oox/source/drawingml/customshapes/
 
 ## MuPDF

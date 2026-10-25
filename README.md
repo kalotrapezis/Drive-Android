@@ -28,12 +28,16 @@ your own backups. Screenshots use invented sample data.
 - **Calendar and timers, with AI.** Built-in skills (Settings › Calendar or Timer › *Share with Claude*) let Claude,
   ChatGPT or any assistant that can use your computer import a timetable, plan your week or start a timer: they simply
   edit the calendar's and timers' files, and Tetra syncs the result to your phone.
-- **Office that keeps your files.** Word, Excel, PowerPoint and PDF open and save as themselves, on a phone, on a tablet
-  laid out like the desktop programs, or on a big screen.
+- **Photos that know who and where.** Tags, live photos, and People and Documents collections from face recognition
+  that runs on the device. Find photos by place\*, and bring your Google Photos over (Takeout import on the computer).
+- **Hide what should stay private.** Redact PDFs and photos so the hidden part is removed from the file itself, not
+  just covered. Tetra finds the eyes in a photo and covers them with black bars or stars, and finds text to hide.
+- **Office and PDF, good enough.** Word, Excel and PowerPoint open and save as themselves, compatible enough for
+  everyday work; PDF editing and page organising; and a phone layout you can actually use.
 - **Maps that work offline\*.** Search, places, routes by car, on foot and by bike, voice guidance and Android Auto,
   all on the device.
 
-<sub>\* Maps covers Greece only for now; other countries will follow.</sub>
+<sub>\* Maps and finding photos by place cover Greece only for now; other countries will follow.</sub>
 
 ## The applets
 

@@ -12,11 +12,20 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
-- [~] (translations session, 25 Oct; branch `claude/translations`) **Translations, Greek first** (the user: "start the translation
-      work; first translation Greek. Make the code translation flexible so we can add all the EU countries. And have a language
-      option in the settings"). Android: every UI string into res/values/strings.xml, Greek in values-el; a language is one
-      file (the build lists the values-<tag> folders); Settings › Appearance › Language (Android's per-app language, so
-      Android's App languages page shows it too). Desktop: locales/<lang>.json, t(), Settings › Language. Applet by applet.
+- [~] (translations session, 25 Oct; Drive-Android `claude/translations`, Drive `translations`; not merged, nothing
+      installed on the phone or tablet) **Translations, Greek first** (the user: "start the translation work; first
+      translation Greek. Make the code translation flexible so we can add all the EU countries. And have a language option
+      in the settings"). Android: 4,059 strings + 87 plurals in res/values/strings.xml, all in Greek in values-el (one
+      section per applet); a new language is one file, res/values-<tag>/strings.xml — the build lists the folders
+      (BuildConfig.LANGUAGES) and generates Android's locale config, so Settings › Appearance › Language and Android's own
+      App languages page offer it. StringsTest fails if a language lacks a string or its placeholders differ. One commit per
+      applet; code that compared shown English text (photo permission, Sync's "reach the computer", Calendar's Starts/Ends,
+      Slides' text effects, Tables' "…" menus, Contacts' History…) now uses IDs. Not translated on purpose: file and folder
+      names, style/font/function names, text written into documents (citations, captions, "Page 1" in headers), log lines.
+      Desktop: locales/en.json + el.json (1,659 keys), t(), Settings › Language (system default), 151 tests pass. Checked in
+      Greek on the tetra_shots emulator at phone and tablet size, and the desktop from source (hidden). **Left**: PDF
+      (PdfScreen.kt/PdfText.kt) waits for `claude/pdf-handles` to be merged; Maps' voice now follows the app's language
+      when "Directions in" was never set (it was always Greek).
 - [x] (data-calls session, 25 Oct; branches `claude/data-calls` / Drive `data-calls`, not merged, nothing installed) Three of the
       user's reports. **41 % on the phone, 40 % on the computer, 83 % on the tablet**: the computer's copy of the phone's October
       stayed at the 10:00 counts (120.9 GB) while every newer version arrived as a sync copy ("(2)", "(2) (3)"… 14 of them, mtime

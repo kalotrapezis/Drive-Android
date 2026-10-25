@@ -121,6 +121,7 @@ internal fun CodeScannerTab(back: () -> Unit, onCode: ((String) -> Boolean)? = n
     var reading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var capture by remember { mutableStateOf<ImageCapture?>(null) }
+    OpenTiming("Codes", capture != null)
     // A dismissed code is ignored for a moment so the sheet does not pop straight back up.
     var ignoredValue by remember { mutableStateOf<String?>(null) }
     var ignoredUntil by remember { mutableStateOf(0L) }

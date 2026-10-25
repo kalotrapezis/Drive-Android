@@ -97,6 +97,7 @@ private fun DataApp(start: String?, back: () -> Unit) {
             DataFiles.all()
         }
     }
+    OpenTiming("Data", all.isNotEmpty())
     // the plan and the other devices' counts fetched from the computer now, not at the next sync (the tablet has no plan of its own)
     LaunchedEffect(Unit) {
         val got = withContext(Dispatchers.IO) { runCatching { SyncClient(context, SyncStore(context)).scopeOnly("data") }.isSuccess }

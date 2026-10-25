@@ -114,6 +114,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
     val scope = rememberCoroutineScope()
     var version by remember { mutableIntStateOf(0) }
     var notes by remember { mutableStateOf<List<Note>?>(null) }
+    OpenTiming("Notes", notes != null)
     var view by remember { mutableStateOf(NotesView.Home) }
     var label by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }

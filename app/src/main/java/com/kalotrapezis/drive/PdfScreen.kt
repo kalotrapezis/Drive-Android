@@ -1019,6 +1019,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     remember { WriterUnits.load(context) } // View's cm or inches, Words' own setting
     RememberOpened(file) // the Office home's Recents
     var doc by remember { mutableStateOf<PdfDoc?>(null) }
+    OpenTiming("PDF", doc != null)
     var failed by remember { mutableStateOf<String?>(null) }
     var password by remember { mutableStateOf<String?>(null) } // given in the password dialog
     var askPassword by remember { mutableStateOf<Boolean?>(null) } // the dialog: true when the last one was wrong

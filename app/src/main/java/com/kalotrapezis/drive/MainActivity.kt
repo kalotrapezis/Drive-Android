@@ -1015,6 +1015,7 @@ private fun Home(
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     val context = LocalContext.current
     val syncSummary = remember(context) { SyncStore(context.applicationContext).summary() }
+    OpenTiming("Home", true)
     // each part's group, as Home has always shown them
     val large: @Composable (String) -> Unit = { id -> when (id) {
         "gallery" -> {
@@ -2059,6 +2060,7 @@ private fun DriveTab(
     val root = remember { driveRoot() }
     val metadata = remember(context) { DriveMetadata(context) }
     val driveOpeners = remember(context) { DriveOpeners(context) }
+    OpenTiming("Files", state is DriveListState.Items)
     var grid by remember { mutableStateOf(false) }
     var sort by remember { mutableStateOf(DriveSort.Name) }
     var toolsOpen by remember { mutableStateOf(false) }
@@ -3107,6 +3109,7 @@ private fun PhotoTab(
     val lifecycleOwner = LocalLifecycleOwner.current
     val reviewScope = rememberCoroutineScope()
     val vault = remember(context) { SecureVault(context.applicationContext) }
+    OpenTiming("Photos", state is ListState.Items)
     var vaultVersion by remember { mutableStateOf(0) }
     var vaultUnlocked by remember { mutableStateOf(false) }
     var stagedHide by remember { mutableStateOf<Pair<List<VaultItem>, List<Uri>>?>(null) }

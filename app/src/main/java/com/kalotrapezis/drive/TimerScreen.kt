@@ -83,6 +83,8 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
     // each device counts by itself: the files read twice a second, the time left worked out from them
     var now by remember { mutableStateOf(Instant.now()) }
     var timers by remember { mutableStateOf(emptyList<TimerRecord>()) }
+    var read by remember { mutableStateOf(false) }
+    OpenTiming("Timer", read)
     LaunchedEffect(Unit) {
         TimerService.check(context)
         // sync's old copies of timers, cleared each time the Timer opens (TimerFiles.clean)
@@ -90,6 +92,7 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
             .onSuccess { if (it > 0) WriterLog.i("Timer: cleared $it old copies") }.onFailure { WriterLog.e("Timer: clean", it) } }
         while (true) {
             timers = withContext(Dispatchers.IO) { runCatching { TimerFiles.cards(TimerControl.dir()) }.getOrDefault(emptyList()) }
+            read = true
             now = Instant.now()
             delay(500)
         }

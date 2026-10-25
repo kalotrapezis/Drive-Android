@@ -1049,6 +1049,7 @@ internal fun OfficeHome(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit,
     val root = remember { TetraFolder.root(Environment.getExternalStorageDirectory()) }
     val context = LocalContext.current
     var files by remember { mutableStateOf<List<OfficeFile>?>(null) }
+    OpenTiming("Office", files != null)
     var total by remember { mutableIntStateOf(0) }
     // Only the newest ones (asked 2026-09-28: all of them made the page heavy); the rest are in Files.
     // read again whenever the home shows (back from a document, Files or another app) and when something opens (the user, 18 Oct:
@@ -1321,6 +1322,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var styleEdits by remember { mutableIntStateOf(0) } // counted, so the draft is kept after a style (or a picture: its wrap, size, place) changes
     var meta by remember { mutableStateOf(OfficeDoc(emptyList())) }
     var loaded by remember { mutableStateOf(false) }
+    OpenTiming("Words", loaded)
     var failed by remember { mutableStateOf<String?>(null) }
     var dirty by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(WriterTab.Home) }

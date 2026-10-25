@@ -289,6 +289,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
             CalData(cals, CalendarFiles.occurrences(cals, from, to))
         }
     }
+    OpenTiming("Calendar", data != null)
     val cals = data?.cals.orEmpty()
     val days = remember(data, hidden) { byDay(data?.occ.orEmpty().filter { it.calendar.dir.name !in hidden }, zone) }
     fun toggle(c: CalendarInfo) {

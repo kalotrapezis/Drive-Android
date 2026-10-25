@@ -3,6 +3,13 @@ package com.kalotrapezis.drive
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -61,4 +68,34 @@ internal object WriterLog {
             }
         }
     }
+}
+
+/**
+ * How long an applet takes to open (the user, 25 Oct: "slow, taps don't answer until it's all ready"), one line in
+ * writer.log each time: the screen opened → its first content drawn → the main thread free (the last frame that took
+ * over 100 ms, i.e. a tap waited) within five seconds, and the longest frame.
+ */
+internal object ScreenTiming {
+    fun watch(opened: Long, what: String, shown: () -> Long?) {
+        var last = opened; var stuckUntil = 0L; var longest = 0L
+        val choreographer = android.view.Choreographer.getInstance()
+        choreographer.postFrameCallback(object : android.view.Choreographer.FrameCallback {
+            override fun doFrame(nanos: Long) {
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - last > 100) stuckUntil = now
+                longest = maxOf(longest, now - last)
+                last = now
+                if (now - opened < 5000) choreographer.postFrameCallback(this)
+                else WriterLog.i("$what: opened → first ${what.lowercase()} ${shown()?.let { "${it - opened} ms" } ?: "not yet"}, taps answered from ${if (stuckUntil == 0L) 0 else stuckUntil - opened} ms, longest frame $longest ms")
+            }
+        })
+    }
+}
+
+/** At a screen's first composition: [ScreenTiming] from now; "first … drawn" is the frame after [ready] turns true. */
+@Composable
+internal fun OpenTiming(what: String, ready: Boolean) {
+    var shownAt by remember { mutableStateOf<Long?>(null) }
+    remember { ScreenTiming.watch(android.os.SystemClock.uptimeMillis(), what) { shownAt } }
+    LaunchedEffect(ready) { if (ready && shownAt == null) { withFrameMillis {}; shownAt = android.os.SystemClock.uptimeMillis() } }
 }

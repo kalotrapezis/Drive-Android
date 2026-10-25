@@ -358,6 +358,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     var pending by remember { mutableStateOf(go) }
     var muted by remember { mutableStateOf(false) }
     var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
+    OpenTiming("Maps", mapRef != null)
 
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted = hasLocation(context) }
     LaunchedEffect(Unit) { if (!granted) ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }

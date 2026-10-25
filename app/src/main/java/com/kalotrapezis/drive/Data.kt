@@ -167,7 +167,7 @@ internal data class DataStatus(val cycle: DataCycle, val size: Long, val used: L
 }
 
 /** One device's day, as its files keep it. */
-internal data class DataDay(val day: LocalDate, val mobile: Long, val wifi: Long, val roaming: Long, val hotspot: Long, val viaHotspot: Long, val roamOutsideEu: Boolean)
+internal data class DataDay(val day: LocalDate, val mobile: Long, val wifi: Long, val roaming: Long, val hotspot: Long, val viaHotspot: Long, val roamOutsideEu: Boolean, val ethernet: Long = 0)
 
 internal data class DataApp(val day: LocalDate, val app: String, val name: String, val net: String, val fg: Long, val bg: Long, val roaming: Long) { val total get() = fg + bg }
 
@@ -208,7 +208,7 @@ internal object DataFiles {
     }
 
     fun line(d: DataDay) = "{\"d\":\"${d.day}\",\"mobile\":${d.mobile},\"wifi\":${d.wifi},\"roam\":${d.roaming},\"hotspot\":${d.hotspot},\"via\":${d.viaHotspot}" +
-        (if (d.roamOutsideEu) ",\"outsideEu\":true" else "") + "}"
+        (if (d.roamOutsideEu) ",\"outsideEu\":true" else "") + (if (d.ethernet > 0) ",\"eth\":${d.ethernet}" else "") + "}"
     fun line(a: DataApp) = "{\"d\":\"${a.day}\",\"app\":${JSONObject.quote(a.app)},\"name\":${JSONObject.quote(a.name)},\"net\":\"${a.net}\",\"fg\":${a.fg},\"bg\":${a.bg},\"roam\":${a.roaming}}"
     fun line(h: DataHour) = "{\"h\":\"${h.hour}\",\"net\":\"${h.net}\",\"bytes\":${h.bytes}}"
     fun line(e: DataEvent) = "{\"at\":\"${e.at}\",\"event\":\"${e.kind}\",\"secs\":${e.secs}" + (if (e.note.isNotEmpty()) ",\"note\":${JSONObject.quote(e.note)}" else "") + "}"
@@ -231,7 +231,7 @@ internal object DataFiles {
                 o.has("event") -> events += DataEvent(o.optString("at"), o.optString("event"), o.optLong("secs"), o.optString("note"))
                 o.has("h") -> hours += DataHour(o.optString("h"), o.optString("net"), o.optLong("bytes"))
                 o.has("app") -> apps += DataApp(LocalDate.parse(o.getString("d")), o.optString("app"), o.optString("name"), o.optString("net"), o.optLong("fg"), o.optLong("bg"), o.optLong("roam"))
-                o.has("d") -> days += DataDay(LocalDate.parse(o.getString("d")), o.optLong("mobile"), o.optLong("wifi"), o.optLong("roam"), o.optLong("hotspot"), o.optLong("via"), o.optBoolean("outsideEu"))
+                o.has("d") -> days += DataDay(LocalDate.parse(o.getString("d")), o.optLong("mobile"), o.optLong("wifi"), o.optLong("roam"), o.optLong("hotspot"), o.optLong("via"), o.optBoolean("outsideEu"), o.optLong("eth"))
             }
         }
         return DataMonth(device, days, apps, hours, events, name)

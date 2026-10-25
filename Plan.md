@@ -3107,6 +3107,16 @@ Send log.
    out), per 2-hour slot for yesterday and today (one summary per slot: Android's hourly history has no metered flag), in
    the charts, the legend, the app rows, Devices, and the computer's page. Emulator: a September with Mobile 4.5 · Hotspot 36 ·
    Wi-Fi 20 GB. Not yet on the tablet (not connected) nor the computer (needs a beta.15 package).
+- [x] 11. (the user, 25 Oct: "the signal tab is a wall of text"; "giving info, not … auto fix everything"; "add the LAN option — Ethernet —
+   to recognise when I connect it and compare speeds and losses"; "the Signal tab should have its own tabs at the top"; the Network
+   Cell Info and WiFi Analyzer apps as the picture) Signal has tabs: **Meter** (half-circle gauges for Wi-Fi — hotspot or Ethernet
+   said — and mobile: RSRP, 4G/5G, operator, band with the location right, RSRQ/SINR; the two minutes as a line; the sound as an icon;
+   **the computer** card: how it is connected now, Wi-Fi or Ethernet, and **Test speed and loss** — 20 MB each way and 20 pings,
+   each result keeping how both ends were connected, the last ten), **Analyzer** (WiFi Analyzer's channel graph: a hill per
+   network, its name and a rough distance on top, the dBm scale and every channel; 2.4/5 GHz; then short advice cards — a quieter
+   channel, 2.4 vs 5 GHz, how good it is here and what weakens it, busy air — information only), **Spots** (cards with bars),
+   **Drops** (by day). Explanations behind (i). The computer: an Ethernet cable is recognised (`ethernet-on/off` lines), counted
+   apart (`eth`), and reported to the phone. DataMeterTest; unit 649, desktop 140. Emulator: the gauges and the graph.
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

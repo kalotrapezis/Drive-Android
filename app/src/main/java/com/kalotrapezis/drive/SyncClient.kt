@@ -370,6 +370,9 @@ internal class SyncClient(private val context: Context, private val store: SyncS
     /** Data › Signal: what the computer sees of its Wi-Fi now (signal, speed, network), for "Phone as hotspot". */
     fun computerWifi(): JSONObject { val p = reach(store.pairing() ?: throw SyncException("Not paired with a computer.")); return postJson(p.hosts.first(), p, "/data/wifi", JSONObject()) }
 
+    /** The computer's address now, for Data's loss test (a ping to it). */
+    fun computerHost(): String = reach(store.pairing() ?: throw SyncException("Not paired with a computer.")).hosts.first()
+
     /** Data › Signal: the Wi-Fi's real speed to the computer — [bytes] down from it, then up to it; Mb/s down, up, and the ping in ms. */
     fun speedTest(bytes: Int = 20_000_000): Triple<Double, Double, Long> {
         val p = reach(store.pairing() ?: throw SyncException("Not paired with a computer."))

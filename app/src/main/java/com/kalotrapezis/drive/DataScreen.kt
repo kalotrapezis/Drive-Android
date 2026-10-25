@@ -368,12 +368,13 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
 }
 
 /** What was used: on mobile, over another phone's hotspot (the tablet's, the computer's), on plain Wi-Fi. */
-internal data class Use(val mobile: Long, val hotspot: Long, val wifi: Long) {
-    val total get() = mobile + hotspot + wifi
+internal data class Use(val mobile: Long, val hotspot: Long, val wifi: Long, val ethernet: Long = 0) {
+    val total get() = mobile + hotspot + wifi + ethernet
     fun words(always: Boolean = false) = listOfNotNull(
         (mobile > 0 || always && hotspot == 0L).takeIf { it }?.let { "Mobile ${DataRules.bytes(mobile)}" },
         hotspot.takeIf { it > 0 }?.let { "Hotspot ${DataRules.bytes(it)}" },
-        (wifi > 0 || always).takeIf { it }?.let { "Wi-Fi ${DataRules.bytes(wifi)}" }).joinToString(" · ")
+        (wifi > 0 || always).takeIf { it }?.let { "Wi-Fi ${DataRules.bytes(wifi)}" },
+        ethernet.takeIf { it > 0 }?.let { "Ethernet ${DataRules.bytes(it)}" }).joinToString(" · ")
 }
 
 @Composable private fun AppRow(name: String, use: Use, most: Long, open: () -> Unit) {
@@ -430,11 +431,11 @@ internal data class Use(val mobile: Long, val hotspot: Long, val wifi: Long) {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = pad, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("This cycle, from ${cycle.start.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))}", color = dataColor(), fontWeight = FontWeight.Bold) }
         if (devices.isEmpty()) item { Text("Nothing counted yet. The tablet's and the computer's counts arrive with Local Sync.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        val most = devices.values.maxOfOrNull { d -> d.sumOf { it.mobile + it.wifi } } ?: 1
+        val most = devices.values.maxOfOrNull { d -> d.sumOf { it.mobile + it.wifi + it.ethernet } } ?: 1
         devices.forEach { (d, days) -> item(key = d) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(label(d), style = MaterialTheme.typography.titleSmall)
-                AppRow("", Use(days.sumOf { it.mobile }, days.sumOf { it.viaHotspot }, days.sumOf { it.wifi - it.viaHotspot }), most) {}
+                AppRow("", Use(days.sumOf { it.mobile }, days.sumOf { it.viaHotspot }, days.sumOf { it.wifi - it.viaHotspot }, days.sumOf { it.ethernet }), most) {}
             }
         } }
         if (hotspot > 0 || clients.isNotEmpty()) item {

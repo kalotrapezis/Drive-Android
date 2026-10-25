@@ -2381,6 +2381,10 @@ signatures, FindReplaceBar, Versions, AutoSave); incremental save keeps the orig
       (Delete comment) takes strokes saved in an earlier session too (they are annotations in the file): PdfNewDeviceTest
       eraserTakesAStrokeSavedBefore. Not covered: drawings that are the page's own content (another app's, flattened) —
       a white pen or a white-filled box covers those; real removal would need the page's content edited.
+      Then ("everything as in Words … when I press it with the mouse or the finger, it is to move it"): a text pressed
+      and dragged moves at once, chosen if it was not; a tap chooses it, a tap on the chosen one types in it; Words' own
+      handles (ObjectHandles: corner and sides stretch, the knob on its stem turns) and Words' blue outline, turned with
+      it; Position stays a menu (Word's Align), the arrows beside it. Emulator (tablet, dark).
 - Left out: JavaScript, XFA, PDF/A, measuring, compare, Bates numbering, Action Wizard, accessibility tagging, layers.
 - Desktop Tetra later: MuPDF's npm build (WASM) or pdfcraft-cli as a backend; the edit list and this ribbon spec shared.
   PdfCraft can be the reference to compare pages against, as LibreOffice is for Words.

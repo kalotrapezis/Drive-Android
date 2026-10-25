@@ -1152,7 +1152,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var textLook by remember { mutableStateOf(PdfTextLook()) } // the last look used: the next text starts with it
     var fontBefore by remember { mutableStateOf<String?>(null) } // Font's strip open: the font before it (Cancel puts it back)
     var chosen by remember { mutableStateOf<Triple<Int, android.graphics.RectF, PdfText>?>(null) } // a text put on, chosen (Slides' first tap): its page, place, words
-    val framePreview = remember(chosen?.second) { PdfFramePreview() } // where a finger or an arrow has it, until put on
+    val framePreview = remember { PdfFramePreview() } // where a finger or an arrow has the chosen text, until put on
     var clip by remember { mutableStateOf<Pair<android.graphics.RectF, PdfText>?>(null) } // Copy's text, for Paste
     var copiedLook by remember { mutableStateOf<PdfTextLook?>(null) } // Selection › Copy formatting, for Paste formatting (Slides')
     var tabBefore by remember { mutableStateOf("Home") } // the tab shown before a text was chosen, back when none is
@@ -1270,11 +1270,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         change { d.putText(i, nx, ny, nt, room ?: if (nt.framed || nt.turned) uw else maxOf(uw, s.width - nx - 18f), minH ?: if (nt.framed) uh else 0f, Offset(r.centerX(), r.centerY())) }
         chosen = d.typedAt(i, Offset(nx + 1f, ny + 1f))?.let { (nr, pt) -> Triple(i, nr, pt) }
     }
-    /** The chosen text sized from its corner's dot to [w] × [h] on the page: a fixed width from then on (a text becomes a box without a border). */
-    fun sizeChosen(w: Float, h: Float) {
+    /** The chosen text stretched by Words' handles to [lw] × [lh] before turning: a fixed width from then on (a text becomes a box without a border). */
+    fun sizeChosen(lw: Float, lh: Float) {
         val t = chosen?.third ?: return
-        if (t.look.turn % 90 != 0) { Toast.makeText(context, "Turned at a slant it keeps its size: Rotate › Upright to size it", Toast.LENGTH_SHORT).show(); return }
-        val (lw, lh) = if (t.look.turn % 180 == 90) h to w else w to h
         rechange(room = lw.coerceAtLeast(12f), minH = lh.coerceAtLeast(8f), t = t.copy(framed = true))
     }
     /** The arrows' nudge put on where they have got to (one step of Undo for a whole press). */
@@ -1771,10 +1769,13 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                                 pageMenu = Triple(i, down.position, pt)
                                             }
                                         }
-                                        // what is chosen on this page, as Slides': moved, sized, turned from its dots, before the page's own taps; a tap types in it
-                                        .pdfChosenGestures(s, chosen?.takeIf { it.first == i && typing == null }?.second, chosen?.third?.look?.turn ?: 0, framePreview,
-                                            { chosen?.let { (_, r, t) -> retype(i, r, t) } }, { dx, dy -> chosen?.second?.let { r -> rechange(x = r.left + dx, y = r.top + dy) } },
-                                            ::sizeChosen, ::turnChosen), marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
+                                        // a text on this page as a text box in Words: pressed and dragged it moves at once, a tap chooses it, a tap on the chosen one types in it
+                                        .pdfTextGestures(s, editing && typing == null && (tool == null || tool == PdfTool.Text || tool == PdfTool.TextBox),
+                                            { pt -> doc?.typedAt(i, pt) != null },
+                                            { chosen?.takeIf { it.first == i }?.let { (_, r, t) -> Triple(r, t.unturned(r), t.look.turn) } }, framePreview,
+                                            { pt -> doc?.typedAt(i, pt)?.let { (r, t) -> chosen = Triple(i, r, t); tool = null } },
+                                            { chosen?.let { (ci, r, t) -> retype(ci, r, t) } },
+                                            { dx, dy -> chosen?.second?.let { r -> rechange(x = r.left + dx, y = r.top + dy) } }), marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
                                     if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
                                     typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook) }
                                     pageMenu?.takeIf { it.first == i }?.let { (_, spot, pt) -> OfficeMenu(spot, { pageMenu = null }) {
@@ -1793,7 +1794,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                         }
                                     } }
                                     chosen?.takeIf { it.first == i && typing == null }?.let { (_, r, t) ->
-                                        PdfChosenFrame(s, r, t.unturned(r), framePreview, PDF_RED)
+                                        PdfChosenHandles(s, r, t.unturned(r), t.look.turn, framePreview, ::sizeChosen, ::turnChosen)
                                     }
                                 }
                               } }

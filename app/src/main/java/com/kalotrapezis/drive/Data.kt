@@ -98,11 +98,23 @@ internal object DataRules {
     /** Today's budget: what is left over the days left, today included (or the fixed daily quota). */
     fun budget(p: DataPlan, left: Long, daysLeft: Int) = if (p.daily > 0) p.daily else max(0, left) / daysLeft.coerceAtLeast(1)
 
-    /** The pace of the last days (at most a week) of the cycle, carried to its end: what will have been used. */
-    fun projection(used: Long, perDay: List<Long>, daysLeftAfterToday: Int): Long {
-        val recent = perDay.takeLast(7).ifEmpty { return used }
-        return used + recent.sum() / recent.size * daysLeftAfterToday.coerceAtLeast(0)
+    private fun median(l: List<Long>) = l.sorted().let { if (it.isEmpty()) 0L else if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2 }
+
+    /**
+     * A day's likely use, from the days before [before] (the user, 25 Oct: weekends differ — no Wi-Fi at work): the median of the
+     * same weekday over the last six weeks, previous cycles too, else the median of the last four weeks. Medians, so one huge
+     * or empty day does not pull it.
+     */
+    fun forecast(history: Map<LocalDate, Long>, day: LocalDate, before: LocalDate): Long {
+        val past = history.filterKeys { it.isBefore(before) && !it.isBefore(before.minusDays(42)) }
+        val same = past.filterKeys { it.dayOfWeek == day.dayOfWeek }.values.toList()
+        return median(if (same.size >= 2) same else past.filterKeys { !it.isBefore(before.minusDays(28)) }.values.toList())
     }
+
+    /** What will have been used by the cycle's end: used so far, today at least its forecast, and each day left its forecast. */
+    fun projection(used: Long, today: Long, history: Map<LocalDate, Long>, now: LocalDate, end: LocalDate): Long =
+        used - today + max(today, forecast(history, now, now)) +
+            generateSequence(now.plusDays(1)) { it.plusDays(1) }.takeWhile { it.isBefore(end) }.sumOf { forecast(history, it, now) }
 
     /** The warnings now due: each threshold passed and not yet given this cycle. */
     fun due(p: DataPlan, used: Long, size: Long, given: Set<Int>) = if (!p.limited || size <= 0) emptyList()
@@ -151,7 +163,7 @@ internal object DataRules {
         val left = size - used
         val daysLeft = c.daysLeft(today)
         return DataStatus(c, size, used, left, daysLeft, budget(p, left, daysLeft), perDay.lastOrNull() ?: 0,
-            projection(used, perDay.dropLast(1).ifEmpty { perDay }, daysLeft - 1), perDay)
+            projection(used, perDay.lastOrNull() ?: 0, days.associate { it.day to counted(p, it) }, today, c.end), perDay)
     }
 
     // EU and EEA countries (roaming as at home, by EU rules); anywhere else roaming costs extra

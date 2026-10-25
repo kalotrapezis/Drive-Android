@@ -148,14 +148,30 @@ private fun DataApp(start: String?, back: () -> Unit) {
 private enum class Span { Day, Week, Cycle, Month, Year }
 
 /** A bar of the chart: its label, the days it covers ([hour] for a day's hours), and its bytes. */
-private data class Bar(val label: String, val from: LocalDate, val until: LocalDate, val mobile: Long, val wifi: Long, val hotspot: Long = 0, val hour: String? = null) {
+private data class Bar(val label: String, val from: LocalDate, val until: LocalDate, val mobile: Long, val wifi: Long, val hotspot: Long = 0, val hour: String? = null, val forecast: Boolean = false) {
     val total get() = mobile + wifi + hotspot
 }
 
-private fun bars(span: Span, shift: Int, plan: DataPlan?, months: List<DataMonth>, today: LocalDate): List<Bar> {
+/**
+ * A day as (mobile, hotspot, Wi-Fi). On a phone the hotspot is what it shared (part of its mobile data) and a metered Wi-Fi is
+ * the car's (Android Auto): Wi-Fi. On a tablet or a computer the hotspot is what it used through the phone (part of its Wi-Fi).
+ */
+private fun split(d: DataDay?, phone: Boolean): Triple<Long, Long, Long> = when {
+    d == null -> Triple(0, 0, 0)
+    phone -> Triple(d.mobile - d.hotspot, d.hotspot, d.wifi)
+    else -> Triple(d.mobile, d.viaHotspot, d.wifi - d.viaHotspot)
+}
+
+private fun bars(span: Span, shift: Int, plan: DataPlan?, months: List<DataMonth>, today: LocalDate, phone: Boolean): List<Bar> {
     val days = DataFiles.days(months).associateBy { it.day }
-    // a day's Wi-Fi includes what went over a hotspot: shown apart
-    fun day(d: LocalDate, label: String) = days[d].let { Bar(label, d, d.plusDays(1), it?.mobile ?: 0, (it?.wifi ?: 0) - (it?.viaHotspot ?: 0), it?.viaHotspot ?: 0) }
+    val split = days.mapValues { (_, d) -> split(d, phone) }
+    val histories = listOf(split.mapValues { it.value.first }, split.mapValues { it.value.second }, split.mapValues { it.value.third })
+    fun day(d: LocalDate, label: String): Bar {
+        // the days to come: each kind's forecast from the weekdays before (faint bars)
+        if (d.isAfter(today)) return histories.map { DataRules.forecast(it, d, today) }.let { (m, h, w) -> Bar(label, d, d.plusDays(1), m, w, h, forecast = true) }
+        val (m, h, w) = split(days[d], phone)
+        return Bar(label, d, d.plusDays(1), m, w, h)
+    }
     return when (span) {
         Span.Day -> {
             val d = today.plusDays(shift.toLong())
@@ -164,8 +180,8 @@ private fun bars(span: Span, shift: Int, plan: DataPlan?, months: List<DataMonth
             fun slot(h: DataHour) = (h.hour.substringAfter('T').toIntOrNull() ?: 0) / 2 * 2
             (0 until 24 step 2).map { h ->
                 fun sum(net: String) = hrs.filter { slot(it) == h && it.net == net }.sumOf { it.bytes }
-                val hot = sum("hotspot")
-                Bar("$h", d, d.plusDays(1), sum("mobile"), maxOf(0, sum("wifi") - hot), hot, "$h")
+                if (phone) Bar("$h", d, d.plusDays(1), sum("mobile"), sum("wifi"), sum("tether"), "$h")
+                else sum("hotspot").let { hot -> Bar("$h", d, d.plusDays(1), sum("mobile"), maxOf(0, sum("wifi") - hot), hot, "$h") }
             }
         }
         Span.Week -> (6 downTo 0).map { today.plusWeeks(shift.toLong()).minusDays(it.toLong()) }.map { day(it, it.dayOfWeek.getDisplayName(DateStyle.SHORT, Locale.ENGLISH).take(2)) }
@@ -181,7 +197,8 @@ private fun bars(span: Span, shift: Int, plan: DataPlan?, months: List<DataMonth
             val y = today.withDayOfYear(1).plusYears(shift.toLong())
             (0 until 12).map { y.plusMonths(it.toLong()) }.map { m ->
                 val inM = days.values.filter { it.day.year == m.year && it.day.month == m.month }
-                Bar(m.month.getDisplayName(DateStyle.NARROW, Locale.ENGLISH), m, m.plusMonths(1), inM.sumOf { it.mobile }, inM.sumOf { it.wifi - it.viaHotspot }, inM.sumOf { it.viaHotspot })
+                val s = inM.map { split(it, phone) }
+                Bar(m.month.getDisplayName(DateStyle.NARROW, Locale.ENGLISH), m, m.plusMonths(1), s.sumOf { it.first }, s.sumOf { it.third }, s.sumOf { it.second })
             }
         }
     }
@@ -199,12 +216,19 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
     var shift by remember(span) { mutableIntStateOf(0) }
     var picked by remember(span, shift) { mutableStateOf<Bar?>(null) }
     var app by remember { mutableStateOf<String?>(null) }
-    val shown = remember(span, shift, mine, plan) { bars(span, shift, plan, mine, today) }
+    val isPhone = remember { !PhoneRelay.noCalls(context) }
+    val shown = remember(span, shift, mine, plan) { bars(span, shift, plan, mine, today, isPhone) }
     val drops = remember(all) { DataSignal.drops(all).mapNotNull { runCatching { java.time.OffsetDateTime.parse(it.second.at).atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDateTime() }.getOrNull() } }
     val from = picked?.from ?: shown.first().from; val until = picked?.until ?: shown.last().until
     val apps = remember(mine, from, until) {
         mine.flatMap { it.apps }.filter { !it.day.isBefore(from) && it.day.isBefore(until) }.groupBy { it.app }
-            .map { (k, l) -> Triple(k, l.first().name, Use(l.filter { it.net == "mobile" }.sumOf { it.total }, l.filter { it.net == "hotspot" }.sumOf { it.total }, l.filter { it.net == "wifi" }.sumOf { it.total })) }
+            .map { (k, l) ->
+                fun sum(net: String) = l.filter { it.net == net }.sumOf { it.total }
+                // on a phone "Hotspot" is what it shared (Android's tethering, on mobile); a metered Wi-Fi there is the car's
+                val use = if (isPhone) (if (k == "hotspot") Use(0, sum("mobile"), sum("wifi")) else Use(sum("mobile"), 0, sum("wifi") + sum("hotspot")))
+                    else Use(sum("mobile"), sum("hotspot"), sum("wifi"))
+                Triple(k, l.first().name, use)
+            }
             .filter { it.third.total > 0 }.sortedByDescending { it.third.mobile * 4 + it.third.hotspot * 2 + it.third.wifi } // what costs first
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -271,7 +295,7 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
             Text("Today ${DataRules.bytes(s.today)}" + if (plan.limited) " · budget ${DataRules.bytes(s.budget)}/day" else " · average ${DataRules.bytes(s.average)}/day", style = MaterialTheme.typography.bodyMedium)
             if (plan.limited) {
                 val runsOut = s.projection > s.size
-                Text(if (runsOut) "At this pace: ${DataRules.bytes(s.projection)} by the end ⚠" else "At this pace: ${DataRules.bytes(s.projection)} by the end ✓",
+                Text("Forecast: ${DataRules.bytes(s.projection)} by ${s.cycle.end.minusDays(1).format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))} " + if (runsOut) "⚠" else "✓",
                     color = if (runsOut) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             }
         }
@@ -297,7 +321,9 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
     val lime = dataColor(); val ink = MaterialTheme.colorScheme.onSurface; val quiet = MaterialTheme.colorScheme.onSurfaceVariant
     val step = DataRules.axisStep(bars.maxOf { it.total })
     val lines = DataRules.axisLines(bars.maxOf { it.total }); val top = step * lines
-    val running = if (span == Span.Cycle && shift == 0 && plan?.limited == true && status != null) status else null
+    // the dashed line: the average of the days used so far (not today's, still running), on the bars' own scale
+    val used = bars.filter { !it.forecast && it.total > 0 && !(span != Span.Day && span != Span.Year && it.from == LocalDate.now()) }
+    val average = if (span == Span.Day || used.isEmpty()) null else used.sumOf { it.total } / used.size
     val title = when (span) {
         Span.Day -> bars.first().from.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))
         Span.Year -> "${bars.first().from.year}"
@@ -308,7 +334,8 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
             IconButton(onClick = { move(-1) }) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = "Earlier") }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
-                Text(Use(bars.sumOf { it.mobile }, bars.sumOf { it.hotspot }, bars.sumOf { it.wifi }).words(always = true), style = MaterialTheme.typography.bodySmall, color = quiet)
+                val real = bars.filter { !it.forecast }
+                Text(Use(real.sumOf { it.mobile }, real.sumOf { it.hotspot }, real.sumOf { it.wifi }).words(always = true), style = MaterialTheme.typography.bodySmall, color = quiet)
             }
             IconButton(onClick = { move(1) }, enabled = shift < 0) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Later") }
         }
@@ -326,22 +353,18 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                 bars.forEachIndexed { i, b ->
                     val x = i * slot + (slot - w) / 2
                     val dim = picked != null && picked != b
-                    // stacked from the bottom: mobile, the hotspot, Wi-Fi
+                    // stacked from the bottom: mobile, the hotspot, Wi-Fi; a forecast day faint, outlined
                     var base = 0L
                     for ((v, color) in listOf(b.mobile to lime, b.hotspot to HOTSPOT_COLOR, b.wifi to WIFI_COLOR)) {
-                        if (v > 0) drawRect(if (dim) color.copy(alpha = 0.35f) else color, Offset(x, y(base + v)), Size(w, y(base) - y(base + v)))
+                        if (v > 0) {
+                            val c = if (b.forecast) color.copy(alpha = 0.22f) else if (dim) color.copy(alpha = 0.35f) else color
+                            drawRect(c, Offset(x, y(base + v)), Size(w, y(base) - y(base + v)))
+                            if (b.forecast) drawRect(color.copy(alpha = 0.6f), Offset(x, y(base + v)), Size(w, y(base) - y(base + v)), style = Stroke(1.5f))
+                        }
                         base += v
                     }
                 }
-                // the cycle's running total against the plan, and the pace to its end, on a scale of its own (the plan's size at the top)
-                running?.let { s ->
-                    val scale = maxOf(s.size, s.projection).toDouble()
-                    fun ry(v: Long) = size.height - size.height * (v / scale).toFloat()
-                    drawLine(ink.copy(alpha = 0.6f), Offset(0f, ry(s.size)), Offset(size.width, ry(s.size)), 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f)))
-                    var acc = 0L; var last = Offset(0f, size.height)
-                    s.perDay.forEachIndexed { i, v -> acc += v; val p = Offset((i + 1) * slot, ry(acc)); drawLine(ink, last, p, 4f, StrokeCap.Round); last = p }
-                    drawLine(ink.copy(alpha = 0.6f), last, Offset(size.width, ry(s.projection)), 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f)))
-                }
+                average?.let { a -> drawLine(ink.copy(alpha = 0.7f), Offset(0f, y(a)), Offset(size.width, y(a)), 2.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))) }
             }
         }
         // the signal's drops (every device's) as red marks under their bars
@@ -361,8 +384,9 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                 Box(Modifier.size(10.dp).clip(CircleShape).background(c)); Text(n, style = MaterialTheme.typography.labelSmall, color = quiet)
             }
         }
-        picked?.let { b -> Text("${b.label}${if (span == Span.Day) ":00" else ""}: " + Use(b.mobile, b.hotspot, b.wifi).words(always = true), style = MaterialTheme.typography.bodySmall) }
-        if (running != null) Text("Line: the cycle's total · dashed: your plan and the pace to its end", style = MaterialTheme.typography.labelSmall, color = quiet)
+        picked?.let { b -> Text("${b.label}${if (span == Span.Day) ":00" else ""}: " + (if (b.forecast) "forecast " else "") + Use(b.mobile, b.hotspot, b.wifi).words(always = true), style = MaterialTheme.typography.bodySmall) }
+        average?.let { a -> Text("Dashed: the average, ${DataRules.bytes(a)} a day" + (if (bars.any { it.forecast }) " · faint: the days to come, from your usual weekdays" else ""),
+            style = MaterialTheme.typography.labelSmall, color = quiet) }
         if (marked.any { it }) Text("Red: signal drops (Signal › Drops)", style = MaterialTheme.typography.labelSmall, color = quiet)
     }
 }
@@ -435,7 +459,8 @@ internal data class Use(val mobile: Long, val hotspot: Long, val wifi: Long, val
         devices.forEach { (d, days) -> item(key = d) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(label(d), style = MaterialTheme.typography.titleSmall)
-                AppRow("", Use(days.sumOf { it.mobile }, days.sumOf { it.viaHotspot }, days.sumOf { it.wifi - it.viaHotspot }, days.sumOf { it.ethernet }), most) {}
+                val parts = days.map { split(it, d == phone) }
+                AppRow("", Use(parts.sumOf { it.first }, parts.sumOf { it.second }, parts.sumOf { it.third }, days.sumOf { it.ethernet }), most) {}
             }
         } }
         if (hotspot > 0 || clients.isNotEmpty()) item {

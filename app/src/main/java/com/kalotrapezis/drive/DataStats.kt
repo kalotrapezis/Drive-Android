@@ -98,6 +98,7 @@ internal object DataStats {
         val e = minOf(floorBucket(at(d.plusDays(1), zone)), floorBucket(now) + BUCKET)
         val apps = mutableListOf<DataApp>()
         var mobile = 0L; var wifi = 0L; var roam = 0L; var hotspot = 0L; var via = 0L
+        val client = PhoneRelay.noCalls(c) // a tablet: its metered Wi-Fi is the phone's hotspot; a phone's is the car's (Android Auto)
         for ((type, net) in listOf(ConnectivityManager.TYPE_MOBILE to "mobile", ConnectivityManager.TYPE_WIFI to "wifi")) {
             val byUid = HashMap<Int, Uid>()
             each(runCatching { nsm.querySummary(type, null, s, e) }.getOrNull()) { b ->
@@ -105,7 +106,7 @@ internal object DataStats {
                 val u = byUid.getOrPut(b.uid) { Uid() }
                 val fg = b.state == NetworkStats.Bucket.STATE_FOREGROUND
                 // a metered Wi-Fi is a phone's hotspot (Android's hotspots say so); Tetra's own there is its sync with the phone: Wi-Fi
-                if (net == "wifi" && b.metered == NetworkStats.Bucket.METERED_YES && b.uid != Process.myUid()) { if (fg) u.hotFg += n else u.hotBg += n }
+                if (client && net == "wifi" && b.metered == NetworkStats.Bucket.METERED_YES && b.uid != Process.myUid()) { if (fg) u.hotFg += n else u.hotBg += n }
                 else if (fg) u.fg += n else u.bg += n
                 if (b.roaming == NetworkStats.Bucket.ROAMING_YES) u.roam += n
             }
@@ -122,13 +123,13 @@ internal object DataStats {
         return DataDay(d, mobile, wifi, roam, hotspot, via, d in outsideEu) to merged
     }
 
-    /** The day's hours (Android's 2-hour buckets), all apps together. */
+    /** The day's hours (Android's 2-hour buckets), all apps together; the phone's hotspot (what it shared) apart as "tether". */
     private fun hours(nsm: NetworkStatsManager, s: Long, e: Long, zone: ZoneId): List<DataHour> {
         val out = HashMap<Pair<String, String>, Long>()
         for ((type, net) in listOf(ConnectivityManager.TYPE_MOBILE to "mobile", ConnectivityManager.TYPE_WIFI to "wifi"))
             each(runCatching { nsm.queryDetails(type, null, s, e) }.getOrNull()) { b ->
                 val h = Instant.ofEpochMilli(b.startTimeStamp).atZone(zone).format(HOUR)
-                out.merge(h to net, b.rxBytes + b.txBytes, Long::plus)
+                out.merge(h to (if (net == "mobile" && b.uid == NetworkStats.Bucket.UID_TETHERING) "tether" else net), b.rxBytes + b.txBytes, Long::plus)
             }
         return out.filter { it.value > 0 }.map { (k, v) -> DataHour(k.first, k.second, v) }
     }
@@ -187,7 +188,8 @@ internal object DataStats {
             val s = floorBucket(at(maxOf(m, keepBefore), zone)); val e = floorBucket(now) + BUCKET
             val hs = maxOf(s, floorBucket(at(today.minusDays(1), zone)))
             val sKey = Instant.ofEpochMilli(s).atZone(zone).format(HOUR); val hsKey = Instant.ofEpochMilli(hs).atZone(zone).format(HOUR)
-            val hotThen = days.any { it.viaHotspot > 0 && !it.day.isBefore(today.minusDays(1)) }
+            // only a device without a SIM uses another phone's hotspot; a phone's metered Wi-Fi is the car's (Android Auto) and stays Wi-Fi
+            val hotThen = PhoneRelay.noCalls(c) && days.any { it.viaHotspot > 0 && !it.day.isBefore(today.minusDays(1)) }
             val hrs = old?.hours.orEmpty().filter { it.hour < sKey || (it.net == "hotspot" && it.hour < hsKey) } +
                 (if (hasAccess(c)) hours(nsm, s, e, zone) + (if (hotThen && hs < e) hotspotHours(nsm, hs, e, zone) else emptyList()) else emptyList())
             val ev = (old?.events.orEmpty() + events.filter { it.at.startsWith(m.toString().take(7)) }).distinct()

@@ -48,6 +48,18 @@ class DataTest {
         assertEquals(400_000_000, DataRules.status(p.copy(euCounts = false), listOf(day(d(10, 1), 500_000_000, roam = 100_000_000), day(d(10, 2), 100_000_000, roam = 100_000_000)), d(10, 2)).used)
     }
 
+    @Test fun `the forecast follows the weekday, not one odd day`() {
+        val today = d(10, 25) // a Sunday
+        // six weeks: workdays 3 GB, weekends 9 GB, and one odd Sunday of 40 GB
+        val history = (1..42).associate { i -> today.minusDays(i.toLong()).let { day -> day to (if (day.dayOfWeek.value >= 6) 9_000_000_000 else 3_000_000_000) } }
+            .toMutableMap().apply { put(today.minusDays(7), 40_000_000_000) }
+        assertEquals(9_000_000_000, DataRules.forecast(history, d(11, 1), today)) // next Sunday: the Sundays' median
+        assertEquals(3_000_000_000, DataRules.forecast(history, d(10, 27), today)) // a Tuesday
+        assertEquals(0, DataRules.forecast(emptyMap(), d(10, 27), today))
+        // at a cycle's start the days before it count (previous cycles)
+        assertEquals(3_000_000_000, DataRules.forecast(mapOf(d(10, 20) to 3_000_000_000L, d(10, 21) to 3_000_000_000L), d(10, 26), today))
+    }
+
     @Test fun `rollover adds what was left of the cycle before`() {
         val p = DataPlan(size = 10_000_000_000, day = 1, rollover = true)
         val days = listOf(day(d(9, 10), 6_000_000_000), day(d(10, 2), 1_000_000_000))

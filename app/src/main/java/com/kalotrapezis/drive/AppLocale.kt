@@ -20,8 +20,12 @@ internal object AppLocale {
         if (Build.VERSION.SDK_INT >= 33) context.getSystemService(LocaleManager::class.java).applicationLocales.let { if (it.isEmpty) "" else it[0].toLanguageTag() }
         else prefs(context).getString("tag", "").orEmpty()
 
+    /** Set when the language changes: Tetra's screens start again in it, and open on Settings, where it was chosen. */
+    var reopenSettings = false
+
     /** Android 13+ restarts Tetra's screens in the new language by itself. */
     fun set(context: Context, tag: String) {
+        reopenSettings = true
         if (Build.VERSION.SDK_INT >= 33) context.getSystemService(LocaleManager::class.java).applicationLocales =
             if (tag.isEmpty()) LocaleList.getEmptyLocaleList() else LocaleList.forLanguageTags(tag)
         else { prefs(context).edit().putString("tag", tag).apply(); (context as? Activity)?.recreate() }

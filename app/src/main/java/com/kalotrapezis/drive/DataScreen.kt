@@ -148,8 +148,9 @@ private fun DataApp(start: String?, back: () -> Unit) {
 private enum class Span { Day, Week, Cycle, Month, Year }
 
 /** A bar of the chart: its label, the days it covers ([hour] for a day's hours), and its bytes. */
-private data class Bar(val label: String, val from: LocalDate, val until: LocalDate, val mobile: Long, val wifi: Long, val hotspot: Long = 0, val hour: String? = null, val forecast: Boolean = false) {
-    val total get() = mobile + wifi + hotspot
+private data class Bar(val label: String, val from: LocalDate, val until: LocalDate, val mobile: Long, val wifi: Long, val hotspot: Long = 0, val hour: String? = null, val forecast: Boolean = false,
+    val parts: List<Long> = emptyList()) { // by app (the Apps view), in the series' order
+    val total get() = if (parts.isNotEmpty()) parts.sum() else mobile + wifi + hotspot
 }
 
 /**
@@ -217,7 +218,15 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
     var picked by remember(span, shift) { mutableStateOf<Bar?>(null) }
     var app by remember { mutableStateOf<String?>(null) }
     var allApps by remember { mutableStateOf(false) }
+    var byApp by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     val isPhone = remember { !PhoneRelay.noCalls(context) }
+    // the plan's data by app on every device (the user, 25 Oct: "a clear chart only with apps — Firefox, Claude, Teams, Viber"): on a phone its own apps on
+    // mobile and what the tablet's and the computer's apps took through its hotspot; on a tablet its own apps
+    val appDays = remember(all, isPhone) {
+        val own = mine.flatMap { it.apps }.filter { if (isPhone) it.net == "mobile" && it.app != "hotspot" else true }
+        val others = if (isPhone) all.filterKeys { it != DataFiles.device() }.values.flatten().flatMap { it.apps }.filter { it.net == "hotspot" } else emptyList()
+        (own + others).map { Triple(it.day, it.name.ifBlank { it.app }, it.total) }
+    }
     val shown = remember(span, shift, mine, plan) { bars(span, shift, plan, mine, today, isPhone) }
     val drops = remember(all) { DataSignal.drops(all).mapNotNull { runCatching { java.time.OffsetDateTime.parse(it.second.at).atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDateTime() }.getOrNull() } }
     val from = picked?.from ?: shown.first().from; val until = picked?.until ?: shown.last().until
@@ -246,7 +255,19 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                 else if (plan == null) Notice("Tell Data your plan: its size and when it renews, for warnings and a daily budget.", "Setup", openSetup)
                 else if (status != null) PlanHead(plan, status)
                 SpanChips(span) { span = it }
-                Chart(shown, span, plan, status, picked, shift, { shift += it }, drops) { picked = if (picked == it) null else it }
+                if (span != Span.Day) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = CircleShape) {
+                        Row(Modifier.padding(3.dp)) {
+                            listOf(false to "Kinds", true to "Apps").forEach { (a, label) ->
+                                Surface(onClick = { byApp = a }, shape = CircleShape, color = if (a == byApp) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent) {
+                                    Text(label, Modifier.padding(horizontal = 14.dp, vertical = 5.dp), style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                        }
+                    }
+                }
+                val appView = if (byApp && span != Span.Day) byApps(shown, appDays) else null
+                Chart(appView?.first ?: shown, span, plan, status, picked, shift, { shift += it }, drops, appView?.second) { picked = if (picked == it) null else it }
                 val myDays = remember(mine) { DataFiles.days(if (isPhone) mine else phone) }
                 if (plan != null && status != null && plan.limited) CycleChart(plan, status, myDays.associate { it.day to DataRules.counted(plan, it) }, today)
                 val metrics = remember(plan, status, mine) { DataInsights.metrics(plan, status, DataFiles.days(mine), today, isPhone) }
@@ -261,7 +282,10 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
             if (apps.isEmpty()) item { Text(if (DataStats.hasAccess(context)) "Nothing used then" else "Needs Usage access", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             val most = apps.maxOfOrNull { it.third.total } ?: 1
             // the ten that matter; the rest, a tap away (the user, 25 Oct: "no need to list every app")
-            apps.take(10).forEach { (key, name, use) -> item(key = key) { AppRow(name, use, most) { app = key } } }
+            apps.take(10).forEach { (key, name, use) -> item(key = key) {
+                // the phone's hotspot opens into each device that used it, and their apps (the user, 25 Oct: "a V expand option on hotspot")
+                if (isPhone && key == "hotspot") HotspotRow(name, use, most, all, from, until) else AppRow(name, use, most) { app = key }
+            } }
             if (apps.size > 10) item { TextButton(onClick = { allApps = true }) { Text("All apps and services (${apps.size})", color = dataColor()) } }
         }
         if (wide) Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -331,7 +355,8 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
  * Bars of mobile (lime) and Wi-Fi (blue) stacked; the axis's top is a round number just over the tallest, so a 3 MB hour
  * and a 40 GB month both fill it (the old app stopped at 2 GB). In a cycle, the running total and the plan's line too.
  */
-@Composable private fun Chart(bars: List<Bar>, span: Span, plan: DataPlan?, status: DataStatus?, picked: Bar?, shift: Int, move: (Int) -> Unit, drops: List<java.time.LocalDateTime> = emptyList(), pick: (Bar) -> Unit) {
+@Composable private fun Chart(bars: List<Bar>, span: Span, plan: DataPlan?, status: DataStatus?, picked: Bar?, shift: Int, move: (Int) -> Unit, drops: List<java.time.LocalDateTime> = emptyList(),
+                              series: List<Pair<String, Color>>? = null, pick: (Bar) -> Unit) {
     val lime = dataColor(); val ink = MaterialTheme.colorScheme.onSurface; val quiet = MaterialTheme.colorScheme.onSurfaceVariant
     val step = DataRules.axisStep(bars.maxOf { it.total })
     val lines = DataRules.axisLines(bars.maxOf { it.total }); val top = step * lines
@@ -354,7 +379,8 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                         "days to come, each the median of the same weekday over the last six weeks. Dashed line: your average day. Red dots: signal drops. ‹ › go back and forth in time.")
                 }
                 val real = bars.filter { !it.forecast }
-                Text(Use(real.sumOf { it.mobile }, real.sumOf { it.hotspot }, real.sumOf { it.wifi }).words(always = true), style = MaterialTheme.typography.bodySmall, color = quiet)
+                Text(if (series != null) "Apps: ${DataRules.bytes(real.sumOf { it.total })}" else Use(real.sumOf { it.mobile }, real.sumOf { it.hotspot }, real.sumOf { it.wifi }).words(always = true),
+                    style = MaterialTheme.typography.bodySmall, color = quiet)
             }
             IconButton(onClick = { move(1) }, enabled = shift < 0) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Later") }
         }
@@ -374,7 +400,7 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                     val dim = picked != null && picked != b
                     // stacked from the bottom: mobile, the hotspot, Wi-Fi; a forecast day faint, outlined
                     var base = 0L
-                    for ((v, color) in listOf(b.mobile to lime, b.hotspot to HOTSPOT_COLOR, b.wifi to WIFI_COLOR)) {
+                    for ((v, color) in if (series != null) b.parts.zip(series.map { it.second }) else listOf(b.mobile to lime, b.hotspot to HOTSPOT_COLOR, b.wifi to WIFI_COLOR)) {
                         if (v > 0) {
                             val c = if (b.forecast) color.copy(alpha = 0.22f) else if (dim) color.copy(alpha = 0.35f) else color
                             drawRect(c, Offset(x, y(base + v)), Size(w, y(base) - y(base + v)))
@@ -399,11 +425,13 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
             } }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            listOfNotNull("Mobile" to lime, ("Hotspot" to HOTSPOT_COLOR).takeIf { bars.any { it.hotspot > 0 } }, "Wi-Fi" to WIFI_COLOR).forEach { (n, c) ->
-                Box(Modifier.size(10.dp).clip(CircleShape).background(c)); Text(n, style = MaterialTheme.typography.labelSmall, color = quiet)
+            (series ?: listOfNotNull("Mobile" to lime, ("Hotspot" to HOTSPOT_COLOR).takeIf { bars.any { it.hotspot > 0 } }, "Wi-Fi" to WIFI_COLOR)).forEach { (n, c) ->
+                Box(Modifier.size(10.dp).clip(CircleShape).background(c)); Text(n, style = MaterialTheme.typography.labelSmall, color = quiet, maxLines = 1)
             }
         }
-        picked?.let { b -> Text("${b.label}${if (span == Span.Day) ":00" else ""}: " + (if (b.forecast) "forecast " else "") + Use(b.mobile, b.hotspot, b.wifi).words(always = true), style = MaterialTheme.typography.bodySmall) }
+        picked?.let { b -> Text("${b.label}${if (span == Span.Day) ":00" else ""}: " + (if (b.forecast) "forecast " else "") +
+            (if (series != null) series.zip(b.parts).filter { it.second > 0 }.joinToString(" · ") { "${it.first.first} ${DataRules.bytes(it.second)}" } else Use(b.mobile, b.hotspot, b.wifi).words(always = true)),
+            style = MaterialTheme.typography.bodySmall) }
         average?.let { a -> Text("Dashed: the average, ${DataRules.bytes(a)} a day" + (if (bars.any { it.forecast }) " · faint: the days to come, from your usual weekdays" else ""),
             style = MaterialTheme.typography.labelSmall, color = quiet) }
         if (marked.any { it }) Text("Red: signal drops (Signal › Drops)", style = MaterialTheme.typography.labelSmall, color = quiet)
@@ -418,6 +446,59 @@ internal data class Use(val mobile: Long, val hotspot: Long, val wifi: Long, val
         hotspot.takeIf { it > 0 }?.let { "Hotspot ${DataRules.bytes(it)}" },
         (wifi > 0 || always).takeIf { it }?.let { "Wi-Fi ${DataRules.bytes(wifi)}" },
         ethernet.takeIf { it > 0 }?.let { "Ethernet ${DataRules.bytes(it)}" }).joinToString(" · ")
+}
+
+private val APP_COLORS = listOf(Color(0xFFFF9F1C), Color(0xFF4F86E8), Color(0xFFE91E63), Color(0xFF26C6DA), Color(0xFFAB47BC), Color(0xFFFFCA28))
+
+/** The bars by app: the six that used most over the bars shown, each its colour, the rest grey. */
+private fun byApps(bars: List<Bar>, appDays: List<Triple<LocalDate, String, Long>>): Pair<List<Bar>, List<Pair<String, Color>>> {
+    val from = bars.first().from; val until = bars.last().until
+    val inRange = appDays.filter { !it.first.isBefore(from) && it.first.isBefore(until) }
+    val top = inRange.groupBy { it.second }.mapValues { (_, l) -> l.sumOf { it.third } }.entries.sortedByDescending { it.value }.take(6).map { it.key }
+    val series = top.mapIndexed { i, n -> n to APP_COLORS[i] } + ("Other apps" to Color(0xFF8A8F94))
+    return bars.map { b ->
+        if (b.forecast) b.copy(parts = series.map { 0L })
+        else inRange.filter { !it.first.isBefore(b.from) && it.first.isBefore(b.until) }.let { l ->
+            b.copy(parts = top.map { n -> l.filter { it.second == n }.sumOf { it.third } } + l.filter { it.second !in top }.sumOf { it.third })
+        }
+    } to series
+}
+
+/** The hotspot's line, opening ▾ into the devices that used it and, in each, its apps — from their own files, as they counted. */
+@Composable private fun HotspotRow(name: String, use: Use, most: Long, all: Map<String, List<DataMonth>>, from: LocalDate, until: LocalDate) {
+    var open by remember { mutableStateOf(false) }
+    val devices = remember(all, from, until) {
+        all.filterKeys { it != DataFiles.device() }.map { (d, months) ->
+            val apps = months.flatMap { it.apps }.filter { it.net == "hotspot" && !it.day.isBefore(from) && it.day.isBefore(until) }
+                .groupBy { it.name.ifBlank { it.app } }.map { (n, l) -> n to l.sumOf { it.total } }.sortedByDescending { it.second }
+            Triple(DataFiles.label(all, d), apps.sumOf { it.second }, apps)
+        }.filter { it.second > 0 }.sortedByDescending { it.second }
+    }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { AppRow(name, use, most) { open = !open } }
+            IconButton(onClick = { open = !open }) {
+                Icon(painterResource(if (open) R.drawable.ic_keyboard_arrow_up else R.drawable.ic_keyboard_arrow_down), contentDescription = if (open) "Close" else "Who used it")
+            }
+        }
+        if (open) Column(Modifier.padding(start = 20.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (devices.isEmpty()) Text("The tablet's and the computer's counts have not come yet (Local Sync).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            devices.forEach { (device, total, apps) ->
+                Text("$device · ${DataRules.bytes(total)}", style = MaterialTheme.typography.titleSmall)
+                apps.take(6).forEach { (n, v) ->
+                    Row(Modifier.padding(start = 12.dp)) {
+                        Text(n, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(DataRules.bytes(v), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (apps.size > 6) Text("and ${apps.size - 6} more, ${DataRules.bytes(apps.drop(6).sumOf { it.second })}", Modifier.padding(start = 12.dp),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            val counted = devices.sumOf { it.second }
+            if (devices.isNotEmpty() && use.hotspot > counted) Text("Not counted by them: ${DataRules.bytes(use.hotspot - counted)} (a guest, hours they were off, overheads)",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 /** Every app and service of the chosen days, the small ones too. */

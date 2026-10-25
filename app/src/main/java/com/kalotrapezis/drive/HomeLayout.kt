@@ -37,14 +37,14 @@ internal object HomeLayout {
     fun save(c: Context, wide: Boolean, items: List<HomeItem>) = prefs(c).edit().putString("grid${columns(wide)}", format(items)).apply()
     fun reset(c: Context, wide: Boolean) = prefs(c).edit().remove("grid${columns(wide)}").apply()
 
-    /** "id:flags:col:row" (flags s small, m medium, h hidden), comma-separated; unknown ids dropped, a new part added unplaced. */
+    /** "id:flags:col:row" (flags s small, m medium, h hidden), comma-separated; unknown ids dropped, a new part added small and unplaced (small icons only by default; the user, 25 Oct). */
     fun parse(saved: String?, defaults: List<String>): List<HomeItem> {
         val items = saved.orEmpty().split(',').filter { it.isNotBlank() }.map { part ->
             val p = part.split(':')
             val id = p[0]; val flags = p.getOrElse(1) { "" }
             HomeItem(id, size = if ('s' in flags) HomeSize.Small else if ('m' in flags) HomeSize.Medium else HomeSize.Large, hidden = 'h' in flags && id != SETTINGS, col = p.getOrNull(2)?.toIntOrNull() ?: -1, row = p.getOrNull(3)?.toIntOrNull() ?: -1)
         }.filter { it.id in defaults }.distinctBy { it.id }
-        return items + defaults.filter { id -> items.none { it.id == id } }.map { HomeItem(it) }
+        return items + defaults.filter { id -> items.none { it.id == id } }.map { HomeItem(it, size = HomeSize.Small) }
     }
 
     fun format(items: List<HomeItem>) = items.joinToString(",") { "${it.id}:${when (it.size) { HomeSize.Small -> "s"; HomeSize.Medium -> "m"; else -> "" }}${if (it.hidden) "h" else ""}:${it.col}:${it.row}" }

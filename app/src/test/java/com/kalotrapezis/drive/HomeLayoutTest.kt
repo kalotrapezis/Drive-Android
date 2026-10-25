@@ -7,14 +7,15 @@ import org.junit.Test
 class HomeLayoutTest {
     private val at = { items: List<HomeItem> -> items.filter { !it.hidden }.associate { it.id to (it.col to it.row) } }
 
-    @Test fun nothingSavedIsTodaysHome() {
-        // a tablet: Sync and Settings side by side on one row, then the groups two by two, two rows each
+    @Test fun nothingSavedIsSmallIconsOnly() {
+        // the user, 25 Oct: small icons only by default; a tablet's 8 across take every part in two rows (Scanner & Codes two cells)
         val tablet = HomeLayout.place(HomeLayout.parse(null, HomeLayout.WIDE), 8)
-        assertEquals(mapOf("sync" to (0 to 0), "settings" to (4 to 0), "gallery" to (0 to 1), "files" to (4 to 1), "notes" to (0 to 3)), at(tablet).filterKeys { it in setOf("sync", "settings", "gallery", "files", "notes") })
-        assertEquals(13, HomeLayout.height(tablet, 8)) // the Phone (24 Oct) a row of groups more; Data (25 Oct) beside Maps
-        // a phone: one under another, Settings last
+        assertEquals(true, tablet.all { it.small })
+        assertEquals(mapOf("sync" to (0 to 0), "settings" to (1 to 0), "scanner" to (5 to 0), "office" to (7 to 0), "text" to (0 to 1)), at(tablet).filterKeys { it in setOf("sync", "settings", "scanner", "office", "text") })
+        assertEquals(2, HomeLayout.height(tablet, 8))
+        // a phone: four across, Settings last
         val phone = HomeLayout.place(HomeLayout.parse(null, HomeLayout.NARROW), 4)
-        assertEquals(0 to 0, at(phone)["sync"]); assertEquals(0 to 1, at(phone)["gallery"]); assertEquals(0 to 25, at(phone)["settings"]) // Data (25 Oct) a group more
+        assertEquals(0 to 0, at(phone)["sync"]); assertEquals(1 to 0, at(phone)["gallery"]); assertEquals(2 to 3, at(phone)["settings"])
     }
 
     @Test fun aSavedLayoutComesBackAsItWas() {
@@ -26,7 +27,7 @@ class HomeLayoutTest {
     @Test fun aGoneAppletIsDroppedAndANewOneFindsAFreeCell() {
         val items = HomeLayout.place(HomeLayout.parse("old::0:0,maps:s:0:0,notes:s:2:0", listOf("maps", "notes", "contacts")), 4)
         assertEquals(listOf("maps", "notes", "contacts"), items.map { it.id })
-        assertEquals(mapOf("maps" to (0 to 0), "notes" to (2 to 0), "contacts" to (0 to 1)), at(items)) // a group: the whole width, under
+        assertEquals(mapOf("maps" to (0 to 0), "notes" to (2 to 0), "contacts" to (1 to 0)), at(items)) // a new part comes small, in the first free cell
     }
 
     @Test fun settingsIsNeverHidden() = assertFalse(HomeLayout.parse("settings:h:0:0", listOf("settings")).single().hidden)

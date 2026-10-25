@@ -197,8 +197,6 @@ internal fun modeIcon(mode: String, rolling: Boolean = false) = when (mode) {
     else -> R.drawable.ic_directions_car
 }
 
-private fun modeLabel(mode: String, rolling: Boolean = false) = when (mode) { "foot" -> if (rolling) "Roll" else "Walk"; "bike" -> "Bike"; else -> "Car" }
-
 /** The ways there, before starting: [chosen] is the one drawn bold. */
 private data class Preview(val target: Place, val mode: String, val routes: List<Route>, val chosen: Int, val from: Location)
 
@@ -264,7 +262,8 @@ internal object MapsPrefs {
     /** How much the car's voice says: "all", "important" (wrong way, new route, no GPS, arrival) or "off". */
     fun voice(c: Context) = prefs(c).getString("voice", "all") ?: "all"
     fun setVoice(c: Context, v: String) = prefs(c).edit().putString("voice", v).apply()
-    fun lang(c: Context) = prefs(c).getString("lang", "el") ?: "el"
+    /** Until one is chosen, the app's own language (Settings › Appearance › Language): Greek, or else English. */
+    fun lang(c: Context) = prefs(c).getString("lang", null) ?: if (c.resources.configuration.locales[0].language == "el") "el" else "en"
     fun setLang(c: Context, lang: String) = prefs(c).edit().putString("lang", lang).apply()
     fun ttsLocale(lang: String): Locale = Locale.forLanguageTag(if (lang == "en") "en-GB" else "el-GR")
     fun inDistance(lang: String, metres: Double, car: Boolean, then: String): String {
@@ -361,6 +360,8 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     var muted by remember { mutableStateOf(false) }
     var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
     OpenTiming("Maps", mapRef != null)
+    // a spot tapped on no place is named this until its address comes (compared below: the same words, in the same language)
+    val droppedPin = stringResource(R.string.maps_dropped_pin)
 
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted = hasLocation(context) }
     LaunchedEffect(Unit) { if (!granted) ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }
@@ -387,9 +388,9 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         WriterLog.i("Maps: parked ($why)")
         askAmea = loc to System.currentTimeMillis()
         scope.launch {
-            withContext(Dispatchers.IO) { runCatching { MapsFiles.save(root, Place(MapsFiles.PARKING, "My car", loc.latitude, loc.longitude, "parking", mode = "foot")) } }
+            withContext(Dispatchers.IO) { runCatching { MapsFiles.save(root, Place(MapsFiles.PARKING, context.getString(R.string.maps_my_car), loc.latitude, loc.longitude, "parking", mode = "foot")) } }
             places = withContext(Dispatchers.IO) { MapsFiles.places(root) }
-            Toast.makeText(context, "Parking saved", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.maps_parking_saved), Toast.LENGTH_SHORT).show()
         }
     }
     /** The car moves on: the parking spot goes (on foot or by bike it stays). */
@@ -440,16 +441,16 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         // the car connected: by car on its screen, which the phone then shows
         if (CarLink.connected.value && mode == "car") {
             CarLink.go?.invoke(target); selected = null; preview = null; tab = null
-            Toast.makeText(context, "On the car's screen: ${target.name}", Toast.LENGTH_SHORT).show(); return
+            Toast.makeText(context, context.getString(R.string.maps_on_car_screen, target.name), Toast.LENGTH_SHORT).show(); return
         }
         // directions start from a live fix: Android's stored last one can be hours old and towns away
         if (from == null || !live) { pending = target.copy(mode = mode); return }
         if (!File(graphDir, "properties").isFile) {
-            Toast.makeText(context, "No routing graph yet: put greece-gh in Tetra/Maps (the computer's tools/maps-greece.sh makes it).", Toast.LENGTH_LONG).show(); return
+            Toast.makeText(context, context.getString(R.string.maps_no_graph), Toast.LENGTH_LONG).show(); return
         }
         if (mode == "car" && target.id != MapsFiles.PARKING) unpark("a car trip started")
         if (target.id.isEmpty()) MapsPrefs.addRecent(context, target)
-        finding = "Finding the way…"
+        finding = context.getString(R.string.maps_finding)
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.routes(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), lang,
                 if (mode == "car" && !choose) headingOf(from) else Double.NaN, MapsPrefs.mainRoads(context)) } }
@@ -463,7 +464,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                 } else begin(target, mode, routes.first(), from)
             }.onFailure {
                 WriterLog.e("Maps: no route by $mode", it)
-                Toast.makeText(context, it.message ?: "No way found: the routing graph could not be read", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, it.message ?: context.getString(R.string.maps_no_way_graph), Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -473,7 +474,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         WriterLog.i("Maps: trip ${t.name}, ${t.stops.size} stops")
         tab = null; nextStop = null
         if (CarLink.connected.value && CarLink.goTrip != null) {
-            CarLink.goTrip?.invoke(t.stops); Toast.makeText(context, "On the car's screen: ${t.name}", Toast.LENGTH_SHORT).show(); return
+            CarLink.goTrip?.invoke(t.stops); Toast.makeText(context, context.getString(R.string.maps_on_car_screen, t.name), Toast.LENGTH_SHORT).show(); return
         }
         tripRun = t to 0
         startNav(t.stops[0], "car")
@@ -526,7 +527,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                 } else tripRun = null
             }
             if (car && MapsPrefs.autoPark(context)) park(loc, "a car trip ended")
-            Toast.makeText(context, "Arrived: ${n.target.name}", Toast.LENGTH_LONG).show(); return
+            Toast.makeText(context, context.getString(R.string.maps_arrived, n.target.name), Toast.LENGTH_LONG).show(); return
         }
         // by car, the camera: further out at speed on a long stretch, closer towards a busy crossing or a turn slowed for
         if (car && g.view != view) {
@@ -580,7 +581,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         listLoading = false
     }
     // the user's own accessible places count as disabled parking (OSM knows few: none in Xanthi on 21 Oct)
-    fun mine(kind: String?) = if (kind == "disabled_parking") places.filter { it.icon == "accessible" }.map { Poi(kind, it.lat, it.lng, it.name, more = "Saved") } else emptyList()
+    fun mine(kind: String?) = if (kind == "disabled_parking") places.filter { it.icon == "accessible" }.map { Poi(kind, it.lat, it.lng, it.name, more = context.getString(R.string.maps_saved_mine)) } else emptyList()
     LaunchedEffect(query, pill, center, all, places, near) {
         val c = near?.let { LatLng(it.lat, it.lng) } ?: center
         results = withContext(Dispatchers.Default) { (mine(pill) + MapsSearch.search(all, query, c.latitude, c.longitude, pill, nearby = near != null)).let { r ->
@@ -594,7 +595,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         val tapped = tapRoad?.takeIf { s.id.isEmpty() && s.name == it }
         address = withContext(Dispatchers.IO) { runCatching { MapsAddresses.describe(root, all, s.lat, s.lng, tapped) }.getOrNull() }
         // a dropped pin is named by its address
-        if (s.id.isEmpty() && detail == null && address != null && selected == s && (s.name == "Dropped pin" || s.name == road?.first)) selected = s.copy(name = address!!.substringBefore(","))
+        if (s.id.isEmpty() && detail == null && address != null && selected == s && (s.name == droppedPin || s.name == road?.first)) selected = s.copy(name = address!!.substringBefore(","))
     }
     LaunchedEffect(navQuery, center, all) {
         navResults = withContext(Dispatchers.Default) { MapsSearch.search(all, navQuery, center.latitude, center.longitude) }
@@ -669,12 +670,12 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                         placing = null
                         scope.launch {
                             withContext(Dispatchers.IO) { runCatching {
-                                MapsShare.add(root, Poi("disabled_parking", at.latitude, at.longitude, "ΑμεΑ parking", more = c.address, web = c.link, note = "${c.municipality} (${c.date})"))
+                                MapsShare.add(root, Poi("disabled_parking", at.latitude, at.longitude, context.getString(R.string.maps_amea_parking), more = c.address, web = c.link, note = "${c.municipality} (${c.date})"))
                                 MapsCheck.done(root, c.id)
                             } }
                             reloadAdded(); checks = withContext(Dispatchers.IO) { MapsCheck.load(root) }
                         }
-                        Toast.makeText(context, "ΑμεΑ spot placed: ${c.address}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.maps_amea_placed, c.address), Toast.LENGTH_SHORT).show()
                     } else if (nav == null) editing = Place("", "", at.latitude, at.longitude)
                     true
                 }
@@ -692,20 +693,20 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                     val mapHit = map.queryRenderedFeatures(box, "pois").firstOrNull { it.geometry() is Point && it.hasProperty("name") }
                     when {
                         mineHit != null -> { selected = mineHit; detail = MapsSearch.near(all, mineHit.lat, mineHit.lng, mineHit.name, 25.0) }
-                        resultHit != null -> { detail = resultHit; selected = resultHit.place() }
-                        addedHit != null -> { detail = addedHit; selected = addedHit.place() }
+                        resultHit != null -> { detail = resultHit; selected = resultHit.place(context) }
+                        addedHit != null -> { detail = addedHit; selected = addedHit.place(context) }
                         mapHit != null -> {
                             val g = mapHit.geometry() as Point
                             val name = mapHit.getStringProperty("name").orEmpty()
                             val p = MapsSearch.near(all, g.latitude(), g.longitude(), name)
                                 ?: Poi(mapHit.getStringProperty("kind").orEmpty(), g.latitude(), g.longitude(), name)
-                            detail = p; selected = p.place()
+                            detail = p; selected = p.place(context)
                         }
                         else -> {
                             val r = roadAtPoint(map, pt)
                             tapRoad = r?.first?.ifEmpty { null }
                             detail = null
-                            selected = Place("", r?.first?.ifEmpty { null } ?: "Dropped pin", at.latitude, at.longitude)
+                            selected = Place("", r?.first?.ifEmpty { null } ?: droppedPin, at.latitude, at.longitude)
                         }
                     }
                     tab = null
@@ -729,7 +730,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     LaunchedEffect(mapRef, places, added) {
         (mapRef?.style?.getSource("added") as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(added
             .filter { a -> places.none { metresBetween(it.lat, it.lng, a.lat, a.lng) < 30 } }
-            .map { a -> Feature.fromGeometry(Point.fromLngLat(a.lng, a.lat)).apply { addStringProperty("name", a.title); addStringProperty("icon", markerOf(a.kind)) } }))
+            .map { a -> Feature.fromGeometry(Point.fromLngLat(a.lng, a.lat)).apply { addStringProperty("name", a.title(context)); addStringProperty("icon", markerOf(a.kind)) } }))
     }
     LaunchedEffect(mapRef, plan, tripRun) {
         val stops = plan ?: tripRun?.first?.stops.orEmpty()
@@ -831,9 +832,8 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         if (mapFile.isFile) AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
         else Column(Modifier.align(Alignment.Center).padding(32.dp).widthIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(painterResource(R.drawable.ic_map), contentDescription = null, tint = MAPS_COLOR, modifier = Modifier.size(48.dp))
-            Text("The map of Greece is not on this device yet", style = MaterialTheme.typography.titleLarge)
-            Text("It comes from the computer: tools/maps-greece.sh makes greece.pmtiles (about 500 MB) and the routing graph greece-gh, " +
-                "and Local Sync brings them here into Tetra/Maps.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.maps_no_map), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.maps_no_map_how), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         // bottom left: the speed limit as its sign, red when I am over it (by more than 3 km/h), my speed under it
@@ -873,7 +873,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             NavBanner(n, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(), roadName, roadCode)
         } else {
             Row(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (n == null) Island(R.drawable.ic_chevron_left, "Back", back)
+                if (n == null) Island(R.drawable.ic_chevron_left, stringResource(R.string.common_back), back)
                 RoadPill()
             }
             // top right: the next turn in a small window (the user: "A small window will open at the top right to tell me what lane to take")
@@ -883,14 +883,14 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         // away while a panel or a place's page is open
         if (n == null && tab == null && selected == null && preview == null) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 12.dp, bottom = 76.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Island(R.drawable.ic_parking, "I parked here") {
+            Island(R.drawable.ic_parking, stringResource(R.string.maps_parked_here)) {
                 val h = here
-                if (h == null || !live) Toast.makeText(context, if (granted) "Waiting for your location…" else "Location is off for Tetra.", Toast.LENGTH_SHORT).show()
+                if (h == null || !live) Toast.makeText(context, context.getString(if (granted) R.string.maps_waiting_location else R.string.maps_location_off), Toast.LENGTH_SHORT).show()
                 else park(h, "the P button")
             }
-            Island(R.drawable.ic_my_location, "Where I am") {
+            Island(R.drawable.ic_my_location, stringResource(R.string.maps_where_i_am)) {
                 val h = here
-                if (h == null) Toast.makeText(context, if (granted) "Waiting for your location…" else "Location is off for Tetra.", Toast.LENGTH_SHORT).show()
+                if (h == null) Toast.makeText(context, context.getString(if (granted) R.string.maps_waiting_location else R.string.maps_location_off), Toast.LENGTH_SHORT).show()
                 else mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(h.latitude, h.longitude), 16.0))
             }
         }
@@ -903,13 +903,13 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             plan?.takeIf { it.size < planCount }?.let { pl ->
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                        Text("🧭 Stop ${Trip.letter(pl.size)} of $planCount: tap it on the map, or find it in Search or Saved", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.maps_plan_point, Trip.letter(pl.size), planCount), style = MaterialTheme.typography.bodyMedium)
                         if (pl.isNotEmpty()) Text(pl.withIndex().joinToString(" → ") { (i, p) -> "${Trip.letter(i)} ${p.name}" }, style = MaterialTheme.typography.bodySmall,
                             maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Row {
-                            if (pl.isNotEmpty()) TextButton(onClick = { plan = pl.dropLast(1) }) { Text("Undo", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
-                            if (pl.size >= 2) TextButton(onClick = { planCount = pl.size; naming = true }) { Text("Done", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
-                            TextButton(onClick = { plan = null }) { Text("Cancel", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
+                            if (pl.isNotEmpty()) TextButton(onClick = { plan = pl.dropLast(1) }) { Text(stringResource(R.string.common_undo), color = androidx.compose.ui.graphics.Color(0xFF9FA8DA), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            if (pl.size >= 2) TextButton(onClick = { planCount = pl.size; naming = true }) { Text(stringResource(R.string.common_done), color = androidx.compose.ui.graphics.Color(0xFF9FA8DA), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            TextButton(onClick = { plan = null }) { Text(stringResource(R.string.common_cancel), color = androidx.compose.ui.graphics.Color(0xFF9FA8DA), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         }
                     }
                 }
@@ -917,10 +917,10 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             nextStop?.takeIf { nav == null }?.let { ns ->
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                     Row(Modifier.padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("🧭 Next: ${tripRun?.let { Trip.letter(it.second) }.orEmpty()} ${ns.name}", style = MaterialTheme.typography.bodyMedium, maxLines = 1,
+                        Text(stringResource(R.string.maps_next_stop, tripRun?.let { Trip.letter(it.second) }.orEmpty(), ns.name), style = MaterialTheme.typography.bodyMedium, maxLines = 1,
                             overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                        TextButton(onClick = { nextStop = null; MapsPrefs.setPendingTrip(context, null); startNav(ns, "car") }) { Text("Go", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
-                        IconButton(onClick = { nextStop = null; tripRun = null; MapsPrefs.setPendingTrip(context, null) }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "End the trip", modifier = Modifier.size(18.dp)) }
+                        TextButton(onClick = { nextStop = null; MapsPrefs.setPendingTrip(context, null); startNav(ns, "car") }) { Text(stringResource(R.string.maps_go), color = androidx.compose.ui.graphics.Color(0xFF9FA8DA), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        IconButton(onClick = { nextStop = null; tripRun = null; MapsPrefs.setPendingTrip(context, null) }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.maps_end_trip), modifier = Modifier.size(18.dp)) }
                     }
                 }
             }
@@ -929,13 +929,13 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                 val known = added.any { it.kind == "disabled_parking" && metresBetween(it.lat, it.lng, loc.latitude, loc.longitude) < 8 }
                 if (!known) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                     Row(Modifier.padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("♿ ΑμεΑ spot?", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.maps_amea_ask), style = MaterialTheme.typography.bodyMedium)
                         TextButton(onClick = {
                             askAmea = null
                             scope.launch { withContext(Dispatchers.IO) { runCatching { MapsShare.add(root, Poi("disabled_parking", loc.latitude, loc.longitude, "")) } }; reloadAdded() }
-                            Toast.makeText(context, "ΑμεΑ spot added to the map", Toast.LENGTH_SHORT).show()
-                        }) { Text("Add it", color = androidx.compose.ui.graphics.Color(0xFF9FA8DA)) }
-                        IconButton(onClick = { askAmea = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = "No", modifier = Modifier.size(18.dp)) }
+                            Toast.makeText(context, context.getString(R.string.maps_amea_added), Toast.LENGTH_SHORT).show()
+                        }) { Text(stringResource(R.string.maps_add_it), color = androidx.compose.ui.graphics.Color(0xFF9FA8DA), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        IconButton(onClick = { askAmea = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_no), modifier = Modifier.size(18.dp)) }
                     }
                 }
             }
@@ -944,12 +944,12 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.clickable { onMap = null }) {
                     Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("$name · ${found.size}", style = MaterialTheme.typography.bodyMedium)
-                        Icon(painterResource(R.drawable.ic_close), contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_clear), modifier = Modifier.size(18.dp))
                     }
                 }
             }
-            if (reckoning && nav != null) Pill("No GPS signal: going on along the route")
-            if (pending != null && nav == null && finding == null) Pill(if (granted) "Waiting for your location…" else "Location is off for Tetra: directions need it.")
+            if (reckoning && nav != null) Pill(stringResource(R.string.maps_no_gps_reckoning))
+            if (pending != null && nav == null && finding == null) Pill(stringResource(if (granted) R.string.maps_waiting_location else R.string.maps_location_off_directions))
             val s = selected
             fun away(lat: Double, lng: Double) = here?.let { metresBetween(it.latitude, it.longitude, lat, lng) }
             if (n != null) Surface(color = islandColor(), contentColor = islandContentColor(), shape = MaterialTheme.shapes.extraLarge) {
@@ -966,21 +966,21 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                     Column(Modifier.weight(1f)) {
                         val left = n.p?.left ?: n.route.metres
                         val minutes = Math.round(n.route.millis / 60_000.0 * (left / n.route.metres.coerceAtLeast(1.0)))
-                        Text("${metresText(left)} · ${if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"}", style = MaterialTheme.typography.titleMedium)
-                        Text(if (nav == null) "🚗 On the car's screen · ${n.target.name}" else n.target.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${metresText(left)} · ${minutesText(context, minutes)}", style = MaterialTheme.typography.titleMedium)
+                        Text(if (nav == null) stringResource(R.string.maps_on_car_screen_bar, n.target.name) else n.target.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    if (nav == null) Button(colors = panelButton(), onClick = { CarLink.stop?.invoke() }) { Text("Stop") }
+                    if (nav == null) Button(colors = panelButton(), onClick = { CarLink.stop?.invoke() }) { Text(stringResource(R.string.common_stop), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     else {
                     IconButton(onClick = { follow(n.mode) }) {
-                        Icon(painterResource(R.drawable.ic_navigation), contentDescription = "Follow me")
+                        Icon(painterResource(R.drawable.ic_navigation), contentDescription = stringResource(R.string.maps_follow_me))
                     }
                     IconButton(onClick = { muted = !muted; if (muted) tts.value?.stop() }) {
-                        Icon(painterResource(if (muted) R.drawable.ic_volume_off else R.drawable.ic_volume_up), contentDescription = if (muted) "Voice on" else "Voice off")
+                        Icon(painterResource(if (muted) R.drawable.ic_volume_off else R.drawable.ic_volume_up), contentDescription = stringResource(if (muted) R.string.maps_voice_on else R.string.maps_voice_off))
                     }
                     Button(colors = panelButton(), onClick = {
                         stopNav(); tripRun = null; nextStop = null
                         if (n.mode == "car" && MapsPrefs.autoPark(context)) here?.let { park(it, "a car trip stopped") }
-                    }) { Text("Stop") }
+                    }) { Text(stringResource(R.string.common_stop), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
                 }
               }
@@ -991,16 +991,16 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                         Text("♿ ${c.address.ifEmpty { c.municipality }}", style = MaterialTheme.typography.titleMedium)
                         Text(c.subject, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis,
                             color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f))
-                        Text("Long-press where the spot is (the map shows the street, not the house).", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.maps_amea_long_press), style = MaterialTheme.typography.bodyMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(c.link))) } }) {
-                                Text("Decision", color = androidx.compose.ui.graphics.Color.White) }
+                                Text(stringResource(R.string.maps_decision), color = androidx.compose.ui.graphics.Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                             OutlinedButton(onClick = {
                                 // not to be found: off the list on every device
                                 placing = null
                                 scope.launch { withContext(Dispatchers.IO) { runCatching { MapsCheck.done(root, c.id) } }; checks = withContext(Dispatchers.IO) { MapsCheck.load(root) } }
-                            }) { Text("Not there", color = androidx.compose.ui.graphics.Color.White) }
-                            OutlinedButton(onClick = { placing = null }) { Text("Later", color = androidx.compose.ui.graphics.Color.White) }
+                            }) { Text(stringResource(R.string.maps_not_there), color = androidx.compose.ui.graphics.Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            OutlinedButton(onClick = { placing = null }) { Text(stringResource(R.string.maps_later), color = androidx.compose.ui.graphics.Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         }
                     }
                 }
@@ -1012,13 +1012,13 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                 val saved = s.id.isNotEmpty() && places.any { it.id == s.id }
                 plan?.let { pl ->
                     Button(onClick = {
-                        val next = pl + s.copy(id = "", name = s.name.takeIf { it != "Dropped pin" } ?: address?.substringBefore(",") ?: "Stop ${Trip.letter(pl.size)}")
+                        val next = pl + s.copy(id = "", name = s.name.takeIf { it != droppedPin } ?: address?.substringBefore(",") ?: context.getString(R.string.maps_stop_letter, Trip.letter(pl.size)))
                         plan = next; selected = null; detail = null
                         if (next.size >= planCount) naming = true
-                    }, modifier = Modifier.fillMaxWidth(), colors = panelButton()) { Text("➕ Stop ${Trip.letter(pl.size)}: ${s.name}", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    }, modifier = Modifier.fillMaxWidth(), colors = panelButton()) { Text(stringResource(R.string.maps_add_stop, Trip.letter(pl.size), s.name), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
                 PlaceCard(s, detail, address, saved, away(s.lat, s.lng), rolling, lists, go = { m -> startNav(s, m, choose = true) },
-                    save = { editing = s.copy(name = if (s.name == "Dropped pin") "" else s.name) },
+                    save = { editing = s.copy(name = if (s.name == droppedPin) "" else s.name) },
                     edit = { editing = s }, delete = { deleting = s }, close = { selected = null; detail = null },
                     remove = detail?.takeIf { d -> added.any { it.kind == d.kind && metresBetween(it.lat, it.lng, d.lat, d.lng) < 2 } }?.let { d -> {
                         selected = null; detail = null
@@ -1047,7 +1047,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                                     }
                                     inView.ifEmpty { many.take(20) }.take(300)
                                 }
-                                val name = pill?.let { k -> MapsSearch.PILLS.firstOrNull { it.key == k }?.let { "${it.emoji} ${it.label}" } } ?: query.trim()
+                                val name = pill?.let { k -> MapsSearch.PILLS.firstOrNull { it.key == k }?.let { "${it.emoji} ${context.getString(it.label)}" } } ?: query.trim()
                                 onMap = name to found
                                 tab = null
                                 WriterLog.i("Maps: OK on \"$name\", ${found.size} on the map")
@@ -1058,7 +1058,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                                 }
                             }
                         }) { p ->
-                        detail = p; selected = p.place(); tab = null
+                        detail = p; selected = p.place(context); tab = null
                         mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), if (MapsSearch.settlement(p.kind)) 13.0 else 16.5))
                     }
                     MapsTab.Favorites -> FavoritesPanel(places, lists, remember(all, here) { all.filter { it.kind == "eopyy" }.sortedBy { p -> away(p.lat, p.lng) ?: 0.0 } },
@@ -1072,12 +1072,12 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                             placing = c; tab = null; selected = null
                             mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(c.lat, c.lng), 17.0))
                         }) { p ->
-                        detail = p; selected = p.place(); tab = null
+                        detail = p; selected = p.place(context); tab = null
                         mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lng), 16.5))
                     }
                     MapsTab.Navigate -> NavigatePanel(navMode, { navMode = it }, rolling, navQuery, { navQuery = it }, navResults,
                         MapsFiles.slots(places).filterNotNull() + places.filter { it.id == MapsFiles.PARKING }, { away(it.lat, it.lng) },
-                        { p -> tab = null; navQuery = ""; startNav(p.place(), navMode) }, { p -> tab = null; startNav(p, navMode) },
+                        { p -> tab = null; navQuery = ""; startNav(p.place(context), navMode) }, { p -> tab = null; startNav(p, navMode) },
                         trips, plan = { askCount = true }, startTrip = ::startTrip,
                         deleteTrip = { t -> scope.launch { withContext(Dispatchers.IO) { MapsFiles.deleteTrip(root, t) }; trips = withContext(Dispatchers.IO) { MapsFiles.trips(root) } } })
                     null -> Unit
@@ -1096,12 +1096,12 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     } }
     editing?.let { p -> PlaceDialog(p, places, lists, { editing = null }, onMap = { poi ->
         editing = null
-        scope.launch { withContext(Dispatchers.IO) { runCatching { MapsShare.add(root, poi) } }; reloadAdded(); detail = poi; selected = poi.place() }
+        scope.launch { withContext(Dispatchers.IO) { runCatching { MapsShare.add(root, poi) } }; reloadAdded(); detail = poi; selected = poi.place(context) }
     }) { saved ->
         editing = null
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { MapsFiles.save(root, saved) } }
-            r.onFailure { Toast.makeText(context, it.message ?: "Could not save the place.", Toast.LENGTH_LONG).show() }
+            r.onFailure { WriterLog.e("Maps: place not saved", it); Toast.makeText(context, context.getString(R.string.maps_place_not_saved), Toast.LENGTH_LONG).show() }
             places = withContext(Dispatchers.IO) { MapsFiles.places(root) }
             selected = r.getOrNull()
         }
@@ -1118,13 +1118,13 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             }
         }
     }
-    deleting?.let { p -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Delete ${p.name}?") },
-        text = { Text(if (p.slot > 0) "It also leaves Home's Maps card." else "The place is removed on every device.") },
+    deleting?.let { p -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text(stringResource(R.string.maps_delete_place, p.name)) },
+        text = { Text(stringResource(if (p.slot > 0) R.string.maps_delete_leaves_home else R.string.maps_delete_everywhere)) },
         confirmButton = { TextButton(onClick = {
             deleting = null; selected = null
             scope.launch { withContext(Dispatchers.IO) { MapsFiles.delete(root, p) }; places = withContext(Dispatchers.IO) { MapsFiles.places(root) } }
-        }) { Text("Delete") } },
-        dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }) }
+        }) { Text(stringResource(R.string.common_delete)) } },
+        dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.common_cancel)) } }) }
 }
 
 /** The road the map draws under [pt] (screen pixels): its name and code (A2, EO1…), from the map's own roads. */
@@ -1184,21 +1184,22 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
 
 /** Under the handle: the tolls still ahead (name, operator and price where OSM has them, how far) and the next turns. */
 @Composable private fun NavSheet(n: Nav, tolls: List<Pair<Poi, Double>>, lang: String) {
+    val context = LocalContext.current
     val along = n.p?.along ?: 0.0
     val ahead = tolls.filter { it.second > along - 20 }
     LazyColumn(Modifier.heightIn(max = 320.dp).padding(horizontal = 16.dp)) {
-        item { Text(if (ahead.isEmpty()) "No tolls ahead" else "Tolls ahead: ${ahead.size}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp)) }
+        item { Text(if (ahead.isEmpty()) stringResource(R.string.maps_no_tolls_ahead) else stringResource(R.string.maps_tolls_ahead, ahead.size), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(vertical = 6.dp)) }
         items(ahead) { (t, at) ->
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("💶")
                 Column(Modifier.weight(1f)) {
-                    Text(t.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(t.title(context), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (t.more.isNotEmpty()) Text(t.more, style = MaterialTheme.typography.bodySmall, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
                 }
                 Text(metresText(at - along), style = MaterialTheme.typography.labelMedium)
             }
         }
-        item { Text("Next turns", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)) }
+        item { Text(stringResource(R.string.maps_next_turns), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)) }
         val cum = n.cum
         items(n.route.steps.drop(n.p?.next ?: 0).take(8)) { s ->
             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1256,21 +1257,21 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
     var note by remember { mutableStateOf("") }
     if (toMap && onMap != null) {
         var mapName by remember { mutableStateOf(p.name) }
-        AlertDialog(onDismissRequest = dismiss, title = { Text("Add to the map") },
+        AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.maps_add_to_map)) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(false, { toMap = false }, label = { Text("My place") }); FilterChip(true, {}, label = { Text("On the map") })
+                    FilterChip(false, { toMap = false }, label = { Text(stringResource(R.string.maps_my_place), maxLines = 1, overflow = TextOverflow.Ellipsis) }); FilterChip(true, {}, label = { Text(stringResource(R.string.maps_on_the_map), maxLines = 1, overflow = TextOverflow.Ellipsis) })
                 }
-                OutlinedTextField(mapName, { mapName = it }, label = { Text("Name (if it has one)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(note, { note = it }, label = { Text("Address or note") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("What it is", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(mapName, { mapName = it }, label = { Text(stringResource(R.string.maps_name_if_any)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(note, { note = it }, label = { Text(stringResource(R.string.maps_address_or_note)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.maps_what_it_is), style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MapsSearch.PILLS.filter { it.key != "eopyy" }.forEach { k -> FilterChip(kind == k.key, { kind = k.key }, label = { Text("${k.emoji} ${k.label}") }) }
+                    MapsSearch.PILLS.filter { it.key != "eopyy" }.forEach { k -> FilterChip(kind == k.key, { kind = k.key }, label = { Text("${k.emoji} ${stringResource(k.label)}", maxLines = 1, overflow = TextOverflow.Ellipsis) }) }
                 }
-                Text("It shows on the map, in Search and under its pill, on all your devices; Export shares it.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.maps_added_where), style = MaterialTheme.typography.bodySmall)
             } },
-            confirmButton = { TextButton(onClick = { onMap(Poi(kind, p.lat, p.lng, mapName.trim(), more = note.trim())) }) { Text("Add") } },
-            dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+            confirmButton = { TextButton(onClick = { onMap(Poi(kind, p.lat, p.lng, mapName.trim(), more = note.trim())) }) { Text(stringResource(R.string.common_add)) } },
+            dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
         return
     }
     var inLists by remember { mutableStateOf(p.lists.toSet()) }
@@ -1279,48 +1280,48 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
     var icon by remember { mutableStateOf(p.icon) }
     var slot by remember { mutableStateOf(p.slot) }
     var mode by remember { mutableStateOf(p.mode) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text(if (p.id.isEmpty()) "Save place" else "Place") },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(if (p.id.isEmpty()) R.string.maps_save_place else R.string.maps_place)) },
         text = { Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { // a phone shows half of it (the user, 23 Oct: "it needs scroll")
             if (p.id.isEmpty() && onMap != null) {
                 // one tap: an ΑμεΑ spot here, on the map
-                Button(onClick = { onMap(Poi("disabled_parking", p.lat, p.lng, "")) }, colors = panelButton(), modifier = Modifier.fillMaxWidth()) { Text("♿  ΑμεΑ parking here") }
+                Button(onClick = { onMap(Poi("disabled_parking", p.lat, p.lng, "")) }, colors = panelButton(), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.maps_amea_here)) }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(true, {}, label = { Text("My place") }); FilterChip(false, { toMap = true }, label = { Text("On the map") })
+                    FilterChip(true, {}, label = { Text(stringResource(R.string.maps_my_place), maxLines = 1, overflow = TextOverflow.Ellipsis) }); FilterChip(false, { toMap = true }, label = { Text(stringResource(R.string.maps_on_the_map), maxLines = 1, overflow = TextOverflow.Ellipsis) })
                 }
             }
-            OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.common_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             var tab by remember { mutableStateOf(Place.category(p.icon)) }
             androidx.compose.material3.SecondaryScrollableTabRow(Place.CATEGORIES.keys.indexOf(tab), edgePadding = 0.dp, containerColor = androidx.compose.ui.graphics.Color.Transparent) {
-                Place.CATEGORIES.keys.forEach { c -> androidx.compose.material3.Tab(tab == c, { tab = c }, text = { Text(c) }) }
+                Place.CATEGORIES.keys.forEach { c -> androidx.compose.material3.Tab(tab == c, { tab = c }, text = { Text(stringResource(Place.categoryLabel(c)), maxLines = 1, overflow = TextOverflow.Ellipsis) }) }
             }
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Place.CATEGORIES.getValue(tab).forEach { i -> FilterChip(icon == i, { icon = i }, label = { Icon(painterResource(placeIcon(i)), contentDescription = i, modifier = Modifier.size(18.dp)) }) }
             }
-            Text("On Home's Maps card", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.maps_on_home_card), style = MaterialTheme.typography.labelLarge)
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                FilterChip(slot == 0, { slot = 0 }, label = { Text("No") })
+                FilterChip(slot == 0, { slot = 0 }, label = { Text(stringResource(R.string.common_no), maxLines = 1, overflow = TextOverflow.Ellipsis) })
                 (1..MapsFiles.SLOTS).forEach { n ->
                     val taken = all.firstOrNull { it.slot == n && it.id != p.id }
                     FilterChip(slot == n, { slot = n }, label = { Text(if (taken != null && slot != n) "$n·" else "$n") })
                 }
             }
-            all.firstOrNull { it.slot == slot && slot > 0 && it.id != p.id }?.let { Text("Takes slot $slot from ${it.short}.", style = MaterialTheme.typography.bodySmall) }
-            if (slot > 0) OutlinedTextField(label, { label = it }, label = { Text("Name on Home (if shorter)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            all.firstOrNull { it.slot == slot && slot > 0 && it.id != p.id }?.let { Text(stringResource(R.string.maps_takes_slot, slot, it.short), style = MaterialTheme.typography.bodySmall) }
+            if (slot > 0) OutlinedTextField(label, { label = it }, label = { Text(stringResource(R.string.maps_name_on_home)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             if (lists.isNotEmpty()) {
-                Text("In lists", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.maps_in_lists), style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     lists.forEach { l -> FilterChip(l.id in inLists, { inLists = if (l.id in inLists) inLists - l.id else inLists + l.id }, label = { Text("${l.emoji} ${l.name}".trim()) }) }
                 }
             }
-            Text("Its Home tap goes", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.maps_home_tap_goes), style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 val rolling = MapsPrefs.rolling(LocalContext.current)
-                Place.MODES.forEach { m -> FilterChip(mode == m, { mode = m }, label = { Text(modeLabel(m, rolling)) },
+                Place.MODES.forEach { m -> FilterChip(mode == m, { mode = m }, label = { Text(stringResource(modeLabelOf(m, rolling)), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     leadingIcon = { Icon(painterResource(modeIcon(m, rolling)), contentDescription = null, modifier = Modifier.size(16.dp)) }) }
             }
         } },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
             save(p.copy(id = p.id.ifEmpty { MapsFiles.newId() }, name = name.trim(), icon = icon, slot = slot, mode = mode, lists = lists.map { it.id }.filter { it in inLists }, label = label.trim()))
-        }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+        }) { Text(stringResource(R.string.common_save)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }

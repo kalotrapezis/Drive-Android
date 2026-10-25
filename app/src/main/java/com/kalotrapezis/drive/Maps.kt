@@ -48,6 +48,11 @@ internal data class Place(
         )
         val ICONS = CATEGORIES.values.flatten().distinct() // the accessible mark is in General and beside Parking (the user, 21 Oct: "a disability mark … for my parking spots and accessible places")
         fun category(icon: String) = CATEGORIES.entries.firstOrNull { icon in it.value }?.key ?: "General"
+        /** A tab's name on the screen; the keys above stay the ids. */
+        @androidx.annotation.StringRes fun categoryLabel(c: String): Int = when (c) {
+            "People" -> R.string.maps_cat_people; "Health" -> R.string.maps_cat_health; "Travel" -> R.string.maps_cat_travel
+            "Nature" -> R.string.maps_cat_nature; else -> R.string.maps_cat_general
+        }
         val MODES = listOf("car", "foot", "bike")
 
         /** A file's place; anything that is not one (a stray file, half a write) is null, never an error. */
@@ -447,8 +452,9 @@ internal data class Poi(
 ) {
     /** Accent-blind, Greek and English names together, and the Greek one in Latin letters (Greeklish), for search. */
     val key = MapsSearch.fold("$name $nameEn").let { "$it ${MapsSearch.latin(MapsSearch.fold(name))}" }
-    val title get() = name.ifEmpty { nameEn }.ifEmpty { MapsSearch.label(kind) }
-    fun place() = Place("", title, lat, lng, MapsSearch.emblem(kind))
+    /** Its name, or its kind's ("Pharmacy") when it has none. */
+    fun title(c: android.content.Context) = name.ifEmpty { nameEn }.ifEmpty { MapsSearch.label(kind, c) }
+    fun place(c: android.content.Context) = Place("", title(c), lat, lng, MapsSearch.emblem(kind))
 }
 
 /**
@@ -465,26 +471,34 @@ internal object MapsSearch {
     const val AMEA_DECISIONS = "greece-amea-diavgeia.tsv"
     /** Places put into the map's own data by hand (the user's schools, 21 Oct: "keep them as system locations"). */
     const val ADDED = "added-places.tsv"
-    data class Kind(val key: String, val label: String, val emoji: String, val emblem: String)
+    /** A pill: [label] its name on the screen, [one] a place of it ("Pharmacy"). */
+    data class Kind(val key: String, @androidx.annotation.StringRes val label: Int, val emoji: String, val emblem: String, @androidx.annotation.StringRes val one: Int)
     /** Search's pills, in this order. */
     val PILLS = listOf(
-        Kind("restaurant", "Restaurants", "🍽️", "food"), Kind("cafe", "Cafés", "☕", "cafe"), Kind("supermarket", "Supermarkets", "🛒", "shop"),
-        Kind("pharmacy", "Pharmacies", "💊", "pharmacy"), Kind("eopyy", "EOPYY pharmacies", "⚕️", "pharmacy"), Kind("fuel", "Fuel", "⛽", "fuel"), Kind("charging", "EV charging", "🔌", "fuel"),
-        Kind("disabled_parking", "Disabled parking", "♿", "accessible"), Kind("parking", "Parking", "🅿️", "parking"),
-        Kind("hospital", "Hospitals", "🏥", "hospital"), Kind("bakery", "Bakeries", "🥖", "food"), Kind("fast_food", "Fast food", "🍔", "food"),
-        Kind("atm", "ATMs", "🏧", "pin"), Kind("hotel", "Hotels", "🛏️", "hotel"), Kind("beach", "Beaches", "🏖️", "beach"),
-        Kind("museum", "Museums", "🏛️", "star"), Kind("toilets", "Toilets", "🚻", "pin"),
-        Kind("toll", "Tolls", "💶", "pin"),
-        Kind("kindergarten", "Kindergartens", "🧸", "school"), Kind("primary_school", "Primary schools", "🎒", "school"),
-        Kind("secondary_school", "High schools", "🏫", "school"), Kind("school", "Other schools", "🏫", "school"), Kind("university", "Universities", "🎓", "school"),
+        Kind("restaurant", R.string.maps_kind_restaurants, "🍽️", "food", R.string.maps_kind_restaurant), Kind("cafe", R.string.maps_kind_cafes, "☕", "cafe", R.string.maps_kind_cafe),
+        Kind("supermarket", R.string.maps_kind_supermarkets, "🛒", "shop", R.string.maps_kind_supermarket),
+        Kind("pharmacy", R.string.maps_kind_pharmacies, "💊", "pharmacy", R.string.maps_kind_pharmacy), Kind("eopyy", R.string.maps_kind_eopyy_pharmacies, "⚕️", "pharmacy", R.string.maps_kind_eopyy_pharmacy),
+        Kind("fuel", R.string.maps_kind_fuel, "⛽", "fuel", R.string.maps_kind_fuel), Kind("charging", R.string.maps_kind_charging, "🔌", "fuel", R.string.maps_kind_charging),
+        Kind("disabled_parking", R.string.maps_kind_disabled_parking, "♿", "accessible", R.string.maps_kind_disabled_parking), Kind("parking", R.string.maps_kind_parking, "🅿️", "parking", R.string.maps_kind_parking),
+        Kind("hospital", R.string.maps_kind_hospitals, "🏥", "hospital", R.string.maps_kind_hospital), Kind("bakery", R.string.maps_kind_bakeries, "🥖", "food", R.string.maps_kind_bakery),
+        Kind("fast_food", R.string.maps_kind_fast_food, "🍔", "food", R.string.maps_kind_fast_food),
+        Kind("atm", R.string.maps_kind_atms, "🏧", "pin", R.string.maps_kind_atm), Kind("hotel", R.string.maps_kind_hotels, "🛏️", "hotel", R.string.maps_kind_hotel),
+        Kind("beach", R.string.maps_kind_beaches, "🏖️", "beach", R.string.maps_kind_beach),
+        Kind("museum", R.string.maps_kind_museums, "🏛️", "star", R.string.maps_kind_museum), Kind("toilets", R.string.maps_kind_toilets, "🚻", "pin", R.string.maps_kind_toilet),
+        Kind("toll", R.string.maps_kind_tolls, "💶", "pin", R.string.maps_kind_toll),
+        Kind("kindergarten", R.string.maps_kind_kindergartens, "🧸", "school", R.string.maps_kind_kindergarten),
+        Kind("primary_school", R.string.maps_kind_primary_schools, "🎒", "school", R.string.maps_kind_primary_school),
+        Kind("secondary_school", R.string.maps_kind_high_schools, "🏫", "school", R.string.maps_kind_high_school),
+        Kind("school", R.string.maps_kind_other_schools, "🏫", "school", R.string.maps_kind_school),
+        Kind("university", R.string.maps_kind_universities, "🎓", "school", R.string.maps_kind_university),
     )
-    private val SETTLEMENTS = mapOf("city" to "City", "town" to "Town", "village" to "Village", "suburb" to "Suburb", "neighbourhood" to "Neighbourhood",
-        "hamlet" to "Hamlet", "island" to "Island", "islet" to "Islet", "locality" to "Place")
+    private val SETTLEMENTS = mapOf("city" to R.string.maps_kind_city, "town" to R.string.maps_kind_town, "village" to R.string.maps_kind_village,
+        "suburb" to R.string.maps_kind_suburb, "neighbourhood" to R.string.maps_kind_neighbourhood, "hamlet" to R.string.maps_kind_hamlet,
+        "island" to R.string.maps_kind_island, "islet" to R.string.maps_kind_islet, "locality" to R.string.maps_kind_locality)
     fun settlement(kind: String) = kind in SETTLEMENTS
-    private val ONE = mapOf("toll" to "Toll", "eopyy" to "EOPYY pharmacy", "university" to "University", "school" to "School", "pharmacy" to "Pharmacy",
-        "charging" to "EV charging", "disabled_parking" to "Disabled parking", "fast_food" to "Fast food")
-    fun label(kind: String) = ONE[kind] ?: PILLS.firstOrNull { it.key == kind }?.label?.removeSuffix("s")?.let { if (kind == "pharmacy") "Pharmacy" else if (kind == "charging") "EV charging" else it }
-        ?: SETTLEMENTS[kind] ?: kind.replace('_', ' ').replaceFirstChar { it.uppercase() }
+    /** A place of [kind] in words ("Pharmacy"); a kind Tetra has no name for as OSM writes it. */
+    fun label(kind: String, c: android.content.Context) = (PILLS.firstOrNull { it.key == kind }?.one ?: SETTLEMENTS[kind])?.let(c::getString)
+        ?: kind.replace('_', ' ').replaceFirstChar { it.uppercase() }
     fun emoji(kind: String) = PILLS.firstOrNull { it.key == kind }?.emoji ?: if (settlement(kind)) "🏘️" else "📍"
     fun emblem(kind: String) = PILLS.firstOrNull { it.key == kind }?.emblem ?: "pin"
 
@@ -649,7 +663,7 @@ internal object MapsAddresses {
         val r = if (best >= 0) a!!.rest[best].split('\t') else null
         val street = r?.let { "${it[0]} ${it.getOrElse(1) { "" }}".trim() } ?: road?.trim()?.ifEmpty { null } ?: MapsStreets.nearest(root, lat, lng, 80.0).orEmpty()
         val code = r?.getOrNull(2)?.ifEmpty { null } ?: post.ifEmpty { null } ?: town?.more?.takeIf { POSTCODE.matches(it) }.orEmpty()
-        val place = r?.getOrNull(3)?.ifEmpty { null } ?: town?.title.orEmpty()
+        val place = r?.getOrNull(3)?.ifEmpty { null } ?: town?.let { it.name.ifEmpty { it.nameEn } }.orEmpty()
         return listOf(street, "$code $place".trim()).filter { it.isNotEmpty() }.joinToString(", ").ifEmpty { null }
     }
 

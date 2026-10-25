@@ -243,8 +243,8 @@ class MapsAlternativesTest {
         // Σχηματάρι to Ναύπλιο: Ολυμπία Οδός's at Ελευσίνα and Μορέας' on the Α7 are on the way
         val far = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car")
         val t = tollsOn(far, cumulative(far), all)
-        println("Σχηματάρι → Ναύπλιο tolls: ${t.map { "${it.first.title} (${it.first.more}) at ${(it.second / 1000).toInt()} km" }}")
-        assertTrue(t.size >= 2 && t.any { "Ελευσίνας" in it.first.title })
+        println("Σχηματάρι → Ναύπλιο tolls: ${t.map { "${it.first.name} (${it.first.more}) at ${(it.second / 1000).toInt()} km" }}")
+        assertTrue(t.size >= 2 && t.any { "Ελευσίνας" in it.first.name })
     }
 }
 

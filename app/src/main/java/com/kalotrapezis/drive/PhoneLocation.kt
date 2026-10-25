@@ -72,12 +72,11 @@ internal object PhoneLocation {
     /** "The computer asks where this phone is": a tap opens Tetra, and the answer goes as soon as it is on screen. */
     private fun tapToAnswer(c: Context): Boolean {
         val nm = c.getSystemService(NotificationManager::class.java)?.takeIf { it.areNotificationsEnabled() } ?: return false
-        if (nm.getNotificationChannel(CHANNEL) == null)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Location for the computer", NotificationManager.IMPORTANCE_HIGH).apply { description = "The computer's Maps asks where this phone is" })
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, c.getString(R.string.phone_channel_where), NotificationManager.IMPORTANCE_HIGH).apply { description = c.getString(R.string.phone_channel_where_about) }) // again: its name follows the language
         val open = PendingIntent.getActivity(c, NOTE, Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         nm.notify(NOTE, NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_my_location)
-            .setContentTitle("The computer asks where this phone is").setContentText("Tap to send it the location")
+            .setContentTitle(c.getString(R.string.phone_where_title)).setContentText(c.getString(R.string.phone_where_text))
             .setCategory(NotificationCompat.CATEGORY_STATUS).setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(open).setAutoCancel(true).setTimeoutAfter(60_000).build())
         return true

@@ -40,12 +40,12 @@ class PhoneLogTest {
     }
 
     @Test fun `unknown Greek numbers say where they are`() {
-        assertEquals("Mobile", PhoneArea.of("+30 697 000 0002"))
-        assertEquals("Thessaloniki", PhoneArea.of("2310 123456"))
-        assertEquals("Athens", PhoneArea.of("0030 210 1234567"))
-        assertEquals("Volos", PhoneArea.of("2421012345"))
-        assertEquals("Landline", PhoneArea.of("2231012345"))
-        assertEquals("Abroad", PhoneArea.of("+44 20 7946 0000"))
+        assertEquals(R.string.contacts_label_mobile, PhoneArea.of("+30 697 000 0002"))
+        assertEquals(R.string.phone_area_thessaloniki, PhoneArea.of("2310 123456"))
+        assertEquals(R.string.phone_area_athens, PhoneArea.of("0030 210 1234567"))
+        assertEquals(R.string.phone_area_volos, PhoneArea.of("2421012345"))
+        assertEquals(R.string.phone_area_landline, PhoneArea.of("2231012345"))
+        assertEquals(R.string.phone_area_abroad, PhoneArea.of("+44 20 7946 0000"))
         assertEquals(null, PhoneArea.of("112"))
     }
 

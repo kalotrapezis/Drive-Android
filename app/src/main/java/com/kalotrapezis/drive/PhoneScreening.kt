@@ -135,4 +135,4 @@ internal object PhoneRingtone {
 }
 
 /** Declining with a message: Telecom sends it as an SMS (Call.reject with a text), as Android's own phone app does. */
-internal val QUICK_REPLIES = listOf("Can't talk now. I'll call you back.", "I'll call you right back.", "I'm in a meeting, I'll call you later.", "On my way.")
+internal val QUICK_REPLIES = listOf(R.string.phone_reply_cant_talk, R.string.phone_reply_right_back, R.string.phone_reply_meeting, R.string.phone_reply_on_my_way)

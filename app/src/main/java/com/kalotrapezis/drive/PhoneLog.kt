@@ -82,21 +82,22 @@ internal object PhoneT9 {
     }
 }
 
-/** What an unknown Greek number is: "Mobile", "Athens", "Thessaloniki"… (a small table, offline); "Abroad" for other countries. */
+/** What an unknown Greek number is: Mobile, Athens, Thessaloniki… (a small table, offline; the words' strings); Abroad for other countries. */
 internal object PhoneArea {
-    private val AREAS = listOf("210" to "Athens", "2310" to "Thessaloniki", "2610" to "Patras", "2810" to "Heraklion", "2410" to "Larissa",
-        "24210" to "Volos", "2510" to "Kavala", "2651" to "Ioannina", "22810" to "Syros", "28210" to "Chania")
-    fun of(number: String): String? {
+    private val AREAS = listOf("210" to R.string.phone_area_athens, "2310" to R.string.phone_area_thessaloniki, "2610" to R.string.phone_area_patras, "2810" to R.string.phone_area_heraklion,
+        "2410" to R.string.phone_area_larissa, "24210" to R.string.phone_area_volos, "2510" to R.string.phone_area_kavala, "2651" to R.string.phone_area_ioannina,
+        "22810" to R.string.phone_area_syros, "28210" to R.string.phone_area_chania)
+    @androidx.annotation.StringRes fun of(number: String): Int? {
         val n = number.filter { it.isDigit() || it == '+' }
         val national = when {
             n.startsWith("+30") -> n.drop(3)
             n.startsWith("0030") -> n.drop(4)
-            n.startsWith("+") || n.startsWith("00") -> return "Abroad"
+            n.startsWith("+") || n.startsWith("00") -> return R.string.phone_area_abroad
             else -> n
         }
         if (national.length != 10) return null
-        if (national.startsWith("69")) return "Mobile"
-        return AREAS.filter { national.startsWith(it.first) }.maxByOrNull { it.first.length }?.second ?: if (national.startsWith("2")) "Landline" else null
+        if (national.startsWith("69")) return R.string.contacts_label_mobile
+        return AREAS.filter { national.startsWith(it.first) }.maxByOrNull { it.first.length }?.second ?: if (national.startsWith("2")) R.string.phone_area_landline else null
     }
 }
 
@@ -172,7 +173,7 @@ internal object PhoneCodes {
             @Suppress("MissingPermission")
             val ids = runCatching { val tm = c.getSystemService(android.telephony.TelephonyManager::class.java); (0 until tm.activeModemCount).mapNotNull { tm.getImei(it) } }.getOrNull()
             if (ids.isNullOrEmpty()) runCatching { c.startActivity(android.content.Intent(android.provider.Settings.ACTION_DEVICE_INFO_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            else android.app.AlertDialog.Builder(c).setTitle("IMEI").setMessage(ids.joinToString("\n")).setPositiveButton("OK", null).show()
+            else android.app.AlertDialog.Builder(c).setTitle("IMEI").setMessage(ids.joinToString("\n")).setPositiveButton(c.getString(R.string.common_ok), null).show()
             return true
         }
         return null

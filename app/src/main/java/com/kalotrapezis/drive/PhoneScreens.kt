@@ -111,13 +111,13 @@ private fun PhoneCallScreen(done: () -> Unit) {
             Icon(painterResource(R.drawable.ic_person), contentDescription = null, tint = Color.White, modifier = Modifier.size(66.dp))
         }
         Spacer(Modifier.height(16.dp))
-        Text(PhoneCalls.title(call), style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(PhoneCalls.title(context, call), style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
         val number = PhoneCalls.number(call)
         val label = contact?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(number.orEmpty()) }?.label
-        if (contact != null && number != null) Text(listOfNotNull(label?.ifBlank { null }, number).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        else if (number != null) PhoneArea.of(number)?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        else if (call.details.hasProperty(Call.Details.PROPERTY_CONFERENCE)) Text("Conference · ${call.children.size} people", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(if (ended) "Call ended" else PhoneCalls.stateText(call, now), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+        if (contact != null && number != null) Text(listOfNotNull(label?.ifBlank { null }?.let { contactLabel(context, it) }, number).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else if (number != null) PhoneArea.of(number)?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        else if (call.details.hasProperty(Call.Details.PROPERTY_CONFERENCE)) Text(pluralStringResource(R.plurals.phone_conference_n, call.children.size, call.children.size), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if (ended) stringResource(R.string.phone_call_ended) else PhoneCalls.stateText(context, call, now), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         if (keys) Text(typed, style = MaterialTheme.typography.headlineSmall, maxLines = 1, modifier = Modifier.padding(top = 8.dp))
         Spacer(Modifier.weight(1f))
         when {
@@ -128,18 +128,18 @@ private fun PhoneCallScreen(done: () -> Unit) {
                 PhoneCalls.calls.filter { it != call && it.state != Call.STATE_DISCONNECTED && it.parent == null }.forEach { OtherCall(it, call) }
                 Row(Modifier.padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (call.details.can(Call.Details.CAPABILITY_RESPOND_VIA_TEXT)) TextButton(onClick = { replying = true }) {
-                        Icon(painterResource(R.drawable.ic_chat), contentDescription = null, modifier = Modifier.size(18.dp)); Text("  With a message")
+                        Icon(painterResource(R.drawable.ic_chat), contentDescription = null, modifier = Modifier.size(18.dp)); Text("  " + stringResource(R.string.phone_with_message), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     // the number onto the spam list, and the call declined: it never rings again
                     PhoneCalls.number(call)?.takeIf { contact == null }?.let { n ->
                         TextButton(onClick = { PhoneSpam.add(context, n); PhoneBlocked.block(context, n); PhoneCalls.hangUp(call) }) {
-                            Icon(painterResource(R.drawable.ic_block), contentDescription = null, tint = CALL_RED, modifier = Modifier.size(18.dp)); Text("  Spam", color = CALL_RED)
+                            Icon(painterResource(R.drawable.ic_block), contentDescription = null, tint = CALL_RED, modifier = Modifier.size(18.dp)); Text("  " + stringResource(R.string.phone_spam), color = CALL_RED, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(bottom = 32.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    RoundButton(R.drawable.ic_call_end, "Decline", CALL_RED, 76.dp) { PhoneCalls.hangUp(call) }
-                    RoundButton(R.drawable.ic_call, "Answer", CALL_GREEN, 76.dp) { PhoneCalls.answer(call) }
+                    RoundButton(R.drawable.ic_call_end, stringResource(R.string.phone_decline), CALL_RED, 76.dp) { PhoneCalls.hangUp(call) }
+                    RoundButton(R.drawable.ic_call, stringResource(R.string.phone_answer), CALL_GREEN, 76.dp) { PhoneCalls.answer(call) }
                 }
             }
             else -> {
@@ -150,7 +150,7 @@ private fun PhoneCallScreen(done: () -> Unit) {
                 })
             }
         }
-        if (!ended && call.state != Call.STATE_RINGING) RoundButton(R.drawable.ic_call_end, "End", CALL_RED, 76.dp, modifier = Modifier.padding(bottom = 24.dp)) { PhoneCalls.hangUp(call) }
+        if (!ended && call.state != Call.STATE_RINGING) RoundButton(R.drawable.ic_call_end, stringResource(R.string.phone_end), CALL_RED, 76.dp, modifier = Modifier.padding(bottom = 24.dp)) { PhoneCalls.hangUp(call) }
     }
     }
 }
@@ -174,18 +174,18 @@ private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, ad
     val held = call.state == Call.STATE_HOLDING
     val canHold = call.details.can(Call.Details.CAPABILITY_HOLD) || call.details.can(Call.Details.CAPABILITY_SUPPORT_HOLD) || held
     val (routeIcon, routeName) = when (route) {
-        CallAudioState.ROUTE_SPEAKER -> R.drawable.ic_volume_up to "Speaker"
+        CallAudioState.ROUTE_SPEAKER -> R.drawable.ic_volume_up to stringResource(R.string.phone_speaker)
         CallAudioState.ROUTE_BLUETOOTH -> R.drawable.ic_bluetooth_audio to (audio?.activeBluetoothDevice?.let { PhoneRoutes.name(context, it) } ?: "Bluetooth")
-        CallAudioState.ROUTE_WIRED_HEADSET -> R.drawable.ic_volume_up to "Headset"
-        else -> R.drawable.ic_volume_up to "Speaker"
+        CallAudioState.ROUTE_WIRED_HEADSET -> R.drawable.ic_volume_up to stringResource(R.string.phone_headset)
+        else -> R.drawable.ic_volume_up to stringResource(R.string.phone_speaker)
     }
     val loud = route == CallAudioState.ROUTE_SPEAKER || route == CallAudioState.ROUTE_BLUETOOTH
     Column(Modifier.fillMaxWidth().padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            RoundButton(if (muted) R.drawable.ic_mic_off else R.drawable.ic_mic, if (muted) "Muted" else "Mute", if (muted) Color.White else null, 64.dp, dark = muted) {
+            RoundButton(if (muted) R.drawable.ic_mic_off else R.drawable.ic_mic, if (muted) stringResource(R.string.phone_muted) else stringResource(R.string.phone_mute), if (muted) Color.White else null, 64.dp, dark = muted) {
                 PhoneCalls.service?.setMuted(!muted)
             }
-            RoundButton(if (keys) R.drawable.ic_close else R.drawable.ic_dialpad, if (keys) "Hide keys" else "Keypad", null, 64.dp, click = toggleKeys)
+            RoundButton(if (keys) R.drawable.ic_close else R.drawable.ic_dialpad, if (keys) stringResource(R.string.phone_hide_keys) else stringResource(R.string.phone_keypad), null, 64.dp, click = toggleKeys)
             // more than earpiece and speaker (a headset, the buds, the computer): choose; else Speaker turns on and off
             RoundButton(routeIcon, if (devices.isNotEmpty() || mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) "$routeName ▾" else routeName, if (loud) Color.White else null, 64.dp, dark = loud) {
                 if (devices.isEmpty()) PhoneCalls.service?.setAudioRoute(if (route == CallAudioState.ROUTE_SPEAKER) CallAudioState.ROUTE_WIRED_OR_EARPIECE else CallAudioState.ROUTE_SPEAKER)
@@ -194,24 +194,24 @@ private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, ad
             }
         }
         if (!keys) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            if (canHold) RoundButton(if (held) R.drawable.ic_play else R.drawable.ic_pause, if (held) "Resume" else "Hold", if (held) Color.White else null, 64.dp, dark = held) {
+            if (canHold) RoundButton(if (held) R.drawable.ic_play else R.drawable.ic_pause, if (held) stringResource(R.string.phone_resume) else stringResource(R.string.phone_hold), if (held) Color.White else null, 64.dp, dark = held) {
                 if (held) call.unhold() else call.hold()
             } else Spacer(Modifier.size(64.dp))
-            RoundButton(R.drawable.ic_add, "Add call", null, 64.dp, click = addCall)
-            RoundButton(R.drawable.ic_note_add, "Note", null, 64.dp) { noting = true }
+            RoundButton(R.drawable.ic_add, stringResource(R.string.phone_add_call), null, 64.dp, click = addCall)
+            RoundButton(R.drawable.ic_note_add, stringResource(R.string.phone_note), null, 64.dp) { noting = true }
         }
     }
     if (picking) ModalBottomSheet(onDismissRequest = { picking = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-            Text("Sound", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+            Text(stringResource(R.string.phone_sound), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
             @Composable fun option(icon: Int, name: String, on: Boolean, pick: () -> Unit) =
                 Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).background(if (on) PHONE_COLOR.copy(alpha = 0.35f) else Color.Transparent)
                     .clickable { pick(); picking = false }.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Icon(painterResource(icon), contentDescription = null); Text(name, style = MaterialTheme.typography.bodyLarge)
                 }
-            if (mask and CallAudioState.ROUTE_EARPIECE != 0) option(R.drawable.ic_call, "Phone", route == CallAudioState.ROUTE_EARPIECE) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_EARPIECE) }
-            if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) option(R.drawable.ic_volume_up, "Headset", route == CallAudioState.ROUTE_WIRED_HEADSET) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_WIRED_HEADSET) }
-            option(R.drawable.ic_volume_up, "Speaker", route == CallAudioState.ROUTE_SPEAKER) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_SPEAKER) }
+            if (mask and CallAudioState.ROUTE_EARPIECE != 0) option(R.drawable.ic_call, stringResource(R.string.phone_route_phone), route == CallAudioState.ROUTE_EARPIECE) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_EARPIECE) }
+            if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) option(R.drawable.ic_volume_up, stringResource(R.string.phone_headset), route == CallAudioState.ROUTE_WIRED_HEADSET) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_WIRED_HEADSET) }
+            option(R.drawable.ic_volume_up, stringResource(R.string.phone_speaker), route == CallAudioState.ROUTE_SPEAKER) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_SPEAKER) }
             devices.forEach { d ->
                 option(R.drawable.ic_bluetooth_audio, PhoneRoutes.name(context, d), route == CallAudioState.ROUTE_BLUETOOTH && audio?.activeBluetoothDevice?.address == d.address) {
                     PhoneCalls.service?.requestBluetoothAudio(d)
@@ -227,12 +227,12 @@ private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, ad
 private fun QuickReply(call: Call, done: () -> Unit) {
     var own by remember { mutableStateOf("") }
     fun send(text: String) { call.reject(true, text); done() }
-    AlertDialog(onDismissRequest = done, title = { Text("Decline with a message") }, confirmButton = { TextButton(onClick = { if (own.isNotBlank()) send(own.trim()) }) { Text("Send") } },
-        dismissButton = { TextButton(onClick = done) { Text("Cancel") } },
+    AlertDialog(onDismissRequest = done, title = { Text(stringResource(R.string.phone_decline_message)) }, confirmButton = { TextButton(onClick = { if (own.isNotBlank()) send(own.trim()) }) { Text(stringResource(R.string.common_send), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                QUICK_REPLIES.forEach { r -> Text(r, Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { send(r) }.padding(vertical = 10.dp, horizontal = 4.dp)) }
-                OutlinedTextField(own, { own = it }, placeholder = { Text("Write one…") }, modifier = Modifier.fillMaxWidth())
+                QUICK_REPLIES.map { stringResource(it) }.forEach { r -> Text(r, Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { send(r) }.padding(vertical = 10.dp, horizontal = 4.dp)) }
+                OutlinedTextField(own, { own = it }, placeholder = { Text(stringResource(R.string.phone_write_one)) }, modifier = Modifier.fillMaxWidth())
             }
         })
 }
@@ -243,27 +243,28 @@ private fun CallNoteDialog(call: Call, done: () -> Unit) {
     val context = LocalContext.current
     val parts = PhoneCalls.parts(call)
     var text by remember { mutableStateOf(parts.firstNotNullOfOrNull { PhoneNotes.of(context, PhoneCalls.number(it).orEmpty(), it.details.creationTimeMillis) }.orEmpty()) }
-    AlertDialog(onDismissRequest = done, title = { Text("Note on this call") },
+    AlertDialog(onDismissRequest = done, title = { Text(stringResource(R.string.phone_note_title)) },
         text = { OutlinedTextField(text, { text = it }, minLines = 3, modifier = Modifier.fillMaxWidth()) },
-        confirmButton = { TextButton(onClick = { parts.forEach { p -> PhoneNotes.save(context, PhoneCalls.number(p).orEmpty(), p.details.creationTimeMillis, text.trim()) }; done() }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = done) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = { parts.forEach { p -> PhoneNotes.save(context, PhoneCalls.number(p).orEmpty(), p.details.creationTimeMillis, text.trim()) }; done() }) { Text(stringResource(R.string.common_save), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+        dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
 }
 
 /** Another call beside the one shown: on hold, dialling, or waiting — Swap, Merge, End. */
 @Composable
 private fun OtherCall(o: Call, main: Call) {
+    val context = LocalContext.current
     val contact = PhoneCalls.contact(o)
     Surface(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
         Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             CallAvatar(contact, 40.dp)
             Column(Modifier.weight(1f)) {
-                Text(PhoneCalls.title(o), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
-                Text(PhoneCalls.stateText(o, 0), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(PhoneCalls.title(context, o), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+                Text(PhoneCalls.stateText(context, o, 0), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (o.state == Call.STATE_HOLDING) TextButton(onClick = { o.unhold() }) { Text("Swap") } // Telecom holds the other
+            if (o.state == Call.STATE_HOLDING) TextButton(onClick = { o.unhold() }) { Text(stringResource(R.string.phone_swap), maxLines = 1, overflow = TextOverflow.Ellipsis) } // Telecom holds the other
             if (o in main.conferenceableCalls || (main.details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE) && o.state == Call.STATE_HOLDING))
-                TextButton(onClick = { if (o in main.conferenceableCalls) main.conference(o) else main.mergeConference() }) { Text("Merge") }
-            IconButton(onClick = { PhoneCalls.hangUp(o) }) { Icon(painterResource(R.drawable.ic_call_end), contentDescription = "End this call", tint = CALL_RED) }
+                TextButton(onClick = { if (o in main.conferenceableCalls) main.conference(o) else main.mergeConference() }) { Text(stringResource(R.string.phone_merge), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            IconButton(onClick = { PhoneCalls.hangUp(o) }) { Icon(painterResource(R.drawable.ic_call_end), contentDescription = stringResource(R.string.phone_end_this), tint = CALL_RED) }
         }
     }
 }
@@ -273,7 +274,7 @@ internal object PhoneRoutes {
     fun name(c: Context, d: android.bluetooth.BluetoothDevice): String {
         val n = runCatching { d.name }.getOrNull()?.ifBlank { null } ?: return "Bluetooth"
         val computers = runCatching { SyncStore(c).peers().map { it.name.lowercase() } }.getOrDefault(emptyList())
-        return if (n.lowercase() in computers) "Computer · $n" else n
+        return if (n.lowercase() in computers) c.getString(R.string.phone_computer_device, n) else n
     }
 }
 
@@ -288,9 +289,9 @@ private fun SimChoice(call: Call) {
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         accounts.forEachIndexed { k, h ->
             val name = runCatching { telecom.getPhoneAccount(h)?.label?.toString() }.getOrNull()?.ifBlank { null } ?: "SIM ${k + 1}"
-            Button(onClick = { call.phoneAccountSelected(h, false) }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Call with $name") }
+            Button(onClick = { call.phoneAccountSelected(h, false) }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text(stringResource(R.string.phone_call_with, name), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
-        if (accounts.isEmpty()) Text("The phone did not say which SIMs it has.", style = MaterialTheme.typography.bodyMedium)
+        if (accounts.isEmpty()) Text(stringResource(R.string.phone_no_sims), style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -301,7 +302,7 @@ internal fun RoundButton(icon: Int, label: String, fill: Color?, size: Dp, dark:
             contentAlignment = Alignment.Center) {
             Icon(painterResource(icon), contentDescription = label, tint = if (dark) Color.Black else if (fill != null) Color.White else LocalContentColor.current, modifier = Modifier.size(size * 0.42f))
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp), maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -340,7 +341,7 @@ internal fun PhoneSettings() {
     val askRole = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { version++ }
     @Suppress("UNUSED_EXPRESSION") version
     if (PhoneRelay.noCalls(context)) {
-        Text("This device has no calls of its own: its Phone calls through your phone, by way of the computer, and shows the phone's calls as they ring. The voice stays on the phone.",
+        Text(stringResource(R.string.phone_no_calls_here),
             style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
         return
     }
@@ -351,15 +352,15 @@ internal fun PhoneSettings() {
     var hidden by remember { mutableStateOf(PhonePrefs.declineHidden(context)) }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(if (dialer) "Tetra is the phone app" else "Tetra is not the phone app", style = MaterialTheme.typography.titleSmall)
-            Text(if (dialer) "Calls ring and are spoken on Tetra's own call screen. To give it back: Android's Default apps › Phone app."
-                else "As the phone app, Tetra shows its own call screen and buzzes when they answer. The phone's own call recording is not shown then.",
+            Text(if (dialer) stringResource(R.string.phone_is_dialer) else stringResource(R.string.phone_not_dialer), style = MaterialTheme.typography.titleSmall)
+            Text(if (dialer) stringResource(R.string.phone_is_dialer_about)
+                else stringResource(R.string.phone_not_dialer_about),
                 style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
         }
         TextButton(onClick = {
             if (dialer) runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             else askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
-        }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text(if (dialer) "Change" else "Make it") }
+        }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text(if (dialer) stringResource(R.string.phone_change) else stringResource(R.string.phone_make_it), maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
     @Composable fun toggle(title: String, about: String, on: Boolean, set: (Boolean) -> Unit) =
         Row(Modifier.fillMaxWidth().clickable { set(!on) }, verticalAlignment = Alignment.CenterVertically) {
@@ -369,16 +370,16 @@ internal fun PhoneSettings() {
             }
             Switch(checked = on, onCheckedChange = set)
         }
-    toggle("Vibrate when answered", "Two short taps when the other side picks up a call you made.", answer) { answer = it; PhonePrefs.setBuzzAnswer(context, it) }
-    toggle("Vibrate when a call ends", "One tap when a call that was answered ends.", end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
-    toggle("Silence numbers not in Contacts", "They ring without sound and show in Recents as missed.", unknown) { unknown = it; PhonePrefs.setSilenceUnknown(context, it) }
-    toggle("Decline hidden numbers", "Calls that hide their number are declined before they ring.", hidden) { hidden = it; PhonePrefs.setDeclineHidden(context, it) }
+    toggle(stringResource(R.string.phone_buzz_answer), stringResource(R.string.phone_buzz_answer_about), answer) { answer = it; PhonePrefs.setBuzzAnswer(context, it) }
+    toggle(stringResource(R.string.phone_buzz_end), stringResource(R.string.phone_buzz_end_about), end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
+    toggle(stringResource(R.string.phone_silence_unknown), stringResource(R.string.phone_silence_unknown_about), unknown) { unknown = it; PhonePrefs.setSilenceUnknown(context, it) }
+    toggle(stringResource(R.string.phone_decline_hidden), stringResource(R.string.phone_decline_hidden_about), hidden) { hidden = it; PhonePrefs.setDeclineHidden(context, it) }
     // HyperOS keeps two of its own permissions from apps it did not install: without them a ringing call cannot open its
     // screen over the lock screen, or from the background (Xiaomi's own Security app, not Android's settings)
     if (android.os.Build.MANUFACTURER.equals("Xiaomi", true) && dialer) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("On this Xiaomi", style = MaterialTheme.typography.titleSmall)
-            Text("Allow Tetra \"Show on Lock screen\" and \"Display pop-up windows while running in the background\", or a call rings without its screen.",
+            Text(stringResource(R.string.phone_xiaomi), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.phone_xiaomi_about),
                 style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
         }
         TextButton(onClick = {
@@ -387,7 +388,7 @@ internal fun PhoneSettings() {
             runCatching { context.startActivity(editor) }.onFailure {
                 runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
-        }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text("Open") }
+        }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text(stringResource(R.string.common_open), maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
-    TextButton(onClick = { context.startActivity(Intent(context, PhoneActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text("Open the Phone") }
+    TextButton(onClick = { context.startActivity(Intent(context, PhoneActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }, colors = ButtonDefaults.textButtonColors(contentColor = PHONE_COLOR)) { Text(stringResource(R.string.phone_open_phone), maxLines = 1, overflow = TextOverflow.Ellipsis) }
 }

@@ -28,35 +28,35 @@ internal object PhoneRelay {
     /** Call on the phone, asked through the computer. The answer's text for the screen. */
     fun place(c: Context, number: String, name: String): String = runCatching {
         val r = SyncClient(c, SyncStore(c)).phoneViaComputer("/call/place?number=${Uri.encode(number)}&name=${Uri.encode(name.take(80))}")
-        r.optString("error").ifBlank { null } ?: if (r.optString("how") == "notification") "The phone shows it: tap to call" else "Calling on ${r.optString("device").ifBlank { "the phone" }}"
-    }.getOrElse { (it as? SyncException)?.message ?: "The computer did not answer. Is Tetra open on it, on the same Wi-Fi?" }
+        r.optString("error").ifBlank { null } ?: if (r.optString("how") == "notification") c.getString(R.string.phone_relay_tap) else c.getString(R.string.phone_relay_calling_on, r.optString("device").ifBlank { c.getString(R.string.phone_relay_the_phone) })
+    }.getOrElse { (it as? SyncException)?.message ?: c.getString(R.string.phone_relay_no_answer) }
 
     fun show(c: Context, s: JSONObject) {
         val nm = c.getSystemService(NotificationManager::class.java)
         val state = s.optString("state")
         val number = s.optString("number")
-        val who = number.ifBlank { null }?.let { PhoneCalls.contactFor(it)?.name } ?: number.ifBlank { "Hidden number" }
-        val device = s.optString("device").ifBlank { "the phone" }
+        val who = number.ifBlank { null }?.let { PhoneCalls.contactFor(it)?.name } ?: number.ifBlank { c.getString(R.string.phone_hidden_number) }
+        val device = s.optString("device").ifBlank { c.getString(R.string.phone_relay_the_phone) }
         if (state == "ended" && !s.optBoolean("missed")) { nm.cancel(NOTE); return }
-        if (nm.getNotificationChannel(CHANNEL) == null) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Calls on the phone", NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, c.getString(R.string.phone_channel_relay), NotificationManager.IMPORTANCE_HIGH)) // again: its name follows the language
         fun act(what: String, label: String, code: Int) = NotificationCompat.Action(0, label,
             PendingIntent.getBroadcast(c, code, Intent(c, PhoneRelayReceiver::class.java).setAction(ACT).putExtra("do", what), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         val open = PendingIntent.getActivity(c, 0, Intent(c, PhoneActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
         val b = NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_call).setContentTitle(who).setContentIntent(open)
             .setCategory(NotificationCompat.CATEGORY_CALL).setOnlyAlertOnce(state != "ringing").setOngoing(state != "ended")
         when (state) {
-            "ringing" -> b.setContentText("Calling $device").addAction(act("decline", "Decline", 1)).addAction(act("answer", "Answer", 2))
-            "calling" -> b.setContentText("Calling… on $device").addAction(act("end", "End", 3))
+            "ringing" -> b.setContentText(c.getString(R.string.phone_relay_ringing, device)).addAction(act("decline", c.getString(R.string.phone_decline), 1)).addAction(act("answer", c.getString(R.string.phone_answer), 2))
+            "calling" -> b.setContentText(c.getString(R.string.phone_relay_calling, device)).addAction(act("end", c.getString(R.string.phone_end), 3))
             "active", "held" -> {
-                b.setContentText(if (state == "held") "On hold · $device" else "On $device" + if (s.optBoolean("muted")) " · muted" else "")
+                b.setContentText(c.getString(if (state == "held") R.string.phone_relay_held else if (s.optBoolean("muted")) R.string.phone_relay_on_muted else R.string.phone_relay_on, device))
                 if (state == "active") b.setUsesChronometer(true)
                 if (s.optBoolean("phoneApp")) {
-                    b.addAction(act(if (s.optBoolean("muted")) "unmute" else "mute", if (s.optBoolean("muted")) "Unmute" else "Mute", 4))
-                    b.addAction(act(if (state == "held") "unhold" else "hold", if (state == "held") "Resume" else "Hold", 5))
+                    b.addAction(act(if (s.optBoolean("muted")) "unmute" else "mute", c.getString(if (s.optBoolean("muted")) R.string.phone_unmute else R.string.phone_mute), 4))
+                    b.addAction(act(if (state == "held") "unhold" else "hold", c.getString(if (state == "held") R.string.phone_resume else R.string.phone_hold), 5))
                 }
-                b.addAction(act("end", "End", 3))
+                b.addAction(act("end", c.getString(R.string.phone_end), 3))
             }
-            else -> b.setContentText("Missed call on $device").setAutoCancel(true)
+            else -> b.setContentText(c.getString(R.string.phone_relay_missed, device)).setAutoCancel(true)
         }
         runCatching { nm.notify(NOTE, b.build()) }.onFailure { WriterLog.w("Phone: the call from the computer was not shown (${it.message})") }
     }

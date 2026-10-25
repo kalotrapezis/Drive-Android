@@ -143,8 +143,8 @@ internal object PhoneCalls {
     /** The people on a call: a merged call's each, else the call itself. */
     fun parts(call: Call): List<Call> = call.children.ifEmpty { listOf(call) }
     fun contact(call: Call): ContactInfo? = number(call)?.let { synchronized(names) { names[it] } }
-    fun title(call: Call): String = if (call.details.hasProperty(Call.Details.PROPERTY_CONFERENCE))
-        call.children.joinToString(", ") { title(it) }.ifEmpty { "Conference" } else contact(call)?.name ?: number(call) ?: "Hidden number"
+    fun title(c: Context, call: Call): String = if (call.details.hasProperty(Call.Details.PROPERTY_CONFERENCE))
+        call.children.joinToString(", ") { title(c, it) }.ifEmpty { c.getString(R.string.phone_conference) } else contact(call)?.name ?: number(call) ?: c.getString(R.string.phone_hidden_number)
 
     /** The Tetra contact with this number (the last nine digits, as Contacts matches them), read from the files. */
     fun contactFor(number: String): ContactInfo? {
@@ -176,31 +176,32 @@ internal object PhoneCalls {
         val nm = c.getSystemService(NotificationManager::class.java)
         val call = top()
         if (call == null || call.state == Call.STATE_DISCONNECTED) { nm.cancel(NOTE); return }
-        if (nm.getNotificationChannel(RINGING) == null) nm.createNotificationChannel(NotificationChannel(RINGING, "Incoming calls", NotificationManager.IMPORTANCE_HIGH)
+        // made again each time: an existing channel keeps its sound and takes only the name, in the language now
+        nm.createNotificationChannel(NotificationChannel(RINGING, c.getString(R.string.phone_channel_incoming), NotificationManager.IMPORTANCE_HIGH)
             .apply { setSound(null, null); enableVibration(false) }) // Telecom rings and vibrates
-        if (nm.getNotificationChannel(ONGOING) == null) nm.createNotificationChannel(NotificationChannel(ONGOING, "Calls in progress", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(ONGOING, c.getString(R.string.phone_channel_ongoing), NotificationManager.IMPORTANCE_LOW))
         val ringing = call.state == Call.STATE_RINGING
         val screen = Intent(c, PhoneCallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val open = PendingIntent.getActivity(c, 0, screen, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val answer = PendingIntent.getActivity(c, 1, Intent(screen).setAction(ANSWER), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         fun act(what: String, code: Int) = PendingIntent.getBroadcast(c, code, Intent(c, PhoneCallReceiver::class.java).setAction(what), PendingIntent.FLAG_IMMUTABLE)
-        val person = Person.Builder().setName(title(call)).setImportant(true).build()
+        val person = Person.Builder().setName(title(c, call)).setImportant(true).build()
         val b = NotificationCompat.Builder(c, if (ringing && !screenShown) RINGING else ONGOING).setSmallIcon(R.drawable.ic_call)
             .setStyle(if (ringing) NotificationCompat.CallStyle.forIncomingCall(person, act("decline", 2), answer) else NotificationCompat.CallStyle.forOngoingCall(person, act("end", 3)))
             .setCategory(NotificationCompat.CATEGORY_CALL).setOngoing(true).setOnlyAlertOnce(true)
             .setContentIntent(open).setFullScreenIntent(open, true)
         if (call.state == Call.STATE_ACTIVE && call.details.connectTimeMillis > 0) b.setUsesChronometer(true).setWhen(call.details.connectTimeMillis)
-        else b.setContentText(stateText(call, 0))
+        else b.setContentText(stateText(c, call, 0))
         runCatching { nm.notify(NOTE, b.build()) }.onFailure { WriterLog.w("Phone: the call's notification (${it.message})") }
     }
 
-    fun stateText(call: Call, now: Long): String = when (call.state) {
-        Call.STATE_RINGING -> "Incoming call"
-        Call.STATE_SELECT_PHONE_ACCOUNT -> "Choose a SIM"
-        Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_NEW -> "Calling…"
-        Call.STATE_ACTIVE -> call.details.connectTimeMillis.takeIf { it > 0 && now > 0 }?.let { elapsed(now - it) } ?: "Connected"
-        Call.STATE_HOLDING -> "On hold"
-        else -> "Call ended"
+    fun stateText(c: Context, call: Call, now: Long): String = when (call.state) {
+        Call.STATE_RINGING -> c.getString(R.string.phone_incoming)
+        Call.STATE_SELECT_PHONE_ACCOUNT -> c.getString(R.string.phone_choose_sim)
+        Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_NEW -> c.getString(R.string.phone_calling)
+        Call.STATE_ACTIVE -> call.details.connectTimeMillis.takeIf { it > 0 && now > 0 }?.let { elapsed(now - it) } ?: c.getString(R.string.phone_connected)
+        Call.STATE_HOLDING -> c.getString(R.string.phone_on_hold)
+        else -> c.getString(R.string.phone_call_ended)
     }
 
     fun elapsed(ms: Long): String { val s = (ms / 1000).coerceAtLeast(0); return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60) }
@@ -263,17 +264,17 @@ class PhoneMissedReceiver : BroadcastReceiver() {
         Thread {
             runCatching {
                 val who = number?.let { PhoneCalls.contactFor(it)?.name } ?: number
-                if (nm.getNotificationChannel(CHANNEL) == null) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Missed calls", NotificationManager.IMPORTANCE_DEFAULT))
+                nm.createNotificationChannel(NotificationChannel(CHANNEL, app.getString(R.string.phone_channel_missed), NotificationManager.IMPORTANCE_DEFAULT)) // again: its name follows the language
                 val open = PendingIntent.getActivity(app, 10, Intent(app, PhoneActivity::class.java).putExtra(PhoneActivity.TAB, "missed").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
                 @Suppress("DEPRECATION") val clear = i.getParcelableExtra<PendingIntent>("android.telecom.extra.CLEAR_MISSED_CALLS_INTENT") // TelecomManager.EXTRA_CLEAR_MISSED_CALLS_INTENT, a system API name
                 val b = NotificationCompat.Builder(app, CHANNEL).setSmallIcon(R.drawable.ic_call_missed).setCategory(NotificationCompat.CATEGORY_MISSED_CALL)
-                    .setContentTitle(if (count == 1) "Missed call" else "$count missed calls").setContentText(if (count == 1) who ?: "Hidden number" else who?.let { "The last from $it" })
+                    .setContentTitle(app.resources.getQuantityString(R.plurals.phone_n_missed, count, count)).setContentText(if (count == 1) who ?: app.getString(R.string.phone_hidden_number) else who?.let { app.getString(R.string.phone_last_from, it) })
                     .setContentIntent(open).setAutoCancel(true).setDeleteIntent(clear)
                 if (count == 1 && number != null) {
-                    b.addAction(0, "Call back", PendingIntent.getActivity(app, 11, Intent(Intent.ACTION_CALL, android.net.Uri.fromParts("tel", number, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    b.addAction(0, app.getString(R.string.phone_call_back), PendingIntent.getActivity(app, 11, Intent(Intent.ACTION_CALL, android.net.Uri.fromParts("tel", number, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
-                    b.addAction(0, "Message", PendingIntent.getActivity(app, 12, Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:${android.net.Uri.encode(number)}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    b.addAction(0, app.getString(R.string.contacts_message), PendingIntent.getActivity(app, 12, Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:${android.net.Uri.encode(number)}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 }
                 nm.notify(NOTE, b.build())

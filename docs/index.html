@@ -8,6 +8,7 @@
 <meta property="og:title" content="Tetra">
 <meta property="og:description" content="One private super app for your phone, tablet and computer. Nothing leaves your devices.">
 <meta property="og:image" content="img/tetra-devices.jpg">
+<link rel="alternate" hreflang="el" href="el.html">
 <link rel="icon" href="img/tetra.png">
 <style>
   :root { --bg: #0f1113; --card: #191c20; --line: #2a2e34; --text: #f4f6f8; --muted: #b0b7c0; --teal: #04d5cc;
@@ -65,6 +66,11 @@
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px; }
   .panel h3 { margin: 0 0 6px; font-size: 24px; } .panel p { color: var(--muted); margin: 0 0 6px; }
   .panel .btn { min-width: 0; margin-top: 12px; }
+  .lang { position: absolute; top: 16px; right: 16px; display: flex; gap: 4px; background: rgba(0, 0, 0, .55); border: 1px solid var(--line);
+           border-radius: 999px; padding: 4px; z-index: 2; }
+  .lang a { color: var(--text); text-decoration: none; font-size: 14px; font-weight: 700; padding: 6px 12px; border-radius: 999px; }
+  .lang a[aria-current="page"] { background: var(--text); color: #111; }
+  header { position: relative; }
   footer { color: #7d858f; font-size: 14px; padding: 48px 0 40px; text-align: center; }
   @media (max-width: 700px) {  /* a phone: the tabs would not fit, so the cards instead */
     .cards-small { display: grid; }
@@ -74,11 +80,11 @@
 </head>
 <body>
 <header>
+  <nav class="lang" aria-label="Language"><a href="el.html" hreflang="el" lang="el">ΕΛ</a><a href="index.html" hreflang="en" lang="en" aria-current="page">EN</a></nav>
   <div class="wrap">
     <img class="logo" src="img/tetra.png" alt="">
     <h1>Tetra</h1>
-    <p class="lead">One private super app for your phone, tablet and computer. Free software, no account, no cloud:
-      nothing leaves your devices.</p>
+    <p class="lead">One private super app for your phone, tablet and computer. Free software, no account, no cloud: nothing leaves your devices.</p>
     <div class="buttons">
       <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.1/Tetra-0.6.0-beta.1-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Download for Android</b><span>APK · 0.6.0 beta 1 · Android 11+</span></div></a>
       <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.21/Tetra-0.6.0-beta.21.AppImage"><img src="img/tetra.png" alt=""><div><b>Linux AppImage</b><span>0.6.0 beta 21 · any distro</span></div></a>
@@ -179,8 +185,7 @@
 <section>
   <div class="wrap">
     <h2>Fast, on purpose</h2>
-    <p class="sub">Every applet was measured on a phone and reworked until it opens in a blink: Contacts right after start
-      went from 3.3 s to 0.19 s. On the computer, Photos opens again in 71 ms instead of 741.</p>
+    <p class="sub">Every applet was measured on a phone and reworked until it opens in a blink: Contacts right after start went from 3.3 s to 0.19 s. On the computer, Photos opens again in 71 ms instead of 741.</p>
     <img class="wide-img" src="img/card-speed.jpg" alt="Before and after, applet by applet" loading="lazy">
   </div>
 </section>
@@ -208,11 +213,10 @@
 </section>
 
 <footer>
-  <div class="wrap">Tetra is free software (GPL 3.0) and a beta: keep your own backups. Screenshots use invented sample data.
-    Source: <a href="https://github.com/kalotrapezis/Drive-Android">Android</a> · <a href="https://github.com/kalotrapezis/Drive">desktop</a></div>
+  <div class="wrap">Tetra is free software (GPL 3.0) and a beta: keep your own backups. Screenshots use invented sample data. Source: <a href="https://github.com/kalotrapezis/Drive-Android">Android</a> · <a href="https://github.com/kalotrapezis/Drive">desktop</a></div>
 </footer>
 <script>
-  // The applet tabs: click, arrow keys, and #name in the address keep the chosen one.
+  // The applet tabs: click, arrow keys, and #name in the address keep the chosen one; the language switch keeps it too.
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   function show(tab, focus) {
     tabs.forEach(t => { const on = t === tab; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1;
@@ -227,6 +231,7 @@
       if (d) { e.preventDefault(); show(tabs[(i + d + tabs.length) % tabs.length], true); }
     });
   });
+  document.querySelectorAll('.lang a').forEach(a => a.addEventListener('click', () => { a.href = a.getAttribute('href').split('#')[0] + location.hash }));
   const start = document.getElementById('tab-' + location.hash.slice(1));
   if (start) show(start);
 </script>

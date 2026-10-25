@@ -102,13 +102,13 @@ internal object DataRules {
 
     /**
      * A day's likely use, from the days before [before] (the user, 25 Oct: weekends differ — no Wi-Fi at work): the median of the
-     * same weekday over the last six weeks, previous cycles too, else the median of the last four weeks. Medians, so one huge
-     * or empty day does not pull it.
+     * same weekday over the last three weeks, previous cycles too, else the median of the last two weeks. Medians, so one huge
+     * or empty day does not pull it; three weeks, so a change of habit (the hotspot used daily since October) shows within days.
      */
     fun forecast(history: Map<LocalDate, Long>, day: LocalDate, before: LocalDate): Long {
-        val past = history.filterKeys { it.isBefore(before) && !it.isBefore(before.minusDays(42)) }
+        val past = history.filterKeys { it.isBefore(before) && !it.isBefore(before.minusDays(21)) }
         val same = past.filterKeys { it.dayOfWeek == day.dayOfWeek }.values.toList()
-        return median(if (same.size >= 2) same else past.filterKeys { !it.isBefore(before.minusDays(28)) }.values.toList())
+        return median(if (same.size >= 2) same else past.filterKeys { !it.isBefore(before.minusDays(14)) }.values.toList())
     }
 
     /** What will have been used by the cycle's end: used so far, today at least its forecast, and each day left its forecast. */
@@ -188,7 +188,7 @@ internal object DataInsights {
         fun measure(d: DataDay) = if (phone) (if (p != null) DataRules.counted(p, d) else d.mobile) else d.mobile + d.wifi
         val inCycle = days.filter { it.day in cycle && !it.day.isAfter(today) }
         val done = inCycle.filter { it.day.isBefore(today) }
-        val recent = days.filter { it.day.isBefore(today) && !it.day.isBefore(today.minusDays(42)) }
+        val recent = days.filter { it.day.isBefore(today) && !it.day.isBefore(today.minusDays(21)) } // the forecast's three weeks
         val (weekend, work) = recent.partition { it.day.dayOfWeek.value >= 6 }
         val hotspot = inCycle.sumOf { if (phone) it.hotspot else it.viaHotspot }
         val mobile = inCycle.sumOf { it.mobile }; val wifi = inCycle.sumOf { it.wifi }

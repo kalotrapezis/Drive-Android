@@ -376,7 +376,7 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                     Text(title, style = MaterialTheme.typography.titleSmall)
                     Info("The bars", "Each bar is a day (an hour in Day, a month in Year), stacked: mobile data (lime), the hotspot (orange) — on the phone what it " +
                         "shared, on the tablet and the computer what they used through it — and Wi-Fi (blue). Tap a bar for its apps; tap it again for all. Faint bars: the " +
-                        "days to come, each the median of the same weekday over the last six weeks. Dashed line: your average day. Red dots: signal drops. ‹ › go back and forth in time.")
+                        "days to come, each the median of the same weekday over the last three weeks. Dashed line: your average day, everything shown counted. Red dots: signal drops. ‹ › go back and forth in time.")
                 }
                 val real = bars.filter { !it.forecast }
                 Text(if (series != null) "Apps: ${DataRules.bytes(real.sumOf { it.total })}" else Use(real.sumOf { it.mobile }, real.sumOf { it.hotspot }, real.sumOf { it.wifi }).words(always = true),
@@ -553,7 +553,7 @@ private fun byApps(bars: List<Bar>, appDays: List<Triple<LocalDate, String, Long
 @Composable private fun MetricsCard(m: DataMetrics, phone: Boolean) {
     val b = DataRules::bytes
     val tiles = listOfNotNull(
-        "Average" to "${b(m.average)} a day",
+        (if (phone) "Mobile data a day" else "A day, on average") to b(m.average),
         ("Workdays · weekends" to "${b(m.workdays)} · ${b(m.weekends)}").takeIf { m.workdays + m.weekends > 0 },
         m.busiest?.let { (d, v) -> "Busiest day" to "${d.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))} · ${b(v)}" },
         ((if (phone) "Through the hotspot" else "Over the phone's hotspot") to "${m.hotspotShare} %").takeIf { m.hotspotShare > 0 },
@@ -564,7 +564,7 @@ private fun byApps(bars: List<Bar>, appDays: List<Triple<LocalDate, String, Long
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("This cycle in numbers", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Info("In numbers", (if (phone) "The phone's mobile data, as the plan counts it" else "This device's data") + ". Average: the days so far, today left out. " +
-                    "Workdays and weekends: the typical (median) day of each over the last six weeks, so one odd day does not pull it. " +
+                    "Workdays and weekends: the typical (median) day of each over the last three weeks, so one odd day does not pull it. " +
                     (if (phone) "Through the hotspot: the share of the mobile data the phone gave to other devices. " else "Over the phone's hotspot: the share of this device's Wi-Fi that was the phone's hotspot. ") +
                     "On Wi-Fi: Wi-Fi's share of everything this device used.")
             }

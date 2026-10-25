@@ -50,8 +50,8 @@ class DataTest {
 
     @Test fun `the forecast follows the weekday, not one odd day`() {
         val today = d(10, 25) // a Sunday
-        // six weeks: workdays 3 GB, weekends 9 GB, and one odd Sunday of 40 GB
-        val history = (1..42).associate { i -> today.minusDays(i.toLong()).let { day -> day to (if (day.dayOfWeek.value >= 6) 9_000_000_000 else 3_000_000_000) } }
+        // three weeks: workdays 3 GB, weekends 9 GB, and one odd Sunday of 40 GB
+        val history = (1..21).associate { i -> today.minusDays(i.toLong()).let { day -> day to (if (day.dayOfWeek.value >= 6) 9_000_000_000 else 3_000_000_000) } }
             .toMutableMap().apply { put(today.minusDays(7), 40_000_000_000) }
         assertEquals(9_000_000_000, DataRules.forecast(history, d(11, 1), today)) // next Sunday: the Sundays' median
         assertEquals(3_000_000_000, DataRules.forecast(history, d(10, 27), today)) // a Tuesday

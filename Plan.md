@@ -3123,6 +3123,19 @@ Send log.
    speed and loss ↓ 40 · ↑ 46 Mb/s · 63 ms · 0 % lost. Fixed after it (with the next install): the phone said "this one: Mobile" (now
    "its own hotspot") and the computer once "Wi-Fi 12 dBm" (a driver's positive reading right beside the phone: now just "Wi-Fi").
    The tablet was not on USB (only one device is seen at a time).
+- [x] 12. (the user, 25 Oct, from the phone's screenshot) **Colours**: on the phone "Hotspot" had been its metered Wi-Fi — Android Auto's
+   link to the car, 14 GB — while what it shared sat in Mobile; now on a phone Hotspot is what it shared (the tethering UID, "tether"
+   hours apart) and the car's link is Wi-Fi; on a tablet/computer Hotspot is what they used through the phone. **The forecast**: the old
+   white line was the cycle's running total on a hidden 0–300 GB scale over daily bars; now faint bars for the days to come, each the
+   median of the same weekday over the last three weeks (six had pulled in a September of near-zero days: the user's hotspot use
+   began 4 Oct), and a dashed average line; the running total kept in a chart of its own (**The cycle so far**, 0 → the limit,
+   the forecast dashed); **This cycle in numbers** (average, workdays · weekends, busiest day, the hotspot's and Wi-Fi's share);
+   **For your plan** (the pace and the day the limit would come, the hotspot's share and what fills it, weekends, the top app's
+   background or Play Store updates, the busiest day — information only); (i) on each; the top ten apps and **All apps and services**.
+   **By app everywhere**: the computer counts each program's TCP bytes (`ss -tinp`, no root; QUIC/UDP calls and video as "Other");
+   the chart's **Kinds | Apps**; the phone's Hotspot row opens ▾ into the devices and their apps. Pages visited: left out — browsers
+   tell no other program what a site used (a small local extension of our own could, later). On the phone 11:00 (the 6-week forecast
+   still: 145 GB); the 3-week forecast (~178 GB on the user's days) and the desktop's beta.16 are built, not installed.
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

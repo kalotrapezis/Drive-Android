@@ -36,7 +36,7 @@ your own backups. Screenshots use invented sample data.
   just covered. Tetra finds the eyes in a photo and covers them with black bars or stars, and finds text to hide.
 - **Office and PDF, good enough.** Word, Excel and PowerPoint open and save as themselves, compatible enough for
   everyday work; PDF editing and page organising; and a phone layout you can actually use.
-- **Maps that work offline\*.** Search, places, routes by car, on foot and by bike, voice guidance and Android Auto,
+- **Maps that work offline\*.** Search, places, routes by car, on foot and by bike, and voice guidance,
   all on the device.
 
 <sub>\* Maps and finding photos by place cover Greece only for now; other countries will follow.</sub>

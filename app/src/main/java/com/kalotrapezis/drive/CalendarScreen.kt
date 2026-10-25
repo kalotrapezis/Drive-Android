@@ -370,7 +370,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     fun writeSaying(work: () -> String) = scope.launch {
         val done = withContext(Dispatchers.IO) { runCatching(work).also { runCatching { CalendarAlarms.plan(context) } } }
         if (done.isSuccess) ScopedSync.soon(context, "calendar", 0, orWhole = true) // to the other devices at once (the user, 18 Oct: "no delay")
-        message = done.getOrElse { context.getString(R.string.calendar_not_saved, it.message ?: it.javaClass.simpleName) }
+        message = done.getOrElse { context.getString(R.string.calendar_not_saved, it.shownMessage(context) ?: it.javaClass.simpleName) }
         done.exceptionOrNull()?.let { WriterLog.e("Calendar: a change failed", it) }
         version++
     }

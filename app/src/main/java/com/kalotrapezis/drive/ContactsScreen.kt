@@ -257,7 +257,7 @@ internal fun ContactsScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     /** Runs [work] on the IO thread, says what it answers, and reads the folder again. */
     fun act(work: () -> String) = scope.launch {
         val r = withContext(Dispatchers.IO) { runCatching(work) }
-        message = r.getOrElse { context.getString(R.string.contacts_not_done, it.message ?: it.javaClass.simpleName) }
+        message = r.getOrElse { context.getString(R.string.contacts_not_done, it.shownMessage(context) ?: it.javaClass.simpleName) }
         r.exceptionOrNull()?.let { WriterLog.e("Contacts: a change failed", it) }
         version++; pushed()
     }

@@ -58,6 +58,8 @@ internal val DATA_COLOR = Color(0xFFA1F81A)
 private val WIFI_COLOR = Color(0xFF4F86E8)
 /** Another phone's hotspot (the tablet's, the computer's use of the phone's): neither mobile nor plain Wi-Fi (the user, 25 Oct). */
 private val HOTSPOT_COLOR = Color(0xFFFF9F1C)
+/** A phone's metered Wi-Fi: the car's, Android Auto (the user, 25 Oct: "Android Auto has its own Wi-Fi … make it Android Auto"). */
+private val CAR_COLOR = Color(0xFF26C6DA)
 
 /** Data, its own window as the Phone is (Plan.md § Data): Usage · Devices · Signal, and Setup the first time. */
 class DataActivity : ComponentActivity() {
@@ -149,8 +151,8 @@ private enum class Span { Day, Week, Cycle, Month, Year }
 
 /** A bar of the chart: its label, the days it covers ([hour] for a day's hours), and its bytes. */
 private data class Bar(val label: String, val from: LocalDate, val until: LocalDate, val mobile: Long, val wifi: Long, val hotspot: Long = 0, val hour: String? = null, val forecast: Boolean = false,
-    val parts: List<Long> = emptyList()) { // by app (the Apps view), in the series' order
-    val total get() = if (parts.isNotEmpty()) parts.sum() else mobile + wifi + hotspot
+    val parts: List<Long> = emptyList(), val car: Long = 0) { // by app (the Apps view), in the series' order; Android Auto's link
+    val total get() = if (parts.isNotEmpty()) parts.sum() else mobile + wifi + hotspot + car
 }
 
 /**
@@ -159,19 +161,21 @@ private data class Bar(val label: String, val from: LocalDate, val until: LocalD
  */
 private fun split(d: DataDay?, phone: Boolean): Triple<Long, Long, Long> = when {
     d == null -> Triple(0, 0, 0)
-    phone -> Triple(d.mobile - d.hotspot, d.hotspot, d.wifi)
+    phone -> Triple(d.mobile - d.hotspot, d.hotspot, d.wifi - d.viaHotspot) // the rest of its metered Wi-Fi is the car's: carOf
     else -> Triple(d.mobile, d.viaHotspot, d.wifi - d.viaHotspot)
 }
+private fun carOf(d: DataDay?, phone: Boolean) = if (phone && d != null) d.viaHotspot else 0L
 
 private fun bars(span: Span, shift: Int, plan: DataPlan?, months: List<DataMonth>, today: LocalDate, phone: Boolean): List<Bar> {
     val days = DataFiles.days(months).associateBy { it.day }
     val split = days.mapValues { (_, d) -> split(d, phone) }
     val histories = listOf(split.mapValues { it.value.first }, split.mapValues { it.value.second }, split.mapValues { it.value.third })
+    val carHistory = days.mapValues { (_, d) -> carOf(d, phone) }
     fun day(d: LocalDate, label: String): Bar {
         // the days to come: each kind's forecast from the weekdays before (faint bars)
-        if (d.isAfter(today)) return histories.map { DataRules.forecast(it, d, today) }.let { (m, h, w) -> Bar(label, d, d.plusDays(1), m, w, h, forecast = true) }
+        if (d.isAfter(today)) return histories.map { DataRules.forecast(it, d, today) }.let { (m, h, w) -> Bar(label, d, d.plusDays(1), m, w, h, forecast = true, car = DataRules.forecast(carHistory, d, today)) }
         val (m, h, w) = split(days[d], phone)
-        return Bar(label, d, d.plusDays(1), m, w, h)
+        return Bar(label, d, d.plusDays(1), m, w, h, car = carOf(days[d], phone))
     }
     return when (span) {
         Span.Day -> {
@@ -199,7 +203,7 @@ private fun bars(span: Span, shift: Int, plan: DataPlan?, months: List<DataMonth
             (0 until 12).map { y.plusMonths(it.toLong()) }.map { m ->
                 val inM = days.values.filter { it.day.year == m.year && it.day.month == m.month }
                 val s = inM.map { split(it, phone) }
-                Bar(m.month.getDisplayName(DateStyle.NARROW, Locale.ENGLISH), m, m.plusMonths(1), s.sumOf { it.first }, s.sumOf { it.third }, s.sumOf { it.second })
+                Bar(m.month.getDisplayName(DateStyle.NARROW, Locale.ENGLISH), m, m.plusMonths(1), s.sumOf { it.first }, s.sumOf { it.third }, s.sumOf { it.second }, car = inM.sumOf { carOf(it, phone) })
             }
         }
     }
@@ -379,7 +383,7 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                         "days to come, each the median of the same weekday over the last three weeks. Dashed line: your average day, everything shown counted. Red dots: signal drops. ‹ › go back and forth in time.")
                 }
                 val real = bars.filter { !it.forecast }
-                Text(if (series != null) "Apps: ${DataRules.bytes(real.sumOf { it.total })}" else Use(real.sumOf { it.mobile }, real.sumOf { it.hotspot }, real.sumOf { it.wifi }).words(always = true),
+                Text(if (series != null) "Apps: ${DataRules.bytes(real.sumOf { it.total })}" else Use(real.sumOf { it.mobile }, real.sumOf { it.hotspot }, real.sumOf { it.wifi }, car = real.sumOf { it.car }).words(always = true),
                     style = MaterialTheme.typography.bodySmall, color = quiet)
             }
             IconButton(onClick = { move(1) }, enabled = shift < 0) { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "Later") }
@@ -400,7 +404,7 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
                     val dim = picked != null && picked != b
                     // stacked from the bottom: mobile, the hotspot, Wi-Fi; a forecast day faint, outlined
                     var base = 0L
-                    for ((v, color) in if (series != null) b.parts.zip(series.map { it.second }) else listOf(b.mobile to lime, b.hotspot to HOTSPOT_COLOR, b.wifi to WIFI_COLOR)) {
+                    for ((v, color) in if (series != null) b.parts.zip(series.map { it.second }) else listOf(b.mobile to lime, b.hotspot to HOTSPOT_COLOR, b.wifi to WIFI_COLOR, b.car to CAR_COLOR)) {
                         if (v > 0) {
                             val c = if (b.forecast) color.copy(alpha = 0.22f) else if (dim) color.copy(alpha = 0.35f) else color
                             drawRect(c, Offset(x, y(base + v)), Size(w, y(base) - y(base + v)))
@@ -425,12 +429,12 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
             } }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            (series ?: listOfNotNull("Mobile" to lime, ("Hotspot" to HOTSPOT_COLOR).takeIf { bars.any { it.hotspot > 0 } }, "Wi-Fi" to WIFI_COLOR)).forEach { (n, c) ->
+            (series ?: listOfNotNull("Mobile" to lime, ("Hotspot" to HOTSPOT_COLOR).takeIf { bars.any { it.hotspot > 0 } }, "Wi-Fi" to WIFI_COLOR, ("Android Auto" to CAR_COLOR).takeIf { bars.any { it.car > 0 } })).forEach { (n, c) ->
                 Box(Modifier.size(10.dp).clip(CircleShape).background(c)); Text(n, style = MaterialTheme.typography.labelSmall, color = quiet, maxLines = 1)
             }
         }
         picked?.let { b -> Text("${b.label}${if (span == Span.Day) ":00" else ""}: " + (if (b.forecast) "forecast " else "") +
-            (if (series != null) series.zip(b.parts).filter { it.second > 0 }.joinToString(" · ") { "${it.first.first} ${DataRules.bytes(it.second)}" } else Use(b.mobile, b.hotspot, b.wifi).words(always = true)),
+            (if (series != null) series.zip(b.parts).filter { it.second > 0 }.joinToString(" · ") { "${it.first.first} ${DataRules.bytes(it.second)}" } else Use(b.mobile, b.hotspot, b.wifi, car = b.car).words(always = true)),
             style = MaterialTheme.typography.bodySmall) }
         average?.let { a -> Text("Dashed: the average, ${DataRules.bytes(a)} a day" + (if (bars.any { it.forecast }) " · faint: the days to come, from your usual weekdays" else ""),
             style = MaterialTheme.typography.labelSmall, color = quiet) }
@@ -439,13 +443,13 @@ private fun UsageTab(plan: DataPlan?, all: Map<String, List<DataMonth>>, pad: Pa
 }
 
 /** What was used: on mobile, over another phone's hotspot (the tablet's, the computer's), on plain Wi-Fi. */
-internal data class Use(val mobile: Long, val hotspot: Long, val wifi: Long, val ethernet: Long = 0) {
-    val total get() = mobile + hotspot + wifi + ethernet
+internal data class Use(val mobile: Long, val hotspot: Long, val wifi: Long, val ethernet: Long = 0, val car: Long = 0) {
+    val total get() = mobile + hotspot + wifi + ethernet + car
     fun words(always: Boolean = false) = listOfNotNull(
         (mobile > 0 || always && hotspot == 0L).takeIf { it }?.let { "Mobile ${DataRules.bytes(mobile)}" },
         hotspot.takeIf { it > 0 }?.let { "Hotspot ${DataRules.bytes(it)}" },
         (wifi > 0 || always).takeIf { it }?.let { "Wi-Fi ${DataRules.bytes(wifi)}" },
-        ethernet.takeIf { it > 0 }?.let { "Ethernet ${DataRules.bytes(it)}" }).joinToString(" · ")
+        ethernet.takeIf { it > 0 }?.let { "Ethernet ${DataRules.bytes(it)}" }, car.takeIf { it > 0 }?.let { "Android Auto ${DataRules.bytes(it)}" }).joinToString(" · ")
 }
 
 private val APP_COLORS = listOf(Color(0xFFFF9F1C), Color(0xFF4F86E8), Color(0xFFE91E63), Color(0xFF26C6DA), Color(0xFFAB47BC), Color(0xFFFFCA28))
@@ -657,7 +661,7 @@ private fun byApps(bars: List<Bar>, appDays: List<Triple<LocalDate, String, Long
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(label(d), style = MaterialTheme.typography.titleSmall)
                 val parts = days.map { split(it, d == phone) }
-                AppRow("", Use(parts.sumOf { it.first }, parts.sumOf { it.second }, parts.sumOf { it.third }, days.sumOf { it.ethernet }), most) {}
+                AppRow("", Use(parts.sumOf { it.first }, parts.sumOf { it.second }, parts.sumOf { it.third }, days.sumOf { it.ethernet }, days.sumOf { carOf(it, d == phone) }), most) {}
             }
         } }
         if (hotspot > 0 || clients.isNotEmpty()) item {

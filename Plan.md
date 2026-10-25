@@ -3139,6 +3139,17 @@ Send log.
    The desktop's beta.16 (per program) installed by the user 11:19 and restarted: Claude 12 MB, Chrome, Firefox, Thunderbird, Viber, "Other"
    6 MB in its first minutes — and adb and Android Auto's head unit (the phone on USB) counted as hotspot. beta.17 (Drive): connections to
    the computer itself are not counted, to the local network (the phone, the tablet) are Wi-Fi; built, to install.
+- [x] 13. (the user, 25 Oct, from the computer's page: "Xiaomi 15" four times; "Android Auto has its own Wi-Fi … make it Android Auto";
+   "can we do better on desktop"; "make sure there is a cleanup, no garbage left behind") **Sync's conflict copies**: the phone's month,
+   rewritten while the computer sent the last one back, came back as "2026-10.24129PN74G (2)/(3)/(4).jsonl" (history: 11:00, 11:11,
+   11:18), each read as another phone. Now no reader takes a "(n)" copy, and every device (and the computer) removes them; the cause
+   in the sync engine is left to look at apart. **Android Auto** its own kind (teal) on the phone: its metered Wi-Fi (`via` on a phone).
+   **Cleanup**, once a day: the copies, half-written ".tmp" files, the warnings of cycles before the last two and day passes over 30
+   days, the phone's own old "hotspot" hours, a month's per-app and hourly detail after 13 months (its days stay); the hourly job
+   cancelled and the live speed stopped when Data is no longer used; the computer: the same for its files, its writes under a dot
+   name. **The computer's page as the phone's**: the ring, Kinds | Apps with the faint forecast and the average, the cycle chart,
+   the numbers, the tips, the apps (top ten, all, the Hotspot ▾ by device and app), the devices, the connection, the drops; (i) on
+   each. Drive 3139ff3, beta.18 built; Android not installed (another session is using the phone).
 
 ### The house map — how it would work (not built: the user, 25 Oct, "it just seemed interesting how it works")
 - **Realistic with phones**: draw the floor, walk and tap where you stand, the readings coloured over the plan (a heat map);

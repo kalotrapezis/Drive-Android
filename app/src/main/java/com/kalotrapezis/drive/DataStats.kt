@@ -48,8 +48,41 @@ internal object DataStats {
 
     /** Everything Data runs in the background, started when Tetra opens or its listening service starts. */
     fun startAll(c: Context) {
-        if (!inUse(c)) return
+        if (!inUse(c)) { // not (or no longer) used: nothing of Data left running
+            c.getSystemService(JobScheduler::class.java)?.cancel(JOB)
+            if (DataSpeed.enabled(c)) DataSpeed.setEnabled(c, false)
+            return
+        }
         schedule(c); watchUsage(c); DataSignal.watch(c); DataSpeed.start(c)
+    }
+
+    /**
+     * Nothing left behind (the user, 25 Oct: "a cleanup, no garbage"): sync's copies of the months, half-written files of an
+     * interrupted write, the memory of warnings and day passes past, and — after 13 months — a month's per-app and hourly
+     * detail (its days stay, for the year view). Once a day.
+     */
+    fun clean(c: Context, today: LocalDate = LocalDate.now()) {
+        val p = prefs(c)
+        if (p.getString("cleaned", "") == today.toString()) return
+        p.edit().putString("cleaned", today.toString()).apply()
+        runCatching { DataFiles.dropCopies().takeIf { it > 0 }?.let { WriterLog.i("Data: $it sync copies of the months removed") } }
+        val root = DataFiles.root()
+        listOf(root, File(root, "usage"), File(root, "spots")).flatMap { it.listFiles().orEmpty().toList() }
+            .filter { it.name.startsWith(".") && it.name.endsWith(".tmp") && System.currentTimeMillis() - it.lastModified() > 3600_000 }.forEach { it.delete() }
+        // the warnings given in cycles before the last two, the day passes before the last month
+        val e = p.edit()
+        p.all.keys.filter { it.startsWith("warned.") }.sortedDescending().drop(2).forEach { e.remove(it) }
+        p.all.keys.filter { it.startsWith("pass.") && runCatching { LocalDate.parse(it.removePrefix("pass.")).isBefore(today.minusDays(30)) }.getOrDefault(true) }.forEach { e.remove(it) }
+        e.apply()
+        // this device's months over 13 months old: their days and events only
+        val device = DataFiles.device()
+        val old = today.minusMonths(13).withDayOfMonth(1).toString().take(7)
+        File(root, "usage").listFiles().orEmpty().filter { it.name.endsWith(".$device.jsonl") && it.name.take(7) < old }.forEach { f ->
+            runCatching {
+                val m = DataFiles.parse(device, f.readText())
+                if (m.apps.isNotEmpty() || m.hours.isNotEmpty()) DataFiles.write(f, DataFiles.text(m.copy(apps = emptyList(), hours = emptyList())))
+            }
+        }
     }
 
     fun accessIntent(c: Context) = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, android.net.Uri.fromParts("package", c.packageName, null))
@@ -66,7 +99,7 @@ internal object DataStats {
     private fun floorBucket(t: Long) = t - Math.floorMod(t, BUCKET)
     private fun at(d: LocalDate, zone: ZoneId) = d.atStartOfDay(zone).toInstant().toEpochMilli()
 
-    private data class Uid(var fg: Long = 0, var bg: Long = 0, var roam: Long = 0, var hotFg: Long = 0, var hotBg: Long = 0)
+    private data class Uid(var fg: Long = 0, var bg: Long = 0, var roam: Long = 0, var hotFg: Long = 0, var hotBg: Long = 0, var car: Long = 0)
 
     /** A query's buckets: each one's UID, bytes, foreground and roaming. */
     private inline fun each(s: NetworkStats?, f: (NetworkStats.Bucket) -> Unit) {
@@ -107,12 +140,12 @@ internal object DataStats {
                 val fg = b.state == NetworkStats.Bucket.STATE_FOREGROUND
                 // a metered Wi-Fi is a phone's hotspot (Android's hotspots say so); Tetra's own there is its sync with the phone: Wi-Fi
                 if (client && net == "wifi" && b.metered == NetworkStats.Bucket.METERED_YES && b.uid != Process.myUid()) { if (fg) u.hotFg += n else u.hotBg += n }
-                else if (fg) u.fg += n else u.bg += n
+                else { if (fg) u.fg += n else u.bg += n; if (!client && net == "wifi" && b.metered == NetworkStats.Bucket.METERED_YES) u.car += n } // a phone's metered Wi-Fi: the car's
                 if (b.roaming == NetworkStats.Bucket.ROAMING_YES) u.roam += n
             }
             byUid.forEach { (uid, u) ->
                 val total = u.fg + u.bg; val hot = u.hotFg + u.hotBg
-                if (net == "mobile") { mobile += total; roam += u.roam; if (uid == NetworkStats.Bucket.UID_TETHERING) hotspot += total } else { wifi += total + hot; via += hot }
+                if (net == "mobile") { mobile += total; roam += u.roam; if (uid == NetworkStats.Bucket.UID_TETHERING) hotspot += total } else { wifi += total + hot; via += hot + u.car } // via: a tablet's hotspot use, a phone's Android Auto link
                 val (app, label) = name(c, uid)
                 if (total > 0) apps += DataApp(d, app, label, net, u.fg, u.bg, u.roam)
                 if (hot > 0) apps += DataApp(d, app, label, "hotspot", u.hotFg, u.hotBg, 0) // the tablet's or a phone's use of another phone's hotspot
@@ -190,7 +223,8 @@ internal object DataStats {
             val sKey = Instant.ofEpochMilli(s).atZone(zone).format(HOUR); val hsKey = Instant.ofEpochMilli(hs).atZone(zone).format(HOUR)
             // only a device without a SIM uses another phone's hotspot; a phone's metered Wi-Fi is the car's (Android Auto) and stays Wi-Fi
             val hotThen = PhoneRelay.noCalls(c) && days.any { it.viaHotspot > 0 && !it.day.isBefore(today.minusDays(1)) }
-            val hrs = old?.hours.orEmpty().filter { it.hour < sKey || (it.net == "hotspot" && it.hour < hsKey) } +
+            // a phone's own "hotspot" hours (its car link, before 25 Oct) are not kept: on a phone the hotspot is "tether"
+            val hrs = old?.hours.orEmpty().filter { it.hour < sKey || (PhoneRelay.noCalls(c) && it.net == "hotspot" && it.hour < hsKey) } +
                 (if (hasAccess(c)) hours(nsm, s, e, zone) + (if (hotThen && hs < e) hotspotHours(nsm, hs, e, zone) else emptyList()) else emptyList())
             val ev = (old?.events.orEmpty() + events.filter { it.at.startsWith(m.toString().take(7)) }).distinct()
             val month = DataMonth(device, days, apps, hrs.filter { it.hour.startsWith(m.toString().take(7)) }, ev, DataFiles.deviceName(c))
@@ -198,6 +232,7 @@ internal object DataStats {
             if (DataFiles.write(file, DataFiles.text(month))) changed = true
             month
         }
+        runCatching { clean(c) }
         // the events now in their months' files
         if (events.isNotEmpty()) runCatching { eventsFile(c).delete() }
         if (changed) ScopedSync.soon(c, "data")

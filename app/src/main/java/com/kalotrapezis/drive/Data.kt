@@ -271,7 +271,12 @@ internal object DataFiles {
         runCatching { android.provider.Settings.Secure.getString(c.contentResolver, "bluetooth_name") }.getOrNull(), Build.MODEL).firstOrNull { !it.isNullOrBlank() }.orEmpty()
     /** A device's name as it wrote it in its files, else its id. */
     fun label(all: Map<String, List<DataMonth>>, id: String) = all[id]?.firstNotNullOfOrNull { it.name.ifEmpty { null } } ?: id
-    private val NAME = Regex("""(\d{4}-\d{2})\.(.+)\.jsonl""")
+    // a device's month: "2026-10.24129PN74G.jsonl"; sync's copies of one changed on both sides at once ("… (2).jsonl") are not it
+    private val NAME = Regex("""(\d{4}-\d{2})\.([^ ()]+)\.jsonl""")
+    private val COPY = Regex("""(\d{4}-\d{2})\.([^ ()]+) \(\d+\)\.jsonl""")
+
+    /** Sync's copies of the months (an older version of a file only its own device writes, never read): removed, here as on the computer. */
+    fun dropCopies(root: File = root()) = File(root, "usage").listFiles().orEmpty().filter { COPY.matches(it.name) }.count { it.delete() }
 
     fun plan(root: File = root()): DataPlan? = File(root, "plan.json").takeIf { it.isFile }?.let { DataPlan.parse(it.readText()) }
 

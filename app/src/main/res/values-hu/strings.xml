@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">PDF-ek megnyitása</string>
     <string name="home_pdfs">PDF-ek</string>
     <string name="home_back_to_home">Vissza a Kezdőlapra</string>
-    <string name="home_setup_title">Galéria beállítása</string>
-    <string name="home_setup_why">A Tetrának engedély kell, hogy megjeleníthesse a Kamera és a Képernyőképek valódi fotóit és videóit.</string>
-    <string name="home_setup_stay">A fotók a helyükön maradnak. Az alkalmazás nem választ mappát, és sehova nem másolja őket.</string>
-    <string name="home_setup_later">Ezt később a Galéria felhúzható eszközeinél módosíthatod.</string>
-    <string name="home_setup_allow">Igen, fotók engedélyezése</string>
-    <string name="home_setup_skip">Most nem</string>
     <string name="home_island_done">Kész</string>
     <string name="home_island_snooze">Szundi 10 percre</string>
     <string name="home_vault_cannot_read">Nem olvasható: %1$s.</string>

@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Atidaryti PDF</string>
     <string name="home_pdfs">PDF</string>
     <string name="home_back_to_home">Atgal į pradžią</string>
-    <string name="home_setup_title">Galerijos sąranka</string>
-    <string name="home_setup_why">Tetra reikia leidimo rodyti jūsų tikras fotoaparato ir ekrano kopijų nuotraukas bei vaizdo įrašus.</string>
-    <string name="home_setup_stay">Nuotraukos lieka ten, kur yra. Programa nepasirenka aplanko ir jų niekur nekopijuoja.</string>
-    <string name="home_setup_later">Vėliau tai galite pakeisti Galerijos ištraukiamuose įrankiuose.</string>
-    <string name="home_setup_allow">Taip, leisti nuotraukas</string>
-    <string name="home_setup_skip">Ne, ne dabar</string>
     <string name="home_island_done">Atlikta</string>
     <string name="home_island_snooze">Atidėti 10 min.</string>
     <string name="home_vault_cannot_read">Nepavyko nuskaityti %1$s.</string>

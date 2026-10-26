@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Odpri PDF-je</string>
     <string name="home_pdfs">PDF-ji</string>
     <string name="home_back_to_home">Nazaj na Domov</string>
-    <string name="home_setup_title">Nastavitev Galerije</string>
-    <string name="home_setup_why">Tetra potrebuje dovoljenje, da prikaže vaše prave fotografije in videoposnetke iz Fotoaparata in Posnetkov zaslona.</string>
-    <string name="home_setup_stay">Fotografije ostanejo, kjer so. Aplikacija ne izbere mape in jih nikamor ne kopira.</string>
-    <string name="home_setup_later">To lahko pozneje spremenite v orodjih Galerije, ki jih povlečete navzgor.</string>
-    <string name="home_setup_allow">Da, dovoli fotografije</string>
-    <string name="home_setup_skip">Ne, ne zdaj</string>
     <string name="home_island_done">Končano</string>
     <string name="home_island_snooze">Dremež 10 min</string>
     <string name="home_vault_cannot_read">%1$s ni mogoče prebrati.</string>

@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Отвори PDF</string>
     <string name="home_pdfs">PDF файлове</string>
     <string name="home_back_to_home">Към Начало</string>
-    <string name="home_setup_title">Настройка на Галерия</string>
-    <string name="home_setup_why">Tetra се нуждае от разрешение, за да показва истинските ви снимки и видеоклипове от Камера и Екранни снимки.</string>
-    <string name="home_setup_stay">Снимките остават където са. Приложението не избира папка и не ги копира никъде.</string>
-    <string name="home_setup_later">Можете да промените това по-късно от инструментите на Галерия, които се издърпват отдолу.</string>
-    <string name="home_setup_allow">Да, разреши снимки</string>
-    <string name="home_setup_skip">Не сега</string>
     <string name="home_island_done">Готово</string>
     <string name="home_island_snooze">Отложи 10 мин</string>
     <string name="home_vault_cannot_read">%1$s не може да се прочете.</string>

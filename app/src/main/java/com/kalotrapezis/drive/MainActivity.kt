@@ -224,6 +224,24 @@ private const val HOME_PHOTO_BACKDROP = "home_photo_backdrop"
 
 internal fun driveRoot(): File = TetraFolder.root(Environment.getExternalStorageDirectory())
 
+/** Photos may be read: all of them, or (Android 14+) the ones the user chose. */
+internal fun hasVisualAccess(c: Context): Boolean = when {
+    Build.VERSION.SDK_INT >= 34 ->
+        (c.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED &&
+            c.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED) ||
+            c.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+    Build.VERSION.SDK_INT == 33 ->
+        c.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED &&
+            c.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+    else -> c.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+}
+
+internal fun photoPermissions() = when {
+    Build.VERSION.SDK_INT >= 34 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+    Build.VERSION.SDK_INT == 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+    else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+}
+
 class MainActivity : ComponentActivity() {
     override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(AppLocale.wrap(base))
     /** The part an applet icon asked for (Settings › App icons), until Tetra has turned to it. */
@@ -381,7 +399,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     fun closeExternal() { (context as? Activity)?.finish() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
-    var screen by remember { mutableStateOf(if (AppLocale.reopenSettings) Screen.Settings.also { AppLocale.reopenSettings = false } else if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.PhotoSetup) }
+    // the first start opens the guide (Guide.kt), which can be skipped; Settings › Guide opens it again
+    var screen by remember { mutableStateOf(if (AppLocale.reopenSettings) Screen.Settings.also { AppLocale.reopenSettings = false } else if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.Guide) }
+    var guideAt by remember { mutableStateOf(if (screen == Screen.Guide) 0 else null) } // the guide's step; docked under the screen when screen isn't Guide
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
     var mapsGo by remember { mutableStateOf<Place?>(null) } // a place on Home's Maps card: directions to it start at once
     var contactsOpen by remember { mutableStateOf<String?>(null) }
@@ -475,16 +495,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             }
         }.start()
     }
-    fun hasVisualAccess(): Boolean = when {
-        Build.VERSION.SDK_INT >= 34 ->
-            (context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED &&
-                context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED) ||
-                context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
-        Build.VERSION.SDK_INT == 33 ->
-            context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED &&
-                context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
-        else -> context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-    }
+    fun hasVisualAccess(): Boolean = hasVisualAccess(context)
     fun photoPermission(): String = when {
         Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED -> context.getString(R.string.home_photos_full)
         Build.VERSION.SDK_INT >= 34 && context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED -> context.getString(R.string.home_photos_selected)
@@ -493,11 +504,6 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         else -> context.getString(R.string.home_photos_not_granted)
     }
     fun canReadPhotos() = hasVisualAccess()
-    fun photoPermissions() = when {
-        Build.VERSION.SDK_INT >= 34 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-        Build.VERSION.SDK_INT == 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
-        else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-    }
     /** [quiet]: the photos already shown stay while they are read again (Photos opened again, back to the app). */
     fun loadPhotos(quiet: Boolean = false) {
         if (!canReadPhotos()) { photosState = ListState.Error(context.getString(R.string.home_photos_allow)); return }
@@ -536,10 +542,10 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     val requestTrash = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
         if (it.resultCode == Activity.RESULT_OK) loadPhotos()
     }
-    fun finishPhotoSetup(allowPhotos: Boolean) {
+    fun closeGuide() {
         preferences.edit().putBoolean(PHOTO_SETUP_COMPLETED, true).apply()
-        screen = Screen.Home
-        if (allowPhotos && !canReadPhotos()) requestPhotos.launch(photoPermissions())
+        guideAt = null
+        if (screen == Screen.Guide) screen = Screen.Home
     }
     // Moving another app's photo to another folder needs Android's own write consent first (asked once per move).
     var pendingMove by remember { mutableStateOf<Pair<List<Entry>, String>?>(null) }
@@ -692,20 +698,20 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     // an applet icon's part (Settings › App icons), as its card on Home opens it; Back goes to Home (first-run photo setup stays first)
     LaunchedEffect(applet.value) {
         // the Timer's notification and its App icon open its screen
-        if (applet.value == TimerService.SCREEN && screen != Screen.PhotoSetup) { applet.value = null; screen = Screen.Timer; return@LaunchedEffect }
+        if (applet.value == TimerService.SCREEN && screen != Screen.Guide) { applet.value = null; screen = Screen.Timer; return@LaunchedEffect }
         // "2 files from <computer>": its tap opens Files at From computer
-        if (applet.value == FromComputer.SCREEN && screen != Screen.PhotoSetup) {
+        if (applet.value == FromComputer.SCREEN && screen != Screen.Guide) {
             applet.value = null; screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = FromComputer.FOLDER; loadDrive(FromComputer.FOLDER); return@LaunchedEffect
         }
         // the Phone's "Contact" and "Add" (PhoneApp.kt): Contacts on that person, or a new one with the number
-        applet.value?.takeIf { (it.startsWith("contact:") || it.startsWith("contact-new:")) && screen != Screen.PhotoSetup }?.let { v ->
+        applet.value?.takeIf { (it.startsWith("contact:") || it.startsWith("contact-new:")) && screen != Screen.Guide }?.let { v ->
             applet.value = null
             if (v.startsWith("contact:")) { contactsOpen = v.removePrefix("contact:"); contactsNew = null } else { contactsOpen = null; contactsNew = v.removePrefix("contact-new:") }
             screen = Screen.Contacts; return@LaunchedEffect
         }
         val a = Applet.of(applet.value) ?: return@LaunchedEffect
         applet.value = null
-        if (screen == Screen.PhotoSetup) return@LaunchedEffect
+        if (screen == Screen.Guide) return@LaunchedEffect
         WriterLog.i("App icon: $a")
         when (a) {
             Applet.Photos -> { screen = Screen.Photos; photosPane = PhotosPane.Timeline; photoFilter = PhotoFilter.Timeline; loadPhotos() }
@@ -741,7 +747,20 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             loadPhotos()
         } else externalSingle = true
     }
-    BackHandler(enabled = screen != Screen.Home && screen != Screen.ScanDocument && screen != Screen.PhotoSetup) {
+    fun guideTry(go: GuideGo) { when (go) {
+        GuideGo.Home -> screen = Screen.Home
+        GuideGo.Files -> { screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = ""; loadDrive("") }
+        GuideGo.Settings -> screen = Screen.Settings
+        GuideGo.Sync -> screen = Screen.Sync
+        GuideGo.None -> screen = Screen.Guide
+    } }
+    // the docked step's Back/Next: a step on another screen goes there, a step with nothing to try back to the guide
+    fun guideTo(at: Int) {
+        val was = guideAt?.let(GuidePlace::step)?.go
+        guideAt = at
+        GuidePlace.step(at).go.let { if (it != was || it == GuideGo.None) guideTry(it) }
+    }
+    BackHandler(enabled = screen != Screen.Home && screen != Screen.ScanDocument && screen != Screen.Guide) {
         when (screen) {
             Screen.Photos -> screen = Screen.Home
             Screen.Scanner -> leaveScanner()
@@ -761,7 +780,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             if (event == Lifecycle.Event.ON_RESUME) when (currentScreen) {
                 Screen.Drive -> if (currentDrivePane == DrivePane.Files) loadDrive()
                 Screen.Photos -> loadPhotos(quiet = true)
-                Screen.PhotoSetup -> Unit
+                Screen.Guide -> Unit
                 Screen.Home -> Unit
                 Screen.Sync -> Unit
                 Screen.Settings -> Unit
@@ -807,8 +826,9 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         CalendarRinging()
         Column(Modifier.fillMaxSize()) {
             if (externalSingle && external != null) ExternalMediaViewer(external, ::closeExternal)
-            else when (screen) {
-                Screen.PhotoSetup -> PhotoSetup({ finishPhotoSetup(true) }, { finishPhotoSetup(false) })
+            // a step's Try it: the real screen, the step docked under it
+            else GuideDock(guideAt.takeIf { screen != Screen.Guide }, go = ::guideTo, full = { screen = Screen.Guide }, close = ::closeGuide) { when (screen) {
+                Screen.Guide -> GuideScreen(guideAt ?: 0, go = { guideAt = it }, tryIt = ::guideTry, close = ::closeGuide)
                 Screen.Home -> Home(
                     showPhotoBackdrop = homePhotoBackdrop,
                     hasPhotoAccess = canReadPhotos(),
@@ -978,14 +998,15 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                         "phone" -> openPhone(context)
                         "data" -> openData(context)
                     } },
+                    openGuide = { guideAt = 0; screen = Screen.Guide },
                 )
-            }
+            } }
         }
         }
     }
 }
 
-private enum class Screen { PhotoSetup, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer, Maps, Contacts }
+private enum class Screen { Guide, Home, Drive, Photos, Sync, Settings, Scanner, ScanDocument, Codes, Notes, TextEditor, Office, Writer, Sheet, Slides, Pdf, Calendar, Timer, Maps, Contacts }
 private enum class DrivePane { Home, Favorites, Files }
 private enum class DriveSort { Name, Modified }
 private enum class PhotosPane { Timeline, Collections }
@@ -2084,18 +2105,6 @@ internal enum class Category(val color: Color, val icon: Int) {
     Contacts(CONTACTS_COLOR, R.drawable.ic_contacts),
     Phone(PHONE_COLOR, R.drawable.ic_call),
     Data(DATA_COLOR, R.drawable.ic_data_usage),
-}
-
-@Composable
-private fun PhotoSetup(allow: () -> Unit, skip: () -> Unit) {
-    Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(stringResource(R.string.home_setup_title), style = MaterialTheme.typography.headlineMedium)
-        Text(stringResource(R.string.home_setup_why))
-        Text(stringResource(R.string.home_setup_stay), style = MaterialTheme.typography.bodyMedium)
-        Text(stringResource(R.string.home_setup_later), style = MaterialTheme.typography.bodySmall)
-        Button(onClick = allow, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.home_setup_allow), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        Button(onClick = skip, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.home_setup_skip), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-    }
 }
 
 @Composable

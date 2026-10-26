@@ -87,6 +87,7 @@ internal fun SettingsTab(
     folders: List<DeviceFolder>,
     setFolderIncluded: (String, Boolean) -> Unit,
     openPart: (String) -> Unit,
+    openGuide: () -> Unit,
 ) {
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     var open by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
@@ -118,7 +119,11 @@ internal fun SettingsTab(
                     chosen = wide && p == shown, leading = { Icon(painterResource(p.icon), contentDescription = null, tint = p.tint ?: quiet(), modifier = Modifier.size(24.dp)) },
                 ) { if (!wide) Chevron() }
                 if (query.isBlank()) {
-                    SettingsSection(stringResource(R.string.app_name)) { listOf(SettingsPage.Sync, SettingsPage.Appearance).forEach { PageRow(it, stringResource(it.summary)) } }
+                    SettingsSection(stringResource(R.string.app_name)) {
+                        SettingRow(stringResource(R.string.guide_title), stringResource(R.string.guide_summary), onClick = openGuide,
+                            leading = { Icon(painterResource(R.drawable.ic_school), contentDescription = null, tint = quiet(), modifier = Modifier.size(24.dp)) }) { Chevron() }
+                        listOf(SettingsPage.Sync, SettingsPage.Appearance).forEach { PageRow(it, stringResource(it.summary)) }
+                    }
                     SettingsSection(stringResource(R.string.settings_apps)) { SettingsPage.entries.drop(2).forEach { PageRow(it, stringResource(it.summary)) } }
                 } else {
                     // the words as shown, in the language shown
@@ -228,7 +233,7 @@ internal fun SettingsTab(
 @Composable private fun Chevron() = Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = quiet(), modifier = Modifier.size(20.dp))
 
 /** A counter that goes up each time the screen comes back (from Android's settings): states read again. */
-@Composable private fun resumes(): MutableIntState {
+@Composable internal fun resumes(): MutableIntState {
     val n = remember { mutableIntStateOf(0) }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycle) {

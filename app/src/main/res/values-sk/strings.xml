@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Otvoriť PDF</string>
     <string name="home_pdfs">PDF</string>
     <string name="home_back_to_home">Späť na Domov</string>
-    <string name="home_setup_title">Nastavenie galérie</string>
-    <string name="home_setup_why">Tetra potrebuje povolenie, aby mohla zobraziť vaše skutočné fotky a videá z fotoaparátu a snímky obrazovky.</string>
-    <string name="home_setup_stay">Fotky zostanú tam, kde sú. Aplikácia nevyberá priečinok ani ich nikam nekopíruje.</string>
-    <string name="home_setup_later">Neskôr to môžete zmeniť vo vysúvacích nástrojoch galérie.</string>
-    <string name="home_setup_allow">Áno, povoliť fotky</string>
-    <string name="home_setup_skip">Nie, teraz nie</string>
     <string name="home_island_done">Hotovo</string>
     <string name="home_island_snooze">Odložiť o 10 min</string>
     <string name="home_vault_cannot_read">%1$s sa nedá prečítať.</string>

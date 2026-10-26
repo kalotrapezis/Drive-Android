@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Oscail PDF</string>
     <string name="home_pdfs">PDF</string>
     <string name="home_back_to_home">Ar ais go dtí an Baile</string>
-    <string name="home_setup_title">Socrú na Gailearaí</string>
-    <string name="home_setup_why">Teastaíonn cead ó Tetra chun grianghraif agus físeáin do Cheamara agus do Ghabhálacha scáileáin a thaispeáint.</string>
-    <string name="home_setup_stay">Fanann na grianghraif áit a bhfuil siad. Ní roghnaíonn an aip fillteán ná ní chóipeálann sí iad áit ar bith.</string>
-    <string name="home_setup_later">Is féidir leat é seo a athrú níos déanaí ó uirlisí na Gailearaí.</string>
-    <string name="home_setup_allow">Tá, ceadaigh grianghraif</string>
-    <string name="home_setup_skip">Níl, ní anois</string>
     <string name="home_island_done">Déanta</string>
     <string name="home_island_snooze">Athshocraigh 10 nóim.</string>
     <string name="home_vault_cannot_read">Ní féidir %1$s a léamh.</string>

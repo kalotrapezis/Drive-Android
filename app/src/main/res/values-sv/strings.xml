@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Öppna PDF:er</string>
     <string name="home_pdfs">PDF:er</string>
     <string name="home_back_to_home">Tillbaka till Start</string>
-    <string name="home_setup_title">Ställ in Galleri</string>
-    <string name="home_setup_why">Tetra behöver behörighet för att visa dina riktiga foton och videor från Kamera och Skärmbilder.</string>
-    <string name="home_setup_stay">Fotona stannar där de är. Appen väljer ingen mapp och kopierar dem ingenstans.</string>
-    <string name="home_setup_later">Du kan ändra detta senare i Galleriets uppdragbara verktyg.</string>
-    <string name="home_setup_allow">Ja, tillåt foton</string>
-    <string name="home_setup_skip">Nej, inte nu</string>
     <string name="home_island_done">Klar</string>
     <string name="home_island_snooze">Snooza 10 min</string>
     <string name="home_vault_cannot_read">Kan inte läsa %1$s.</string>

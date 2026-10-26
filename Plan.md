@@ -587,6 +587,16 @@ How to write here:
       new emulator and a fresh desktop data folder) to check everything still works from the very start, and fix what
       doesn't. (6) The next big step after that: **Android as server and client, and the desktop as server and client**
       (today the computer is the hub and devices pair only with it).
+      **26 Oct, the user changed (5b) and (6):** (5b) the guide is graphical, step by step — "click here, choose here,
+      allow this because this", moving, copying and so on — with screenshots or replicated UI, and the user can go
+      through it many times when they don't remember something, using it while reading it to learn. (6) "On the sync
+      front the structure does not change at all. I don't want Android to work as a server because some of the features
+      won't work there, there are too many restrictions. I want the desktop to be able to connect as a client, so we need
+      a phrase, a password, that we can copy, the key. Right now the server is the PC and waits for a QR code. I want to
+      choose when the app opens what it is, the server or the client; the relationship can't be changed after, except
+      with a reset of the app and a forced backup, or a double acknowledgement of full deletion of the Tetra folder, with
+      the second acknowledgement having a 10-second wait before the Reset is actionable." Order (26 Oct): both at once in
+      two sessions; the guide does its pairing/first-start chapter last, from the role session's screens.
 
 - [x] (Drive `sync-one-writer`, sync-copies session, 25 Oct) Sync's "(2)", "(3)", "(4)" of a file only the phone writes (Data's
       month file): the computer took a path it had just asked for as agreed before the upload came; a late upload (a part's and

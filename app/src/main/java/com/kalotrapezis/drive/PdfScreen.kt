@@ -166,7 +166,11 @@ internal val REDACT_PATTERNS = listOf(
     R.string.pdf_redact_iban to Regex("""\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,4})?\b"""),
 )
 
-internal class PdfComment(val page: Int, val index: Int, @androidx.annotation.StringRes val kind: Int, val words: String, val at: Offset, val replyTo: Int? = null, val author: String = "")
+internal class PdfComment(val page: Int, val index: Int, @androidx.annotation.StringRes val kind: Int, val words: String, val at: Offset, val replyTo: Int? = null, val author: String = "",
+    /** when it was last changed (ISO), and whether it was resolved (a Review state reply, as other readers mark it) */ val date: String? = null, val done: Boolean = false) {
+    /** As Words' comment cards show it: its own id, its parent's, who wrote it (else its kind), when. */
+    fun card(kindName: String) = DocComment("$page:$index", author.ifBlank { kindName }, date, words, parent = replyTo?.let { "$page:$it" }, done = done)
+}
 
 /** A bookmark (the file's contents): its title, page, depth. */
 internal class PdfMark(val title: String, val page: Int, val depth: Int)
@@ -186,7 +190,7 @@ internal class PdfField(val kind: String, val name: String, val value: String, v
 internal enum class PdfTool(@androidx.annotation.StringRes val label: Int, val icon: Int) {
     Highlight(R.string.words_highlight, R.drawable.ic_highlighter), Underline(R.string.words_underline, R.drawable.ic_format_underlined), Strike(R.string.words_strikethrough, R.drawable.ic_format_strikethrough),
     Note(R.string.pdf_note, R.drawable.ic_comment), Rectangle(R.string.pdf_rectangle, R.drawable.ic_crop_square), Oval(R.string.pdf_oval, R.drawable.ic_circle), Arrow(R.string.pdf_arrow, R.drawable.ic_arrow_forward),
-    Pen(R.string.words_pen, R.drawable.ic_ink_pen), Marker(R.string.words_highlighter, R.drawable.ic_ink_highlighter), Erase(R.string.words_delete_comment, R.drawable.ic_delete),
+    Pen(R.string.words_pen, R.drawable.ic_ink_pen), Marker(R.string.words_highlighter, R.drawable.ic_ink_highlighter), Erase(R.string.words_eraser, R.drawable.ic_delete),
     Text(R.string.pdf_text, R.drawable.ic_text_fields), Tick(R.string.pdf_tick, R.drawable.ic_check), Cross(R.string.pdf_cross, R.drawable.ic_close), Dot(R.string.pdf_dot, R.drawable.ic_circle),
     Date(R.string.words_date, R.drawable.ic_calendar_today), Sign(R.string.pdf_sign, R.drawable.ic_draw), Redact(R.string.pdf_mark_area, R.drawable.ic_crop_square),
     TextBox(R.string.words_text_box, R.drawable.ic_text_fields), Stamp(R.string.pdf_stamp, R.drawable.ic_branding_watermark), RedactText(R.string.pdf_select_text, R.drawable.ic_format_strikethrough),
@@ -333,9 +337,10 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     }
 
     /** A note's icon at [at], [text] in it. */
-    fun note(i: Int, at: Offset, text: String, color: Int) = annotate(i, "Note") { p, x0, y0 ->
+    fun note(i: Int, at: Offset, text: String, color: Int, author: String = "") = annotate(i, "Note") { p, x0, y0 ->
         p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_TEXT).apply {
-            setRect(com.artifex.mupdf.fitz.Rect(at.x + x0, at.y + y0, at.x + x0 + 20, at.y + y0 + 20)); setContents(text); setColor(rgb(color)); update()
+            setRect(com.artifex.mupdf.fitz.Rect(at.x + x0, at.y + y0, at.x + x0 + 20, at.y + y0 + 20)); setContents(text); setColor(rgb(color))
+            if (author.isNotBlank()) runCatching { setAuthor(author) }; runCatching { setModificationDate(java.util.Date()) }; update()
         }; true
     }
 
@@ -680,8 +685,15 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             val o = p.bounds
             val all = (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty()
             val byNumber = all.withIndex().associate { (k, a) -> runCatching { a.`object`.asIndirect() }.getOrDefault(-1) to k }
+            // Review states (Resolved, as Acrobat marks it): replies of their own, not comments; the last one says
+            fun state(a: com.artifex.mupdf.fitz.PDFAnnotation) = runCatching { a.`object`.get("StateModel").takeIf { !it.isNull }?.let { a.`object`.get("State").asName() } }.getOrNull()
+            val resolved = HashMap<Int, Boolean>()
+            all.forEach { a -> state(a)?.let { st -> runCatching { a.`object`.get("IRT").asIndirect() }.getOrNull()?.let { byNumber[it] }?.let { resolved[it] = st == "Completed" || st == "Accepted" } } }
             all.withIndex().mapNotNull { (k, a) ->
                 val kind = kinds[a.type] ?: return@mapNotNull null
+                if (state(a) != null) return@mapNotNull null
+                // Tetra's own texts and Words objects are things on the page, not comments
+                if (!a.`object`.get(TYPED_KEY).isNull || !a.`object`.get(WORDS_KEY).isNull) return@mapNotNull null
                 val parent = runCatching { a.`object`.get("IRT").takeIf { !it.isNull }?.asIndirect()?.let { byNumber[it] } }.getOrNull()
                 var words = a.contents.orEmpty()
                 if (words.isBlank() && a.type in listOf(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_HIGHLIGHT, com.artifex.mupdf.fitz.PDFAnnotation.TYPE_UNDERLINE,
@@ -691,18 +703,33 @@ internal class PdfDoc(private val file: File, password: String? = null) {
                 }
                 val r = a.bounds
                 PdfComment(i, k, if (parent != null) R.string.words_reply else kind, words.replace('\n', ' '), Offset((r.x0 + r.x1) / 2 - o.x0, (r.y0 + r.y1) / 2 - o.y0),
-                    parent, runCatching { a.author.orEmpty() }.getOrDefault(""))
+                    parent, runCatching { a.author.orEmpty() }.getOrDefault(""),
+                    runCatching { listOf(a.modificationDate, a.creationDate).firstOrNull { it != null && it.time > 0 }?.toInstant()?.toString() }.getOrNull(), resolved[k] == true)
             }
         } }
     }
 
     /** A reply to [c]: a note in the same place that answers it (PDF's In Reply To), as other readers thread them. */
-    fun reply(c: PdfComment, words: String) = annotate(c.page, "Reply") { p, x0, y0 ->
+    fun reply(c: PdfComment, words: String, author: String = "") = annotate(c.page, "Reply") { p, x0, y0 ->
         val parent = p.annotations.orEmpty().getOrNull(c.index) ?: return@annotate false
         p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_TEXT).apply {
             setRect(com.artifex.mupdf.fitz.Rect(c.at.x + x0, c.at.y + y0, c.at.x + x0 + 20, c.at.y + y0 + 20)); setContents(words)
+            if (author.isNotBlank()) runCatching { setAuthor(author) }; runCatching { setModificationDate(java.util.Date()) }
             `object`.put("IRT", parent.`object`); `object`.put("RT", pdf!!.newName("R")); update()
         }; true
+    }
+    /** [c] resolved or reopened (Words' Resolve): a Review state reply to it, hidden, as Acrobat marks a comment Completed. */
+    fun resolve(c: PdfComment, done: Boolean) = annotate(c.page, if (done) "Resolve" else "Reopen") { p, x0, y0 ->
+        val parent = p.annotations.orEmpty().getOrNull(c.index) ?: return@annotate false
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_TEXT).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(c.at.x + x0, c.at.y + y0, c.at.x + x0 + 20, c.at.y + y0 + 20)); setContents("")
+            `object`.put("IRT", parent.`object`); `object`.put("StateModel", "Review"); `object`.put("State", pdf!!.newName(if (done) "Completed" else "None"))
+            setFlags(com.artifex.mupdf.fitz.PDFAnnotation.IS_HIDDEN or com.artifex.mupdf.fitz.PDFAnnotation.IS_NO_VIEW); update()
+        }; true
+    }
+    /** [c]'s words changed (Words' Edit on a comment). */
+    fun editComment(c: PdfComment, words: String) = annotate(c.page, "Edit comment") { p, _, _ ->
+        p.annotations.orEmpty().getOrNull(c.index)?.let { it.setContents(words); runCatching { it.setModificationDate(java.util.Date()) }; it.update(); true } ?: false
     }
 
     // —— Forms: fields made (a text field, a check box), as other apps fill them ——
@@ -926,25 +953,36 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             a.bounds.let { r -> x >= r.x0 - 6 && x <= r.x1 + 6 && y >= r.y0 - 6 && y <= r.y1 + 6 } }?.contents
     } }
 
+    /** The file as this document read it (its length and time): what its one appended save goes onto. */
+    private val openedAs = file.length() to file.lastModified()
+    /** Saved once already: MuPDF appends only onto the file it opened, so every save after the first is written whole. */
+    private var savedOnce = false
+
     /**
-     * Saved over [file] (or into [to]): the changes appended to the bytes as they were opened (an incremental save, so all
-     * the file had stays, signatures too), through a copy beside it renamed over it; a file MuPDF had to repair is
-     * written whole. [base]: the file as opened, kept outside it for the next save.
+     * Saved over [file] (or into [to]), through a copy beside it renamed over it. The session's first save appends its
+     * changes to the file as opened (an incremental save: all the file had stays, signatures too); every later one is
+     * written whole, as is one after another app changed the file, or one MuPDF had to repair. (Before 27 Oct every save
+     * appended: MuPDF chains an appended part to the file it opened, so the parts of the saves before were lost — a
+     * second save's, AutoSave's, a second day's.)
      */
-    fun save(base: File, to: File = file, copy: Boolean = false) = synchronized(this) {
+    fun save(to: File = file, copy: Boolean = false) = synchronized(this) {
         val p = pdf ?: throw PdfError(R.string.pdf_cannot_edit)
-        if (!base.isFile) file.copyTo(base, overwrite = true)
         val was = dirty
         val temp = File(to.parentFile, ".${to.name}.saving")
         // redacted or (un)locked: written whole, the old objects dropped (an appended save would keep what was taken out);
         // a copy leaves that still to do for the file itself
         val whole = rewrite
-        if (whole != null) { p.save(temp.path, whole); if (!copy) { rewrite = null; base.delete() } }
-        else if (p.canBeSavedIncrementally()) { base.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
-        else p.save(temp.path, "compress")
+        val untouched = (file.length() to file.lastModified()) == openedAs
+        val appendable = p.canBeSavedIncrementally() && !savedOnce && untouched
+        if (whole != null) { p.save(temp.path, whole); if (!copy) rewrite = null }
+        // nothing new and nothing written since it was opened: the file as it is (MuPDF appending nothing left a broken stub)
+        else if (!p.hasUnsavedChanges() && untouched && !savedOnce) file.copyTo(temp, overwrite = true)
+        else if (appendable) { file.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
+        else p.save(temp.path, "garbage=compact,compress")
         if (!temp.renameTo(to)) throw PdfError(R.string.pdf_save_failed_file)
+        savedOnce = true
         copied = copy && was
-        WriterLog.i("PDF: saved${if (copy) " a copy" else ""} (${to.length() / 1024} KB)")
+        WriterLog.i("PDF: saved${if (copy) " a copy" else ""}${if (whole == null && !appendable) " whole" else ""} (${to.length() / 1024} KB)")
     }
 
     private inline fun <T> page(i: Int, use: (com.artifex.mupdf.fitz.Page) -> T): T { val p = doc.loadPage(i); try { return use(p) } finally { p.destroy() } }
@@ -1208,16 +1246,17 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var organize by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
     var showVersions by remember { mutableStateOf(false) }
-    val base = remember(open) { Uri.parse(open).path?.let(::File)?.let { File(File(context.cacheDir, "pdf-base").apply { mkdirs() }, "${it.absolutePath.hashCode().toUInt()}.pdf") } }
+    // the old saves' copies of files as first opened (a save now goes onto the file itself): gone
+    remember { runCatching { File(context.cacheDir, "pdf-base").deleteRecursively() } }
     fun change(what: () -> Unit) {
         runCatching(what).onFailure { WriterLog.e("PDF: change", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_could_not_do), Toast.LENGTH_LONG).show() }
         version++
     }
     /** Saved over the file, or into [to] (File › Save as, Save a copy: [copy] leaves the file itself unsaved). */
     fun save(to: File? = null, copy: Boolean = false, then: () -> Unit = {}) {
-        val d = doc ?: return; val f = file ?: return; val b = base ?: return; val t = to ?: f
+        val d = doc ?: return; val f = file ?: return; val t = to ?: f
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { if (t == f) keepPrevious(context, f); d.save(b, t, copy) } }
+            val r = withContext(Dispatchers.IO) { runCatching { if (t == f) keepPrevious(context, f); d.save(t, copy) } }
             r.onFailure { WriterLog.e("PDF: save", it); Toast.makeText(context, context.getString(R.string.pdf_could_not_save, pdfSays(context, it, R.string.pdf_could_not_do)), Toast.LENGTH_LONG).show() }
                 .onSuccess { version++; Toast.makeText(context, if (t != f) context.getString(R.string.pdf_saved_as_kb, t.name, t.length() / 1024) else context.getString(R.string.pdf_saved_kb, t.length() / 1024), Toast.LENGTH_SHORT).show(); then() }
         }
@@ -1429,6 +1468,26 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         tool = null; chosen = d.objectById(page, id)
         WriterLog.i("PDF: ${w.kind} put in")
     }
+    // Review (Words'): the comments as Words' cards, the one tapped "here" for Reply, Resolve and Delete; Read aloud the pages' words
+    var commentList by remember { mutableStateOf<List<PdfComment>>(emptyList()) }
+    var hereComment by remember { mutableStateOf<PdfComment?>(null) }
+    var commentAction by remember { mutableStateOf<Pair<String, PdfComment>?>(null) } // "reply" or "edit"
+    var commentsOpen by remember { mutableStateOf(false) } // a phone's sidebar
+    LaunchedEffect(version, doc, pane, tab) { val d = doc ?: return@LaunchedEffect
+        if (pane == "Comments" || tab == "Review" || commentsOpen) commentList = withContext(Dispatchers.IO) { runCatching { d.comments() }.getOrDefault(emptyList()) }
+        hereComment = hereComment?.let { h -> commentList.firstOrNull { it.page == h.page && it.index == h.index } } }
+    fun commentOf(id: String) = commentList.firstOrNull { "${it.page}:${it.index}" == id }
+    val commentActions = CommentActions(
+        repliesOf = { dc -> commentList.filter { it.replyTo != null && "${it.page}:${it.replyTo}" == dc.id }.map { it.card(context.getString(it.kind)) } },
+        open = { dc -> commentOf(dc.id)?.let { hereComment = it; goTo(it.page) } },
+        delete = { dc -> commentOf(dc.id)?.let { c -> doc?.let { d -> change { d.deleteComment(c) } }; if (hereComment == c) hereComment = null } },
+        reply = { dc -> commentOf(dc.id)?.let { commentAction = "reply" to it } },
+        resolve = { dc -> commentOf(dc.id)?.let { c -> doc?.let { d -> change { d.resolve(c, !c.done) } } } },
+        edit = { dc -> commentOf(dc.id)?.let { commentAction = "edit" to it } })
+    val author = remember { context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE).getString("author", "") ?: "" }
+    fun keepAuthor(name: String) { if (name.isNotBlank()) context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE).edit().putString("author", name.trim()).apply() }
+    val reader = rememberReadAloud()
+    var readingParas by remember { mutableStateOf<List<String>>(emptyList()) }
     /** Words put in (Symbol, Date): where one types, else a new text at the margins' corner, chosen. */
     fun insertWords(words: String) {
         if (typing != null) { typed.addTextAfterSelection(words); return }
@@ -1568,19 +1627,20 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 androidx.compose.material3.TextButton(onClick = {
                     leaving = false; editing = false
                     // not saved: the file read again as it is
-                    val f = file; doc?.close(); doc = null; base?.delete()
+                    val f = file; doc?.close(); doc = null
                     if (f != null) scope.launch { withContext(Dispatchers.IO) { runCatching { PdfDoc(f, password) } }.onSuccess { doc = it; version++ } }
                 }) { Text(stringResource(R.string.words_dont_save), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 androidx.compose.material3.TextButton(onClick = { leaving = false }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             } })
     }
-    writing?.let { (i, at0) ->
-        var words by remember { mutableStateOf("") }
-        androidx.compose.material3.AlertDialog(onDismissRequest = { writing = null }, title = { Text(stringResource(R.string.pdf_note)) },
-            text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 3, placeholder = { Text(stringResource(R.string.pdf_note_hint)) }) },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = { writing = null; doc?.let { d -> change { d.note(i, at0, words.trim(), markColour) } } }) { Text(stringResource(R.string.common_add), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { writing = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
-    }
+    // Insert › Comment where tapped, Reply and Edit: Words' comment window (your name kept as Words keeps it)
+    writing?.let { (i, at0) -> NewCommentDialog(author, { writing = null }) { name, text -> writing = null; keepAuthor(name)
+        doc?.let { d -> change { d.note(i, at0, text.trim(), markColour, name.trim()) } } } }
+    commentAction?.let { (what, c) -> if (what == "edit") NewCommentDialog(c.author, { commentAction = null }, title = stringResource(R.string.words_edit_comment), start = c.words,
+            confirm = stringResource(R.string.common_done)) { _, text -> commentAction = null; doc?.let { d -> editing = true; change { d.editComment(c, text.trim()) } } }
+        else NewCommentDialog(author, { commentAction = null }, title = stringResource(R.string.words_reply), confirm = stringResource(R.string.words_reply)) { name, text -> commentAction = null; keepAuthor(name)
+            doc?.let { d -> editing = true; change { d.reply(c, text.trim(), name.trim()) } } } }
+    if (commentsOpen) CommentSidebar(commentList.filter { it.replyTo == null }.map { it.card(stringResource(it.kind)) }, hereComment?.card(stringResource(hereComment!!.kind)), { commentsOpen = false }, commentActions)
     // the signature: drawn once in Words' drawing box, kept in the app (never in a file), put where Sign is tapped
     if (signing) DrawDialog(200f, { signing = false }, boxAspect = 0.4f) { png, _, _, _, _ ->
         signing = false
@@ -1820,7 +1880,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     if (showVersions) file?.let { f -> VersionsDialog(f, "", { showVersions = false }, about = stringResource(R.string.pdf_versions_about)) { v ->
         showVersions = false
         scope.launch {
-            withContext(Dispatchers.IO) { runCatching { keepPrevious(context, f); doc?.close(); v.copyTo(f, overwrite = true); base?.delete() } }
+            withContext(Dispatchers.IO) { runCatching { keepPrevious(context, f); doc?.close(); v.copyTo(f, overwrite = true) } }
             withContext(Dispatchers.IO) { runCatching { PdfDoc(f, password) } }.onSuccess { doc = it; version++ }
             Toast.makeText(context, R.string.pdf_version_back, Toast.LENGTH_SHORT).show()
         }
@@ -1873,6 +1933,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     "Layout" to stringResource(R.string.words_tab_layout), "Pages" to stringResource(R.string.words_pages), "Review" to stringResource(R.string.words_tab_review),
                     "Fill & Sign" to stringResource(R.string.pdf_tab_fill_sign), "Protect" to stringResource(R.string.pdf_tab_protect), "View" to stringResource(R.string.words_tab_view),
                     OBJECT_TAB to (chosen?.kind?.let { if (it == "Drawing") stringResource(R.string.pdf_drawing) else objectKindName(it) } ?: ""))
+                // reading aloud: the paragraph being read and Stop, above the tabs (Words')
+                if (reader.speaking) ReadAloudBar(reader, readingParas.getOrNull(reader.at), w)
                 OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Design", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
                     OBJECT_TAB.takeIf { chosen != null }),
                     tab, w, PDF_RED, { tab = it; tool = null }, contextual = OBJECT_TAB, label = { tabNames[it] ?: it }) {
@@ -1944,7 +2006,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     // View, as Words': the page list, comments, bookmarks; the zoom; one or two pages, as wide as the screen; rulers; the unit
                     if (tab == "View") {
                         RibbonButton(stringResource(R.string.words_navigation), w, R.drawable.ic_navigation, on = if (wide) navigation else pages) { if (wide) navigation = !navigation else pages = !pages }
-                        RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_comment, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
+                        RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_comment, on = pane == "Comments" || commentsOpen) { if (wide) pane = if (pane == "Comments") null else "Comments" else commentsOpen = true }
                         RibbonButton(stringResource(R.string.pdf_bookmarks), w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
                         RibbonDivider(w)
                         Tool(R.drawable.ic_remove, stringResource(R.string.words_zoom_out), w, enabled = zoom > 1f) { zoom = (zoom - 0.25f).coerceAtLeast(1f); pan = Offset.Zero; settled = zoom }
@@ -2023,25 +2085,37 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         return@RibbonLine
                     }
                     if (tab == "Review") {
-                        ToolButton(PdfTool.Highlight); ToolButton(PdfTool.Underline); ToolButton(PdfTool.Strike)
+                        // Words' Review: Read aloud; the comments, new, the one before or after, Reply, Resolve, Delete — then the PDF's own markup
+                        RibbonButton(stringResource(if (reader.speaking) R.string.words_stop_reading else R.string.words_read_aloud), w, R.drawable.ic_volume_up, on = reader.speaking) {
+                            if (reader.speaking) reader.stop() else scope.launch {
+                                val pages = withContext(Dispatchers.IO) { d.sizes.indices.map { k -> runCatching { d.text(k) }.getOrDefault("") } }
+                                // a page's lines put back into paragraphs (a blank line between them); from the page shown
+                                val byPage = pages.map { t -> t.split(Regex("\n\\s*\n")).map { it.replace('\n', ' ').trim() }.filter { it.isNotEmpty() } }
+                                readingParas = byPage.flatten()
+                                if (!reader.read(readingParas, byPage.take(at).sumOf { it.size })) Toast.makeText(context, R.string.words_no_tts, Toast.LENGTH_SHORT).show()
+                            }
+                        }
                         RibbonDivider(w)
-                        ToolButton(PdfTool.Note); ToolButton(PdfTool.TextBox); ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
-                        // Stamp: the kind chosen in a strip (✓/×, as Office's options), then a tap on the page puts it there
-                        val stampStrip = officeStrip(stringResource(R.string.pdf_stamp), ok = { st -> (st.picked as? String)?.let { stampName = it; tool = PdfTool.Stamp } }) { st ->
-                            STAMPS.forEach { n -> RibbonButton(n.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, on = st.picked == n) { st.picked = n } }
-                            val strips = LocalOfficeStrips.current
-                            RibbonButton(stringResource(R.string.pdf_picture_more), w, R.drawable.ic_gallery) { strips?.open = null; pickStamp.launch(arrayOf("image/*")) }
-                        }
-                        RibbonButton(if (tool != PdfTool.Stamp) stringResource(R.string.pdf_stamp) else if (stampName == PICTURE_STAMP) stringResource(R.string.words_picture)
-                            else stampName.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) {
-                            if (stampStrip != null) stampStrip() else tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp
-                        }
+                        RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_comment, on = pane == "Comments" || commentsOpen) { if (wide) pane = if (pane == "Comments") null else "Comments" else commentsOpen = true }
+                        RibbonButton(stringResource(R.string.words_new_comment), w, R.drawable.ic_comment, on = tool == PdfTool.Note) { tool = if (tool == PdfTool.Note) null else PdfTool.Note }
+                        val tops = commentList.filter { it.replyTo == null }
+                        fun goComment(next: Boolean) { if (tops.isEmpty()) return; val k = tops.indexOfFirst { it.page == hereComment?.page && it.index == hereComment?.index }
+                            val n = if (k < 0) (if (next) 0 else tops.size - 1) else Math.floorMod(k + if (next) 1 else -1, tops.size); hereComment = tops[n]; goTo(tops[n].page) }
+                        Tool(R.drawable.ic_chevron_left, stringResource(R.string.words_previous_comment), w, enabled = tops.isNotEmpty()) { goComment(false) }
+                        Tool(R.drawable.ic_chevron_right, stringResource(R.string.words_next_comment), w, enabled = tops.isNotEmpty()) { goComment(true) }
+                        RibbonDivider(w)
+                        val hc = hereComment
+                        RibbonButton(stringResource(R.string.words_reply), w, R.drawable.ic_comment, enabled = hc != null) { hc?.let { commentAction = "reply" to it } }
+                        RibbonButton(stringResource(if (hc?.done == true) R.string.words_reopen else R.string.words_resolve), w, R.drawable.ic_check, enabled = hc != null) { hc?.let { c -> change { d.resolve(c, !c.done) } } }
+                        RibbonButton(stringResource(R.string.words_delete_comment), w, R.drawable.ic_delete, enabled = hc != null) { hc?.let { c -> change { d.deleteComment(c) }; hereComment = null } }
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.Highlight); ToolButton(PdfTool.Underline); ToolButton(PdfTool.Strike)
+                        ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
+                        ToolButton(PdfTool.Pen); ToolButton(PdfTool.Marker)
                         // Words' colours, white among them (the user, 25 Oct: to cover what was drawn), and its highlighters; More… Words' table
                         Swatches(w, R.drawable.ic_palette, stringResource(R.string.words_colour), (HIGHLIGHT_COLOURS + TEXT_COLOURS).distinct()) { c ->
-                            c?.let { markColour = (it.toArgb() and 0xFFFFFF) } }
-                        RibbonDivider(w)
+                            c?.let { markColour = (it.toArgb() and 0xFFFFFF); penColour = markColour } }
                         ToolButton(PdfTool.Erase)
-                        RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_view_list, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
                         return@RibbonLine
                     }
                     if (tab == "Insert") {
@@ -2059,7 +2133,16 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         RibbonButton(stringResource(R.string.words_text_box), w, R.drawable.ic_text_box, on = tool == PdfTool.TextBox) { tool = if (tool == PdfTool.TextBox) null else PdfTool.TextBox }
                         RibbonButton(stringResource(R.string.words_wordart), w, R.drawable.ic_format_color_text) { inserting = "wordart" }
                         RibbonButton(stringResource(R.string.words_chart), w, R.drawable.ic_bar_chart) { inserting = "chart" }
-                        RibbonButton(stringResource(R.string.pdf_stamp), w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) { tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp }
+                        // Stamp: the kind chosen in a strip (✓/×, as Office's options), then a tap on the page puts it there
+                        val stampStrip = officeStrip(stringResource(R.string.pdf_stamp), ok = { st -> (st.picked as? String)?.let { stampName = it; tool = PdfTool.Stamp } }) { st ->
+                            STAMPS.forEach { n -> RibbonButton(n.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, on = st.picked == n) { st.picked = n } }
+                            val strips = LocalOfficeStrips.current
+                            RibbonButton(stringResource(R.string.pdf_picture_more), w, R.drawable.ic_gallery) { strips?.open = null; pickStamp.launch(arrayOf("image/*")) }
+                        }
+                        RibbonButton(if (tool != PdfTool.Stamp) stringResource(R.string.pdf_stamp) else if (stampName == PICTURE_STAMP) stringResource(R.string.words_picture)
+                            else stampName.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) {
+                            if (stampStrip != null) stampStrip() else tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp
+                        }
                         RibbonDivider(w)
                         RibbonButton(stringResource(R.string.words_comment), w, R.drawable.ic_comment, on = tool == PdfTool.Note) { tool = if (tool == PdfTool.Note) null else PdfTool.Note }
                         RibbonDivider(w)
@@ -2247,6 +2330,19 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 else -> key(version) { Row(Modifier.fillMaxSize()) {
                     val density = LocalDensity.current
                     // a tablet: the pages small at the side, the one shown marked, tapped to go to it; a phone: the same, narrower, when asked for
+                    // Words' comment cards beside the pages (a tablet), each with its replies, Edit, Reply, Resolve, Delete
+                    if (pane == "Comments" && wide) Column(Modifier.width(320.dp).fillMaxHeight().background(Color(0xFF1F1F1F))) {
+                        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.words_comments), color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { pane = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_close), tint = Color.White) }
+                        }
+                        val tops = commentList.filter { it.replyTo == null }
+                        if (tops.isEmpty()) Text(stringResource(R.string.pdf_no_comments), Modifier.padding(16.dp), color = Color.LightGray)
+                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(tops.size) { k -> val c = tops[k]; CommentCard(c.card(stringResource(c.kind)), hereComment?.let { it.page == c.page && it.index == c.index } == true, commentActions) }
+                        }
+                    }
+                    else
                     if (pane != null && wide) PdfPane(d, pane!!, editing, version, Modifier.width(300.dp).fillMaxHeight(), { goTo(it) }, { pane = null }, { asking = "bookmark" }, { editing = true }) { act -> change(act) }
                     else if ((wide && navigation) || (!wide && pages)) {
                         val side = if (wide) 150.dp else 110.dp

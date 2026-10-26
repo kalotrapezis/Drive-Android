@@ -48,7 +48,7 @@ class PdfObjectsDeviceTest {
         assertEquals(listOf("Shape", "Image"), d.objects(0).map { it.kind })
         assertNotNull(d.objectPicture(0, d.objects(0)[1].id, 600))
 
-        d.save(java.io.File(dir, "base.pdf")); d.close()
+        d.save(); d.close()
         val again = PdfDoc(f)
         val back = again.objects(0)
         assertEquals(listOf("Shape", "Image"), back.map { it.kind })
@@ -115,10 +115,57 @@ class PdfObjectsDeviceTest {
         assertTrue("DRAFT" !in kotlinx.coroutines.runBlocking { d.text(0) })
         d.setDesign(PdfDesign())
         near(0xFFFFFF, px(0, 5, 5))
-        d.save(java.io.File(dir, "base.pdf")); d.close()
+        d.save(); d.close()
         val again = PdfDoc(f)
         assertEquals(PdfDesign(), again.design())
         assertTrue("Words on top" in kotlinx.coroutines.runBlocking { again.text(0) })
         again.close(); dir.deleteRecursively()
+    }
+
+    @Test fun commentsResolvedEditedReplied() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-objects-comments").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        d.note(0, Offset(100f, 100f), "Look here", 0xFFEB3B, "Anna Field")
+        val c = d.comments().single()
+        assertEquals("Anna Field", c.author)
+        d.reply(c, "Seen", "Ben Stone")
+        d.resolve(d.comments().first { it.replyTo == null }, true)
+        d.editComment(d.comments().first { it.replyTo == null }, "Look here, please")
+        d.save(); d.close()
+        val again = PdfDoc(f)
+        val all = again.comments()
+        assertEquals("the resolve mark is no comment of its own", 2, all.size)
+        val top = all.first { it.replyTo == null }
+        assertTrue(top.done); assertEquals("Look here, please", top.words)
+        val card = top.card("Note")
+        assertEquals("Anna Field", card.author); assertTrue(card.done)
+        assertEquals(card.id, all.first { it.replyTo != null }.card("Reply").parent)
+        again.resolve(top, false)
+        assertTrue(!again.comments().first { it.replyTo == null }.done)
+        again.close(); dir.deleteRecursively()
+    }
+
+    @Test fun everySaveKeepsWhatTheOnesBeforeDid() {
+        // 27 Oct: a second save (AutoSave's), or a second day's, dropped what the first one had written
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-objects-saves").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        d.note(0, Offset(100f, 100f), "first", 0xFFEB3B); d.save()
+        d.note(0, Offset(200f, 100f), "second", 0xFFEB3B); d.save()
+        d.save(java.io.File(dir, "copy.pdf"), copy = true)
+        d.note(0, Offset(300f, 100f), "third", 0xFFEB3B); d.save()
+        d.close()
+        // every part of the file reachable (an appended part chained to the file as first opened lost the parts between)
+        assertTrue(f.readBytes().toString(Charsets.ISO_8859_1).let { "first" in it && "second" in it && "third" in it })
+        val day2 = PdfDoc(f)
+        assertEquals(listOf("first", "second", "third"), day2.comments().map { it.words })
+        day2.note(0, Offset(400f, 100f), "fourth", 0xFFEB3B); day2.save(); day2.close()
+        val day3 = PdfDoc(f)
+        assertEquals(listOf("first", "second", "third", "fourth"), day3.comments().map { it.words })
+        day3.close()
+        val copy = PdfDoc(java.io.File(dir, "copy.pdf"))
+        assertEquals(listOf("first", "second"), copy.comments().map { it.words })
+        copy.close(); dir.deleteRecursively()
     }
 }

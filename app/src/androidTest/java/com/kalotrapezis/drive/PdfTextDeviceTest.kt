@@ -31,7 +31,7 @@ class PdfTextDeviceTest {
         assertTrue("its words Words' paragraphs, bold, centred", back.doc.paras.all { p -> p.align == DocAlign.Center && p.runs.all { it.bold } })
         assertEquals(300f, r.width())
         assertTrue(r.height() >= 2 * 24f) // two lines grew it past the 40 drawn
-        d.save(java.io.File(dir, "base.pdf")); d.close()
+        d.save(); d.close()
 
         val bytes = f.readBytes().toString(Charsets.ISO_8859_1)
         // Words' Times twin, bold, embedded (not MuPDF's own Helvetica made again from the fallback look)
@@ -48,11 +48,11 @@ class PdfTextDeviceTest {
         // typed in again: one text, the new words
         again.putText(0, r.left, r.top, PdfText("Changed", look, true), r.width(), r.height(), replacing = again.objectAt(0, Offset(r.centerX(), r.centerY()))!!.id)
         assertEquals("Changed", again.typedAt(0, Offset(r.centerX(), r.centerY()))?.second?.words)
-        assertEquals(1, again.comments().size)
+        assertEquals(1, again.objects(0).size)
         // emptied: gone
         again.putText(0, r.left, r.top, PdfText("", look, true), r.width(), r.height(), replacing = again.objectAt(0, Offset(r.centerX(), r.centerY()))!!.id)
         assertNull(again.typedAt(0, Offset(r.centerX(), r.centerY())))
-        assertEquals(0, again.comments().size)
+        assertEquals(0, again.objects(0).size)
         again.close()
         // a script font's joined "ll" kept as two letters: the words copy and are found as typed (Dancing Script, a phone font)
         val script = PdfText("Hello Γειά", PdfTextLook(font = "Dancing Script", size = 20f), framed = false)
@@ -113,7 +113,7 @@ class PdfTextDeviceTest {
         val f = Pdf.newBlank(dir)
         val d = PdfDoc(f)
         d.putText(0, 50f, 50f, t, 400f)
-        d.save(java.io.File(dir, "base.pdf")); d.close()
+        d.save(); d.close()
         val again = PdfDoc(f)
         val (r, back) = again.typedAt(0, Offset(60f, 60f))!!
         assertEquals(0xFF0000, back.doc.paras[1].runs.first { it.text == "bold" }.color)

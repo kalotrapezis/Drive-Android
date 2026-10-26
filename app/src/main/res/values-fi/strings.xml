@@ -4496,7 +4496,6 @@
     <string name="pdf_organize">Järjestä</string>
     <string name="pdf_save_changes">Tallennetaanko muutokset?</string>
     <string name="pdf_stays_in_versions">Tiedosto alkuperäisessä muodossaan säilyy Versioissa.</string>
-    <string name="pdf_note_hint">Huomautuksen teksti</string>
     <string name="pdf_signature_kept">Allekirjoitus säilytetty: napauta sen paikkaa</string>
     <string name="pdf_field">Kenttä</string>
     <string name="pdf_header_hint">Jokaisella sivulla. {n} on sivun numero, {N} sivujen määrä.</string>
@@ -4512,7 +4511,6 @@
         <item quantity="other">%1$d merkitty: tarkista ja sitten Peitä merkityt</item>
     </plurals>
     <string name="pdf_bookmark_page">Lisää kirjanmerkki sivulle %1$d</string>
-    <string name="pdf_watermark_words">Sanat jokaisen sivun poikki</string>
     <string name="pdf_password_about">Kysytään tiedostoa avattaessa jokaisessa sovelluksessa (AES-256). Tetra ei löydä sitä, jos se unohtuu.</string>
     <string name="pdf_password_again">Uudelleen</string>
     <string name="pdf_password_on_save">Tallenna lisää salasanan tiedostoon</string>
@@ -4533,15 +4531,10 @@
     <string name="pdf_meta_producer">Kirjoittanut: %1$s</string>
     <string name="pdf_versions_about">Tiedosto sellaisena kuin se oli ennen tallennusta. Napautus palauttaa sen heti; tiedoston nykyinen muoto siirtyy tähän luetteloon.</string>
     <string name="pdf_version_back">Versio palautettu</string>
-    <string name="pdf_editing">Muokkaus</string>
-    <string name="pdf_view_only">Vain katselu</string>
     <string name="pdf_copy_page_text">Kopioi tämän sivun teksti</string>
     <string name="pdf_bookmarks">Kirjanmerkit</string>
     <string name="pdf_edit_in_words">Muokkaa Asiakirjoissa</string>
     <string name="pdf_export_text">Vie teksti</string>
-    <string name="pdf_find_hint">Etsi PDF:stä</string>
-    <string name="pdf_looking">Etsitään…</string>
-    <string name="pdf_n_of_m">%1$d/%2$d</string>
     <string name="pdf_no_pages">Tässä PDF:ssä ei ole sivuja.</string>
     <string name="pdf_show_pages">Näytä sivut</string>
     <string name="pdf_hide_pages">Piilota sivut</string>
@@ -4549,25 +4542,12 @@
     <string name="pdf_tab_protect">Suojaa</string>
     <string name="pdf_paper_portrait">%1$s pysty</string>
     <string name="pdf_paper_landscape">%1$s vaaka</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">in</string>
     <string name="pdf_delete_page">Poista sivu</string>
     <string name="pdf_rotate_left">Kierrä vasemmalle</string>
     <string name="pdf_rotate_right">Kierrä oikealle</string>
     <string name="pdf_ruler">Viivain</string>
     <string name="pdf_formatting_copied">Muotoilu kopioitu: valitse toinen teksti ja sitten Liitä muotoilu</string>
-    <string name="pdf_middle">Keskellä</string>
-    <string name="pdf_move_left">Siirrä vasemmalle</string>
-    <string name="pdf_move_right">Siirrä oikealle</string>
-    <string name="pdf_move_up">Siirrä ylös</string>
-    <string name="pdf_move_down">Siirrä alas</string>
-    <string name="pdf_arrange">Järjestä</string>
-    <string name="pdf_bring_forward">Tuo eteenpäin</string>
-    <string name="pdf_send_backward">Vie taaksepäin</string>
-    <string name="pdf_rotate_right_90">Kierrä oikealle 90°</string>
-    <string name="pdf_rotate_left_90">Kierrä vasemmalle 90°</string>
-    <string name="pdf_upright">Pystyyn</string>
     <string name="pdf_duplicate">Monista</string>
     <string name="pdf_drawing">Piirros</string>
     <string name="pdf_replace_only_typed">Tässä korvataan vain Tetralla lisätyt sanat. Sivun omat sanat: Tiedosto › Muokkaa Wordsissa.</string>
@@ -4594,12 +4574,9 @@
         <item quantity="one">Poistettu %1$d sivulta: Tallenna kirjoittaa tiedoston uudelleen ilman niitä</item>
         <item quantity="other">Poistettu %1$d sivulta: Tallenna kirjoittaa tiedoston uudelleen ilman niitä</item>
     </plurals>
-    <string name="pdf_new_signature">Uusi allekirjoitus</string>
-    <string name="pdf_draw_signature">Piirrä allekirjoitus</string>
     <string name="pdf_small">Pieni</string>
     <string name="pdf_normal">Normaali</string>
     <string name="pdf_large">Suuri</string>
-    <string name="pdf_pen_colour">Kynän väri</string>
     <string name="pdf_recognize_text">Tunnista teksti</string>
     <string name="pdf_all_have_text">Jokaisella sivulla on jo tekstinsä</string>
     <plurals name="pdf_ocr_done">
@@ -4616,6 +4593,4 @@
     <string name="pdf_no_bookmarks">Tässä tiedostossa ei ole kirjanmerkkejä.</string>
     <string name="pdf_page_lower">sivu %1$d</string>
     <string name="pdf_quoted">”%1$s”</string>
-    <string name="pdf_leave_it">Jätä ennalleen</string>
-    <string name="pdf_border">Reuna</string>
 </resources>

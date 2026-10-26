@@ -4496,7 +4496,6 @@
     <string name="pdf_organize">Organiser</string>
     <string name="pdf_save_changes">Gem ændringerne?</string>
     <string name="pdf_stays_in_versions">Filen, som den var, bliver i Versioner.</string>
-    <string name="pdf_note_hint">Hvad noten siger</string>
     <string name="pdf_signature_kept">Underskrift gemt: tryk, hvor den skal være</string>
     <string name="pdf_field">Felt</string>
     <string name="pdf_header_hint">På hver side. {n} er sidens nummer, {N} hvor mange der er.</string>
@@ -4512,7 +4511,6 @@
         <item quantity="other">%1$d markeret: se dem igennem, og vælg Slør markerede</item>
     </plurals>
     <string name="pdf_bookmark_page">Bogmærk side %1$d</string>
-    <string name="pdf_watermark_words">Ord hen over alle sider</string>
     <string name="pdf_password_about">Kræves for at åbne filen i alle apps (AES-256). Tetra kan ikke finde den igen, hvis den glemmes.</string>
     <string name="pdf_password_again">Igen</string>
     <string name="pdf_password_on_save">Gem sætter adgangskoden på filen</string>
@@ -4533,15 +4531,10 @@
     <string name="pdf_meta_producer">Skrevet af: %1$s</string>
     <string name="pdf_versions_about">Filen, som den var før en lagring. Tryk på en for at sætte den tilbage med det samme; filen, som den er nu, kommer på denne liste.</string>
     <string name="pdf_version_back">Den version er tilbage</string>
-    <string name="pdf_editing">Redigering</string>
-    <string name="pdf_view_only">Kun visning</string>
     <string name="pdf_copy_page_text">Kopiér sidens tekst</string>
     <string name="pdf_bookmarks">Bogmærker</string>
     <string name="pdf_edit_in_words">Rediger i Dokumenter</string>
     <string name="pdf_export_text">Eksportér tekst</string>
-    <string name="pdf_find_hint">Søg i PDF\'en</string>
-    <string name="pdf_looking">Leder…</string>
-    <string name="pdf_n_of_m">%1$d af %2$d</string>
     <string name="pdf_no_pages">PDF\'en har ingen sider.</string>
     <string name="pdf_show_pages">Vis siderne</string>
     <string name="pdf_hide_pages">Skjul siderne</string>
@@ -4549,25 +4542,12 @@
     <string name="pdf_tab_protect">Beskyt</string>
     <string name="pdf_paper_portrait">%1$s stående</string>
     <string name="pdf_paper_landscape">%1$s liggende</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">tm</string>
     <string name="pdf_delete_page">Slet side</string>
     <string name="pdf_rotate_left">Roter mod venstre</string>
     <string name="pdf_rotate_right">Roter mod højre</string>
     <string name="pdf_ruler">Lineal</string>
     <string name="pdf_formatting_copied">Formatering kopieret: vælg en anden tekst, og vælg Indsæt formatering</string>
-    <string name="pdf_middle">Midte</string>
-    <string name="pdf_move_left">Flyt til venstre</string>
-    <string name="pdf_move_right">Flyt til højre</string>
-    <string name="pdf_move_up">Flyt op</string>
-    <string name="pdf_move_down">Flyt ned</string>
-    <string name="pdf_arrange">Arranger</string>
-    <string name="pdf_bring_forward">Flyt fremad</string>
-    <string name="pdf_send_backward">Flyt bagud</string>
-    <string name="pdf_rotate_right_90">Roter 90° mod højre</string>
-    <string name="pdf_rotate_left_90">Roter 90° mod venstre</string>
-    <string name="pdf_upright">Lodret</string>
     <string name="pdf_duplicate">Dupliker</string>
     <string name="pdf_drawing">Tegning</string>
     <string name="pdf_replace_only_typed">Her erstattes kun ord, der er sat på med Tetra. Sidens egne ord: Filer › Rediger i Words.</string>
@@ -4594,12 +4574,9 @@
         <item quantity="one">Fjernet fra %1$d side: Gem skriver filen på ny uden dem</item>
         <item quantity="other">Fjernet fra %1$d sider: Gem skriver filen på ny uden dem</item>
     </plurals>
-    <string name="pdf_new_signature">Ny underskrift</string>
-    <string name="pdf_draw_signature">Tegn underskrift</string>
     <string name="pdf_small">Lille</string>
     <string name="pdf_normal">Normal</string>
     <string name="pdf_large">Stor</string>
-    <string name="pdf_pen_colour">Penfarve</string>
     <string name="pdf_recognize_text">Genkend tekst</string>
     <string name="pdf_all_have_text">Alle sider har allerede deres tekst</string>
     <plurals name="pdf_ocr_done">
@@ -4616,6 +4593,4 @@
     <string name="pdf_no_bookmarks">Ingen bogmærker i filen.</string>
     <string name="pdf_page_lower">side %1$d</string>
     <string name="pdf_quoted">»%1$s«</string>
-    <string name="pdf_leave_it">Lad det være, som det var</string>
-    <string name="pdf_border">Kant</string>
 </resources>

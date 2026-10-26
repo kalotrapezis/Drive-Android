@@ -4760,7 +4760,6 @@
     <string name="pdf_organize">Eagraigh</string>
     <string name="pdf_save_changes">Sábháil na hathruithe?</string>
     <string name="pdf_stays_in_versions">Fanann an comhad mar a bhí sé i Leaganacha.</string>
-    <string name="pdf_note_hint">Cad a deir an nóta</string>
     <string name="pdf_signature_kept">Coinníodh an sínithe: tapáil áit a dteastaíonn sé</string>
     <string name="pdf_field">Réimse</string>
     <string name="pdf_header_hint">Ar gach leathanach. Is é {n} uimhir an leathanaigh, {N} cé mhéad atá ann.</string>
@@ -4779,7 +4778,6 @@
         <item quantity="other">%1$d marcáilte: breathnaigh orthu, ansin Ceil na marcáilte</item>
     </plurals>
     <string name="pdf_bookmark_page">Leabharmharc ar leathanach %1$d</string>
-    <string name="pdf_watermark_words">Focail ar gach leathanach</string>
     <string name="pdf_password_about">Iarrtar chun an comhad a oscailt, in aon aip (AES-256). Ní féidir le Tetra é a aimsiú arís má dhéantar dearmad air.</string>
     <string name="pdf_password_again">Arís</string>
     <string name="pdf_password_on_save">Cuireann Sábháil an pasfhocal ar an gcomhad</string>
@@ -4803,15 +4801,10 @@
     <string name="pdf_meta_producer">Scríobhtha ag: %1$s</string>
     <string name="pdf_versions_about">An comhad mar a bhí sé roimh shábháil. Tapáil ceann chun é a chur ar ais láithreach; téann an comhad mar atá sé anois isteach sa liosta seo.</string>
     <string name="pdf_version_back">Tá an leagan sin ar ais</string>
-    <string name="pdf_editing">Ag eagarthóireacht</string>
-    <string name="pdf_view_only">Radharc amháin</string>
     <string name="pdf_copy_page_text">Cóipeáil téacs an leathanaigh seo</string>
     <string name="pdf_bookmarks">Leabharmharcanna</string>
     <string name="pdf_edit_in_words">Cuir in eagar i Words</string>
     <string name="pdf_export_text">Easpórtáil téacs</string>
-    <string name="pdf_find_hint">Aimsigh sa PDF</string>
-    <string name="pdf_looking">Ag cuardach…</string>
-    <string name="pdf_n_of_m">%1$d as %2$d</string>
     <string name="pdf_no_pages">Níl leathanaigh sa PDF seo.</string>
     <string name="pdf_show_pages">Taispeáin na leathanaigh</string>
     <string name="pdf_hide_pages">Folaigh na leathanaigh</string>
@@ -4819,25 +4812,12 @@
     <string name="pdf_tab_protect">Cosain</string>
     <string name="pdf_paper_portrait">%1$s portráid</string>
     <string name="pdf_paper_landscape">%1$s tírdhreach</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">orlach</string>
     <string name="pdf_delete_page">Scrios leathanach</string>
     <string name="pdf_rotate_left">Rothlaigh ar chlé</string>
     <string name="pdf_rotate_right">Rothlaigh ar dheis</string>
     <string name="pdf_ruler">Riail</string>
     <string name="pdf_formatting_copied">Formáidiú cóipeáilte: roghnaigh téacs eile, ansin Greamaigh formáidiú</string>
-    <string name="pdf_middle">Lár</string>
-    <string name="pdf_move_left">Bog ar chlé</string>
-    <string name="pdf_move_right">Bog ar dheis</string>
-    <string name="pdf_move_up">Bog suas</string>
-    <string name="pdf_move_down">Bog síos</string>
-    <string name="pdf_arrange">Eagraigh</string>
-    <string name="pdf_bring_forward">Tabhair chun tosaigh</string>
-    <string name="pdf_send_backward">Cuir ar gcúl</string>
-    <string name="pdf_rotate_right_90">Rothlaigh ar dheis 90°</string>
-    <string name="pdf_rotate_left_90">Rothlaigh ar chlé 90°</string>
-    <string name="pdf_upright">Ingearach</string>
     <string name="pdf_duplicate">Dúbláil</string>
     <string name="pdf_drawing">Líníocht</string>
     <string name="pdf_replace_only_typed">Ní chuirtear ach focail a cuireadh le Tetra in ionad anseo. Focail an leathanaigh féin: Comhad › Cuir in eagar in Words.</string>
@@ -4867,12 +4847,9 @@
         <item quantity="many">Baineadh as %1$d leathanach: scríobhann Sábháil an comhad as an nua gan iad</item>
         <item quantity="other">Baineadh as %1$d leathanach: scríobhann Sábháil an comhad as an nua gan iad</item>
     </plurals>
-    <string name="pdf_new_signature">Sínithe nua</string>
-    <string name="pdf_draw_signature">Tarraing sínithe</string>
     <string name="pdf_small">Beag</string>
     <string name="pdf_normal">Gnáth</string>
     <string name="pdf_large">Mór</string>
-    <string name="pdf_pen_colour">Dath an pheann</string>
     <string name="pdf_recognize_text">Aithin téacs</string>
     <string name="pdf_all_have_text">Tá téacs ag gach leathanach cheana</string>
     <plurals name="pdf_ocr_done">
@@ -4892,6 +4869,4 @@
     <string name="pdf_no_bookmarks">Gan leabharmharcanna sa chomhad seo.</string>
     <string name="pdf_page_lower">leathanach %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
-    <string name="pdf_leave_it">Fág mar a bhí sé</string>
-    <string name="pdf_border">Teorainn</string>
 </resources>

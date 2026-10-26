@@ -4584,7 +4584,6 @@
     <string name="pdf_organize">Organizar</string>
     <string name="pdf_save_changes">¿Guardar los cambios?</string>
     <string name="pdf_stays_in_versions">El archivo tal como estaba se queda en Versiones.</string>
-    <string name="pdf_note_hint">Lo que dice la nota</string>
     <string name="pdf_signature_kept">Firma guardada: toca donde va</string>
     <string name="pdf_field">Campo</string>
     <string name="pdf_header_hint">En todas las páginas. {n} es el número de la página; {N}, cuántas hay.</string>
@@ -4601,7 +4600,6 @@
         <item quantity="other">%1$d marcados: revísalos y luego Censurar marcados</item>
     </plurals>
     <string name="pdf_bookmark_page">Marcador en la página %1$d</string>
-    <string name="pdf_watermark_words">Texto en todas las páginas</string>
     <string name="pdf_password_about">Se pide para abrir el archivo, en cualquier aplicación (AES-256). Tetra no puede recuperarla si se olvida.</string>
     <string name="pdf_password_again">Repetir</string>
     <string name="pdf_password_on_save">Guardar pone la contraseña al archivo</string>
@@ -4623,15 +4621,10 @@
     <string name="pdf_meta_producer">Generado por: %1$s</string>
     <string name="pdf_versions_about">El archivo tal como estaba antes de guardar. Al tocar una se recupera al momento; el archivo tal como está ahora pasa a esta lista.</string>
     <string name="pdf_version_back">Esa versión ha vuelto</string>
-    <string name="pdf_editing">Edición</string>
-    <string name="pdf_view_only">Solo lectura</string>
     <string name="pdf_copy_page_text">Copiar el texto de esta página</string>
     <string name="pdf_bookmarks">Marcadores</string>
     <string name="pdf_edit_in_words">Editar en Documentos</string>
     <string name="pdf_export_text">Exportar texto</string>
-    <string name="pdf_find_hint">Buscar en el PDF</string>
-    <string name="pdf_looking">Buscando…</string>
-    <string name="pdf_n_of_m">%1$d de %2$d</string>
     <string name="pdf_no_pages">Este PDF no tiene páginas.</string>
     <string name="pdf_show_pages">Mostrar las páginas</string>
     <string name="pdf_hide_pages">Ocultar las páginas</string>
@@ -4639,25 +4632,12 @@
     <string name="pdf_tab_protect">Proteger</string>
     <string name="pdf_paper_portrait">%1$s vertical</string>
     <string name="pdf_paper_landscape">%1$s horizontal</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">pulg.</string>
     <string name="pdf_delete_page">Eliminar página</string>
     <string name="pdf_rotate_left">Girar a la izquierda</string>
     <string name="pdf_rotate_right">Girar a la derecha</string>
     <string name="pdf_ruler">Regla</string>
     <string name="pdf_formatting_copied">Formato copiado: elige otro texto y luego Pegar formato</string>
-    <string name="pdf_middle">Centro</string>
-    <string name="pdf_move_left">Mover a la izquierda</string>
-    <string name="pdf_move_right">Mover a la derecha</string>
-    <string name="pdf_move_up">Subir</string>
-    <string name="pdf_move_down">Bajar</string>
-    <string name="pdf_arrange">Organizar</string>
-    <string name="pdf_bring_forward">Traer adelante</string>
-    <string name="pdf_send_backward">Enviar atrás</string>
-    <string name="pdf_rotate_right_90">Girar 90° a la derecha</string>
-    <string name="pdf_rotate_left_90">Girar 90° a la izquierda</string>
-    <string name="pdf_upright">Derecho</string>
     <string name="pdf_duplicate">Duplicar</string>
     <string name="pdf_drawing">Dibujo</string>
     <string name="pdf_replace_only_typed">Aquí solo se reemplazan las palabras puestas con Tetra. Las palabras propias de la página: Archivo › Editar en Words.</string>
@@ -4685,12 +4665,9 @@
         <item quantity="many">Quitado de %1$d páginas: Guardar reescribe el archivo sin ello</item>
         <item quantity="other">Quitado de %1$d páginas: Guardar reescribe el archivo sin ello</item>
     </plurals>
-    <string name="pdf_new_signature">Nueva firma</string>
-    <string name="pdf_draw_signature">Dibujar firma</string>
     <string name="pdf_small">Pequeño</string>
     <string name="pdf_normal">Normal</string>
     <string name="pdf_large">Grande</string>
-    <string name="pdf_pen_colour">Color del lápiz</string>
     <string name="pdf_recognize_text">Reconocer texto</string>
     <string name="pdf_all_have_text">Todas las páginas ya tienen texto</string>
     <plurals name="pdf_ocr_done">
@@ -4708,6 +4685,4 @@
     <string name="pdf_no_bookmarks">No hay marcadores en este archivo.</string>
     <string name="pdf_page_lower">página %1$d</string>
     <string name="pdf_quoted">«%1$s»</string>
-    <string name="pdf_leave_it">Dejarlo como estaba</string>
-    <string name="pdf_border">Borde</string>
 </resources>

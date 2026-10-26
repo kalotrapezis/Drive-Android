@@ -4496,7 +4496,6 @@
     <string name="pdf_organize">Подреди</string>
     <string name="pdf_save_changes">Да се запишат ли промените?</string>
     <string name="pdf_stays_in_versions">Файлът, какъвто беше, остава във Версии.</string>
-    <string name="pdf_note_hint">Какво казва бележката</string>
     <string name="pdf_signature_kept">Подписът е запазен: докоснете където да е</string>
     <string name="pdf_field">Поле</string>
     <string name="pdf_header_hint">На всяка страница. {n} е номерът на страницата, {N} — колко са общо.</string>
@@ -4512,7 +4511,6 @@
         <item quantity="other">%1$d маркирани: прегледайте ги, после Заличи маркираното</item>
     </plurals>
     <string name="pdf_bookmark_page">Отметка за страница %1$d</string>
-    <string name="pdf_watermark_words">Думи през всяка страница</string>
     <string name="pdf_password_about">Иска се за отваряне на файла, във всяко приложение (AES-256). Tetra не може да я намери, ако бъде забравена.</string>
     <string name="pdf_password_again">Отново</string>
     <string name="pdf_password_on_save">Запиши слага паролата на файла</string>
@@ -4533,15 +4531,10 @@
     <string name="pdf_meta_producer">Записан от: %1$s</string>
     <string name="pdf_versions_about">Файлът, какъвто е бил преди записване. Докосването на една я връща веднага; файлът, какъвто е сега, отива в този списък.</string>
     <string name="pdf_version_back">Тази версия е върната</string>
-    <string name="pdf_editing">Редактиране</string>
-    <string name="pdf_view_only">Само преглед</string>
     <string name="pdf_copy_page_text">Копирай текста на тази страница</string>
     <string name="pdf_bookmarks">Отметки</string>
     <string name="pdf_edit_in_words">Редактирай в Документи</string>
     <string name="pdf_export_text">Експортирай текст</string>
-    <string name="pdf_find_hint">Търсене в PDF</string>
-    <string name="pdf_looking">Търсене…</string>
-    <string name="pdf_n_of_m">%1$d от %2$d</string>
     <string name="pdf_no_pages">Този PDF няма страници.</string>
     <string name="pdf_show_pages">Покажи страниците</string>
     <string name="pdf_hide_pages">Скрий страниците</string>
@@ -4549,25 +4542,12 @@
     <string name="pdf_tab_protect">Защита</string>
     <string name="pdf_paper_portrait">%1$s книжна</string>
     <string name="pdf_paper_landscape">%1$s албумна</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">инча</string>
     <string name="pdf_delete_page">Изтрий страницата</string>
     <string name="pdf_rotate_left">Завърти наляво</string>
     <string name="pdf_rotate_right">Завърти надясно</string>
     <string name="pdf_ruler">Линийка</string>
     <string name="pdf_formatting_copied">Форматирането е копирано: изберете друг текст, после Постави форматирането</string>
-    <string name="pdf_middle">Среда</string>
-    <string name="pdf_move_left">Премести наляво</string>
-    <string name="pdf_move_right">Премести надясно</string>
-    <string name="pdf_move_up">Премести нагоре</string>
-    <string name="pdf_move_down">Премести надолу</string>
-    <string name="pdf_arrange">Подреждане</string>
-    <string name="pdf_bring_forward">Премести напред</string>
-    <string name="pdf_send_backward">Премести назад</string>
-    <string name="pdf_rotate_right_90">Завърти надясно на 90°</string>
-    <string name="pdf_rotate_left_90">Завърти наляво на 90°</string>
-    <string name="pdf_upright">Изправено</string>
     <string name="pdf_duplicate">Дублирай</string>
     <string name="pdf_drawing">Рисунка</string>
     <string name="pdf_replace_only_typed">Тук се заменят само думи, добавени с Tetra. Думите на самата страница: Файл › Редактиране в Words.</string>
@@ -4594,12 +4574,9 @@
         <item quantity="one">Премахнато от %1$d страница: Запиши записва файла наново без тях</item>
         <item quantity="other">Премахнато от %1$d страници: Запиши записва файла наново без тях</item>
     </plurals>
-    <string name="pdf_new_signature">Нов подпис</string>
-    <string name="pdf_draw_signature">Нарисувай подпис</string>
     <string name="pdf_small">Малък</string>
     <string name="pdf_normal">Нормален</string>
     <string name="pdf_large">Голям</string>
-    <string name="pdf_pen_colour">Цвят на писалката</string>
     <string name="pdf_recognize_text">Разпознай текст</string>
     <string name="pdf_all_have_text">Всяка страница вече има текста си</string>
     <plurals name="pdf_ocr_done">
@@ -4616,6 +4593,4 @@
     <string name="pdf_no_bookmarks">Няма отметки в този файл.</string>
     <string name="pdf_page_lower">страница %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
-    <string name="pdf_leave_it">Остави както беше</string>
-    <string name="pdf_border">Граница</string>
 </resources>

@@ -4497,7 +4497,6 @@
     <string name="pdf_organize">Organize</string>
     <string name="pdf_save_changes">Save the changes?</string>
     <string name="pdf_stays_in_versions">The file as it was stays in Versions.</string>
-    <string name="pdf_note_hint">What the note says</string>
     <string name="pdf_signature_kept">Signature kept: tap where it goes</string>
     <string name="pdf_field">Field</string>
     <string name="pdf_header_hint">On every page. {n} is the page\'s number, {N} how many there are.</string>
@@ -4513,7 +4512,6 @@
         <item quantity="other">%1$d marked: look them over, then Redact marked</item>
     </plurals>
     <string name="pdf_bookmark_page">Bookmark page %1$d</string>
-    <string name="pdf_watermark_words">Words across every page</string>
     <string name="pdf_password_about">Asked for to open the file, in every app (AES-256). Tetra cannot find it again if it is forgotten.</string>
     <string name="pdf_password_again">Again</string>
     <string name="pdf_password_on_save">Save puts the password on the file</string>
@@ -4534,15 +4532,10 @@
     <string name="pdf_meta_producer">Written by: %1$s</string>
     <string name="pdf_versions_about">The file as it was before a save. Tapping one puts it back at once; the file as it is now goes into this list.</string>
     <string name="pdf_version_back">That version is back</string>
-    <string name="pdf_editing">Editing</string>
-    <string name="pdf_view_only">View only</string>
     <string name="pdf_copy_page_text">Copy this page\'s text</string>
     <string name="pdf_bookmarks">Bookmarks</string>
     <string name="pdf_edit_in_words">Edit in Words</string>
     <string name="pdf_export_text">Export text</string>
-    <string name="pdf_find_hint">Find in the PDF</string>
-    <string name="pdf_looking">Looking…</string>
-    <string name="pdf_n_of_m">%1$d of %2$d</string>
     <string name="pdf_no_pages">This PDF has no pages.</string>
     <string name="pdf_show_pages">Show the pages</string>
     <string name="pdf_hide_pages">Hide the pages</string>
@@ -4550,25 +4543,12 @@
     <string name="pdf_tab_protect">Protect</string>
     <string name="pdf_paper_portrait">%1$s portrait</string>
     <string name="pdf_paper_landscape">%1$s landscape</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">in</string>
     <string name="pdf_delete_page">Delete page</string>
     <string name="pdf_rotate_left">Rotate left</string>
     <string name="pdf_rotate_right">Rotate right</string>
     <string name="pdf_ruler">Ruler</string>
     <string name="pdf_formatting_copied">Formatting copied: choose another text, then Paste formatting</string>
-    <string name="pdf_middle">Middle</string>
-    <string name="pdf_move_left">Move left</string>
-    <string name="pdf_move_right">Move right</string>
-    <string name="pdf_move_up">Move up</string>
-    <string name="pdf_move_down">Move down</string>
-    <string name="pdf_arrange">Arrange</string>
-    <string name="pdf_bring_forward">Bring forward</string>
-    <string name="pdf_send_backward">Send backward</string>
-    <string name="pdf_rotate_right_90">Rotate right 90°</string>
-    <string name="pdf_rotate_left_90">Rotate left 90°</string>
-    <string name="pdf_upright">Upright</string>
     <string name="pdf_duplicate">Duplicate</string>
     <string name="pdf_drawing">Drawing</string>
     <string name="pdf_replace_only_typed">Only words put on with Tetra are replaced here. The page\'s own words: File › Edit in Words.</string>
@@ -4595,12 +4575,9 @@
         <item quantity="one">Taken out of %1$d page: Save writes the file anew without them</item>
         <item quantity="other">Taken out of %1$d pages: Save writes the file anew without them</item>
     </plurals>
-    <string name="pdf_new_signature">New signature</string>
-    <string name="pdf_draw_signature">Draw signature</string>
     <string name="pdf_small">Small</string>
     <string name="pdf_normal">Normal</string>
     <string name="pdf_large">Large</string>
-    <string name="pdf_pen_colour">Pen colour</string>
     <string name="pdf_recognize_text">Recognize text</string>
     <string name="pdf_all_have_text">Every page has its text already</string>
     <plurals name="pdf_ocr_done">
@@ -4617,6 +4594,4 @@
     <string name="pdf_no_bookmarks">No bookmarks in this file.</string>
     <string name="pdf_page_lower">page %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
-    <string name="pdf_leave_it">Leave it as it was</string>
-    <string name="pdf_border">Border</string>
 </resources>

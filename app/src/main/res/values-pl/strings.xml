@@ -4672,7 +4672,6 @@
     <string name="pdf_organize">Organizuj</string>
     <string name="pdf_save_changes">Zapisać zmiany?</string>
     <string name="pdf_stays_in_versions">Plik w poprzedniej postaci zostaje w Wersjach.</string>
-    <string name="pdf_note_hint">Treść notatki</string>
     <string name="pdf_signature_kept">Podpis zachowany: dotknij, gdzie ma trafić</string>
     <string name="pdf_field">Pole</string>
     <string name="pdf_header_hint">Na każdej stronie. {n} to numer strony, {N} — ile ich jest.</string>
@@ -4690,7 +4689,6 @@
         <item quantity="other">Oznaczono %1$d: przejrzyj je, potem Zaczernij oznaczone</item>
     </plurals>
     <string name="pdf_bookmark_page">Zakładka do strony %1$d</string>
-    <string name="pdf_watermark_words">Tekst na każdej stronie</string>
     <string name="pdf_password_about">Wymagane do otwarcia pliku w każdej aplikacji (AES-256). Tetra nie odzyska go, jeśli zostanie zapomniane.</string>
     <string name="pdf_password_again">Powtórz</string>
     <string name="pdf_password_on_save">Zapisz nakłada hasło na plik</string>
@@ -4713,15 +4711,10 @@
     <string name="pdf_meta_producer">Zapisano przez: %1$s</string>
     <string name="pdf_versions_about">Plik sprzed zapisu. Dotknięcie od razu go przywraca; obecny plik trafia na tę listę.</string>
     <string name="pdf_version_back">Ta wersja wróciła</string>
-    <string name="pdf_editing">Edycja</string>
-    <string name="pdf_view_only">Tylko do odczytu</string>
     <string name="pdf_copy_page_text">Kopiuj tekst tej strony</string>
     <string name="pdf_bookmarks">Zakładki</string>
     <string name="pdf_edit_in_words">Edytuj w Dokumentach</string>
     <string name="pdf_export_text">Eksportuj tekst</string>
-    <string name="pdf_find_hint">Znajdź w pliku PDF</string>
-    <string name="pdf_looking">Szukanie…</string>
-    <string name="pdf_n_of_m">%1$d z %2$d</string>
     <string name="pdf_no_pages">Ten plik PDF nie ma stron.</string>
     <string name="pdf_show_pages">Pokaż strony</string>
     <string name="pdf_hide_pages">Ukryj strony</string>
@@ -4729,25 +4722,12 @@
     <string name="pdf_tab_protect">Ochrona</string>
     <string name="pdf_paper_portrait">%1$s pionowo</string>
     <string name="pdf_paper_landscape">%1$s poziomo</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">cal</string>
     <string name="pdf_delete_page">Usuń stronę</string>
     <string name="pdf_rotate_left">Obróć w lewo</string>
     <string name="pdf_rotate_right">Obróć w prawo</string>
     <string name="pdf_ruler">Linijka</string>
     <string name="pdf_formatting_copied">Skopiowano formatowanie: wybierz inny tekst, potem Wklej formatowanie</string>
-    <string name="pdf_middle">Środek</string>
-    <string name="pdf_move_left">Przenieś w lewo</string>
-    <string name="pdf_move_right">Przenieś w prawo</string>
-    <string name="pdf_move_up">Przenieś w górę</string>
-    <string name="pdf_move_down">Przenieś w dół</string>
-    <string name="pdf_arrange">Rozmieść</string>
-    <string name="pdf_bring_forward">Przesuń do przodu</string>
-    <string name="pdf_send_backward">Przesuń do tyłu</string>
-    <string name="pdf_rotate_right_90">Obróć w prawo o 90°</string>
-    <string name="pdf_rotate_left_90">Obróć w lewo o 90°</string>
-    <string name="pdf_upright">Prosto</string>
     <string name="pdf_duplicate">Duplikuj</string>
     <string name="pdf_drawing">Rysunek</string>
     <string name="pdf_replace_only_typed">Tu zastępuje się tylko słowa dodane w Tetrze. Własne słowa strony: Plik › Edytuj w Words.</string>
@@ -4776,12 +4756,9 @@
         <item quantity="many">Usunięto z %1$d stron: Zapisz zapisuje plik od nowa bez nich</item>
         <item quantity="other">Usunięto z %1$d strony: Zapisz zapisuje plik od nowa bez nich</item>
     </plurals>
-    <string name="pdf_new_signature">Nowy podpis</string>
-    <string name="pdf_draw_signature">Narysuj podpis</string>
     <string name="pdf_small">Mały</string>
     <string name="pdf_normal">Normalny</string>
     <string name="pdf_large">Duży</string>
-    <string name="pdf_pen_colour">Kolor pióra</string>
     <string name="pdf_recognize_text">Rozpoznaj tekst</string>
     <string name="pdf_all_have_text">Każda strona ma już tekst</string>
     <plurals name="pdf_ocr_done">
@@ -4800,6 +4777,4 @@
     <string name="pdf_no_bookmarks">Brak zakładek w tym pliku.</string>
     <string name="pdf_page_lower">strona %1$d</string>
     <string name="pdf_quoted">„%1$s”</string>
-    <string name="pdf_leave_it">Zostaw jak było</string>
-    <string name="pdf_border">Obramowanie</string>
 </resources>

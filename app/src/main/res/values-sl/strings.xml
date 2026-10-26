@@ -4672,7 +4672,6 @@
     <string name="pdf_organize">Organiziraj</string>
     <string name="pdf_save_changes">Želite shraniti spremembe?</string>
     <string name="pdf_stays_in_versions">Datoteka, kakršna je bila, ostane v Različicah.</string>
-    <string name="pdf_note_hint">Kaj piše v opombi</string>
     <string name="pdf_signature_kept">Podpis shranjen: tapnite, kamor gre</string>
     <string name="pdf_field">Polje</string>
     <string name="pdf_header_hint">Na vsaki strani. {n} je številka strani, {N} koliko jih je.</string>
@@ -4690,7 +4689,6 @@
         <item quantity="other">Označeno: %1$d – preglejte, nato Zakrij označeno</item>
     </plurals>
     <string name="pdf_bookmark_page">Zaznamuj stran %1$d</string>
-    <string name="pdf_watermark_words">Besede čez vsako stran</string>
     <string name="pdf_password_about">Zahtevano za odpiranje datoteke v vsaki aplikaciji (AES-256). Če ga pozabite, ga Tetra ne more najti.</string>
     <string name="pdf_password_again">Ponovno</string>
     <string name="pdf_password_on_save">Shrani doda geslo datoteki</string>
@@ -4713,15 +4711,10 @@
     <string name="pdf_meta_producer">Zapisal: %1$s</string>
     <string name="pdf_versions_about">Datoteka, kakršna je bila pred shranjevanjem. Tap jo takoj vrne; trenutna datoteka gre na ta seznam.</string>
     <string name="pdf_version_back">Ta različica je nazaj</string>
-    <string name="pdf_editing">Urejanje</string>
-    <string name="pdf_view_only">Samo ogled</string>
     <string name="pdf_copy_page_text">Kopiraj besedilo te strani</string>
     <string name="pdf_bookmarks">Zaznamki</string>
     <string name="pdf_edit_in_words">Uredi v Dokumentih</string>
     <string name="pdf_export_text">Izvozi besedilo</string>
-    <string name="pdf_find_hint">Iskanje v PDF-ju</string>
-    <string name="pdf_looking">Iskanje…</string>
-    <string name="pdf_n_of_m">%1$d od %2$d</string>
     <string name="pdf_no_pages">Ta PDF nima strani.</string>
     <string name="pdf_show_pages">Pokaži strani</string>
     <string name="pdf_hide_pages">Skrij strani</string>
@@ -4729,25 +4722,12 @@
     <string name="pdf_tab_protect">Zaščiti</string>
     <string name="pdf_paper_portrait">%1$s pokončno</string>
     <string name="pdf_paper_landscape">%1$s ležeče</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">pal.</string>
     <string name="pdf_delete_page">Izbriši stran</string>
     <string name="pdf_rotate_left">Zasukaj levo</string>
     <string name="pdf_rotate_right">Zasukaj desno</string>
     <string name="pdf_ruler">Ravnilo</string>
     <string name="pdf_formatting_copied">Oblikovanje kopirano: izberite drugo besedilo, nato Prilepi oblikovanje</string>
-    <string name="pdf_middle">Sredina</string>
-    <string name="pdf_move_left">Premakni levo</string>
-    <string name="pdf_move_right">Premakni desno</string>
-    <string name="pdf_move_up">Premakni navzgor</string>
-    <string name="pdf_move_down">Premakni navzdol</string>
-    <string name="pdf_arrange">Razporedi</string>
-    <string name="pdf_bring_forward">Premakni naprej</string>
-    <string name="pdf_send_backward">Pomakni nazaj</string>
-    <string name="pdf_rotate_right_90">Zasukaj desno za 90°</string>
-    <string name="pdf_rotate_left_90">Zasukaj levo za 90°</string>
-    <string name="pdf_upright">Pokončno</string>
     <string name="pdf_duplicate">Podvoji</string>
     <string name="pdf_drawing">Risba</string>
     <string name="pdf_replace_only_typed">Tu se zamenjajo le besede, dodane s Tetro. Lastne besede strani: Datoteka › Uredi v Words.</string>
@@ -4776,12 +4756,9 @@
         <item quantity="few">Odstranjeno iz strani: %1$d – Shrani na novo zapiše datoteko brez njih</item>
         <item quantity="other">Odstranjeno iz strani: %1$d – Shrani na novo zapiše datoteko brez njih</item>
     </plurals>
-    <string name="pdf_new_signature">Nov podpis</string>
-    <string name="pdf_draw_signature">Nariši podpis</string>
     <string name="pdf_small">Majhno</string>
     <string name="pdf_normal">Običajno</string>
     <string name="pdf_large">Veliko</string>
-    <string name="pdf_pen_colour">Barva peresa</string>
     <string name="pdf_recognize_text">Prepoznaj besedilo</string>
     <string name="pdf_all_have_text">Vsaka stran že ima besedilo</string>
     <plurals name="pdf_ocr_done">
@@ -4800,6 +4777,4 @@
     <string name="pdf_no_bookmarks">V tej datoteki ni zaznamkov.</string>
     <string name="pdf_page_lower">stran %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
-    <string name="pdf_leave_it">Pusti, kot je bilo</string>
-    <string name="pdf_border">Obroba</string>
 </resources>

@@ -201,13 +201,14 @@ internal enum class PdfTool(@androidx.annotation.StringRes val label: Int, val i
 internal const val PICTURE_STAMP = "Picture"
 /** Tetra's key on a text it put on ([PdfDoc.putText]): its words and look, to be typed in again. */
 internal const val TYPED_KEY = "TetraText"
+/** Words' screen round its pages and its ribbon's colour (Writer.kt's), the PDF's too. */
+private val WORDS_SCREEN = Color(0xFF1B1D1E)
+private val WORDS_RIBBON = Color(0xFF16191A)
 /** The chosen object's own tab (shown by its kind's name, as Words' Image, Shape, Text box…). */
 private const val OBJECT_TAB = "Object"
 internal val STAMPS = listOf("Approved", "Draft", "Final", "Confidential", "Experimental", "Expired", "NotApproved", "ForComment", "AsIs", "Sold",
     "Departmental", "NotForPublicRelease", "TopSecret", "ForPublicRelease")
 
-/** The PDF app's menus: white words and icons on the black menu. */
-@Composable internal fun PDF_MENU_ITEM() = androidx.compose.material3.MenuDefaults.itemColors(textColor = Color.White, leadingIconColor = Color.White, trailingIconColor = Color.White)
 
 /** A word found: its page and its boxes there (in the page's points). */
 internal class PdfMatch(val page: Int, val boxes: List<RectF>)
@@ -815,17 +816,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             setAppearance(com.artifex.mupdf.fitz.Image(png)); if (opacity < 1f) setOpacity(opacity); update()
         }
 
-    /** A picture (Insert › Image) in the middle of page [i], half its width. */
-    fun image(i: Int, png: ByteArray, aspect: Float) = annotate(i, "Image") { p, x0, y0 ->
-        val s = sizes[i]; val w = s.width / 2; val h = w * aspect
-        stamp(p, x0, y0, png, android.graphics.RectF((s.width - w) / 2, (s.height - h) / 2, (s.width + w) / 2, (s.height + h) / 2), 1f); true
-    }
 
-    /** A watermark ([png], drawn turned) across the middle of every page, faint. */
-    fun watermark(png: ByteArray, aspect: Float) = edit("Watermark") { _ ->
-        sizes.indices.forEach { i -> page(i) { p -> val o = p.bounds; val s = sizes[i]; val w = s.width * 0.8f; val h = w * aspect
-            stamp(p as com.artifex.mupdf.fitz.PDFPage, o.x0, o.y0, png, android.graphics.RectF((s.width - w) / 2, (s.height - h) / 2, (s.width + w) / 2, (s.height + h) / 2), 0.25f); p.update() } }
-    }
 
     /** Words at the top and/or the bottom of every page ([footer] "{n}" and "{N}" for the page number and count), [size] points. */
     fun headerFooter(header: String, footer: String, size: Float) = edit("Header and footer") { _ ->
@@ -1915,7 +1906,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
     else if (editing && d != null) {
         val w = Color.White
-        Surface(color = Color.Black, contentColor = w, modifier = (if (wide) Modifier.fillMaxWidth().then(if (OfficeUi.top) Modifier else Modifier.bottomBarPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth())
+        Surface(color = WORDS_RIBBON, contentColor = w, modifier = (if (wide) Modifier.fillMaxWidth().then(if (OfficeUi.top) Modifier else Modifier.bottomBarPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth())
             .then(if (typing != null) Modifier.imePadding() else Modifier)) {
             // a phone typing with its keyboard up: Words' bar on the keyboard (B, I, U, highlighter, dictation, ⋯ the whole ribbon, the keyboard away)
             val imeOpen = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -2266,7 +2257,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         }
     }
     }
-    Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B)).focusRequester(keys).focusable().onPreviewKeyEvent { k ->
+    // Words' colours: the screen round the pages, its ribbon a shade darker (PDF_LIKE_WORDS.md)
+    Column(Modifier.fillMaxSize().background(WORDS_SCREEN).focusRequester(keys).focusable().onPreviewKeyEvent { k ->
         if (k.type != KeyEventType.KeyDown || typing != null || !editing) return@onPreviewKeyEvent false
         val d = doc ?: return@onPreviewKeyEvent false
         val c = chosen; val step = if (k.isShiftPressed) 10f else 1f // points
@@ -2289,7 +2281,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             else -> false
         }
     }) {
-        Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
+        Surface(color = WORDS_SCREEN, contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.statusBarsPadding()) {
                 val tint = islandContentColor()
                 val d0 = doc
@@ -2353,7 +2345,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     val density = LocalDensity.current
                     // a tablet: the pages small at the side, the one shown marked, tapped to go to it; a phone: the same, narrower, when asked for
                     // Words' comment cards beside the pages (a tablet), each with its replies, Edit, Reply, Resolve, Delete
-                    if (pane == "Comments" && wide) Column(Modifier.width(320.dp).fillMaxHeight().background(Color(0xFF1F1F1F))) {
+                    if (pane == "Comments" && wide) Column(Modifier.width(320.dp).fillMaxHeight().background(WORDS_RIBBON)) {
                         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.words_comments), color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                             IconButton(onClick = { pane = null }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_close), tint = Color.White) }
@@ -2370,7 +2362,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         val side = if (wide) 150.dp else 110.dp
                         val thumbs = rememberLazyListState()
                         LaunchedEffect(at) { if (thumbs.layoutInfo.visibleItemsInfo.none { it.index == at && it.offset >= 0 }) thumbs.animateScrollToItem((at - 1).coerceAtLeast(0)) }
-                        LazyColumn(Modifier.width(side).fillMaxHeight().background(Color(0xFF1F1F1F)), state = thumbs, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        LazyColumn(Modifier.width(side).fillMaxHeight().background(WORDS_RIBBON), state = thumbs, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(d.sizes.size) { i ->
                                 Column(Modifier.fillMaxWidth().clickable { goTo(i); if (!wide) pages = false; WriterLog.i("PDF: thumbnail ${i + 1}") }, horizontalAlignment = Alignment.CenterHorizontally) {
                                     PdfPage(d, i, with(density) { (side - 24.dp).roundToPx() }, Modifier.fillMaxWidth().then(if (i == at) Modifier.border(2.dp, PDF_RED) else Modifier))
@@ -2568,16 +2560,6 @@ private fun androidx.compose.foundation.layout.BoxScope.PdfDrawLayer(page: Size,
     }
 }
 
-/** A watermark's words drawn turned 35° up, grey, as a PNG (Android draws Greek with the phone's own fonts), and its height / width. */
-internal fun watermarkPng(words: String): Pair<ByteArray, Float> {
-    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 160f; color = 0xFF808080.toInt(); typeface = android.graphics.Typeface.DEFAULT_BOLD }
-    val tw = paint.measureText(words); val th = paint.fontMetrics.let { it.descent - it.ascent }
-    val angle = Math.toRadians(35.0)
-    val w = (tw * Math.cos(angle) + th * Math.sin(angle)).toInt() + 20; val h = (tw * Math.sin(angle) + th * Math.cos(angle)).toInt() + 20
-    val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
-    android.graphics.Canvas(bmp).apply { rotate(-35f, w / 2f, h / 2f); drawText(words, (w - tw) / 2f, h / 2f - (paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f, paint) }
-    return java.io.ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray() to h.toFloat() / w
-}
 
 /**
  * The Comments or Bookmarks pane: every comment with its words and page, or the file's bookmarks; a row tapped goes to its
@@ -2602,7 +2584,7 @@ private fun PdfPane(d: PdfDoc, which: String, editing: Boolean, version: Int, mo
     LaunchedEffect(which, version) {
         withContext(Dispatchers.IO) { if (which == "Comments") comments = runCatching { d.comments() }.getOrDefault(emptyList()) else marks = runCatching { d.bookmarks() }.getOrDefault(emptyList()) }
     }
-    Surface(color = Color(0xFF1F1F1F), contentColor = Color.White, modifier = modifier) {
+    Surface(color = WORDS_RIBBON, contentColor = Color.White, modifier = modifier) {
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(if (which == "Comments") R.string.words_comments else R.string.pdf_bookmarks), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))

@@ -4496,7 +4496,6 @@
     <string name="pdf_organize">Ordenen</string>
     <string name="pdf_save_changes">Wijzigingen opslaan?</string>
     <string name="pdf_stays_in_versions">Het bestand zoals het was blijft in Versies.</string>
-    <string name="pdf_note_hint">Wat de notitie zegt</string>
     <string name="pdf_signature_kept">Handtekening bewaard: tik waar hij moet komen</string>
     <string name="pdf_field">Veld</string>
     <string name="pdf_header_hint">Op elke pagina. {n} is het paginanummer, {N} het aantal pagina\'s.</string>
@@ -4512,7 +4511,6 @@
         <item quantity="other">%1$d gemarkeerd: bekijk ze en kies dan Gemarkeerde weglakken</item>
     </plurals>
     <string name="pdf_bookmark_page">Bladwijzer voor pagina %1$d</string>
-    <string name="pdf_watermark_words">Woorden over elke pagina</string>
     <string name="pdf_password_about">Gevraagd om het bestand te openen, in elke app (AES-256). Tetra kan het niet terugvinden als het vergeten wordt.</string>
     <string name="pdf_password_again">Nogmaals</string>
     <string name="pdf_password_on_save">Opslaan zet het wachtwoord op het bestand</string>
@@ -4533,15 +4531,10 @@
     <string name="pdf_meta_producer">Geschreven door: %1$s</string>
     <string name="pdf_versions_about">Het bestand zoals het was voor het opslaan. Tik op een versie om haar meteen terug te zetten; het bestand zoals het nu is, komt in deze lijst.</string>
     <string name="pdf_version_back">Die versie is terug</string>
-    <string name="pdf_editing">Bewerken</string>
-    <string name="pdf_view_only">Alleen weergeven</string>
     <string name="pdf_copy_page_text">Tekst van deze pagina kopiëren</string>
     <string name="pdf_bookmarks">Bladwijzers</string>
     <string name="pdf_edit_in_words">Bewerken in Documenten</string>
     <string name="pdf_export_text">Tekst exporteren</string>
-    <string name="pdf_find_hint">Zoeken in de PDF</string>
-    <string name="pdf_looking">Zoeken…</string>
-    <string name="pdf_n_of_m">%1$d van %2$d</string>
     <string name="pdf_no_pages">Deze PDF heeft geen pagina\'s.</string>
     <string name="pdf_show_pages">Pagina\'s tonen</string>
     <string name="pdf_hide_pages">Pagina\'s verbergen</string>
@@ -4549,25 +4542,12 @@
     <string name="pdf_tab_protect">Beveiligen</string>
     <string name="pdf_paper_portrait">%1$s staand</string>
     <string name="pdf_paper_landscape">%1$s liggend</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">inch</string>
     <string name="pdf_delete_page">Pagina verwijderen</string>
     <string name="pdf_rotate_left">Linksom draaien</string>
     <string name="pdf_rotate_right">Rechtsom draaien</string>
     <string name="pdf_ruler">Liniaal</string>
     <string name="pdf_formatting_copied">Opmaak gekopieerd: kies een andere tekst en dan Opmaak plakken</string>
-    <string name="pdf_middle">Midden</string>
-    <string name="pdf_move_left">Naar links</string>
-    <string name="pdf_move_right">Naar rechts</string>
-    <string name="pdf_move_up">Omhoog</string>
-    <string name="pdf_move_down">Omlaag</string>
-    <string name="pdf_arrange">Schikken</string>
-    <string name="pdf_bring_forward">Naar voren</string>
-    <string name="pdf_send_backward">Naar achteren</string>
-    <string name="pdf_rotate_right_90">90° rechtsom draaien</string>
-    <string name="pdf_rotate_left_90">90° linksom draaien</string>
-    <string name="pdf_upright">Rechtop</string>
     <string name="pdf_duplicate">Dupliceren</string>
     <string name="pdf_drawing">Tekening</string>
     <string name="pdf_replace_only_typed">Hier worden alleen met Tetra toegevoegde woorden vervangen. De eigen woorden van de pagina: Bestand › Bewerken in Words.</string>
@@ -4594,12 +4574,9 @@
         <item quantity="one">Uit %1$d pagina gehaald: Opslaan schrijft het bestand opnieuw zonder</item>
         <item quantity="other">Uit %1$d pagina\'s gehaald: Opslaan schrijft het bestand opnieuw zonder</item>
     </plurals>
-    <string name="pdf_new_signature">Nieuwe handtekening</string>
-    <string name="pdf_draw_signature">Handtekening tekenen</string>
     <string name="pdf_small">Klein</string>
     <string name="pdf_normal">Normaal</string>
     <string name="pdf_large">Groot</string>
-    <string name="pdf_pen_colour">Penkleur</string>
     <string name="pdf_recognize_text">Tekst herkennen</string>
     <string name="pdf_all_have_text">Elke pagina heeft al tekst</string>
     <plurals name="pdf_ocr_done">
@@ -4616,6 +4593,4 @@
     <string name="pdf_no_bookmarks">Geen bladwijzers in dit bestand.</string>
     <string name="pdf_page_lower">pagina %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
-    <string name="pdf_leave_it">Laten zoals het was</string>
-    <string name="pdf_border">Rand</string>
 </resources>

@@ -4672,7 +4672,6 @@
     <string name="pdf_organize">Tvarkyti</string>
     <string name="pdf_save_changes">Įrašyti pakeitimus?</string>
     <string name="pdf_stays_in_versions">Failas, koks buvo, lieka Versijose.</string>
-    <string name="pdf_note_hint">Ką sako pastaba</string>
     <string name="pdf_signature_kept">Parašas išsaugotas: bakstelėkite, kur jį dėti</string>
     <string name="pdf_field">Laukas</string>
     <string name="pdf_header_hint">Kiekviename puslapyje. {n} – puslapio numeris, {N} – kiek jų iš viso.</string>
@@ -4690,7 +4689,6 @@
         <item quantity="other">Pažymėta: %1$d – peržiūrėkite, tada Redaguoti pažymėtas</item>
     </plurals>
     <string name="pdf_bookmark_page">Pažymėti %1$d puslapį žyma</string>
-    <string name="pdf_watermark_words">Žodžiai per kiekvieną puslapį</string>
     <string name="pdf_password_about">Prašoma atidarant failą bet kurioje programoje (AES-256). Pamiršto slaptažodžio Tetra atkurti negali.</string>
     <string name="pdf_password_again">Dar kartą</string>
     <string name="pdf_password_on_save">Įrašant failui suteikiamas slaptažodis</string>
@@ -4713,15 +4711,10 @@
     <string name="pdf_meta_producer">Įrašė: %1$s</string>
     <string name="pdf_versions_about">Failas, koks buvo prieš įrašymą. Bakstelėjus vieną, ji iškart grąžinama; dabartinis failas patenka į šį sąrašą.</string>
     <string name="pdf_version_back">Ta versija grąžinta</string>
-    <string name="pdf_editing">Redagavimas</string>
-    <string name="pdf_view_only">Tik peržiūra</string>
     <string name="pdf_copy_page_text">Kopijuoti šio puslapio tekstą</string>
     <string name="pdf_bookmarks">Žymos</string>
     <string name="pdf_edit_in_words">Redaguoti Dokumentuose</string>
     <string name="pdf_export_text">Eksportuoti tekstą</string>
-    <string name="pdf_find_hint">Ieškoti PDF</string>
-    <string name="pdf_looking">Ieškoma…</string>
-    <string name="pdf_n_of_m">%1$d iš %2$d</string>
     <string name="pdf_no_pages">Šis PDF neturi puslapių.</string>
     <string name="pdf_show_pages">Rodyti puslapius</string>
     <string name="pdf_hide_pages">Slėpti puslapius</string>
@@ -4729,25 +4722,12 @@
     <string name="pdf_tab_protect">Apsaugoti</string>
     <string name="pdf_paper_portrait">%1$s stačias</string>
     <string name="pdf_paper_landscape">%1$s gulsčias</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">col.</string>
     <string name="pdf_delete_page">Naikinti puslapį</string>
     <string name="pdf_rotate_left">Pasukti kairėn</string>
     <string name="pdf_rotate_right">Pasukti dešinėn</string>
     <string name="pdf_ruler">Liniuotė</string>
     <string name="pdf_formatting_copied">Formatavimas nukopijuotas: pasirinkite kitą tekstą, tada Įklijuoti formatavimą</string>
-    <string name="pdf_middle">Vidurys</string>
-    <string name="pdf_move_left">Perkelti kairėn</string>
-    <string name="pdf_move_right">Perkelti dešinėn</string>
-    <string name="pdf_move_up">Perkelti aukštyn</string>
-    <string name="pdf_move_down">Perkelti žemyn</string>
-    <string name="pdf_arrange">Išdėstyti</string>
-    <string name="pdf_bring_forward">Perkelti pirmyn</string>
-    <string name="pdf_send_backward">Perkelti atgal</string>
-    <string name="pdf_rotate_right_90">Pasukti dešinėn 90°</string>
-    <string name="pdf_rotate_left_90">Pasukti kairėn 90°</string>
-    <string name="pdf_upright">Tiesiai</string>
     <string name="pdf_duplicate">Dubliuoti</string>
     <string name="pdf_drawing">Piešinys</string>
     <string name="pdf_replace_only_typed">Čia keičiami tik su Tetra pridėti žodžiai. Paties puslapio žodžiai: Failas › Redaguoti Words.</string>
@@ -4776,12 +4756,9 @@
         <item quantity="many">Pašalinta iš %1$d puslapio: įrašant failas perrašomas be jų</item>
         <item quantity="other">Pašalinta iš %1$d puslapių: įrašant failas perrašomas be jų</item>
     </plurals>
-    <string name="pdf_new_signature">Naujas parašas</string>
-    <string name="pdf_draw_signature">Nupiešti parašą</string>
     <string name="pdf_small">Mažas</string>
     <string name="pdf_normal">Įprastas</string>
     <string name="pdf_large">Didelis</string>
-    <string name="pdf_pen_colour">Rašiklio spalva</string>
     <string name="pdf_recognize_text">Atpažinti tekstą</string>
     <string name="pdf_all_have_text">Visi puslapiai jau turi tekstą</string>
     <plurals name="pdf_ocr_done">
@@ -4800,6 +4777,4 @@
     <string name="pdf_no_bookmarks">Šiame faile žymų nėra.</string>
     <string name="pdf_page_lower">%1$d puslapis</string>
     <string name="pdf_quoted">„%1$s“</string>
-    <string name="pdf_leave_it">Palikti kaip buvo</string>
-    <string name="pdf_border">Kraštinė</string>
 </resources>

@@ -24,7 +24,15 @@ How to write here:
       660 Android / 159 desktop tests pass. Seen on the tablet 971f6b37 (Greek) except the last round (catalog, pencil,
       fixes after the walk-through) and the first-start path (not run: it needs empty app data); desktop seen from source.
       **Open:** Android's own "Allow all" / "While using the app" in 23 languages unchecked; no native readers.
-- [~] (pdf-like-words session, 26 Oct; branch `claude/pdf-like-words`, started with the user; the item-by-item list in PDF_LIKE_WORDS.md) **TOP OF THE LIST — the PDF editor works exactly like Words** — **with the user, when they have time, watching each step; no agent starts it alone** (the user, 26 Oct, on the tablet: "I don't like how PDF
+- [x] (pdf-like-words session, 26–27 Oct; branch `claude/pdf-like-words`, 8 commits, not merged, nothing installed) The PDF
+      editor built like Words, tab by tab (the user: "take it on you"): what is on a page is a Words object, a PDF text is
+      Words' paragraphs on Words' engine, Words' Home, top bar, Find and Replace, Insert, Draw, Design (new), Layout,
+      Review (Words' comment cards), Selection and object tabs, the phone's keyboard bar, the ribbon at the top on a
+      desktop; Pages' Duplicate, Split, Crop, Flatten; Protect's Remove hidden information. Done and left in
+      PDF_LIKE_WORDS.md › State. Emulator only: not yet on the tablet or the phone.
+- [ ] **Merge `claude/pdf-save-fix` first** (from main, one commit): every PDF save after the first in a session (AutoSave's)
+      or on another day dropped what the saves before wrote — the file left with dangling objects. Found 27 Oct.
+- [ ] (was the top of the list; the item as the user gave it) **TOP OF THE LIST — the PDF editor works exactly like Words** — **with the user, when they have time, watching each step; no agent starts it alone** (the user, 26 Oct, on the tablet: "I don't like how PDF
       does things. If we need to, we build our own stuff like we did with the rest of Office. Everything works completely
       differently from Words"). Screenshots, kept local and out of git: `user-screenshots/2026-10-26-pdf-vs-words/` — 1–3
       Words' Position (the page shown small, "Drag it into place", Done), 4 Words' text box chosen (thin outline, one round

@@ -4672,7 +4672,6 @@
     <string name="pdf_organize">Uspořádat</string>
     <string name="pdf_save_changes">Uložit změny?</string>
     <string name="pdf_stays_in_versions">Soubor, jak byl, zůstane ve Verzích.</string>
-    <string name="pdf_note_hint">Co poznámka říká</string>
     <string name="pdf_signature_kept">Podpis uložen: klepněte, kam patří</string>
     <string name="pdf_field">Pole</string>
     <string name="pdf_header_hint">Na každé stránce. {n} je číslo stránky, {N} jejich počet.</string>
@@ -4690,7 +4689,6 @@
         <item quantity="other">Označeno %1$d: projděte je a pak Začernit označené</item>
     </plurals>
     <string name="pdf_bookmark_page">Záložka na stránku %1$d</string>
-    <string name="pdf_watermark_words">Slova přes každou stránku</string>
     <string name="pdf_password_about">Vyžaduje se k otevření souboru v každé aplikaci (AES-256). Pokud ho zapomenete, Tetra ho znovu nenajde.</string>
     <string name="pdf_password_again">Znovu</string>
     <string name="pdf_password_on_save">Uložit dá souboru heslo</string>
@@ -4713,15 +4711,10 @@
     <string name="pdf_meta_producer">Zapsáno: %1$s</string>
     <string name="pdf_versions_about">Soubor, jak byl před uložením. Klepnutím se hned vrátí; soubor, jak je teď, přejde do tohoto seznamu.</string>
     <string name="pdf_version_back">Ta verze je zpět</string>
-    <string name="pdf_editing">Úpravy</string>
-    <string name="pdf_view_only">Jen pro čtení</string>
     <string name="pdf_copy_page_text">Kopírovat text této stránky</string>
     <string name="pdf_bookmarks">Záložky</string>
     <string name="pdf_edit_in_words">Upravit v Dokumentech</string>
     <string name="pdf_export_text">Exportovat text</string>
-    <string name="pdf_find_hint">Najít v PDF</string>
-    <string name="pdf_looking">Hledání…</string>
-    <string name="pdf_n_of_m">%1$d z %2$d</string>
     <string name="pdf_no_pages">Toto PDF nemá žádné stránky.</string>
     <string name="pdf_show_pages">Zobrazit stránky</string>
     <string name="pdf_hide_pages">Skrýt stránky</string>
@@ -4729,25 +4722,12 @@
     <string name="pdf_tab_protect">Ochrana</string>
     <string name="pdf_paper_portrait">%1$s na výšku</string>
     <string name="pdf_paper_landscape">%1$s na šířku</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">in</string>
     <string name="pdf_delete_page">Odstranit stránku</string>
     <string name="pdf_rotate_left">Otočit doleva</string>
     <string name="pdf_rotate_right">Otočit doprava</string>
     <string name="pdf_ruler">Pravítko</string>
     <string name="pdf_formatting_copied">Formát zkopírován: vyberte jiný text a pak Vložit formát</string>
-    <string name="pdf_middle">Uprostřed</string>
-    <string name="pdf_move_left">Posunout doleva</string>
-    <string name="pdf_move_right">Posunout doprava</string>
-    <string name="pdf_move_up">Posunout nahoru</string>
-    <string name="pdf_move_down">Posunout dolů</string>
-    <string name="pdf_arrange">Uspořádat</string>
-    <string name="pdf_bring_forward">Přenést blíž</string>
-    <string name="pdf_send_backward">Přesunout dál</string>
-    <string name="pdf_rotate_right_90">Otočit doprava o 90°</string>
-    <string name="pdf_rotate_left_90">Otočit doleva o 90°</string>
-    <string name="pdf_upright">Svisle</string>
     <string name="pdf_duplicate">Duplikovat</string>
     <string name="pdf_drawing">Kresba</string>
     <string name="pdf_replace_only_typed">Zde se nahrazují jen slova přidaná v Tetře. Vlastní slova stránky: Soubor › Upravit ve Words.</string>
@@ -4776,12 +4756,9 @@
         <item quantity="many">Odstraněno z %1$d stránky: Uložit zapíše soubor znovu bez nich</item>
         <item quantity="other">Odstraněno z %1$d stránek: Uložit zapíše soubor znovu bez nich</item>
     </plurals>
-    <string name="pdf_new_signature">Nový podpis</string>
-    <string name="pdf_draw_signature">Nakreslit podpis</string>
     <string name="pdf_small">Malé</string>
     <string name="pdf_normal">Normální</string>
     <string name="pdf_large">Velké</string>
-    <string name="pdf_pen_colour">Barva pera</string>
     <string name="pdf_recognize_text">Rozpoznat text</string>
     <string name="pdf_all_have_text">Každá stránka už text má</string>
     <plurals name="pdf_ocr_done">
@@ -4800,6 +4777,4 @@
     <string name="pdf_no_bookmarks">V tomto souboru nejsou žádné záložky.</string>
     <string name="pdf_page_lower">stránka %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
-    <string name="pdf_leave_it">Ponechat, jak bylo</string>
-    <string name="pdf_border">Ohraničení</string>
 </resources>

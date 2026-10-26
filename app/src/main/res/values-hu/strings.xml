@@ -4496,7 +4496,6 @@
     <string name="pdf_organize">Rendezés</string>
     <string name="pdf_save_changes">Menti a módosításokat?</string>
     <string name="pdf_stays_in_versions">A fájl korábbi állapota a Verziók között marad.</string>
-    <string name="pdf_note_hint">A jegyzet szövege</string>
     <string name="pdf_signature_kept">Aláírás megtartva: koppints oda, ahová kerül</string>
     <string name="pdf_field">Mező</string>
     <string name="pdf_header_hint">Minden oldalon. {n} az oldal száma, {N} az oldalak száma.</string>
@@ -4512,7 +4511,6 @@
         <item quantity="other">%1$d megjelölve: nézd át őket, majd Jelöltek kitakarása</item>
     </plurals>
     <string name="pdf_bookmark_page">Könyvjelző a(z) %1$d. oldalra</string>
-    <string name="pdf_watermark_words">Szöveg minden oldalon</string>
     <string name="pdf_password_about">A fájl megnyitásához kéri, minden alkalmazásban (AES-256). Ha elfelejted, a Tetra sem tudja visszaszerezni.</string>
     <string name="pdf_password_again">Újra</string>
     <string name="pdf_password_on_save">A Mentés jelszóval látja el a fájlt</string>
@@ -4533,15 +4531,10 @@
     <string name="pdf_meta_producer">Előállító: %1$s</string>
     <string name="pdf_versions_about">A fájl egy mentés előtti állapota. Koppintásra azonnal visszaáll; a jelenlegi fájl ebbe a listába kerül.</string>
     <string name="pdf_version_back">Az a verzió visszaállt</string>
-    <string name="pdf_editing">Szerkesztés</string>
-    <string name="pdf_view_only">Csak megtekintés</string>
     <string name="pdf_copy_page_text">Az oldal szövegének másolása</string>
     <string name="pdf_bookmarks">Könyvjelzők</string>
     <string name="pdf_edit_in_words">Szerkesztés a Dokumentumokban</string>
     <string name="pdf_export_text">Szöveg exportálása</string>
-    <string name="pdf_find_hint">Keresés a PDF-ben</string>
-    <string name="pdf_looking">Keresés…</string>
-    <string name="pdf_n_of_m">%1$d/%2$d</string>
     <string name="pdf_no_pages">Ennek a PDF-nek nincsenek oldalai.</string>
     <string name="pdf_show_pages">Oldalak megjelenítése</string>
     <string name="pdf_hide_pages">Oldalak elrejtése</string>
@@ -4549,25 +4542,12 @@
     <string name="pdf_tab_protect">Védelem</string>
     <string name="pdf_paper_portrait">%1$s álló</string>
     <string name="pdf_paper_landscape">%1$s fekvő</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">hüvelyk</string>
     <string name="pdf_delete_page">Oldal törlése</string>
     <string name="pdf_rotate_left">Forgatás balra</string>
     <string name="pdf_rotate_right">Forgatás jobbra</string>
     <string name="pdf_ruler">Vonalzó</string>
     <string name="pdf_formatting_copied">Formátum másolva: válassz másik szöveget, majd Formátum beillesztése</string>
-    <string name="pdf_middle">Közép</string>
-    <string name="pdf_move_left">Mozgatás balra</string>
-    <string name="pdf_move_right">Mozgatás jobbra</string>
-    <string name="pdf_move_up">Mozgatás fel</string>
-    <string name="pdf_move_down">Mozgatás le</string>
-    <string name="pdf_arrange">Elrendezés</string>
-    <string name="pdf_bring_forward">Előbbre hozás</string>
-    <string name="pdf_send_backward">Hátrébb küldés</string>
-    <string name="pdf_rotate_right_90">Forgatás jobbra 90°-kal</string>
-    <string name="pdf_rotate_left_90">Forgatás balra 90°-kal</string>
-    <string name="pdf_upright">Függőleges</string>
     <string name="pdf_duplicate">Kettőzés</string>
     <string name="pdf_drawing">Rajz</string>
     <string name="pdf_replace_only_typed">Itt csak a Tetrával felvitt szavak cserélhetők. Az oldal saját szavai: Fájl › Szerkesztés a Wordsben.</string>
@@ -4594,12 +4574,9 @@
         <item quantity="one">Eltávolítva %1$d oldalról: a Mentés nélkülük írja újra a fájlt</item>
         <item quantity="other">Eltávolítva %1$d oldalról: a Mentés nélkülük írja újra a fájlt</item>
     </plurals>
-    <string name="pdf_new_signature">Új aláírás</string>
-    <string name="pdf_draw_signature">Aláírás rajzolása</string>
     <string name="pdf_small">Kicsi</string>
     <string name="pdf_normal">Normál</string>
     <string name="pdf_large">Nagy</string>
-    <string name="pdf_pen_colour">Toll színe</string>
     <string name="pdf_recognize_text">Szövegfelismerés</string>
     <string name="pdf_all_have_text">Már minden oldalnak van szövege</string>
     <plurals name="pdf_ocr_done">
@@ -4616,6 +4593,4 @@
     <string name="pdf_no_bookmarks">Ebben a fájlban nincs könyvjelző.</string>
     <string name="pdf_page_lower">%1$d. oldal</string>
     <string name="pdf_quoted">„%1$s”</string>
-    <string name="pdf_leave_it">Maradjon, ahogy volt</string>
-    <string name="pdf_border">Szegély</string>
 </resources>

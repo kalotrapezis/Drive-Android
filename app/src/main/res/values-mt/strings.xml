@@ -4672,7 +4672,6 @@
     <string name="pdf_organize">Organizza</string>
     <string name="pdf_save_changes">Tħażen il-bidliet?</string>
     <string name="pdf_stays_in_versions">Il-fajl kif kien jibqa’ fil-Verżjonijiet.</string>
-    <string name="pdf_note_hint">X’jgħid in-nota</string>
     <string name="pdf_signature_kept">Il-firma nżammet: agħfas fejn tmur</string>
     <string name="pdf_field">Kamp</string>
     <string name="pdf_header_hint">Fuq kull paġna. {n} hu n-numru tal-paġna, {N} kemm hemm.</string>
@@ -4690,7 +4689,6 @@
         <item quantity="other">%1$d immarkat: araw, imbagħad Immaskra l-immarkati</item>
     </plurals>
     <string name="pdf_bookmark_page">Paġna tal-bookmark %1$d</string>
-    <string name="pdf_watermark_words">Kliem fuq kull paġna</string>
     <string name="pdf_password_about">Mitlub biex jinfetaħ il-fajl, f’kull applikazzjoni (AES-256). Tetra ma tistax issibha mill-ġdid jekk tinsa.</string>
     <string name="pdf_password_again">Erġa’</string>
     <string name="pdf_password_on_save">Ħżen iqiegħed il-password fuq il-fajl</string>
@@ -4713,15 +4711,10 @@
     <string name="pdf_meta_producer">Miktub minn: %1$s</string>
     <string name="pdf_versions_about">Il-fajl kif kien qabel ħażna. Agħfas fuq waħda tiġi lura minnufih; il-fajl kif inhu issa jmur f’din il-lista.</string>
     <string name="pdf_version_back">Dik il-verżjoni reġgħet</string>
-    <string name="pdf_editing">Editjar</string>
-    <string name="pdf_view_only">Ara biss</string>
     <string name="pdf_copy_page_text">Ikkopja t-test ta’ din il-paġna</string>
     <string name="pdf_bookmarks">Bookmarks</string>
     <string name="pdf_edit_in_words">Editja fil-Dokumenti</string>
     <string name="pdf_export_text">Esporta t-test</string>
-    <string name="pdf_find_hint">Fittex fil-PDF</string>
-    <string name="pdf_looking">Qed infittex…</string>
-    <string name="pdf_n_of_m">%1$d minn %2$d</string>
     <string name="pdf_no_pages">Dan il-PDF m’għandu l-ebda paġna.</string>
     <string name="pdf_show_pages">Uri l-paġni</string>
     <string name="pdf_hide_pages">Aħbi l-paġni</string>
@@ -4729,25 +4722,12 @@
     <string name="pdf_tab_protect">Ipproteġi</string>
     <string name="pdf_paper_portrait">%1$s vertikali</string>
     <string name="pdf_paper_landscape">%1$s orizzontali</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">pulzieri</string>
     <string name="pdf_delete_page">Ħassar il-paġna</string>
     <string name="pdf_rotate_left">Dawwar lejn ix-xellug</string>
     <string name="pdf_rotate_right">Dawwar lejn il-lemin</string>
     <string name="pdf_ruler">Righelu</string>
     <string name="pdf_formatting_copied">Il-format ġie kkopjat: agħżel test ieħor, imbagħad Ippejsta l-format</string>
-    <string name="pdf_middle">Nofs</string>
-    <string name="pdf_move_left">Mexxi lejn ix-xellug</string>
-    <string name="pdf_move_right">Mexxi lejn il-lemin</string>
-    <string name="pdf_move_up">Mexxi ’l fuq</string>
-    <string name="pdf_move_down">Mexxi ’l isfel</string>
-    <string name="pdf_arrange">Tqassim</string>
-    <string name="pdf_bring_forward">Ipoġġi ’l quddiem</string>
-    <string name="pdf_send_backward">Ibgħat ’l wara</string>
-    <string name="pdf_rotate_right_90">Dawwar lejn il-lemin 90°</string>
-    <string name="pdf_rotate_left_90">Dawwar lejn ix-xellug 90°</string>
-    <string name="pdf_upright">Wieqaf</string>
     <string name="pdf_duplicate">Iduplika</string>
     <string name="pdf_drawing">Tpinġija</string>
     <string name="pdf_replace_only_typed">Hawnhekk jinbidlu biss kliem miżjud b\'Tetra. Il-kliem tal-paġna nnifisha: Fajl › Editja f\'Words.</string>
@@ -4776,12 +4756,9 @@
         <item quantity="many">Ġie mneħħi minn %1$d paġna: Ħżen jikteb il-fajl mill-ġdid mingħajrha</item>
         <item quantity="other">Ġie mneħħi minn %1$d paġna: Ħżen jikteb il-fajl mill-ġdid mingħajrha</item>
     </plurals>
-    <string name="pdf_new_signature">Firma ġdida</string>
-    <string name="pdf_draw_signature">Ipitter il-firma</string>
     <string name="pdf_small">Żgħir</string>
     <string name="pdf_normal">Normali</string>
     <string name="pdf_large">Kbir</string>
-    <string name="pdf_pen_colour">Kulur tal-pinna</string>
     <string name="pdf_recognize_text">Agħraf it-test</string>
     <string name="pdf_all_have_text">Kull paġna diġà għandha t-test tagħha</string>
     <plurals name="pdf_ocr_done">
@@ -4800,6 +4777,4 @@
     <string name="pdf_no_bookmarks">Ebda bookmark f’dan il-fajl.</string>
     <string name="pdf_page_lower">paġna %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
-    <string name="pdf_leave_it">Ħalliha kif kienet</string>
-    <string name="pdf_border">Ħudud</string>
 </resources>

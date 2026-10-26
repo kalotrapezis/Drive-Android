@@ -4496,7 +4496,6 @@
     <string name="pdf_organize">Ordna</string>
     <string name="pdf_save_changes">Spara ändringarna?</string>
     <string name="pdf_stays_in_versions">Filen som den var finns kvar i Versioner.</string>
-    <string name="pdf_note_hint">Vad anteckningen säger</string>
     <string name="pdf_signature_kept">Signaturen sparad: tryck där den ska vara</string>
     <string name="pdf_field">Fält</string>
     <string name="pdf_header_hint">På varje sida. {n} är sidans nummer, {N} hur många det finns.</string>
@@ -4512,7 +4511,6 @@
         <item quantity="other">%1$d markerade: granska dem och sedan Maskera markerade</item>
     </plurals>
     <string name="pdf_bookmark_page">Bokmärk sida %1$d</string>
-    <string name="pdf_watermark_words">Ord över varje sida</string>
     <string name="pdf_password_about">Krävs för att öppna filen, i alla appar (AES-256). Tetra kan inte hitta det igen om det glöms bort.</string>
     <string name="pdf_password_again">Igen</string>
     <string name="pdf_password_on_save">Spara lägger lösenordet på filen</string>
@@ -4533,15 +4531,10 @@
     <string name="pdf_meta_producer">Skriven av: %1$s</string>
     <string name="pdf_versions_about">Filen som den var före en sparning. Ett tryck på en återställer den direkt; filen som den är nu hamnar i listan.</string>
     <string name="pdf_version_back">Den versionen är tillbaka</string>
-    <string name="pdf_editing">Redigering</string>
-    <string name="pdf_view_only">Endast visning</string>
     <string name="pdf_copy_page_text">Kopiera sidans text</string>
     <string name="pdf_bookmarks">Bokmärken</string>
     <string name="pdf_edit_in_words">Redigera i Dokument</string>
     <string name="pdf_export_text">Exportera text</string>
-    <string name="pdf_find_hint">Sök i PDF-filen</string>
-    <string name="pdf_looking">Söker…</string>
-    <string name="pdf_n_of_m">%1$d av %2$d</string>
     <string name="pdf_no_pages">PDF-filen har inga sidor.</string>
     <string name="pdf_show_pages">Visa sidorna</string>
     <string name="pdf_hide_pages">Dölj sidorna</string>
@@ -4549,25 +4542,12 @@
     <string name="pdf_tab_protect">Skydda</string>
     <string name="pdf_paper_portrait">%1$s stående</string>
     <string name="pdf_paper_landscape">%1$s liggande</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">tum</string>
     <string name="pdf_delete_page">Ta bort sida</string>
     <string name="pdf_rotate_left">Rotera åt vänster</string>
     <string name="pdf_rotate_right">Rotera åt höger</string>
     <string name="pdf_ruler">Linjal</string>
     <string name="pdf_formatting_copied">Formatering kopierad: välj en annan text och sedan Klistra in format</string>
-    <string name="pdf_middle">Mitten</string>
-    <string name="pdf_move_left">Flytta åt vänster</string>
-    <string name="pdf_move_right">Flytta åt höger</string>
-    <string name="pdf_move_up">Flytta upp</string>
-    <string name="pdf_move_down">Flytta ned</string>
-    <string name="pdf_arrange">Ordna</string>
-    <string name="pdf_bring_forward">Flytta framåt</string>
-    <string name="pdf_send_backward">Flytta bakåt</string>
-    <string name="pdf_rotate_right_90">Rotera höger 90°</string>
-    <string name="pdf_rotate_left_90">Rotera vänster 90°</string>
-    <string name="pdf_upright">Upprätt</string>
     <string name="pdf_duplicate">Duplicera</string>
     <string name="pdf_drawing">Teckning</string>
     <string name="pdf_replace_only_typed">Här ersätts bara ord som lagts till med Tetra. Sidans egna ord: Arkiv › Redigera i Words.</string>
@@ -4594,12 +4574,9 @@
         <item quantity="one">Borttaget från %1$d sida: Spara skriver om filen utan dem</item>
         <item quantity="other">Borttaget från %1$d sidor: Spara skriver om filen utan dem</item>
     </plurals>
-    <string name="pdf_new_signature">Ny signatur</string>
-    <string name="pdf_draw_signature">Rita signatur</string>
     <string name="pdf_small">Liten</string>
     <string name="pdf_normal">Normal</string>
     <string name="pdf_large">Stor</string>
-    <string name="pdf_pen_colour">Pennfärg</string>
     <string name="pdf_recognize_text">Känn igen text</string>
     <string name="pdf_all_have_text">Alla sidor har redan sin text</string>
     <plurals name="pdf_ocr_done">
@@ -4616,6 +4593,4 @@
     <string name="pdf_no_bookmarks">Inga bokmärken i filen.</string>
     <string name="pdf_page_lower">sida %1$d</string>
     <string name="pdf_quoted">”%1$s”</string>
-    <string name="pdf_leave_it">Lämna som det var</string>
-    <string name="pdf_border">Kantlinje</string>
 </resources>

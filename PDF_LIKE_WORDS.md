@@ -1,5 +1,42 @@
 # PDF like Words: tab by tab, page by page, modal by modal
 
+## State (27 Oct, morning) — built on `claude/pdf-like-words`, not merged, nothing installed on the phone or tablet
+
+The user (26 Oct, night): "Take all the steps one by one keep things logical nice looking and simple … take it on you",
+then "Don't forget to check all the UI states compact with keyboard open phone tablet, and desktop like for big screens".
+The four questions below were decided as recommended: typing stays on the page; Draw is Words' drawing window over
+the page; the view-only bar is Words'; tables later.
+
+Done, one commit a step (`git log claude/pdf-like-words`):
+- **Engine (E1–E3).** Everything Tetra puts on a page is a Words object: a one-picture .docx in the annotation
+  (`TetraWords`), drawn by `OfficePages.pictureOf` (PdfObjects.kt). A PDF text holds Words' paragraphs, laid out by
+  `OfficePages.stack` and typed in Words' editor (PdfText.kt). Words' Home works on it (PdfHome.kt). Every object is
+  chosen, dragged, held for Position, with Words' handles and a tab named by its kind. Other apps' stamps, shapes and
+  drawings are chosen too (moved, sized, deleted).
+- **The screen.** Words' top bar (viewing and editing), Words' Find and Replace (it now finds Tetra's texts and
+  comments too), Words' colours, Words' keyboard bar on a phone, the ribbon at the top for a mouse or desktop (rows on
+  a wide screen), and the page keeps its size while the keyboard is up.
+- **Tabs.** File · Home · Insert · Draw · Design · Layout · Pages · Review · Fill & Sign · Protect · View, each as the
+  tables below say. Design is new (PdfDesign.kt), and so is Pages' Duplicate, Split, Crop and Flatten (PdfPages.kt), and
+  Protect's Remove hidden information.
+- **Saving fixed (on main as well).** A second save in a session, or a second day's, dropped the first one's changes.
+  The fix alone is on `claude/pdf-save-fix` (from main), to merge first.
+- **Shared out of Words**: `PictureSizeDialog`, `PositionDialog` over any page, `newTextBoxImage`, `TextBoxDialog`,
+  `signatureFromPhoto`, `WriterBridge.fromEditorKeeping`, `PAGE_COLORS`, and `OfficeDoc.ligatures`. Words was checked
+  on the emulator: Size, Wrap text, Position.
+- **Checked** on the emulator (`books_tablet`, read-only) at tablet and phone size, keyboard up and down, Compact tools,
+  ribbon at the top. Tests: 665 unit tests; 14 PDF device tests (PdfObjectsDeviceTest new).
+
+Left:
+- On the real pair (tablet 971f6b37, phone 208c8192): every state.
+- Words' "Add text" in a shape; Crop for a picture (Words' CornerEditor); Group and Ungroup; Wrap's "behind the text".
+- Insert › Table and Link; Reading mode (MuPDF's reflow); Spelling in Tetra's texts.
+- WordArt's gallery strip: Insert › WordArt opens Words' WordArt window straight away.
+- The comments pane lists the cards; Words puts each card level with its words.
+- Words' Versions page (versions shown as pages); the PDF keeps the list window.
+- A 1-in-15 Words device test (`WriterLayoutDeviceTest.contentsTab…`) failed before this branch: `EditorTab` gained
+  `widthPx` in 26e61459.
+
 Branch `claude/pdf-like-words`. Plan.md's top item, started 26 Oct with the user. Every piece of Words' interface is listed
 here next to the PDF editor's, and marked:
 - **same**: Words' own code, shared.

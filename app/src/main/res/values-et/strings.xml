@@ -4496,7 +4496,6 @@
     <string name="pdf_organize">Korralda</string>
     <string name="pdf_save_changes">Kas salvestada muudatused?</string>
     <string name="pdf_stays_in_versions">Fail endisel kujul jääb versioonidesse.</string>
-    <string name="pdf_note_hint">Mida märkus ütleb</string>
     <string name="pdf_signature_kept">Allkiri säilitatud: puudutage kohta, kuhu see läheb</string>
     <string name="pdf_field">Väli</string>
     <string name="pdf_header_hint">Igal leheküljel. {n} on lehekülje number, {N} lehekülgede arv.</string>
@@ -4512,7 +4511,6 @@
         <item quantity="other">%1$d märgitud: vaadake need üle, seejärel Varja märgitud</item>
     </plurals>
     <string name="pdf_bookmark_page">Lisa järjehoidja leheküljele %1$d</string>
-    <string name="pdf_watermark_words">Sõnad üle iga lehekülje</string>
     <string name="pdf_password_about">Küsitakse faili avamiseks igas rakenduses (AES-256). Unustamisel ei leia Tetra seda enam üles.</string>
     <string name="pdf_password_again">Uuesti</string>
     <string name="pdf_password_on_save">Salvestamine lisab failile parooli</string>
@@ -4533,15 +4531,10 @@
     <string name="pdf_meta_producer">Kirjutanud: %1$s</string>
     <string name="pdf_versions_about">Fail sellisena, nagu see oli enne salvestamist. Puudutus taastab selle kohe; praegune fail läheb sellesse loendisse.</string>
     <string name="pdf_version_back">See versioon on tagasi</string>
-    <string name="pdf_editing">Redigeerimine</string>
-    <string name="pdf_view_only">Ainult vaatamine</string>
     <string name="pdf_copy_page_text">Kopeeri selle lehekülje tekst</string>
     <string name="pdf_bookmarks">Järjehoidjad</string>
     <string name="pdf_edit_in_words">Redigeeri Dokumentides</string>
     <string name="pdf_export_text">Ekspordi tekst</string>
-    <string name="pdf_find_hint">Otsi PDF-ist</string>
-    <string name="pdf_looking">Otsimine…</string>
-    <string name="pdf_n_of_m">%1$d/%2$d</string>
     <string name="pdf_no_pages">Selles PDF-is pole lehekülgi.</string>
     <string name="pdf_show_pages">Näita lehekülgi</string>
     <string name="pdf_hide_pages">Peida leheküljed</string>
@@ -4549,25 +4542,12 @@
     <string name="pdf_tab_protect">Kaitse</string>
     <string name="pdf_paper_portrait">%1$s püst</string>
     <string name="pdf_paper_landscape">%1$s rõht</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">tolli</string>
     <string name="pdf_delete_page">Kustuta lehekülg</string>
     <string name="pdf_rotate_left">Pööra vasakule</string>
     <string name="pdf_rotate_right">Pööra paremale</string>
     <string name="pdf_ruler">Joonlaud</string>
     <string name="pdf_formatting_copied">Vorming kopeeritud: valige muu tekst, seejärel Kleebi vorming</string>
-    <string name="pdf_middle">Keskel</string>
-    <string name="pdf_move_left">Teisalda vasakule</string>
-    <string name="pdf_move_right">Teisalda paremale</string>
-    <string name="pdf_move_up">Teisalda üles</string>
-    <string name="pdf_move_down">Teisalda alla</string>
-    <string name="pdf_arrange">Korralda</string>
-    <string name="pdf_bring_forward">Too ettepoole</string>
-    <string name="pdf_send_backward">Vii tahapoole</string>
-    <string name="pdf_rotate_right_90">Pööra paremale 90°</string>
-    <string name="pdf_rotate_left_90">Pööra vasakule 90°</string>
-    <string name="pdf_upright">Püsti</string>
     <string name="pdf_duplicate">Dubleeri</string>
     <string name="pdf_drawing">Joonis</string>
     <string name="pdf_replace_only_typed">Siin asendatakse ainult Tetraga lisatud sõnu. Lehe enda sõnad: Fail › Muuda Wordsis.</string>
@@ -4594,12 +4574,9 @@
         <item quantity="one">Eemaldatud %1$d leheküljelt: salvestamine kirjutab faili uuesti ilma nendeta</item>
         <item quantity="other">Eemaldatud %1$d leheküljelt: salvestamine kirjutab faili uuesti ilma nendeta</item>
     </plurals>
-    <string name="pdf_new_signature">Uus allkiri</string>
-    <string name="pdf_draw_signature">Joonista allkiri</string>
     <string name="pdf_small">Väike</string>
     <string name="pdf_normal">Tavaline</string>
     <string name="pdf_large">Suur</string>
-    <string name="pdf_pen_colour">Pliiatsi värv</string>
     <string name="pdf_recognize_text">Tuvasta tekst</string>
     <string name="pdf_all_have_text">Igal leheküljel on juba tekst</string>
     <plurals name="pdf_ocr_done">
@@ -4616,6 +4593,4 @@
     <string name="pdf_no_bookmarks">Selles failis pole järjehoidjaid.</string>
     <string name="pdf_page_lower">lehekülg %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
-    <string name="pdf_leave_it">Jäta endiseks</string>
-    <string name="pdf_border">Ääris</string>
 </resources>

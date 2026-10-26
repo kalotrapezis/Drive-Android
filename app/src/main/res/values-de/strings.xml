@@ -4496,7 +4496,6 @@
     <string name="pdf_organize">Organisieren</string>
     <string name="pdf_save_changes">Änderungen speichern?</string>
     <string name="pdf_stays_in_versions">Die Datei, wie sie war, bleibt in Versionen.</string>
-    <string name="pdf_note_hint">Was die Notiz sagt</string>
     <string name="pdf_signature_kept">Unterschrift gespeichert: tippe, wo sie hin soll</string>
     <string name="pdf_field">Feld</string>
     <string name="pdf_header_hint">Auf jeder Seite. {n} ist die Seitenzahl, {N} wie viele es gibt.</string>
@@ -4512,7 +4511,6 @@
         <item quantity="other">%1$d markiert: sieh sie durch, dann Markierte schwärzen</item>
     </plurals>
     <string name="pdf_bookmark_page">Lesezeichen für Seite %1$d</string>
-    <string name="pdf_watermark_words">Text quer über jede Seite</string>
     <string name="pdf_password_about">Wird zum Öffnen der Datei verlangt, in jeder App (AES-256). Tetra kann es nicht wiederfinden, wenn es vergessen wird.</string>
     <string name="pdf_password_again">Wiederholen</string>
     <string name="pdf_password_on_save">Speichern versieht die Datei mit dem Kennwort</string>
@@ -4533,15 +4531,10 @@
     <string name="pdf_meta_producer">Geschrieben von: %1$s</string>
     <string name="pdf_versions_about">Die Datei, wie sie vor einem Speichern war. Antippen stellt sie sofort wieder her; die Datei, wie sie jetzt ist, kommt in diese Liste.</string>
     <string name="pdf_version_back">Diese Version ist wiederhergestellt</string>
-    <string name="pdf_editing">Bearbeiten</string>
-    <string name="pdf_view_only">Nur ansehen</string>
     <string name="pdf_copy_page_text">Text dieser Seite kopieren</string>
     <string name="pdf_bookmarks">Lesezeichen</string>
     <string name="pdf_edit_in_words">In Dokumente bearbeiten</string>
     <string name="pdf_export_text">Text exportieren</string>
-    <string name="pdf_find_hint">Im PDF suchen</string>
-    <string name="pdf_looking">Suche…</string>
-    <string name="pdf_n_of_m">%1$d von %2$d</string>
     <string name="pdf_no_pages">Dieses PDF hat keine Seiten.</string>
     <string name="pdf_show_pages">Seiten anzeigen</string>
     <string name="pdf_hide_pages">Seiten ausblenden</string>
@@ -4549,25 +4542,12 @@
     <string name="pdf_tab_protect">Schützen</string>
     <string name="pdf_paper_portrait">%1$s hoch</string>
     <string name="pdf_paper_landscape">%1$s quer</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">Zoll</string>
     <string name="pdf_delete_page">Seite löschen</string>
     <string name="pdf_rotate_left">Nach links drehen</string>
     <string name="pdf_rotate_right">Nach rechts drehen</string>
     <string name="pdf_ruler">Lineal</string>
     <string name="pdf_formatting_copied">Format kopiert: wähle einen anderen Text, dann Format einfügen</string>
-    <string name="pdf_middle">Mitte</string>
-    <string name="pdf_move_left">Nach links</string>
-    <string name="pdf_move_right">Nach rechts</string>
-    <string name="pdf_move_up">Nach oben</string>
-    <string name="pdf_move_down">Nach unten</string>
-    <string name="pdf_arrange">Anordnen</string>
-    <string name="pdf_bring_forward">Eine Ebene nach vorne</string>
-    <string name="pdf_send_backward">Eine Ebene nach hinten</string>
-    <string name="pdf_rotate_right_90">90° nach rechts drehen</string>
-    <string name="pdf_rotate_left_90">90° nach links drehen</string>
-    <string name="pdf_upright">Aufrecht</string>
     <string name="pdf_duplicate">Duplizieren</string>
     <string name="pdf_drawing">Zeichnung</string>
     <string name="pdf_replace_only_typed">Hier werden nur mit Tetra eingefügte Wörter ersetzt. Die Wörter der Seite selbst: Datei › In Words bearbeiten.</string>
@@ -4594,12 +4574,9 @@
         <item quantity="one">Aus %1$d Seite entfernt: Speichern schreibt die Datei ohne sie neu</item>
         <item quantity="other">Aus %1$d Seiten entfernt: Speichern schreibt die Datei ohne sie neu</item>
     </plurals>
-    <string name="pdf_new_signature">Neue Unterschrift</string>
-    <string name="pdf_draw_signature">Unterschrift zeichnen</string>
     <string name="pdf_small">Klein</string>
     <string name="pdf_normal">Normal</string>
     <string name="pdf_large">Groß</string>
-    <string name="pdf_pen_colour">Stiftfarbe</string>
     <string name="pdf_recognize_text">Text erkennen</string>
     <string name="pdf_all_have_text">Jede Seite hat schon ihren Text</string>
     <plurals name="pdf_ocr_done">
@@ -4616,6 +4593,4 @@
     <string name="pdf_no_bookmarks">Keine Lesezeichen in dieser Datei.</string>
     <string name="pdf_page_lower">Seite %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
-    <string name="pdf_leave_it">So lassen, wie es war</string>
-    <string name="pdf_border">Rahmen</string>
 </resources>

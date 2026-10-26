@@ -335,24 +335,6 @@ internal fun Modifier.pdfObjectGestures(page: androidx.compose.ui.geometry.Size,
     }
 }
 
-/**
- * An arrow that nudges the chosen text (the user, 25 Oct): a tap a point that way, held it goes on, faster the longer;
- * [step] where it has got to (shown, not put on), [done] when the finger lifts (one step of Undo).
- */
-@Composable
-internal fun NudgeTool(icon: Int, turn: Float, label: String, w: Color, step: (Float) -> Unit, done: () -> Unit) =
-    androidx.compose.foundation.layout.Box(Modifier.size(44.dp).pointerInput(Unit) {
-        coroutineScope {
-            detectTapGestures(onPress = {
-                step(1f)
-                val held = launch { kotlinx.coroutines.delay(400); var n = 0; while (true) { step(if (n < 10) 1f else if (n < 30) 3f else 6f); n++; kotlinx.coroutines.delay(70) } }
-                tryAwaitRelease(); held.cancel(); done()
-            })
-        }
-    }, contentAlignment = androidx.compose.ui.Alignment.Center) {
-        androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(icon), label, tint = w, modifier = Modifier.size(22.dp).then(Modifier.graphicsLayer { rotationZ = turn }))
-    }
-
 /** Layout › Size's papers (points), as Word's and Tables' Size. */
 internal object PdfPaper {
     val all = listOf("A4" to Size(595f, 842f), "A5" to Size(420f, 595f), "A3" to Size(842f, 1191f), "Letter" to Size(612f, 792f), "Legal" to Size(612f, 1008f))
@@ -370,8 +352,6 @@ internal object PdfPaper {
 internal object PdfMargins {
     /** name → top/bottom, left/right (points) */
     val all = listOf("Normal" to (72f to 72f), "Narrow" to (36f to 36f), "Moderate" to (72f to 54f), "Wide" to (72f to 144f))
-    /** Their words (the names above are what is kept in the settings). */
-    val labels = mapOf("Normal" to R.string.pdf_normal, "Narrow" to R.string.words_margins_narrow, "Moderate" to R.string.words_margins_moderate, "Wide" to R.string.words_margins_wide)
     fun page(name: String) = (all.firstOrNull { it.first == name } ?: all[0]).second.let { (tb, lr) -> DocPage(top = tb, bottom = tb, left = lr, right = lr) }
     fun nameOf(m: DocPage) = all.firstOrNull { (_, v) -> v.first == m.top && v.second == m.left }?.first
     /** Kept as a preset's name, or as Page Setup's own numbers (top, bottom, left, right). */

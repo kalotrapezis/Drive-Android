@@ -4584,7 +4584,6 @@
     <string name="pdf_organize">Kārtot</string>
     <string name="pdf_save_changes">Vai saglabāt izmaiņas?</string>
     <string name="pdf_stays_in_versions">Fails, kāds tas bija, paliek Versijās.</string>
-    <string name="pdf_note_hint">Ko saka piezīme</string>
     <string name="pdf_signature_kept">Paraksts saglabāts: pieskarieties vietai, kur to likt</string>
     <string name="pdf_field">Lauks</string>
     <string name="pdf_header_hint">Katrā lappusē. {n} ir lappuses numurs, {N} — cik to ir.</string>
@@ -4601,7 +4600,6 @@
         <item quantity="other">Atzīmēti: %1$d — pārskatiet tos, tad Aizklāt atzīmēto</item>
     </plurals>
     <string name="pdf_bookmark_page">Grāmatzīme %1$d. lappusei</string>
-    <string name="pdf_watermark_words">Vārdi pāri katrai lappusei</string>
     <string name="pdf_password_about">Tiek prasīta faila atvēršanai jebkurā lietotnē (AES-256). Ja tā tiek aizmirsta, Tetra to nevar atrast.</string>
     <string name="pdf_password_again">Vēlreiz</string>
     <string name="pdf_password_on_save">Saglabāšana uzliek failam paroli</string>
@@ -4623,15 +4621,10 @@
     <string name="pdf_meta_producer">Ierakstīja: %1$s</string>
     <string name="pdf_versions_about">Fails, kāds tas bija pirms saglabāšanas. Pieskaroties kādai, tā uzreiz tiek atjaunota; pašreizējais fails nonāk šajā sarakstā.</string>
     <string name="pdf_version_back">Šī versija ir atjaunota</string>
-    <string name="pdf_editing">Rediģēšana</string>
-    <string name="pdf_view_only">Tikai skatīšanai</string>
     <string name="pdf_copy_page_text">Kopēt šīs lappuses tekstu</string>
     <string name="pdf_bookmarks">Grāmatzīmes</string>
     <string name="pdf_edit_in_words">Rediģēt Dokumentos</string>
     <string name="pdf_export_text">Eksportēt tekstu</string>
-    <string name="pdf_find_hint">Atrast PDF failā</string>
-    <string name="pdf_looking">Meklē…</string>
-    <string name="pdf_n_of_m">%1$d no %2$d</string>
     <string name="pdf_no_pages">Šim PDF nav lappušu.</string>
     <string name="pdf_show_pages">Rādīt lappuses</string>
     <string name="pdf_hide_pages">Paslēpt lappuses</string>
@@ -4639,25 +4632,12 @@
     <string name="pdf_tab_protect">Aizsargāt</string>
     <string name="pdf_paper_portrait">%1$s portrets</string>
     <string name="pdf_paper_landscape">%1$s ainava</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">in</string>
     <string name="pdf_delete_page">Dzēst lappusi</string>
     <string name="pdf_rotate_left">Pagriezt pa kreisi</string>
     <string name="pdf_rotate_right">Pagriezt pa labi</string>
     <string name="pdf_ruler">Lineāls</string>
     <string name="pdf_formatting_copied">Formatējums nokopēts: atlasiet citu tekstu, tad Ielīmēt formatējumu</string>
-    <string name="pdf_middle">Vidū</string>
-    <string name="pdf_move_left">Pārvietot pa kreisi</string>
-    <string name="pdf_move_right">Pārvietot pa labi</string>
-    <string name="pdf_move_up">Pārvietot uz augšu</string>
-    <string name="pdf_move_down">Pārvietot uz leju</string>
-    <string name="pdf_arrange">Kārtot</string>
-    <string name="pdf_bring_forward">Uz priekšu</string>
-    <string name="pdf_send_backward">Atpakaļ</string>
-    <string name="pdf_rotate_right_90">Pagriezt pa labi par 90°</string>
-    <string name="pdf_rotate_left_90">Pagriezt pa kreisi par 90°</string>
-    <string name="pdf_upright">Taisni</string>
     <string name="pdf_duplicate">Dublēt</string>
     <string name="pdf_drawing">Zīmējums</string>
     <string name="pdf_replace_only_typed">Šeit aizstāj tikai ar Tetra pievienotus vārdus. Pašas lapas vārdi: Fails › Rediģēt programmā Words.</string>
@@ -4685,12 +4665,9 @@
         <item quantity="one">Izņemts no %1$d lappuses: saglabāšana pārraksta failu bez tiem</item>
         <item quantity="other">Izņemts no %1$d lappusēm: saglabāšana pārraksta failu bez tiem</item>
     </plurals>
-    <string name="pdf_new_signature">Jauns paraksts</string>
-    <string name="pdf_draw_signature">Uzzīmēt parakstu</string>
     <string name="pdf_small">Mazs</string>
     <string name="pdf_normal">Parasts</string>
     <string name="pdf_large">Liels</string>
-    <string name="pdf_pen_colour">Pildspalvas krāsa</string>
     <string name="pdf_recognize_text">Atpazīt tekstu</string>
     <string name="pdf_all_have_text">Katrā lappusē jau ir teksts</string>
     <plurals name="pdf_ocr_done">
@@ -4708,6 +4685,4 @@
     <string name="pdf_no_bookmarks">Šajā failā nav grāmatzīmju.</string>
     <string name="pdf_page_lower">%1$d. lappuse</string>
     <string name="pdf_quoted">„%1$s“</string>
-    <string name="pdf_leave_it">Atstāt, kā bija</string>
-    <string name="pdf_border">Apmale</string>
 </resources>

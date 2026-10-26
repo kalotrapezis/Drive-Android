@@ -4584,7 +4584,6 @@
     <string name="pdf_organize">Organizare</string>
     <string name="pdf_save_changes">Salvezi modificările?</string>
     <string name="pdf_stays_in_versions">Fișierul cum era rămâne în Versiuni.</string>
-    <string name="pdf_note_hint">Ce spune nota</string>
     <string name="pdf_signature_kept">Semnătură păstrată: atinge unde merge</string>
     <string name="pdf_field">Câmp</string>
     <string name="pdf_header_hint">Pe fiecare pagină. {n} este numărul paginii, {N} câte sunt.</string>
@@ -4601,7 +4600,6 @@
         <item quantity="other">%1$d de marcate: verifică-le, apoi Redactează marcajele</item>
     </plurals>
     <string name="pdf_bookmark_page">Marcaj la pagina %1$d</string>
-    <string name="pdf_watermark_words">Cuvinte pe fiecare pagină</string>
     <string name="pdf_password_about">Cerută la deschiderea fișierului, în orice aplicație (AES-256). Tetra nu o poate recupera dacă este uitată.</string>
     <string name="pdf_password_again">Din nou</string>
     <string name="pdf_password_on_save">Salvarea pune parola pe fișier</string>
@@ -4623,15 +4621,10 @@
     <string name="pdf_meta_producer">Scris de: %1$s</string>
     <string name="pdf_versions_about">Fișierul cum era înainte de o salvare. Atingerea uneia o readuce imediat; fișierul actual intră în această listă.</string>
     <string name="pdf_version_back">Versiunea a revenit</string>
-    <string name="pdf_editing">Editare</string>
-    <string name="pdf_view_only">Doar vizualizare</string>
     <string name="pdf_copy_page_text">Copiază textul acestei pagini</string>
     <string name="pdf_bookmarks">Marcaje</string>
     <string name="pdf_edit_in_words">Editează în Documente</string>
     <string name="pdf_export_text">Exportă textul</string>
-    <string name="pdf_find_hint">Caută în PDF</string>
-    <string name="pdf_looking">Se caută…</string>
-    <string name="pdf_n_of_m">%1$d din %2$d</string>
     <string name="pdf_no_pages">Acest PDF nu are pagini.</string>
     <string name="pdf_show_pages">Afișează paginile</string>
     <string name="pdf_hide_pages">Ascunde paginile</string>
@@ -4639,25 +4632,12 @@
     <string name="pdf_tab_protect">Protejare</string>
     <string name="pdf_paper_portrait">%1$s portret</string>
     <string name="pdf_paper_landscape">%1$s vedere</string>
-    <string name="pdf_paper_size">%1$s · %2$s × %3$s %4$s</string>
-    <string name="pdf_margin_size">%1$s · %2$s / %3$s %4$s</string>
     <string name="pdf_unit_in">in</string>
     <string name="pdf_delete_page">Șterge pagina</string>
     <string name="pdf_rotate_left">Rotește la stânga</string>
     <string name="pdf_rotate_right">Rotește la dreapta</string>
     <string name="pdf_ruler">Riglă</string>
     <string name="pdf_formatting_copied">Formatare copiată: alege alt text, apoi Lipire formatare</string>
-    <string name="pdf_middle">Mijloc</string>
-    <string name="pdf_move_left">Mută la stânga</string>
-    <string name="pdf_move_right">Mută la dreapta</string>
-    <string name="pdf_move_up">Mută în sus</string>
-    <string name="pdf_move_down">Mută în jos</string>
-    <string name="pdf_arrange">Aranjare</string>
-    <string name="pdf_bring_forward">Aducere în față</string>
-    <string name="pdf_send_backward">Trimitere în spate</string>
-    <string name="pdf_rotate_right_90">Rotire la dreapta 90°</string>
-    <string name="pdf_rotate_left_90">Rotire la stânga 90°</string>
-    <string name="pdf_upright">Drept</string>
     <string name="pdf_duplicate">Dublare</string>
     <string name="pdf_drawing">Desen</string>
     <string name="pdf_replace_only_typed">Aici se înlocuiesc doar cuvintele puse cu Tetra. Cuvintele proprii ale paginii: Fișier › Editare în Words.</string>
@@ -4685,12 +4665,9 @@
         <item quantity="few">Eliminat din %1$d pagini: Salvarea rescrie fișierul fără ele</item>
         <item quantity="other">Eliminat din %1$d de pagini: Salvarea rescrie fișierul fără ele</item>
     </plurals>
-    <string name="pdf_new_signature">Semnătură nouă</string>
-    <string name="pdf_draw_signature">Desenează semnătura</string>
     <string name="pdf_small">Mic</string>
     <string name="pdf_normal">Normal</string>
     <string name="pdf_large">Mare</string>
-    <string name="pdf_pen_colour">Culoarea stiloului</string>
     <string name="pdf_recognize_text">Recunoaște textul</string>
     <string name="pdf_all_have_text">Fiecare pagină are deja textul</string>
     <plurals name="pdf_ocr_done">
@@ -4708,6 +4685,4 @@
     <string name="pdf_no_bookmarks">Niciun marcaj în acest fișier.</string>
     <string name="pdf_page_lower">pagina %1$d</string>
     <string name="pdf_quoted">„%1$s”</string>
-    <string name="pdf_leave_it">Las-o cum era</string>
-    <string name="pdf_border">Bordură</string>
 </resources>

@@ -868,6 +868,8 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         rewrite = if (password == null) "garbage=compact,compress,decrypt" else "garbage=compact,compress,encrypt=aes-256,user-password=${password.replace(",", "")},owner-password=${password.replace(",", "")}"
     }
     val rewriting get() = rewrite != null
+    /** The next save writes the file whole (what was taken out does not stay in its older parts). */
+    internal fun rewriteWhole() { rewrite = rewrite ?: "garbage=compact,compress" }
 
     // —— forms (their own fields: fill in, tick, choose) ——
 
@@ -1459,6 +1461,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         runCatching { signatureFromPhoto(context, uri, signatureFile) }.onSuccess { tool = PdfTool.Sign; Toast.makeText(context, R.string.pdf_signature_kept, Toast.LENGTH_LONG).show() }
             .onFailure { Toast.makeText(context, R.string.words_picture_not_used, Toast.LENGTH_SHORT).show() }
     }
+    /** Pages › Split: [every] page a file, or in two before the page shown; the parts beside the file (it stays as it is). */
+    fun splitFile(every: Boolean) { val d = doc ?: return; val f = file ?: return; val page = at
+        scope.launch { withContext(Dispatchers.IO) { runCatching { d.split(f, every, page) } }
+            .onSuccess { Toast.makeText(context, R.string.pdf_split_done, Toast.LENGTH_LONG).show(); WriterLog.i("PDF: split into ${it.size}") }
+            .onFailure { WriterLog.e("PDF: split", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_extract_failed), Toast.LENGTH_LONG).show() } } }
     /** A new Words object (Insert's: a shape, WordArt, chart, equation, drawing) on the page shown, its middle at [mid] or the page's; chosen after, as Words'. */
     fun putNew(img: DocImage, page: Int = at, mid: Offset? = null) {
         val d = doc ?: return; val s = d.sizes.getOrNull(page) ?: return
@@ -2166,6 +2173,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             var n = 0; change { n = d.applyRedactions() }
                             Toast.makeText(context, if (n == 0) context.getString(R.string.pdf_mark_first) else context.resources.getQuantityString(R.plurals.pdf_redacted_pages, n, n), Toast.LENGTH_LONG).show()
                         }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.pdf_remove_hidden), w, R.drawable.ic_visibility_off) { d.removeHidden(); version++; Toast.makeText(context, R.string.pdf_hidden_removed, Toast.LENGTH_LONG).show() }
                         return@RibbonLine
                     }
                     if (tab == "Fill & Sign") {
@@ -2173,8 +2182,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         RibbonDivider(w)
                         ToolButton(PdfTool.TextField); ToolButton(PdfTool.CheckBox)
                         RibbonDivider(w)
-                        ToolButton(PdfTool.Sign)
-                        RibbonButton(stringResource(if (signatureFile.isFile) R.string.pdf_new_signature else R.string.pdf_draw_signature), w, R.drawable.ic_edit) { signing = true }
+                        // Words' Signature: put yours where tapped, draw a new one, or one from a photo of it on paper
+                        RibbonMenu(stringResource(R.string.words_signature), w, R.drawable.ic_draw, on = tool == PdfTool.Sign, preset = false, choices = listOf(
+                            MenuChoice(stringResource(if (signatureFile.isFile) R.string.words_put_my_signature else R.string.words_draw_my_signature), icon = R.drawable.ic_draw) { if (!signatureFile.isFile) signing = true else tool = PdfTool.Sign },
+                            MenuChoice(stringResource(R.string.words_draw_new_one), icon = R.drawable.ic_edit, opens = true) { signing = true },
+                            MenuChoice(stringResource(R.string.words_from_picture_of_it), icon = R.drawable.ic_gallery, opens = true) { pickSignaturePhoto.launch(arrayOf("image/*")) }))
                         RibbonDivider(w)
                         listOf(9f to R.string.pdf_small, 11f to R.string.pdf_normal, 14f to R.string.pdf_large).forEach { (pt, label) -> RibbonButton(stringResource(label), w, on = fillSize == pt) { fillSize = pt } }
                         RibbonDivider(w)
@@ -2207,6 +2219,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     RibbonButton(stringResource(R.string.pdf_delete_page), w, R.drawable.ic_delete, enabled = d.sizes.size > 1) { change { d.delete(listOf(page)) } }
                     RibbonDivider(w)
                     RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
+                    RibbonButton(stringResource(R.string.pdf_duplicate_page), w, R.drawable.ic_add_to_collection) { change { d.duplicatePage(page) }; scope.launch { delay(100); goTo(page + 1) } }
+                    RibbonDivider(w)
                     RibbonButton(stringResource(R.string.pdf_insert_pdf), w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
                     RibbonButton(stringResource(R.string.pdf_bookmarks), w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
                     RibbonButton(stringResource(R.string.pdf_recognize_text), w, R.drawable.ic_text_fields) {
@@ -2239,6 +2253,14 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 .onFailure { WriterLog.e("PDF: extract", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_extract_failed), Toast.LENGTH_LONG).show() }
                         }
                     }
+                    RibbonMenu(stringResource(R.string.pdf_split), w, R.drawable.ic_view_column, preset = false, choices = listOf(
+                        MenuChoice(stringResource(R.string.pdf_split_every)) { splitFile(true) },
+                        MenuChoice(stringResource(R.string.pdf_split_here), enabled = page > 0) { splitFile(false) }))
+                    RibbonMenu(stringResource(R.string.pdf_crop_margins), w, R.drawable.ic_crop, preset = false, choices = listOf(
+                        MenuChoice(stringResource(R.string.pdf_this_page)) { var n = 0; change { n = d.cropToContent(listOf(page)) }; if (n == 0) Toast.makeText(context, R.string.pdf_nothing_to_crop, Toast.LENGTH_SHORT).show() },
+                        MenuChoice(stringResource(R.string.pdf_every_page)) { var n = 0; change { n = d.cropToContent(d.sizes.indices.toList()) }; if (n == 0) Toast.makeText(context, R.string.pdf_nothing_to_crop, Toast.LENGTH_SHORT).show() }))
+                    RibbonDivider(w)
+                    RibbonButton(stringResource(R.string.pdf_flatten), w, R.drawable.ic_layers) { change { d.flatten() }; Toast.makeText(context, R.string.pdf_flattened, Toast.LENGTH_LONG).show() }
                 } }
             } }
         }

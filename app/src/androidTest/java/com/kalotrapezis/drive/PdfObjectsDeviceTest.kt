@@ -168,4 +168,30 @@ class PdfObjectsDeviceTest {
         assertEquals(listOf("first", "second"), copy.comments().map { it.words })
         copy.close(); dir.deleteRecursively()
     }
+
+    @Test fun pagesDuplicatedSplitCroppedFlattened() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-objects-pages").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        d.ink(0, listOf(listOf(Offset(100f, 100f), Offset(200f, 150f))), 0x000000, 2f)
+        d.duplicatePage(0)
+        assertEquals(2, d.sizes.size)
+        d.insertBlank(2)
+        d.save()
+        // split in two before page 3: pages 1–2 and page 3
+        val parts = d.split(f, every = false, at = 2)
+        assertEquals(listOf(2, 1), parts.map { p -> PdfDoc(p).let { x -> x.sizes.size.also { x.close() } } })
+        assertEquals(3, d.split(f, every = true, at = 0).size)
+        // cropped to the stroke and a little round it; the blank page has nothing to crop to
+        assertEquals(1, d.cropToContent(listOf(0, 2)))
+        assertTrue(d.sizes[0].width < 130f && d.sizes[0].height < 90f)
+        // flattened: the stroke is the page's own, no comment any more
+        d.flatten()
+        assertEquals(0, d.objects(1).size)
+        d.removeHidden(); d.save(); d.close()
+        val again = PdfDoc(f)
+        assertEquals(3, again.sizes.size)
+        assertEquals(null, again.info(com.artifex.mupdf.fitz.Document.META_INFO_CREATOR))
+        again.close(); dir.deleteRecursively()
+    }
 }

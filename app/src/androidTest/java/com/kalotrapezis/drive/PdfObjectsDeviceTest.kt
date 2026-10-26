@@ -77,4 +77,15 @@ class PdfObjectsDeviceTest {
         assertTrue(d.objects(0).single().rect.width() > moved.rect.width() * 1.8f)
         d.close(); dir.deleteRecursively()
     }
+
+    @Test fun findReadsTetrasTexts() {
+        val target = InstrumentationRegistry.getInstrumentation().targetContext
+        OfficeFonts.assets = target.assets
+        val dir = java.io.File(target.cacheDir, "pdf-objects-find").apply { deleteRecursively() }
+        val d = PdfDoc(Pdf.newBlank(dir))
+        d.putText(0, 100f, 100f, PdfText("Find the needle here", PdfTextLook(), true), 300f, 40f)
+        val found = kotlinx.coroutines.runBlocking { d.find("needle") }
+        assertEquals(1, found.size)
+        d.close(); dir.deleteRecursively()
+    }
 }

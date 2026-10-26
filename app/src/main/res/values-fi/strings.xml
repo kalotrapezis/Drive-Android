@@ -4570,6 +4570,7 @@
     <string name="pdf_upright">Pystyyn</string>
     <string name="pdf_duplicate">Monista</string>
     <string name="pdf_drawing">Piirros</string>
+    <string name="pdf_replace_only_typed">Tässä korvataan vain Tetralla lisätyt sanat. Sivun omat sanat: Tiedosto › Muokkaa Wordsissa.</string>
     <string name="pdf_picture_more">Kuva…</string>
     <string name="pdf_insert_pdf">Lisää PDF</string>
     <string name="pdf_remove_password">Poista salasana</string>

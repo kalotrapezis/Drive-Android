@@ -4660,6 +4660,7 @@
     <string name="pdf_upright">Uspravno</string>
     <string name="pdf_duplicate">Dupliciraj</string>
     <string name="pdf_drawing">Crtež</string>
+    <string name="pdf_replace_only_typed">Ovdje se zamjenjuju samo riječi dodane Tetrom. Vlastite riječi stranice: Datoteka › Uredi u Wordsu.</string>
     <string name="pdf_picture_more">Slika…</string>
     <string name="pdf_insert_pdf">Umetni PDF</string>
     <string name="pdf_remove_password">Ukloni lozinku</string>

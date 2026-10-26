@@ -4750,6 +4750,7 @@
     <string name="pdf_upright">Svisle</string>
     <string name="pdf_duplicate">Duplikovat</string>
     <string name="pdf_drawing">Kresba</string>
+    <string name="pdf_replace_only_typed">Zde se nahrazují jen slova přidaná v Tetře. Vlastní slova stránky: Soubor › Upravit ve Words.</string>
     <string name="pdf_picture_more">Obrázek…</string>
     <string name="pdf_insert_pdf">Vložit PDF</string>
     <string name="pdf_remove_password">Odebrat heslo</string>

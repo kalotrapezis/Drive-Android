@@ -4570,6 +4570,7 @@
     <string name="pdf_upright">Aufrecht</string>
     <string name="pdf_duplicate">Duplizieren</string>
     <string name="pdf_drawing">Zeichnung</string>
+    <string name="pdf_replace_only_typed">Hier werden nur mit Tetra eingefügte Wörter ersetzt. Die Wörter der Seite selbst: Datei › In Words bearbeiten.</string>
     <string name="pdf_picture_more">Bild…</string>
     <string name="pdf_insert_pdf">PDF einfügen</string>
     <string name="pdf_remove_password">Kennwort entfernen</string>

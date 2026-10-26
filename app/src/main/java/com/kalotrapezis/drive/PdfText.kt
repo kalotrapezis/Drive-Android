@@ -95,7 +95,23 @@ internal data class PdfText(val doc: OfficeDoc, val look: PdfTextLook, val frame
         .put("framed", framed).put("fill", look.fill ?: -1).put("line", look.line ?: -1).put("turn", look.turn)
         .apply { laid?.let { (w, h) -> put("laidW", w.toDouble()).put("laidH", h.toDouble()) } }.toString()
 
-    /** Inside its frame, in points: a text box's words off its frame, a text's hugging them. */
+    /**
+     * [query] (any case) in its words with [with] in its place — the first one, or [all] — each taking the look of the
+     * letters it took the place of (Words' Replace keeps the look); how many.
+     */
+    fun replaced(query: String, with: String, all: Boolean): Pair<PdfText, Int> {
+        if (query.isEmpty()) return this to 0
+        var n = 0
+        val paras = doc.paras.map { p ->
+            if (n > 0 && !all) return@map p
+            var runs = p.runs
+            val found = Regex(Regex.escape(query), RegexOption.IGNORE_CASE).findAll(p.text).map { it.range }.toList().let { if (all) it else it.take(1) }
+            found.asReversed().forEach { m -> runs = replacedRuns(runs, m.first, m.last + 1, with) }
+            n += found.size
+            p.copy(runs = runs)
+        }
+        return with(paras) to n
+    }
     val pad get() = if (framed) 4f else 1f
     /** Turned at all: it keeps the width it was laid out in (the page's edge means nothing to it). */
     val turned get() = look.turn != 0
@@ -365,3 +381,17 @@ internal object PdfMargins {
 /** [paras] in [look]'s font (a text's one font, as a Slides box's), its colour on words with none of their own. */
 internal fun fonted(paras: List<DocPara>, look: PdfTextLook): List<DocPara> = paras.map { p -> p.copy(runs = p.runs.map { r ->
     if (r.image != null) r else OfficeFormats.withFont(r, OfficeKind.Docx, look.font).let { if (it.color == null && look.color != 0) it.copy(color = look.color) else it } }) }
+
+/** [runs] with their letters [a] to [b] made [with], in the look of the run [a] was in. */
+internal fun replacedRuns(runs: List<DocRun>, a: Int, b: Int, with: String): List<DocRun> {
+    val out = ArrayList<DocRun>(); var at = 0; var put = false
+    for (r in runs) {
+        val s = at; val e = at + r.text.length; at = e
+        if (e <= a || s >= b) { if (!put && s >= b) { out += (out.lastOrNull() ?: r).copy(text = with); put = true }; out += r; continue }
+        if (s < a) out += r.copy(text = r.text.substring(0, a - s))
+        if (!put) { out += r.copy(text = with); put = true }
+        if (e > b) out += r.copy(text = r.text.substring(b - s))
+    }
+    if (!put) out += (runs.lastOrNull() ?: DocRun("")).copy(text = with)
+    return OfficeFormats.tidy(out)
+}

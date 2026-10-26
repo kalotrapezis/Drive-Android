@@ -4570,6 +4570,7 @@
     <string name="pdf_upright">Upprätt</string>
     <string name="pdf_duplicate">Duplicera</string>
     <string name="pdf_drawing">Teckning</string>
+    <string name="pdf_replace_only_typed">Här ersätts bara ord som lagts till med Tetra. Sidans egna ord: Arkiv › Redigera i Words.</string>
     <string name="pdf_picture_more">Bild…</string>
     <string name="pdf_insert_pdf">Infoga PDF</string>
     <string name="pdf_remove_password">Ta bort lösenord</string>

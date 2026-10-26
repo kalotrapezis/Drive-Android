@@ -4570,6 +4570,7 @@
     <string name="pdf_upright">Függőleges</string>
     <string name="pdf_duplicate">Kettőzés</string>
     <string name="pdf_drawing">Rajz</string>
+    <string name="pdf_replace_only_typed">Itt csak a Tetrával felvitt szavak cserélhetők. Az oldal saját szavai: Fájl › Szerkesztés a Wordsben.</string>
     <string name="pdf_picture_more">Kép…</string>
     <string name="pdf_insert_pdf">PDF beszúrása</string>
     <string name="pdf_remove_password">Jelszó eltávolítása</string>

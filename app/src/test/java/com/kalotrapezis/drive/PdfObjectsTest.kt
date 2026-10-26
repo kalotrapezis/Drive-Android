@@ -41,4 +41,16 @@ class PdfObjectsTest {
         // unturned: scaled to its size, at the box's corner
         assertEquals("q 100.0000 0.0000 0.0000 50.0000 0.0000 0.0000 cm /Im0 Do Q", pictureMatrix(100f, 50f, 100f, 50f, 0f))
     }
+
+    @Test fun `Replace keeps the look of the letters it replaces`() {
+        val t = PdfText("Hello world\nworld again", PdfTextLook(), false, listOf(PdfRun(6, 11, bold = true)))
+        val (one, n1) = t.replaced("WORLD", "earth", all = false)
+        assertEquals(1, n1)
+        assertEquals("Hello earth\nworld again", one.words)
+        assertTrue(one.doc.paras[0].runs.first { it.text == "earth" }.bold)
+        val (every, n2) = t.replaced("world", "sea", all = true)
+        assertEquals(2, n2)
+        assertEquals("Hello sea\nsea again", every.words)
+        assertEquals(listOf("abXY", "ef"), replacedRuns(listOf(DocRun("abcd"), DocRun("ef", bold = true)), 2, 4, "XY").map { it.text })
+    }
 }

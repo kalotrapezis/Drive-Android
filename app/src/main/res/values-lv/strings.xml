@@ -4660,6 +4660,7 @@
     <string name="pdf_upright">Taisni</string>
     <string name="pdf_duplicate">Dublēt</string>
     <string name="pdf_drawing">Zīmējums</string>
+    <string name="pdf_replace_only_typed">Šeit aizstāj tikai ar Tetra pievienotus vārdus. Pašas lapas vārdi: Fails › Rediģēt programmā Words.</string>
     <string name="pdf_picture_more">Attēls…</string>
     <string name="pdf_insert_pdf">Ievietot PDF</string>
     <string name="pdf_remove_password">Noņemt paroli</string>

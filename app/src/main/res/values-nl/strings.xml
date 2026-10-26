@@ -4570,6 +4570,7 @@
     <string name="pdf_upright">Rechtop</string>
     <string name="pdf_duplicate">Dupliceren</string>
     <string name="pdf_drawing">Tekening</string>
+    <string name="pdf_replace_only_typed">Hier worden alleen met Tetra toegevoegde woorden vervangen. De eigen woorden van de pagina: Bestand › Bewerken in Words.</string>
     <string name="pdf_picture_more">Afbeelding…</string>
     <string name="pdf_insert_pdf">PDF invoegen</string>
     <string name="pdf_remove_password">Wachtwoord verwijderen</string>

@@ -4840,6 +4840,7 @@
     <string name="pdf_upright">Ingearach</string>
     <string name="pdf_duplicate">Dúbláil</string>
     <string name="pdf_drawing">Líníocht</string>
+    <string name="pdf_replace_only_typed">Ní chuirtear ach focail a cuireadh le Tetra in ionad anseo. Focail an leathanaigh féin: Comhad › Cuir in eagar in Words.</string>
     <string name="pdf_picture_more">Pictiúr…</string>
     <string name="pdf_insert_pdf">Cuir PDF isteach</string>
     <string name="pdf_remove_password">Bain an pasfhocal</string>

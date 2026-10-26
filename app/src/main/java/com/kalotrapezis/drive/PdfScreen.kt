@@ -983,7 +983,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
 
     /** Page [i]'s words, as the file has them (none on a scan). */
     suspend fun text(i: Int): String = withContext(Dispatchers.IO) {
-        synchronized(this@PdfDoc) { if (closed) "" else page(i) { p -> p.toStructuredText().let { t -> t.asText().also { t.destroy() } } } }
+        synchronized(this@PdfDoc) { if (closed) "" else page(i) { p -> p.toDisplayList(true).let { dl -> try { dl.toStructuredText().let { t -> t.asText().also { t.destroy() } } } finally { dl.destroy() } } } }
     }
 
     /** Every place [query] is, page by page (the lock let go between pages, so the shown pages still draw). */
@@ -993,7 +993,8 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             synchronized(this@PdfDoc) {
                 if (closed) emptyList() else page(i) { p ->
                     val o = p.bounds
-                    p.search(query).orEmpty().map { hit -> PdfMatch(i, hit.map { q -> q.toRect().let { r -> RectF(r.x0 - o.x0, r.y0 - o.y0, r.x1 - o.x0, r.y1 - o.y0) } }) }
+                    // the page as drawn, its comments and Tetra's texts too (a page's own search leaves annotations out)
+                    p.toDisplayList(true).let { dl -> try { dl.search(query).orEmpty() } finally { dl.destroy() } }.map { hit -> PdfMatch(i, hit.map { q -> q.toRect().let { r -> RectF(r.x0 - o.x0, r.y0 - o.y0, r.x1 - o.x0, r.y1 - o.y0) } }) }
                 }
             }
         }
@@ -1078,6 +1079,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var matches by remember { mutableStateOf<List<PdfMatch>?>(null) }
     var match by remember { mutableStateOf(0) }
     var searching by remember { mutableStateOf(false) }
+    var replacingWords by remember { mutableStateOf(false) } // Find and Replace's second row
+    var replacement by remember { mutableStateOf("") }
     fun find() {
         val d = doc ?: return
         if (query.isBlank() || !Pdf.hasText) return
@@ -1416,6 +1419,25 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         val (w, h) = o.laid
         val img = DocImage(o.img.key, null, if (turn % 180 != 0) h else w, if (turn % 180 != 0) w else h, bytes = bytes, extension = if (png) "png" else "jpg", wrap = PictureWrap.InFront)
         reput(PdfWords.of(img).let { n -> Arrange.rotated(n.img, o.turn)?.let(n::with) ?: n })
+    }
+    /**
+     * Find and Replace's Replace (the found words in a text Tetra put on: the page's own cannot be typed over, Edit in
+     * Words has them) — the one found now, or [all] in every text; found again after.
+     */
+    fun replaceFound(all: Boolean) {
+        val d = doc ?: return
+        var n = 0
+        if (all) change { d.sizes.indices.forEach { i -> d.objects(i).forEach { o -> o.text?.let { t ->
+            val (nt, k) = t.replaced(query.trim(), replacement, true)
+            if (k > 0) { val (uw, uh) = t.unturned(o.rect); d.putText(i, o.rect.left, o.rect.top, nt, uw, if (t.framed) uh else 0f, o.id); n += k }
+        } } } }
+        else matches?.getOrNull(match)?.let { m -> val box = m.boxes.firstOrNull() ?: return@let
+            objectsOn(m.page).lastOrNull { o -> o.text != null && o.rect.contains(box.centerX(), box.centerY()) }?.let { o -> val t = o.text!!
+                val (nt, k) = t.replaced(query.trim(), replacement, false)
+                if (k > 0) { val (uw, uh) = t.unturned(o.rect); change { d.putText(m.page, o.rect.left, o.rect.top, nt, uw, if (t.framed) uh else 0f, o.id) }; n = k }
+            } }
+        if (n == 0) Toast.makeText(context, R.string.pdf_replace_only_typed, Toast.LENGTH_LONG).show()
+        else { WriterLog.i("PDF: replaced $n"); if (all) Toast.makeText(context, context.getString(R.string.words_replaced_count, n), Toast.LENGTH_SHORT).show(); find() }
     }
     // Home's target (Words' Home): the words being typed, else a chosen text's words, all chosen, in an editor of their own
     val chosenText = chosen?.text
@@ -1799,6 +1821,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         RibbonButton(stringResource(R.string.words_versions), w, R.drawable.ic_history, enabled = file != null) { showVersions = true }
                         RibbonButton(stringResource(R.string.pdf_edit_in_words), w, R.drawable.ic_edit_note) { exportWords() }
                         RibbonButton(stringResource(R.string.pdf_export_text), w, R.drawable.ic_text_fields) { exportText() }
+                        if (Pdf.hasText) RibbonButton(stringResource(R.string.pdf_copy_page_text), w, R.drawable.ic_copy) { copyPage() }
                         RibbonButton(stringResource(R.string.common_print), w, R.drawable.ic_print) { if (d.dirty) save { print() } else print() }
                         file?.let { f ->
                             RibbonDivider(w)
@@ -2066,73 +2089,53 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     }) {
         Surface(color = islandColor(), contentColor = islandContentColor(), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.statusBarsPadding()) {
+                val tint = islandContentColor()
+                val d0 = doc
+                // Words' Find and Replace: its bar in the top bar's place, found as it is typed; Replace in the words Tetra put on
+                if (finding && d0 != null) {
+                    LaunchedEffect(query) { if (query.isBlank()) matches = null else { delay(300); find() } }
+                    FindReplaceBar(tint, query, { query = it }, when { query.isBlank() -> ""; searching -> "…"; matches.isNullOrEmpty() -> "0"; else -> "${match + 1}/${matches!!.size}" },
+                        !matches.isNullOrEmpty(), previous = { step(-1) }, next = { step(1) }, replacing = replacingWords && editing, setReplacing = { replacingWords = it; if (it) editing = true },
+                        replacement = replacement, setReplacement = { replacement = it }, replace = { replaceFound(false) }, replaceAll = { replaceFound(true) },
+                        close = { finding = false; matches = null })
+                } else
                 Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
-                    Column(Modifier.weight(1f)) {
-                        Text(file?.name ?: stringResource(R.string.app_pdf), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        doc?.let { Text(pluralStringResource(R.plurals.pdf_pages, it.sizes.size, it.sizes.size) + " · " + stringResource(if (editing) if (version >= 0 && it.dirty) R.string.words_not_saved else R.string.pdf_editing else R.string.pdf_view_only), style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    Tool(R.drawable.ic_chevron_left, stringResource(R.string.common_back), tint) { back() }
+                    val dirty = version >= 0 && d0?.dirty == true
+                    val phone = LocalConfiguration.current.screenWidthDp < 600
+                    // Words' bar: the name (a dot while unsaved); a phone the pages under it, a tablet beside it with the file's state and kind (a tap: About)
+                    Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                        Text((if (dirty) "• " else "") + (file?.name ?: stringResource(R.string.app_pdf)), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (phone && d0 != null) Text(pluralStringResource(R.plurals.pdf_pages, d0.sizes.size, d0.sizes.size), color = tint.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.clickable { about = true })
                     }
-                    val d0 = doc
+                    if (!phone && d0 != null) Text(pluralStringResource(R.plurals.pdf_pages, d0.sizes.size, d0.sizes.size) +
+                        (if (file != null && editing) " · " + saveState(false, dirty) + (if (autoSave && dirty) stringResource(R.string.words_autosave_on_suffix) else "") else "") + " · .pdf",
+                        color = tint.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.clickable { about = true }.padding(horizontal = 8.dp))
+                    RibbonTools {
+                    FavouriteHeart(file, tint) // a tablet or bigger: the Office home's Favourites (the user, 18 Oct)
                     if (editing && d0 != null) {
+                        if (Pdf.hasText) Tool(R.drawable.ic_search, stringResource(R.string.words_find_replace), tint) { putTyped(); finding = true }
                         key(version) {
                             // words being typed on the page: put on first (Undo then takes them off, as any change)
-                            Tool(R.drawable.ic_undo, stringResource(R.string.common_undo), islandContentColor(), enabled = d0.canUndo || typing != null) { putTyped(); change { d0.undo() } }
-                            Tool(R.drawable.ic_redo, stringResource(R.string.common_redo), islandContentColor(), enabled = d0.canRedo) { putTyped(); change { d0.redo() } }
-                            Tool(R.drawable.ic_save, stringResource(R.string.common_save), islandContentColor(), enabled = d0.dirty || typing != null) { putTyped(); save() }
+                            Tool(R.drawable.ic_undo, stringResource(R.string.common_undo), tint, enabled = d0.canUndo || typing != null) { putTyped(); chosen = null; change { d0.undo() } }
+                            Tool(R.drawable.ic_redo, stringResource(R.string.common_redo), tint, enabled = d0.canRedo) { putTyped(); chosen = null; change { d0.redo() } }
+                            Tool(R.drawable.ic_save, stringResource(R.string.common_save), tint, enabled = d0.dirty || typing != null) { putTyped(); save() }
                         }
-                        Tool(R.drawable.ic_check, stringResource(R.string.common_done), islandContentColor()) { putTyped(); if (d0.dirty) leaving = true else editing = false }
-                    } else {
-                    // a phone: the pencil alone, as Tables' and Slides' (a longer word, "Επεξεργασία", left the file's name no room)
-                    if (d0?.editable == true) { if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600) Tool(R.drawable.ic_edit, stringResource(R.string.common_edit), islandContentColor()) { editing = true; WriterLog.i("PDF: edit") }
-                        else RibbonButton(stringResource(R.string.common_edit), islandContentColor(), R.drawable.ic_edit) { editing = true; WriterLog.i("PDF: edit") } }
-                    if (Pdf.hasText && doc != null) IconButton(onClick = { finding = !finding; if (!finding) matches = null }) {
-                        Icon(painterResource(R.drawable.ic_search), contentDescription = stringResource(R.string.office_find), tint = if (finding) PDF_RED else islandContentColor()) }
-                    FavouriteHeart(file, islandContentColor()) // a tablet or bigger: the Office home's Favourites (the user, 18 Oct)
-                    val fav = rememberOfficeFavourite(file)?.takeIf { !favouriteInTopBar() } // a phone: in ⋯
-                    file?.let { f ->
-                        IconButton(onClick = { shareDriveFile(context, f) }) { Icon(painterResource(R.drawable.ic_share), contentDescription = stringResource(R.string.common_share)) }
-                        IconButton(onClick = ::print, enabled = doc != null) { Icon(painterResource(R.drawable.ic_print), contentDescription = stringResource(R.string.common_print)) }
-                        // the rest behind ⋯, so a phone's bar keeps room for the name
-                        var more by remember { mutableStateOf(false) }
-                        Box {
-                            IconButton(onClick = { more = true }) { Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.words_more_tools)) }
-                            // black with round corners, as the islands (the user, 22 Oct: "a nice black menu with rounded corners")
-                            DropdownMenu(more, { more = false }, shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), containerColor = Color(0xFF151515),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))) {
-                                androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Color.White) {
-                                if (Pdf.hasText && doc != null) DropdownMenuItem({ Text(stringResource(R.string.pdf_copy_page_text)) }, { more = false; copyPage() },
-                                    colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_copy), contentDescription = null) })
-                                DropdownMenuItem({ Text(stringResource(R.string.words_open_in_another_app)) }, { more = false; openElsewhere(context, f) },
-                                    colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_open_with), contentDescription = null) })
-                                fav?.let { h -> DropdownMenuItem({ Text(stringResource(if (h.on) R.string.office_favourite_remove else R.string.office_favourite_add)) }, { more = false; h.toggle() },
-                                    colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(if (h.on) R.drawable.ic_favorite else R.drawable.ic_favorite_border), contentDescription = null) }) }
-                                if (doc != null) {
-                                    DropdownMenuItem({ Text(stringResource(R.string.words_comments)) }, { more = false; pane = "Comments" }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_comment), contentDescription = null) })
-                                    DropdownMenuItem({ Text(stringResource(R.string.pdf_bookmarks)) }, { more = false; pane = "Bookmarks" }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_bookmark), contentDescription = null) })
-                                }
-                                if (doc != null) {
-                                    DropdownMenuItem({ Text(stringResource(R.string.pdf_edit_in_words)) }, { more = false; exportWords() }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_edit_note), contentDescription = null) })
-                                    DropdownMenuItem({ Text(stringResource(R.string.pdf_export_text)) }, { more = false; exportText() }, colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_text_fields), contentDescription = null) })
-                                }
-                                if (versions(context, f).isNotEmpty()) DropdownMenuItem({ Text(stringResource(R.string.words_versions)) }, { more = false; showVersions = true },
-                                    colors = PDF_MENU_ITEM(), leadingIcon = { Icon(painterResource(R.drawable.ic_history), contentDescription = null) })
-                                }
-                            }
-                        }
+                        // Done at the far right, back to the pages (Words')
+                        Tool(R.drawable.ic_check, stringResource(R.string.common_done), tint) { putTyped(); chosen = null; if (d0.dirty) leaving = true else editing = false }
+                    } else if (d0 != null) {
+                        // Words' view-only bar: the list of pages, two pages, find, share, save (with changes), Edit
+                        val wide0 = LocalConfiguration.current.screenWidthDp >= 700
+                        Tool(R.drawable.ic_view_list, stringResource(R.string.words_navigation), tint, on = if (wide0) navigation else pages) { if (wide0) navigation = !navigation else pages = !pages }
+                        Tool(R.drawable.ic_view_column, stringResource(R.string.words_two_pages), tint, on = across == 2) { val keep = at; across = 3 - across; goTo(keep) }
+                        if (Pdf.hasText) Tool(R.drawable.ic_search, stringResource(R.string.office_find), tint) { finding = true }
+                        file?.let { f -> Tool(R.drawable.ic_share, stringResource(R.string.common_share), tint) { shareDriveFile(context, f) } }
+                        if (d0.dirty) Tool(R.drawable.ic_save, stringResource(R.string.common_save), tint) { save() }
+                        // a phone: the pencil alone, as Tables' and Slides' (a longer word, "Επεξεργασία", left the file's name no room)
+                        if (d0.editable) { if (phone) Tool(R.drawable.ic_edit, stringResource(R.string.common_edit), tint) { editing = true; WriterLog.i("PDF: edit") }
+                            else RibbonButton(stringResource(R.string.common_edit), tint, R.drawable.ic_edit) { editing = true; WriterLog.i("PDF: edit") } }
                     }
-                    }
-                }
-                if (finding) {
-                    val focus = remember { FocusRequester() }
-                    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-                    Row(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextField(query, { query = it; matches = null }, Modifier.weight(1f).focusRequester(focus), singleLine = true, placeholder = { Text(stringResource(R.string.pdf_find_hint)) },
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { find() }),
-                            colors = TextFieldDefaults.colors(focusedContainerColor = Color(0xFF3A3A3A), unfocusedContainerColor = Color(0xFF3A3A3A)))
-                        Text(when { searching -> stringResource(R.string.pdf_looking); matches == null -> ""; matches!!.isEmpty() -> stringResource(R.string.common_none); else -> stringResource(R.string.pdf_n_of_m, match + 1, matches!!.size) },
-                            style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp))
-                        IconButton(onClick = { step(-1) }, enabled = !matches.isNullOrEmpty()) { Icon(painterResource(R.drawable.ic_keyboard_arrow_up), contentDescription = stringResource(R.string.common_previous)) }
-                        IconButton(onClick = { if (matches == null) find() else step(1) }, enabled = query.isNotBlank()) { Icon(painterResource(R.drawable.ic_keyboard_arrow_down), contentDescription = stringResource(R.string.common_next)) }
                     }
                 }
             }

@@ -4750,6 +4750,7 @@
     <string name="pdf_upright">Vzpriamene</string>
     <string name="pdf_duplicate">Duplikovať</string>
     <string name="pdf_drawing">Kresba</string>
+    <string name="pdf_replace_only_typed">Tu sa nahrádzajú len slová pridané v Tetre. Vlastné slová stránky: Súbor › Upraviť vo Words.</string>
     <string name="pdf_picture_more">Obrázok…</string>
     <string name="pdf_insert_pdf">Vložiť PDF</string>
     <string name="pdf_remove_password">Odstrániť heslo</string>

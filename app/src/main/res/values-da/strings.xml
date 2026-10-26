@@ -4570,6 +4570,7 @@
     <string name="pdf_upright">Lodret</string>
     <string name="pdf_duplicate">Dupliker</string>
     <string name="pdf_drawing">Tegning</string>
+    <string name="pdf_replace_only_typed">Her erstattes kun ord, der er sat på med Tetra. Sidens egne ord: Filer › Rediger i Words.</string>
     <string name="pdf_picture_more">Billede…</string>
     <string name="pdf_insert_pdf">Indsæt PDF</string>
     <string name="pdf_remove_password">Fjern adgangskode</string>

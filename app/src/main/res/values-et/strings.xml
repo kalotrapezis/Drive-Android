@@ -4570,6 +4570,7 @@
     <string name="pdf_upright">Püsti</string>
     <string name="pdf_duplicate">Dubleeri</string>
     <string name="pdf_drawing">Joonis</string>
+    <string name="pdf_replace_only_typed">Siin asendatakse ainult Tetraga lisatud sõnu. Lehe enda sõnad: Fail › Muuda Wordsis.</string>
     <string name="pdf_picture_more">Pilt…</string>
     <string name="pdf_insert_pdf">Lisa PDF</string>
     <string name="pdf_remove_password">Eemalda parool</string>

@@ -4660,6 +4660,7 @@
     <string name="pdf_upright">Direito</string>
     <string name="pdf_duplicate">Duplicar</string>
     <string name="pdf_drawing">Desenho</string>
+    <string name="pdf_replace_only_typed">Aqui só se substituem palavras colocadas com o Tetra. As palavras da própria página: Ficheiro › Editar no Words.</string>
     <string name="pdf_picture_more">Imagem…</string>
     <string name="pdf_insert_pdf">Inserir PDF</string>
     <string name="pdf_remove_password">Remover palavra-passe</string>

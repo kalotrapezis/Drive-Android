@@ -4569,6 +4569,7 @@
     <string name="pdf_upright">Χωρίς περιστροφή</string>
     <string name="pdf_duplicate">Διπλότυπο</string>
     <string name="pdf_drawing">Σχέδιο</string>
+    <string name="pdf_replace_only_typed">Εδώ αντικαθίστανται μόνο λέξεις που προστέθηκαν με το Tetra. Οι λέξεις της ίδιας της σελίδας: Αρχείο › Επεξεργασία στο Words.</string>
     <string name="pdf_picture_more">Εικόνα…</string>
     <string name="pdf_insert_pdf">Εισαγωγή PDF</string>
     <string name="pdf_remove_password">Κατάργηση κωδικού</string>

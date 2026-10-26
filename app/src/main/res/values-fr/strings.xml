@@ -4660,6 +4660,7 @@
     <string name="pdf_upright">Droit</string>
     <string name="pdf_duplicate">Dupliquer</string>
     <string name="pdf_drawing">Dessin</string>
+    <string name="pdf_replace_only_typed">Seuls les mots ajoutés avec Tetra sont remplacés ici. Les mots propres à la page : Fichier › Modifier dans Words.</string>
     <string name="pdf_picture_more">Image…</string>
     <string name="pdf_insert_pdf">Insérer un PDF</string>
     <string name="pdf_remove_password">Supprimer le mot de passe</string>

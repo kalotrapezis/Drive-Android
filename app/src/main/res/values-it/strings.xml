@@ -4570,6 +4570,7 @@
     <string name="pdf_upright">Dritto</string>
     <string name="pdf_duplicate">Duplica</string>
     <string name="pdf_drawing">Disegno</string>
+    <string name="pdf_replace_only_typed">Qui si sostituiscono solo le parole aggiunte con Tetra. Le parole proprie della pagina: File › Modifica in Words.</string>
     <string name="pdf_picture_more">Immagine…</string>
     <string name="pdf_insert_pdf">Inserisci PDF</string>
     <string name="pdf_remove_password">Rimuovi password</string>

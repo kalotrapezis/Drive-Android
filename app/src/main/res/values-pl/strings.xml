@@ -4750,6 +4750,7 @@
     <string name="pdf_upright">Prosto</string>
     <string name="pdf_duplicate">Duplikuj</string>
     <string name="pdf_drawing">Rysunek</string>
+    <string name="pdf_replace_only_typed">Tu zastępuje się tylko słowa dodane w Tetrze. Własne słowa strony: Plik › Edytuj w Words.</string>
     <string name="pdf_picture_more">Obraz…</string>
     <string name="pdf_insert_pdf">Wstaw PDF</string>
     <string name="pdf_remove_password">Usuń hasło</string>

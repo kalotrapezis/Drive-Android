@@ -4660,6 +4660,7 @@
     <string name="pdf_upright">Derecho</string>
     <string name="pdf_duplicate">Duplicar</string>
     <string name="pdf_drawing">Dibujo</string>
+    <string name="pdf_replace_only_typed">Aquí solo se reemplazan las palabras puestas con Tetra. Las palabras propias de la página: Archivo › Editar en Words.</string>
     <string name="pdf_picture_more">Imagen…</string>
     <string name="pdf_insert_pdf">Insertar PDF</string>
     <string name="pdf_remove_password">Quitar contraseña</string>

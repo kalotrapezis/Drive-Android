@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">PDF\'s openen</string>
     <string name="home_pdfs">PDF\'s</string>
     <string name="home_back_to_home">Terug naar Start</string>
-    <string name="home_setup_title">Galerij instellen</string>
-    <string name="home_setup_why">Tetra heeft toestemming nodig om je echte foto\'s en video\'s uit Camera en Screenshots te tonen.</string>
-    <string name="home_setup_stay">Foto\'s blijven waar ze zijn. De app kiest geen map en kopieert ze nergens heen.</string>
-    <string name="home_setup_later">Je kunt dit later wijzigen via de optrekbare tools van Galerij.</string>
-    <string name="home_setup_allow">Ja, foto\'s toestaan</string>
-    <string name="home_setup_skip">Nee, nu niet</string>
     <string name="home_island_done">Klaar</string>
     <string name="home_island_snooze">Snooze 10 min</string>
     <string name="home_vault_cannot_read">Kan %1$s niet lezen.</string>

@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Άνοιγμα PDF</string>
     <string name="home_pdfs">PDF</string>
     <string name="home_back_to_home">Πίσω στην Αρχική</string>
-    <string name="home_setup_title">Ρύθμιση Συλλογής</string>
-    <string name="home_setup_why">Το Tetra χρειάζεται άδεια για να δείχνει τις φωτογραφίες και τα βίντεό σας από την Κάμερα και τα Στιγμιότυπα.</string>
-    <string name="home_setup_stay">Οι φωτογραφίες μένουν εκεί που είναι. Η εφαρμογή δεν επιλέγει φάκελο ούτε τις αντιγράφει πουθενά.</string>
-    <string name="home_setup_later">Μπορείτε να το αλλάξετε αργότερα από τα εργαλεία της Συλλογής.</string>
-    <string name="home_setup_allow">Ναι, να επιτρέπονται</string>
-    <string name="home_setup_skip">Όχι τώρα</string>
     <string name="home_island_done">Έγινε</string>
     <string name="home_island_snooze">Αναβολή 10 λεπ.</string>
     <string name="home_vault_cannot_read">Δεν είναι δυνατή η ανάγνωση του %1$s.</string>

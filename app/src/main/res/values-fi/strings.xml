@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Avaa PDF:t</string>
     <string name="home_pdfs">PDF:t</string>
     <string name="home_back_to_home">Takaisin Kotiin</string>
-    <string name="home_setup_title">Gallerian käyttöönotto</string>
-    <string name="home_setup_why">Tetra tarvitsee luvan näyttää kameran ja kuvakaappausten oikeat kuvat ja videot.</string>
-    <string name="home_setup_stay">Kuvat pysyvät paikallaan. Sovellus ei valitse kansiota eikä kopioi niitä minnekään.</string>
-    <string name="home_setup_later">Voit muuttaa tätä myöhemmin Gallerian alhaalta vedettävistä työkaluista.</string>
-    <string name="home_setup_allow">Kyllä, salli kuvat</string>
-    <string name="home_setup_skip">Ei nyt</string>
     <string name="home_island_done">Valmis</string>
     <string name="home_island_snooze">Torkku 10 min</string>
     <string name="home_vault_cannot_read">Ei voi lukea: %1$s.</string>

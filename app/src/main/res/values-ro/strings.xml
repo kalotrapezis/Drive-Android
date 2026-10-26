@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Deschide PDF-uri</string>
     <string name="home_pdfs">PDF-uri</string>
     <string name="home_back_to_home">Înapoi la Acasă</string>
-    <string name="home_setup_title">Configurare Galerie</string>
-    <string name="home_setup_why">Tetra are nevoie de permisiune pentru a afișa fotografiile și videoclipurile reale din Cameră și Capturi de ecran.</string>
-    <string name="home_setup_stay">Fotografiile rămân unde sunt. Aplicația nu alege un dosar și nu le copiază nicăieri.</string>
-    <string name="home_setup_later">Poți schimba asta mai târziu din instrumentele glisante ale Galeriei.</string>
-    <string name="home_setup_allow">Da, permite fotografiile</string>
-    <string name="home_setup_skip">Nu acum</string>
     <string name="home_island_done">Gata</string>
     <string name="home_island_snooze">Amână 10 min</string>
     <string name="home_vault_cannot_read">Nu se poate citi %1$s.</string>

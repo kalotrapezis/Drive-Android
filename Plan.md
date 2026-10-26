@@ -12,6 +12,9 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (setup-guide session, 26 Oct; Drive-Android `claude/setup-guide-19862a`) **(5b) the graphical guide**: plan shown to the
+      user first (chapters, one page = replicated Tetra UI with the spot ringed, "Try it" docks the step under the real
+      screen); nothing built before their yes. The pairing chapter last, from the role session's screens.
 - [ ] **TOP OF THE LIST — the PDF editor works exactly like Words** — **with the user, when they have time, watching each step; no agent starts it alone** (the user, 26 Oct, on the tablet: "I don't like how PDF
       does things. If we need to, we build our own stuff like we did with the rest of Office. Everything works completely
       differently from Words"). Screenshots, kept local and out of git: `user-screenshots/2026-10-26-pdf-vs-words/` — 1–3

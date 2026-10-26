@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Ava PDF-id</string>
     <string name="home_pdfs">PDF-id</string>
     <string name="home_back_to_home">Tagasi avalehele</string>
-    <string name="home_setup_title">Galerii seadistus</string>
-    <string name="home_setup_why">Tetra vajab luba, et näidata teie tegelikke kaamera ja ekraanipiltide fotosid ning videoid.</string>
-    <string name="home_setup_stay">Fotod jäävad oma kohale. Rakendus ei vali kausta ega kopeeri neid kuhugi.</string>
-    <string name="home_setup_later">Saate seda hiljem muuta galerii üles tõmmatavatest tööriistadest.</string>
-    <string name="home_setup_allow">Jah, luba fotod</string>
-    <string name="home_setup_skip">Ei, mitte praegu</string>
     <string name="home_island_done">Valmis</string>
     <string name="home_island_snooze">Edasi 10 min</string>
     <string name="home_vault_cannot_read">Ei saa lugeda: %1$s.</string>

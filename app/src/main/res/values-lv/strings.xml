@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Atvērt PDF</string>
     <string name="home_pdfs">PDF faili</string>
     <string name="home_back_to_home">Atpakaļ uz sākumu</string>
-    <string name="home_setup_title">Galerijas iestatīšana</string>
-    <string name="home_setup_why">Tetra nepieciešama atļauja, lai rādītu jūsu īstos kameras un ekrānuzņēmumu fotoattēlus un video.</string>
-    <string name="home_setup_stay">Fotoattēli paliek savā vietā. Lietotne neizvēlas mapi un nekur tos nekopē.</string>
-    <string name="home_setup_later">To var mainīt vēlāk Galerijas izvelkamajos rīkos.</string>
-    <string name="home_setup_allow">Jā, atļaut fotoattēlus</string>
-    <string name="home_setup_skip">Nē, ne tagad</string>
     <string name="home_island_done">Gatavs</string>
     <string name="home_island_snooze">Atlikt uz 10 min</string>
     <string name="home_vault_cannot_read">Nevar nolasīt %1$s.</string>

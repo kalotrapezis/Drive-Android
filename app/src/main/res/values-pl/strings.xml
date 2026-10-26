@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Otwórz pliki PDF</string>
     <string name="home_pdfs">Pliki PDF</string>
     <string name="home_back_to_home">Wróć do ekranu Start</string>
-    <string name="home_setup_title">Konfiguracja Galerii</string>
-    <string name="home_setup_why">Tetra potrzebuje uprawnienia, aby pokazywać Twoje prawdziwe zdjęcia i filmy z Aparatu i Zrzutów ekranu.</string>
-    <string name="home_setup_stay">Zdjęcia zostają tam, gdzie są. Aplikacja nie wybiera folderu i nigdzie ich nie kopiuje.</string>
-    <string name="home_setup_later">Możesz to zmienić później w narzędziach Galerii wysuwanych od dołu.</string>
-    <string name="home_setup_allow">Tak, zezwól na zdjęcia</string>
-    <string name="home_setup_skip">Nie teraz</string>
     <string name="home_island_done">Gotowe</string>
     <string name="home_island_snooze">Drzemka 10 min</string>
     <string name="home_vault_cannot_read">Nie można odczytać %1$s.</string>

@@ -147,12 +147,6 @@
     <string name="home_open_pdfs">Open PDFs</string>
     <string name="home_pdfs">PDFs</string>
     <string name="home_back_to_home">Back to Home</string>
-    <string name="home_setup_title">Gallery setup</string>
-    <string name="home_setup_why">Tetra needs permission to show your real Camera and Screenshots photos and videos.</string>
-    <string name="home_setup_stay">Photos stay where they are. The app does not choose a folder or copy them anywhere.</string>
-    <string name="home_setup_later">You can change this later from the Gallery pull-up tools.</string>
-    <string name="home_setup_allow">Yes, allow photos</string>
-    <string name="home_setup_skip">No, not now</string>
     <string name="home_island_done">Done</string>
     <string name="home_island_snooze">Snooze 10 min</string>
     <string name="home_vault_cannot_read">Cannot read %1$s.</string>

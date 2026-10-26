@@ -146,12 +146,6 @@
     <string name="home_open_pdfs">Iftaħ il-PDF</string>
     <string name="home_pdfs">PDF</string>
     <string name="home_back_to_home">Lura għad-Dar</string>
-    <string name="home_setup_title">Issettjar tal-Galerija</string>
-    <string name="home_setup_why">Tetra jeħtieġ permess biex juri r-ritratti u l-vidjows tiegħek mill-Kamera u mill-Stampi tal-iskrin.</string>
-    <string name="home_setup_stay">Ir-ritratti jibqgħu fejn huma. L-applikazzjoni ma tagħżel ebda kartella u ma tikkopjahom xejn.</string>
-    <string name="home_setup_later">Tista’ tbiddel dan aktar tard mill-għodod tal-Galerija.</string>
-    <string name="home_setup_allow">Iva, ippermetti r-ritratti</string>
-    <string name="home_setup_skip">Le, mhux issa</string>
     <string name="home_island_done">Lest</string>
     <string name="home_island_snooze">Ipposponi 10 min</string>
     <string name="home_vault_cannot_read">Ma nistax naqra %1$s.</string>

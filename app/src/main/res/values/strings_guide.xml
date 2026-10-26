@@ -85,7 +85,7 @@
     <string name="guide_alone_t">Tetra works on its own</string>
     <string name="guide_alone_b">You do not need a computer. Without one, everything stays on this device, and you can pair later.</string>
     <string name="guide_scan_t">Pair with your computer</string>
-    <string name="guide_scan_b">On the computer, Tetra shows a code. Here, open Local Sync from Home, tap Scan a code and point the camera at it.</string>
+    <string name="guide_scan_b">On the computer, open Devices › Add a device: Tetra shows a code. Here, open Local Sync from Home, tap Scan a code and point the camera at it.</string>
 
     <!-- Settings -->
     <string name="guide_look_t">Language and look</string>

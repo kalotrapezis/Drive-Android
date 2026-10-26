@@ -302,7 +302,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         WriterLog.init(context)
         if (open == NEW_SHEET) {
             // a new spreadsheet: Excel's empty workbook in a working copy, ready to type in
-            val f = File(workDir, "New spreadsheet.xlsx").apply { writeBytes(SheetBook.empty()) }
+            val f = File(workDir, "New spreadsheet.xlsx").apply { writeBytes(SheetBook.empty(context.getString(R.string.tables_sheet_n, 1))) }
             work = f; editing = true
             val b = withContext(Dispatchers.IO) { DecimalFormatSymbols.getInstance().let { Sheets.read(f, it.decimalSeparator, it.groupingSeparator) } }
             prepare(b); book = b; index = 0
@@ -1286,7 +1286,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton(stringResource(R.string.tables_column_right), w, R.drawable.ic_add_column_right) { shift(false, cc + 1, 1) }
                             RibbonDivider(w)
                             if (b.kind != "csv") RibbonButton(stringResource(R.string.tables_sheet), w, R.drawable.ic_note_add) {
-                                sheetStep(add = generateSequence(b.tabs.size + 1) { it + 1 }.map { "Sheet$it" }.first { n -> b.tabs.none { it.name.equals(n, true) } })
+                                sheetStep(add = generateSequence(b.tabs.size + 1) { it + 1 }.map { context.getString(R.string.tables_sheet_n, it) }.first { n -> b.tabs.none { it.name.equals(n, true) } })
                             }
                             // the same as Formulas › Insert function (the tablet walk, 18 Oct: one form in both places)
                             RibbonButton(stringResource(R.string.tables_insert_function), w, R.drawable.ic_functions) { inserting = true }
@@ -1332,7 +1332,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
                             RibbonButton(stringResource(R.string.tables_set_print_area), w, R.drawable.ic_print, enabled = g != null) { g?.let { d -> setPrint { it.copy(area = SheetRange(l.rows[d.r1], l.cols[d.c1], l.rows[d.r2], l.cols[d.c2])) } } }
                             if (p.area != null) RibbonButton(stringResource(R.string.tables_clear_print_area), w, R.drawable.ic_close) { setPrint { it.copy(area = null) } }
                             // Excel's Header & Footer: its ready-made ones, or Custom… (left, centre, right)
-                            val presets = SheetHeaderFooter.PRESETS
+                            val presets = SheetHeaderFooter.presets(stringResource(R.string.tables_hf_word_page), stringResource(R.string.tables_hf_word_of))
                             for ((kind, now) in listOf("header" to p.header, "footer" to p.footer))
                                 menu(stringResource(if (kind == "header") R.string.tables_header else R.string.tables_footer), if (kind == "header") R.drawable.ic_vertical_align_top else R.drawable.ic_vertical_align_bottom,
                                     presets.map { (n, c) -> stringResource(n) to (now == c) } + (stringResource(R.string.tables_custom) to (now != null && presets.none { it.second == now })), custom = true) { k ->
@@ -1837,7 +1837,7 @@ internal fun SheetScreen(back: () -> Unit, open: String) {
         }
         book?.takeIf { showTabs }?.let { b ->
             SheetTabs(b, index, sheet, add = if (editing && b.kind != "csv") ({
-                val name = generateSequence(b.tabs.size + 1) { it + 1 }.map { "Sheet$it" }.first { n -> b.tabs.none { it.name.equals(n, true) } }
+                val name = generateSequence(b.tabs.size + 1) { it + 1 }.map { context.getString(R.string.tables_sheet_n, it) }.first { n -> b.tabs.none { it.name.equals(n, true) } }
                 sheetStep(add = name)
             }) else null, tools = if (editing && b.kind != "csv") ({ header = 's' to index; group = null }) else null) { i ->
                 WriterLog.i("Sheets: tab ${i + 1} of ${b.tabs.size}"); failed = null; header = null; index = i

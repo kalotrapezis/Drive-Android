@@ -1319,7 +1319,7 @@ private class HomeIcon(@androidx.annotation.StringRes val label: Int, val art: I
     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
 ) {
     HomeIconArt(icon, art)
-    Text(stringResource(icon.label), style = if (art > 52.dp) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp))
+    Text(stringResource(icon.label), style = if (art > 52.dp) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
 }
 
 // the user's art is itself a tile, Sync's and Settings' too (24 Oct)
@@ -2325,7 +2325,7 @@ private fun DriveTab(
     if (newOpen) {
         val here = if (pane == DrivePane.Files && folder != "Trash" && !folder.startsWith("Trash/")) folder else ""
         NewItemDialog(here.ifEmpty { "Tetra" }, remember { DriveRules.newKinds(root, runCatching { context.assets.open("blank.pptx").use { it.readBytes() } }.getOrNull()) }, { newOpen = false }) { kind, name ->
-            val made = runCatching { DriveRules.create(root, here, kind, name) }.getOrElse { return@NewItemDialog it.shownMessage(context) ?: context.getString(R.string.files_error_new) }
+            val made = runCatching { DriveRules.create(root, here, kind, name, context.getString(R.string.tables_sheet_n, 1)) }.getOrElse { return@NewItemDialog it.shownMessage(context) ?: context.getString(R.string.files_error_new) }
             newOpen = false
             if (kind.extension != null) JustMade.mark(File(root, made)) // it opens editing
             refresh()

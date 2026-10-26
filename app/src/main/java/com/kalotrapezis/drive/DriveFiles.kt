@@ -208,7 +208,7 @@ object DriveRules {
     }
 
     /** [kind] named [name] in the folder [folderRelativePath]; its path. Never over something already there. */
-    fun create(root: File, folderRelativePath: String, kind: DriveNew, name: String): String {
+    fun create(root: File, folderRelativePath: String, kind: DriveNew, name: String, firstSheet: String = "Sheet1"): String {
         val full = kind.extension?.takeIf { it.isNotEmpty() && !name.endsWith(".$it", ignoreCase = true) }?.let { "$name.$it" } ?: name
         need(full.isSafeDriveName() && !full.startsWith("."), R.string.files_error_bad_name) { "Invalid name." }
         val target = File(folder(root, folderRelativePath), full).canonicalFile
@@ -218,7 +218,7 @@ object DriveRules {
             kind.extension == null -> need(target.mkdir(), R.string.files_error_make_folder) { "Could not make the folder." }
             kind.template != null -> Files.copy(kind.template.toPath(), target.toPath())
             kind.extension.equals("docx", ignoreCase = true) -> target.writeBytes(OfficeFormats.write(OfficeDoc(listOf(DocPara(emptyList()))), OfficeKind.Docx))
-            kind.extension.equals("xlsx", ignoreCase = true) -> target.writeBytes(SheetBook.empty())
+            kind.extension.equals("xlsx", ignoreCase = true) -> target.writeBytes(SheetBook.empty(firstSheet))
             kind.bytes != null -> target.writeBytes(kind.bytes)
             else -> target.writeBytes(ByteArray(0))
         }

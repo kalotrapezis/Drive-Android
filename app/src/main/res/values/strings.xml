@@ -3727,6 +3727,9 @@
     <string name="tables_name_taken_already">There is a name like that already</string>
     <string name="tables_field_page">Page</string>
     <string name="tables_field_pages">Pages</string>
+    <string name="tables_sheet_n">Sheet%1$d</string>
+    <string name="tables_hf_word_page">Page</string>
+    <string name="tables_hf_word_of">of</string>
     <string name="tables_hf_page">Page 1</string>
     <string name="tables_hf_page_of">Page 1 of ?</string>
     <string name="tables_hf_sheet_name">Sheet name</string>

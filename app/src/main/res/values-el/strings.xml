@@ -61,8 +61,8 @@
     <string name="app_home">Αρχική</string>
     <string name="app_notes">Σημειώσεις</string>
     <string name="app_files">Αρχεία</string>
-    <string name="app_photos">Φωτογραφίες</string>
-    <string name="app_gallery">Συλλογή</string>
+    <string name="app_photos">Φωτοθήκη</string>
+    <string name="app_gallery">Φωτοθήκη</string>
     <string name="app_office">Office</string>
     <string name="app_words">Έγγραφα</string>
     <string name="app_tables">Πίνακες</string>
@@ -119,7 +119,7 @@
     <string name="home_minutes">%1$d λεπ.</string>
     <string name="home_timer_failed">Το χρονόμετρο δεν ξεκίνησε</string>
     <string name="home_timer_started">Ξεκίνησε χρονόμετρο %1$d λεπτών</string>
-    <string name="home_local_sync">Τοπικός συγχρονισμός</string>
+    <string name="home_local_sync">Συγχρονισμός</string>
     <string name="home_settings_detail">Άδειες και τοπικός αποθηκευτικός χώρος</string>
     <string name="home_scanner_codes">Σαρωτής και Κωδικοί</string>
     <string name="home_edit">Επεξεργασία Αρχικής</string>
@@ -163,7 +163,7 @@
     <string name="home_label_maps">Tetra Χάρτες</string>
     <string name="home_label_phone">Tetra Τηλέφωνο</string>
     <string name="home_label_data">Tetra Δεδομένα</string>
-    <string name="home_label_photos">Tetra Φωτογραφίες</string>
+    <string name="home_label_photos">Tetra Φωτοθήκη</string>
     <string name="home_label_files">Tetra Αρχεία</string>
     <string name="home_label_notes">Tetra Σημειώσεις</string>
     <string name="home_label_scanner">Tetra Σαρωτής</string>
@@ -279,7 +279,7 @@
     <string name="settings_dark">Σκούρο</string>
     <string name="settings_light">Φωτεινό</string>
     <string name="settings_hidden_note">Τα κρυφά μέρη συνεχίζουν να λειτουργούν (υπενθυμίσεις, χρονόμετρα, συγχρονισμός).</string>
-    <string name="settings_photo_on_home_summary">Μια τυχαία φωτογραφία της συλλογής πίσω από την κάρτα Φωτογραφίες</string>
+    <string name="settings_photo_on_home_summary">Μια τυχαία φωτογραφία της συλλογής πίσω από την κάρτα Φωτοθήκη</string>
     <string name="settings_nothing_hidden">Τίποτα δεν είναι κρυφό. Στην Αρχική, κρατήστε πατημένο ένα μέρος για να το μετακινήσετε· το μολύβι αλλάζει μέγεθος και κρύβει μέρη· μόνο σε αυτή τη συσκευή.</string>
     <string name="settings_hidden_here">Κρυφό από την Αρχική σε αυτή τη συσκευή</string>
     <string name="settings_app_icons_note">Δώστε σε ένα μέρος του Tetra δικό του εικονίδιο στην αρχική οθόνη και στη λίστα εφαρμογών· ανοίγει κατευθείαν σε αυτό.</string>
@@ -958,7 +958,7 @@
     <string name="photos_video_named">Βίντεο %1$s</string>
     <string name="photos_photo_named">Φωτογραφία %1$s</string>
     <string name="photos_not_selected">Μη επιλεγμένο</string>
-    <string name="photos_unavailable_body">Ανανεώστε τις Φωτογραφίες αφού επαναφέρετε την άδεια ή αλλάξετε τη συλλογή.</string>
+    <string name="photos_unavailable_body">Ανανεώστε τη Φωτοθήκη αφού επαναφέρετε την άδεια ή αλλάξετε τη συλλογή.</string>
     <string name="photos_text_in_photo">Κείμενο στη φωτογραφία</string>
     <string name="photos_reading_text">Ανάγνωση…</string>
     <string name="photos_no_text">Δεν βρέθηκαν λέξεις σε αυτή τη φωτογραφία.</string>
@@ -1736,7 +1736,7 @@
     <string name="contacts_system_left">Το αντίγραφο του Tetra βγήκε από τις επαφές του τηλεφώνου</string>
     <string name="contacts_system_hint">Ένα αντίγραφο μόνο για ανάγνωση στον λογαριασμό Tetra, ώστε το τηλέφωνο, το Viber, το WhatsApp και το αυτοκίνητο να δείχνουν αυτά τα ονόματα και τις φωτογραφίες. Οι αλλαγές γίνονται εδώ. Κλήσεις στον υπολογιστή: Ρυθμίσεις › Τηλέφωνο.</string>
     <string name="contacts_birthdays_in">Γενέθλια: %1$s</string>
-    <string name="contacts_faces_n">Πρόσωπα από τις Φωτογραφίες (%1$d)</string>
+    <string name="contacts_faces_n">Πρόσωπα από τη Φωτοθήκη (%1$d)</string>
     <string name="contacts_link_birthdays_n">Σύνδεση γενεθλίων (%1$d)</string>
     <string name="contacts_birthdays_hint">Κάθε γενέθλια και ημερομηνία είναι ένα συμβάν σε εκείνο το ημερολόγιο, με υπενθύμιση στις 9:00 την ίδια μέρα και την προηγούμενη· αλλάξτε το εδώ και το συμβάν ακολουθεί.</string>
     <string name="contacts_linking">Σύνδεση…</string>
@@ -1804,7 +1804,7 @@
     <string name="contacts_link_n">Σύνδεση %1$d</string>
     <string name="contacts_picture_unreadable">Δεν ήταν δυνατή η ανάγνωση αυτής της εικόνας</string>
     <string name="contacts_making_photo">Δημιουργία της φωτογραφίας…</string>
-    <string name="contacts_from_photos">Από τις Φωτογραφίες</string>
+    <string name="contacts_from_photos">Από τη Φωτοθήκη</string>
     <string name="contacts_choose_picture">Επιλογή εικόνας</string>
     <string name="contacts_merge_all_n">Συγχώνευση όλων (%1$d)</string>
     <string name="contacts_no_twins">Κανείς δεν υπάρχει δύο φορές.</string>
@@ -1847,8 +1847,8 @@
         <item quantity="other">Συνδέθηκαν %1$d· τα άλλα γενέθλια είναι στο ημερολόγιο</item>
     </plurals>
     <plurals name="contacts_n_photos">
-        <item quantity="one">%1$d φωτογραφία από τις Φωτογραφίες</item>
-        <item quantity="other">%1$d φωτογραφίες από τις Φωτογραφίες</item>
+        <item quantity="one">%1$d φωτογραφία από τη Φωτοθήκη</item>
+        <item quantity="other">%1$d φωτογραφίες από τη Φωτοθήκη</item>
     </plurals>
     <plurals name="contacts_delete_n">
         <item quantity="one">Διαγραφή %1$d επαφής;</item>
@@ -1897,14 +1897,14 @@
     <string name="contacts_delete_q">Διαγραφή της επαφής %1$s;</string>
     <string name="contacts_delete_hint">Η επαφή πηγαίνει στον Κάδο του Tetra και μπορεί να επαναφερθεί από εκεί (Επαφές › Κάδος).</string>
     <string name="contacts_looking">Αναζήτηση…</string>
-    <string name="contacts_photos_knows_no_one">Οι Φωτογραφίες δεν γνωρίζουν ακόμα κανέναν με το όνομά του: δώστε πρώτα ονόματα στα άτομα στις Φωτογραφίες › Άτομα.</string>
+    <string name="contacts_photos_knows_no_one">Η Φωτοθήκη δεν γνωρίζει ακόμα κανέναν με το όνομά του: δώστε πρώτα ονόματα στα άτομα στη Φωτοθήκη › Άτομα.</string>
     <string name="contacts_people">Άτομα</string>
-    <string name="contacts_use_faces">Χρήση των προσώπων τους ως φωτογραφιών τους; Το καθένα περικόπτεται από το πρόσωπο με το οποίο τους δείχνουν οι Φωτογραφίες.</string>
+    <string name="contacts_use_faces">Χρήση των προσώπων τους ως φωτογραφιών τους; Το καθένα περικόπτεται από το πρόσωπο με το οποίο τους δείχνει η Φωτοθήκη.</string>
     <string name="contacts_not_now">Όχι τώρα</string>
     <string name="contacts_use_n">Χρήση %1$d</string>
     <plurals name="contacts_photos_knows_n">
-        <item quantity="one">Οι Φωτογραφίες γνωρίζουν %1$d από αυτά τα άτομα</item>
-        <item quantity="other">Οι Φωτογραφίες γνωρίζουν %1$d από αυτά τα άτομα</item>
+        <item quantity="one">Η Φωτοθήκη γνωρίζει %1$d από αυτά τα άτομα</item>
+        <item quantity="other">Η Φωτοθήκη γνωρίζει %1$d από αυτά τα άτομα</item>
     </plurals>
     <string name="phone_channel_pc_calls">Κλήσεις από τον υπολογιστή</string>
     <string name="phone_pc_call_title">Κλήση: %1$s</string>
@@ -3400,7 +3400,7 @@
     <string name="tables_up_to_date">Τα αποτελέσματα όλων των τύπων εδώ είναι ενημερωμένα</string>
     <string name="tables_choose_rows">Επιλέξτε πρώτα τις γραμμές για έλεγχο (παρατεταμένο πάτημα και σύρσιμο)</string>
     <string name="tables_no_notes_sheet">Δεν υπάρχουν σημειώσεις σε αυτό το φύλλο</string>
-    <string name="tables_new_spreadsheet">Νέο υπολογιστικό φύλλο</string>
+    <string name="tables_new_spreadsheet">Νέο φύλλο</string>
     <string name="tables_saving">Αποθήκευση…</string>
     <string name="tables_editing">Επεξεργασία</string>
     <string name="tables_view_only">Μόνο προβολή</string>
@@ -3725,6 +3725,9 @@
     <string name="tables_name_taken_already">Υπάρχει ήδη τέτοιο όνομα</string>
     <string name="tables_field_page">Σελίδα</string>
     <string name="tables_field_pages">Σελίδες</string>
+    <string name="tables_sheet_n">Φύλλο%1$d</string>
+    <string name="tables_hf_word_page">Σελίδα</string>
+    <string name="tables_hf_word_of">από</string>
     <string name="tables_hf_page">Σελίδα 1</string>
     <string name="tables_hf_page_of">Σελίδα 1 από ?</string>
     <string name="tables_hf_sheet_name">Όνομα φύλλου</string>

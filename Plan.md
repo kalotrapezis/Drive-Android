@@ -47,6 +47,15 @@ How to write here:
       shows Edit as the pencil alone, as Tables' and Slides' ("Επεξεργασία" left the file's name no room). Merged into main
       in both repos (the user, 26 Oct). Maps' voice now follows the app's language when "Directions in" was never set (it
       was always Greek).
+- [x] (eu-languages session, 26 Oct, on main in both repos, not pushed, nothing installed) **The other 22 EU languages**
+      (the user: "work on your own on the rest of the EU languages"): bg cs da de es et fi fr ga hr hu it lt lv mt nl pl pt
+      (European) ro sk sl sv, each one values-<tag>/strings.xml and one desktop/locales/<tag>.json, translated from English
+      by one agent a language with Microsoft Office's terms (Opus, finished by Haiku at the user's word; Irish and Maltese
+      all Haiku). Folder paths on disk stay English. The desktop's Language is a list now; its test lets a plural's
+      one-form keep {count} (Croatian's "one" is also 21, 31…). StringsTest, 151 desktop tests and the build pass. **Not
+      checked on a screen** (no tablet connected): long words cut with "…" in German/Finnish/Hungarian. **Open for the
+      user**: calls.askFirst says recording without consent is a crime "in Greece" in every language; Irish and Maltese
+      want a native reader most; Hungarian's first desktop chunks say "PC", the rest "számítógép".
 - [x] (data-calls session, 25 Oct; branches `claude/data-calls` / Drive `data-calls`, not merged, nothing installed) Three of the
       user's reports. **41 % on the phone, 40 % on the computer, 83 % on the tablet**: the computer's copy of the phone's October
       stayed at the 10:00 counts (120.9 GB) while every newer version arrived as a sync copy ("(2)", "(2) (3)"… 14 of them, mtime

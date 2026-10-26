@@ -12,6 +12,17 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [ ] **TOP OF THE LIST — the PDF editor works exactly like Words** (the user, 26 Oct, on the tablet: "I don't like how PDF
+      does things. If we need to, we build our own stuff like we did with the rest of Office. Everything works completely
+      differently from Words"). Screenshots, kept local and out of git: `user-screenshots/2026-10-26-pdf-vs-words/` — 1–3
+      Words' Position (the page shown small, "Drag it into place", Done), 4 Words' text box chosen (thin outline, one round
+      rotate handle above, small square handles, its own WordArt / Shape options / Size / Wrap / Position / Bring forward
+      ribbon), 5 the PDF's text box today (thick double outline, oversized square handles, a different ribbon: Position ·
+      arrows · Arrange · Rotate · Duplicate · Delete). Wanted: a PDF text box, picture and drawing **are** Words' objects —
+      the same selection, handles, drag-to-move, resize, rotate, double-tap to type, the same Position page and the same
+      ribbon tabs and items in the same places — by reusing Words' code (memory "Office: reuse Words": one engine, no second
+      implementation), and building Tetra's own pieces where MuPDF's annotation model can't do it. The arrows-and-handles
+      fix on claude/pdf-handles is superseded by this; don't merge it as the answer.
 - [x] (translations session, 25–26 Oct; Drive-Android `claude/translations`, Drive `translations`; merged, nothing
       installed on the phone or tablet) **Translations, Greek first** (the user: "start the translation work; first
       translation Greek. Make the code translation flexible so we can add all the EU countries. And have a language option

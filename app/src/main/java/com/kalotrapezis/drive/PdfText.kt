@@ -228,10 +228,10 @@ internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t:
 internal fun PdfTextTools(w: Color, look: PdfTextLook, set: (PdfTextLook) -> Unit, font: () -> Unit, cancel: () -> Unit, done: () -> Unit,
     words: com.mohamedrejeb.richeditor.model.RichTextState? = null) =
     RibbonLine(rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
-        Tool(R.drawable.ic_close, "Leave it as it was", w, click = cancel)
+        Tool(R.drawable.ic_close, stringResource(R.string.pdf_leave_it), w, click = cancel)
         PdfLookTools(w, look, set, font, words)
         RibbonDivider(w)
-        RibbonButton("Done", w, R.drawable.ic_check, click = done)
+        RibbonButton(stringResource(R.string.common_done), w, R.drawable.ic_check, click = done)
     }
 
 /**
@@ -248,20 +248,21 @@ internal fun PdfLookTools(w: Color, look: PdfTextLook, set: (PdfTextLook) -> Uni
     RibbonDivider(w)
     val bold = look.bold || (now?.fontWeight?.weight ?: 0) >= 600; val italic = look.italic || now?.fontStyle == FontStyle.Italic
     val under = look.underline || now?.textDecoration?.contains(TextDecoration.Underline) == true
-    Tool(R.drawable.ic_format_bold, "Bold", w, on = bold) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) else set(look.copy(bold = !look.bold)) }
-    Tool(R.drawable.ic_format_italic, "Italic", w, on = italic) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontStyle = FontStyle.Italic)) else set(look.copy(italic = !look.italic)) }
-    Tool(R.drawable.ic_format_underlined, "Underline", w, on = under) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(textDecoration = TextDecoration.Underline)) else set(look.copy(underline = !look.underline)) }
-    Swatches(w, R.drawable.ic_format_color_text, "Text colour", TEXT_COLOURS) { c ->
+    Tool(R.drawable.ic_format_bold, stringResource(R.string.words_bold), w, on = bold) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) else set(look.copy(bold = !look.bold)) }
+    Tool(R.drawable.ic_format_italic, stringResource(R.string.words_italic), w, on = italic) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontStyle = FontStyle.Italic)) else set(look.copy(italic = !look.italic)) }
+    Tool(R.drawable.ic_format_underlined, stringResource(R.string.words_underline), w, on = under) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(textDecoration = TextDecoration.Underline)) else set(look.copy(underline = !look.underline)) }
+    Swatches(w, R.drawable.ic_format_color_text, stringResource(R.string.words_text_colour), TEXT_COLOURS) { c ->
         if (sel != null) { sel.removeSpanStyle(androidx.compose.ui.text.SpanStyle(color = sel.currentSpanStyle.color)); if (c != null) sel.addSpanStyle(androidx.compose.ui.text.SpanStyle(color = c)) }
         else set(look.copy(color = (c ?: Color.Black).toArgb() and 0xFFFFFF)) }
-    Swatches(w, R.drawable.ic_highlighter, "Highlight", HIGHLIGHT_COLOURS) { c ->
+    Swatches(w, R.drawable.ic_highlighter, stringResource(R.string.words_highlight), HIGHLIGHT_COLOURS) { c ->
         if (sel != null) { sel.removeSpanStyle(androidx.compose.ui.text.SpanStyle(background = sel.currentSpanStyle.background)); if (c != null) sel.addSpanStyle(androidx.compose.ui.text.SpanStyle(background = c)) }
         else set(look.copy(highlight = c?.let { it.toArgb() and 0xFFFFFF })) }
-    Swatches(w, R.drawable.ic_format_color_fill, "Fill", TEXT_COLOURS) { c -> set(look.copy(fill = c?.let { it.toArgb() and 0xFFFFFF })) }
-    Swatches(w, R.drawable.ic_border_outer, "Border", TEXT_COLOURS) { c -> set(look.copy(line = c?.let { it.toArgb() and 0xFFFFFF })) }
+    Swatches(w, R.drawable.ic_format_color_fill, stringResource(R.string.words_fill), TEXT_COLOURS) { c -> set(look.copy(fill = c?.let { it.toArgb() and 0xFFFFFF })) }
+    Swatches(w, R.drawable.ic_border_outer, stringResource(R.string.pdf_border), TEXT_COLOURS) { c -> set(look.copy(line = c?.let { it.toArgb() and 0xFFFFFF })) }
     RibbonDivider(w)
-    listOf(DocAlign.Start to R.drawable.ic_align_left, DocAlign.Center to R.drawable.ic_align_center, DocAlign.End to R.drawable.ic_align_right, DocAlign.Justify to R.drawable.ic_align_justify).forEach { (a, icon) ->
-        Tool(icon, "Align ${a.name.lowercase().replace("start", "left").replace("end", "right")}", w, on = look.align == a) { set(look.copy(align = a)) }
+    listOf(Triple(DocAlign.Start, R.drawable.ic_align_left, R.string.words_align_left), Triple(DocAlign.Center, R.drawable.ic_align_center, R.string.words_align_center),
+        Triple(DocAlign.End, R.drawable.ic_align_right, R.string.words_align_right), Triple(DocAlign.Justify, R.drawable.ic_align_justify, R.string.words_align_justify)).forEach { (a, icon, label) ->
+        Tool(icon, stringResource(label), w, on = look.align == a) { set(look.copy(align = a)) }
     }
 }
 
@@ -363,19 +364,22 @@ internal fun NudgeTool(icon: Int, turn: Float, label: String, w: Color, step: (F
 /** Layout › Size's papers (points), as Word's and Tables' Size. */
 internal object PdfPaper {
     val all = listOf("A4" to Size(595f, 842f), "A5" to Size(420f, 595f), "A3" to Size(842f, 1191f), "Letter" to Size(612f, 792f), "Legal" to Size(612f, 1008f))
-    /** [s]'s paper and way round ("A4 portrait"), else its size in the chosen unit. */
-    fun name(s: Size): String {
+    /** [s]'s paper ("A4"), either way round; null when it is none of them. */
+    fun paper(s: Size): String? {
         val (w, h) = minOf(s.width, s.height) to maxOf(s.width, s.height)
-        val way = if (s.width > s.height) "landscape" else "portrait"
-        return all.firstOrNull { (_, p) -> kotlin.math.abs(p.width - w) < 3 && kotlin.math.abs(p.height - h) < 3 }?.let { "${it.first} $way" }
-            ?: "${WriterUnits.text(s.width)} × ${WriterUnits.text(s.height)} ${WriterUnits.name}"
+        return all.firstOrNull { (_, p) -> kotlin.math.abs(p.width - w) < 3 && kotlin.math.abs(p.height - h) < 3 }?.first
     }
+    /** [s]'s paper and way round ("A4 portrait", in [way]'s words: the paper, landscape), else its size in [unit]. */
+    fun name(s: Size, way: (String, Boolean) -> String = { p, land -> "$p ${if (land) "landscape" else "portrait"}" }, unit: String = WriterUnits.name): String =
+        paper(s)?.let { way(it, s.width > s.height) } ?: "${WriterUnits.text(s.width)} × ${WriterUnits.text(s.height)} $unit"
 }
 
 /** Layout › Margins (Word's presets), the same for every PDF: where Position puts a text and where a new one starts. */
 internal object PdfMargins {
     /** name → top/bottom, left/right (points) */
     val all = listOf("Normal" to (72f to 72f), "Narrow" to (36f to 36f), "Moderate" to (72f to 54f), "Wide" to (72f to 144f))
+    /** Their words (the names above are what is kept in the settings). */
+    val labels = mapOf("Normal" to R.string.pdf_normal, "Narrow" to R.string.words_margins_narrow, "Moderate" to R.string.words_margins_moderate, "Wide" to R.string.words_margins_wide)
     fun page(name: String) = (all.firstOrNull { it.first == name } ?: all[0]).second.let { (tb, lr) -> DocPage(top = tb, bottom = tb, left = lr, right = lr) }
     fun nameOf(m: DocPage) = all.firstOrNull { (_, v) -> v.first == m.top && v.second == m.left }?.first
     fun load(context: android.content.Context) = page(context.getSharedPreferences("office_editor", android.content.Context.MODE_PRIVATE).getString("pdf_margins", "Normal") ?: "Normal")

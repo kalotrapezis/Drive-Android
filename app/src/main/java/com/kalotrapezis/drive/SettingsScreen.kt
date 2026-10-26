@@ -121,7 +121,7 @@ internal fun SettingsTab(
                 if (query.isBlank()) {
                     SettingsSection(stringResource(R.string.app_name)) {
                         SettingRow(stringResource(R.string.guide_title), stringResource(R.string.guide_summary), onClick = openGuide,
-                            leading = { Icon(painterResource(R.drawable.ic_school), contentDescription = null, tint = quiet(), modifier = Modifier.size(24.dp)) }) { Chevron() }
+                            leading = { Icon(painterResource(R.drawable.ic_school), contentDescription = null, tint = quiet(), modifier = Modifier.size(24.dp)) }) { if (!wide) Chevron() }
                         listOf(SettingsPage.Sync, SettingsPage.Appearance).forEach { PageRow(it, stringResource(it.summary)) }
                     }
                     SettingsSection(stringResource(R.string.settings_apps)) { SettingsPage.entries.drop(2).forEach { PageRow(it, stringResource(it.summary)) } }

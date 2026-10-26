@@ -142,7 +142,7 @@ internal object GuidePlace {
         val ring = 4.dp.toPx(); val grow = ring + pulse * 10.dp.toPx(); val r = 14.dp.toPx()
         drawRoundRect(c.copy(alpha = 1f - pulse), Offset(-grow, -grow), Size(size.width + 2 * grow, size.height + 2 * grow), CornerRadius(r + grow), style = Stroke(2.dp.toPx()))
         drawRoundRect(c, Offset(-ring, -ring), Size(size.width + 2 * ring, size.height + 2 * ring), CornerRadius(r), style = Stroke(3.dp.toPx()))
-        drawCircle(c.copy(alpha = 0.4f), 12.dp.toPx(), center)
+        drawCircle(c.copy(alpha = 0.3f), 8.dp.toPx(), center)
     }
 }
 
@@ -190,7 +190,7 @@ internal fun GuideScreen(at: Int, go: (Int) -> Unit, tryIt: (GuideGo) -> Unit, c
                         step.ask?.let { GuideAskRow(it) }
                     }
                 }
-                GuideButtons(at, go, close, Modifier.padding(bottom = 12.dp)) {
+                GuideButtons(at, go, close, Modifier.widthIn(max = 720.dp).padding(bottom = 12.dp)) {
                     if (step.go != GuideGo.None) OutlinedButton(onClick = { tryIt(step.go) }, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) {
                         Text(stringResource(R.string.guide_try_it), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -378,7 +378,7 @@ private fun askIcon(ask: GuideAsk?) = when (ask) {
         GuidePic.HomePencil -> HomeHeader(name) { Box(Modifier.size(40.dp).mark(), contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_edit), contentDescription = null) } }
         // the part held, carried to the empty cell, and again
         GuidePic.HomeMove -> Box(Modifier.width(224.dp).height(96.dp), contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.align(Alignment.CenterEnd).size(88.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f)))
+            Box(Modifier.align(Alignment.CenterEnd).size(88.dp).border(1.5.dp, markColour().copy(alpha = 0.6f), RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f), RoundedCornerShape(16.dp)))
             val t = loop(2800)
             EditedPart(Modifier.graphicsLayer { translationX = 136.dp.toPx() * eased(t, 0.15f, 0.7f); val lift = if (t in 0.1f..0.75f) 1.06f else 1f; scaleX = lift; scaleY = lift }.mark())
         }
@@ -508,7 +508,7 @@ private fun eased(t: Float, from: Float, to: Float) = FastOutSlowInEasing.transf
 }
 
 @Composable private fun HomeHeader(title: String, end: @Composable RowScope.() -> Unit) =
-    Row(Modifier.widthIn(max = 420.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         end()
     }

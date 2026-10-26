@@ -945,25 +945,36 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             a.bounds.let { r -> x >= r.x0 - 6 && x <= r.x1 + 6 && y >= r.y0 - 6 && y <= r.y1 + 6 } }?.contents
     } }
 
+    /** The file as this document read it (its length and time): what its one appended save goes onto. */
+    private val openedAs = file.length() to file.lastModified()
+    /** Saved once already: MuPDF appends only onto the file it opened, so every save after the first is written whole. */
+    private var savedOnce = false
+
     /**
-     * Saved over [file] (or into [to]): the changes appended to the bytes as they were opened (an incremental save, so all
-     * the file had stays, signatures too), through a copy beside it renamed over it; a file MuPDF had to repair is
-     * written whole. [base]: the file as opened, kept outside it for the next save.
+     * Saved over [file] (or into [to]), through a copy beside it renamed over it. The session's first save appends its
+     * changes to the file as opened (an incremental save: all the file had stays, signatures too); every later one is
+     * written whole, as is one after another app changed the file, or one MuPDF had to repair. (Before 27 Oct every save
+     * appended: MuPDF chains an appended part to the file it opened, so the parts of the saves before were lost — a
+     * second save's, AutoSave's, a second day's.)
      */
-    fun save(base: File, to: File = file, copy: Boolean = false) = synchronized(this) {
+    fun save(to: File = file, copy: Boolean = false) = synchronized(this) {
         val p = pdf ?: throw PdfError(R.string.pdf_cannot_edit)
-        if (!base.isFile) file.copyTo(base, overwrite = true)
         val was = dirty
         val temp = File(to.parentFile, ".${to.name}.saving")
         // redacted or (un)locked: written whole, the old objects dropped (an appended save would keep what was taken out);
         // a copy leaves that still to do for the file itself
         val whole = rewrite
-        if (whole != null) { p.save(temp.path, whole); if (!copy) { rewrite = null; base.delete() } }
-        else if (p.canBeSavedIncrementally()) { base.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
-        else p.save(temp.path, "compress")
+        val untouched = (file.length() to file.lastModified()) == openedAs
+        val appendable = p.canBeSavedIncrementally() && !savedOnce && untouched
+        if (whole != null) { p.save(temp.path, whole); if (!copy) rewrite = null }
+        // nothing new and nothing written since it was opened: the file as it is (MuPDF appending nothing left a broken stub)
+        else if (!p.hasUnsavedChanges() && untouched && !savedOnce) file.copyTo(temp, overwrite = true)
+        else if (appendable) { file.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
+        else p.save(temp.path, "garbage=compact,compress")
         if (!temp.renameTo(to)) throw PdfError(R.string.pdf_save_failed_file)
+        savedOnce = true
         copied = copy && was
-        WriterLog.i("PDF: saved${if (copy) " a copy" else ""} (${to.length() / 1024} KB)")
+        WriterLog.i("PDF: saved${if (copy) " a copy" else ""}${if (whole == null && !appendable) " whole" else ""} (${to.length() / 1024} KB)")
     }
 
     private inline fun <T> page(i: Int, use: (com.artifex.mupdf.fitz.Page) -> T): T { val p = doc.loadPage(i); try { return use(p) } finally { p.destroy() } }
@@ -1195,16 +1206,17 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var organize by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
     var showVersions by remember { mutableStateOf(false) }
-    val base = remember(open) { Uri.parse(open).path?.let(::File)?.let { File(File(context.cacheDir, "pdf-base").apply { mkdirs() }, "${it.absolutePath.hashCode().toUInt()}.pdf") } }
+    // the old saves' copies of files as first opened (a save now goes onto the file itself): gone
+    remember { runCatching { File(context.cacheDir, "pdf-base").deleteRecursively() } }
     fun change(what: () -> Unit) {
         runCatching(what).onFailure { WriterLog.e("PDF: change", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_could_not_do), Toast.LENGTH_LONG).show() }
         version++
     }
     /** Saved over the file, or into [to] (File › Save as, Save a copy: [copy] leaves the file itself unsaved). */
     fun save(to: File? = null, copy: Boolean = false, then: () -> Unit = {}) {
-        val d = doc ?: return; val f = file ?: return; val b = base ?: return; val t = to ?: f
+        val d = doc ?: return; val f = file ?: return; val t = to ?: f
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { if (t == f) keepPrevious(context, f); d.save(b, t, copy) } }
+            val r = withContext(Dispatchers.IO) { runCatching { if (t == f) keepPrevious(context, f); d.save(t, copy) } }
             r.onFailure { WriterLog.e("PDF: save", it); Toast.makeText(context, context.getString(R.string.pdf_could_not_save, pdfSays(context, it, R.string.pdf_could_not_do)), Toast.LENGTH_LONG).show() }
                 .onSuccess { version++; Toast.makeText(context, if (t != f) context.getString(R.string.pdf_saved_as_kb, t.name, t.length() / 1024) else context.getString(R.string.pdf_saved_kb, t.length() / 1024), Toast.LENGTH_SHORT).show(); then() }
         }
@@ -1431,7 +1443,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 androidx.compose.material3.TextButton(onClick = {
                     leaving = false; editing = false
                     // not saved: the file read again as it is
-                    val f = file; doc?.close(); doc = null; base?.delete()
+                    val f = file; doc?.close(); doc = null
                     if (f != null) scope.launch { withContext(Dispatchers.IO) { runCatching { PdfDoc(f, password) } }.onSuccess { doc = it; version++ } }
                 }) { Text(stringResource(R.string.words_dont_save), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 androidx.compose.material3.TextButton(onClick = { leaving = false }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -1586,7 +1598,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     if (showVersions) file?.let { f -> VersionsDialog(f, "", { showVersions = false }, about = stringResource(R.string.pdf_versions_about)) { v ->
         showVersions = false
         scope.launch {
-            withContext(Dispatchers.IO) { runCatching { keepPrevious(context, f); doc?.close(); v.copyTo(f, overwrite = true); base?.delete() } }
+            withContext(Dispatchers.IO) { runCatching { keepPrevious(context, f); doc?.close(); v.copyTo(f, overwrite = true) } }
             withContext(Dispatchers.IO) { runCatching { PdfDoc(f, password) } }.onSuccess { doc = it; version++ }
             Toast.makeText(context, R.string.pdf_version_back, Toast.LENGTH_SHORT).show()
         }

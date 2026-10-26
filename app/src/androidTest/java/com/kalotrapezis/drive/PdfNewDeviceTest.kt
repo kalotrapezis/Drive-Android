@@ -24,7 +24,7 @@ class PdfNewDeviceTest {
         assertEquals(listOf(Size(595f, 842f)), d.sizes)
         d.text(0, androidx.compose.ui.geometry.Offset(72f, 72f), "Hello Γειά", 14f, 0)
         d.insertBlank(1)
-        d.save(java.io.File(dir, "base.pdf"))
+        d.save()
         d.close()
         val again = PdfDoc(f)
         assertEquals(2, again.sizes.size)
@@ -38,12 +38,12 @@ class PdfNewDeviceTest {
         val f = Pdf.newBlank(dir)
         val d = PdfDoc(f)
         d.ink(0, listOf(listOf(androidx.compose.ui.geometry.Offset(100f, 100f), androidx.compose.ui.geometry.Offset(200f, 150f))), 0x000000, 2f)
-        d.save(java.io.File(dir, "base.pdf")); d.close()
+        d.save(); d.close()
         val again = PdfDoc(f) // another day: the file as saved
         assertEquals(1, again.comments().size)
         assertTrue(again.deleteAt(0, androidx.compose.ui.geometry.Offset(150f, 125f)))
         assertEquals(0, again.comments().size)
-        again.save(java.io.File(dir, "base2.pdf")); again.close()
+        again.save(); again.close()
         val third = PdfDoc(f)
         assertEquals("gone for good once saved", 0, third.comments().size)
         third.close(); dir.deleteRecursively()
@@ -64,5 +64,26 @@ class PdfNewDeviceTest {
         assertEquals(Size(792f, 612f), d.sizes[0])
         assertEquals("Letter landscape", PdfPaper.name(d.sizes[0]))
         d.close(); dir.deleteRecursively()
+    }
+
+    @Test fun everySaveKeepsWhatTheOnesBeforeDid() {
+        // 27 Oct: a second save (AutoSave's), or a second day's, dropped what the first one had written
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-saves-test").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        d.note(0, androidx.compose.ui.geometry.Offset(100f, 100f), "first", 0xFFEB3B); d.save()
+        d.note(0, androidx.compose.ui.geometry.Offset(200f, 100f), "second", 0xFFEB3B); d.save()
+        d.save(java.io.File(dir, "copy.pdf"), copy = true)
+        d.note(0, androidx.compose.ui.geometry.Offset(300f, 100f), "third", 0xFFEB3B); d.save()
+        d.close()
+        val day2 = PdfDoc(f)
+        assertEquals(listOf("first", "second", "third"), day2.comments().map { it.words })
+        day2.note(0, androidx.compose.ui.geometry.Offset(400f, 100f), "fourth", 0xFFEB3B); day2.save(); day2.close()
+        val day3 = PdfDoc(f)
+        assertEquals(listOf("first", "second", "third", "fourth"), day3.comments().map { it.words })
+        day3.close()
+        val copy = PdfDoc(java.io.File(dir, "copy.pdf"))
+        assertEquals(listOf("first", "second"), copy.comments().map { it.words })
+        copy.close(); dir.deleteRecursively()
     }
 }

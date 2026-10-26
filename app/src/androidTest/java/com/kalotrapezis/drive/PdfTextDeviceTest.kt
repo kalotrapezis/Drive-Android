@@ -30,7 +30,7 @@ class PdfTextDeviceTest {
         assertEquals(t, back)
         assertEquals(300f, r.width())
         assertTrue(r.height() >= 2 * 24f) // two lines grew it past the 40 drawn
-        d.save(java.io.File(dir, "base.pdf")); d.close()
+        d.save(); d.close()
 
         val bytes = f.readBytes().toString(Charsets.ISO_8859_1)
         // Words' Times twin, bold, embedded (not MuPDF's own Helvetica made again from the fallback look)
@@ -110,7 +110,7 @@ class PdfTextDeviceTest {
         val d = PdfDoc(f)
         val t = PdfText(words, PdfTextLook(size = 30f), framed = false, runs = runs)
         d.putText(0, 50f, 50f, t, 400f)
-        d.save(java.io.File(dir, "base.pdf")); d.close()
+        d.save(); d.close()
         val again = PdfDoc(f)
         val (r, back) = again.typedAt(0, Offset(60f, 60f))!!
         assertEquals(runs, back.runs)

@@ -23,6 +23,13 @@ How to write here:
       ribbon tabs and items in the same places — by reusing Words' code (memory "Office: reuse Words": one engine, no second
       implementation), and building Tetra's own pieces where MuPDF's annotation model can't do it. The arrows-and-handles
       fix on claude/pdf-handles is superseded by this; don't merge it as the answer.
+      **Not only these** (the user, 26 Oct: "it isn't only these, there are many, and I want them 1 to 1 wherever it makes
+      sense"): go through Words' whole UI — every tab, ribbon item, strip, menu, dialog, gesture, selection and handle,
+      text editing, fonts and styles, tables, pictures, shapes, drawing, comments, find/replace, zoom, view, file menu — and
+      make the PDF editor match it one to one wherever it makes sense for a PDF; list each item as same / adapted / n/a.
+      **Plus what only PDFs have**, in Words' style: rearranging pages (drag to reorder, rotate, delete, extract, insert
+      blank or from another PDF, merge and split), page thumbnails, fill & sign, forms, redaction, protection, flatten,
+      compress, export.
 - [x] (translations session, 25–26 Oct; Drive-Android `claude/translations`, Drive `translations`; merged, nothing
       installed on the phone or tablet) **Translations, Greek first** (the user: "start the translation work; first
       translation Greek. Make the code translation flexible so we can add all the EU countries. And have a language option

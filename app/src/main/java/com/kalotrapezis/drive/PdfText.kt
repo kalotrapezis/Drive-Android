@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +47,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Layout
@@ -57,51 +60,40 @@ import org.json.JSONObject
 import kotlin.math.ceil
 
 /**
- * Words on a PDF page with Words' looks (the user, 24 Oct: "text input fonts format like in Words, Slides and Tables"):
- * Fill & Sign › Text and Review › Text box. One look for all its words, as a Slides box's Home tools give it.
+ * A text's frame and the look new words take: the font, size and colour words typed in it start with; the box's fill
+ * and border's colour (0xRRGGBB; none: clear, no border), its turn. Bold, italic, underline, highlight and alignment are
+ * the words' and paragraphs' own now (Words'); they are read only from texts put on before 27 Oct.
  */
 internal data class PdfTextLook(val font: String = "Times New Roman", val size: Float = 12f, val bold: Boolean = false, val italic: Boolean = false,
     val underline: Boolean = false, /** 0xRRGGBB */ val color: Int = 0x000000, /** 0xRRGGBB or none */ val highlight: Int? = null, val align: DocAlign = DocAlign.Start,
-    /** the box's fill and its border's colour (0xRRGGBB), as a Slides box's; none: clear, no border */ val fill: Int? = null, val line: Int? = null,
-    /** turned clockwise, degrees (0–359) */ val turn: Int = 0)
+    val fill: Int? = null, val line: Int? = null, /** turned clockwise, degrees (0–359) */ val turn: Int = 0)
+
+/** Some of an old text's words with a look of their own (24 Oct): read into Words' runs ([PdfText.invoke]). */
+internal data class PdfRun(val from: Int, val to: Int, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false,
+    val strike: Boolean = false, /** 0xRRGGBB */ val color: Int? = null, val highlight: Int? = null)
 
 /**
- * Some of a text's words with a look of their own (the user, 24 Oct: "finish"): [from] to [to] in its words, bold,
- * italic, underlined, struck out, coloured or highlighted over the text's own look, as Words' letters are.
+ * Words on a PDF page (Fill & Sign › Text, Insert › Text box) as Words' own (PDF_LIKE_WORDS.md, E3): Words' paragraphs
+ * ([doc], kept in the annotation as a .docx), laid out and drawn by Words' engine ([OfficePages.stack]) and typed in
+ * Words' editor, so Home's tools are Words'. [look]: the frame, and the font, size and colour new words take; [framed]
+ * a text box (as wide as it was drawn) or a text (as wide as its longest line).
  */
-internal data class PdfRun(val from: Int, val to: Int, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false,
-    val strike: Boolean = false, /** 0xRRGGBB */ val color: Int? = null, val highlight: Int? = null) {
-    /** As Words' editor holds a letter's look. */
-    fun style() = androidx.compose.ui.text.SpanStyle(fontWeight = if (bold) FontWeight.Bold else null, fontStyle = if (italic) FontStyle.Italic else null,
-        textDecoration = TextDecoration.combine(listOfNotNull(TextDecoration.Underline.takeIf { underline }, TextDecoration.LineThrough.takeIf { strike })).takeIf { underline || strike },
-        color = color?.let { Color(0xFF000000 or it.toLong()) } ?: Color.Unspecified, background = highlight?.let { Color(0xFF000000 or it.toLong()) } ?: Color.Unspecified)
-
-    companion object {
-        /**
-         * The looks Words' editor gives some of [words]' letters ([text]: its styled copy, a paragraph's end a space there),
-         * as runs; none when the two do not line up letter for letter.
-         */
-        fun of(text: androidx.compose.ui.text.AnnotatedString, words: String): List<PdfRun> = if (text.length != words.length) emptyList() else text.spanStyles.mapNotNull { r ->
-            val st = r.item; val deco = st.textDecoration
-            PdfRun(r.start, r.end, (st.fontWeight?.weight ?: 0) >= 600, st.fontStyle == FontStyle.Italic, deco?.contains(TextDecoration.Underline) == true,
-                deco?.contains(TextDecoration.LineThrough) == true, st.color.takeIf { it.isSpecified }?.let { it.toArgb() and 0xFFFFFF },
-                st.background.takeIf { it.isSpecified && it.alpha > 0f }?.let { it.toArgb() and 0xFFFFFF })
-                .takeIf { it.from < it.to && (it.bold || it.italic || it.underline || it.strike || it.color != null || it.highlight != null) }
-        }
-    }
-}
-
-/** A text put on a page: its words, their look, whether it is a text box (a thin frame, as wide as it was drawn), and words with their own look. */
-internal data class PdfText(val words: String, val look: PdfTextLook, val framed: Boolean, val runs: List<PdfRun> = emptyList()) {
+internal data class PdfText(val doc: OfficeDoc, val look: PdfTextLook, val framed: Boolean) {
+    /** The .docx it was read from: written back into it, so its styles stay (Words saves into the file it opened). */
+    var source: ByteArray? = null
     /** Its size as laid out before turning (points), as the file keeps it; null: from its place on the page ([unturned]). */
     var laid: Pair<Float, Float>? = null
-    /** Kept in the file with it (the annotation's own key), so a tap opens it again as it was typed; [laid] its size before turning. */
-    fun json(laid: Pair<Float, Float>? = null): String = JSONObject().put("words", words).put("font", look.font).put("size", look.size.toDouble()).put("bold", look.bold).put("italic", look.italic)
-        .put("underline", look.underline).put("color", look.color).put("highlight", look.highlight ?: -1).put("align", look.align.name).put("framed", framed)
-        .put("fill", look.fill ?: -1).put("line", look.line ?: -1).put("turn", look.turn)
-        .apply { laid?.let { (w, h) -> put("laidW", w.toDouble()).put("laidH", h.toDouble()) } }
-        .apply { if (runs.isNotEmpty()) put("runs", org.json.JSONArray(runs.map { r -> JSONObject().put("from", r.from).put("to", r.to).put("b", r.bold).put("i", r.italic)
-            .put("u", r.underline).put("s", r.strike).put("color", r.color ?: -1).put("highlight", r.highlight ?: -1) })) }.toString()
+    val words: String get() = doc.paras.joinToString("\n") { it.text }
+    /** Its paragraphs' styles (Title, Heading 1…): its .docx's, else a new document's. */
+    val styles: DocStyles by lazy { DocStyles.of(OfficeKind.Docx, source ?: BLANK) }
+    /** The same with [paras] for words (its styles kept). */
+    fun with(paras: List<DocPara>) = copy(doc = doc.copy(paras = paras)).also { it.source = source; it.laid = laid }
+    fun with(look: PdfTextLook) = copy(look = look).also { it.source = source; it.laid = laid }
+    fun docx(): ByteArray = OfficeFormats.write(doc, OfficeKind.Docx, source ?: BLANK)
+    /** Its frame kept in the file with it (the annotation's own key), [laid] its size before turning; its words go in the .docx. */
+    fun json(laid: Pair<Float, Float>? = null): String = JSONObject().put("font", look.font).put("size", look.size.toDouble()).put("color", look.color)
+        .put("framed", framed).put("fill", look.fill ?: -1).put("line", look.line ?: -1).put("turn", look.turn)
+        .apply { laid?.let { (w, h) -> put("laidW", w.toDouble()).put("laidH", h.toDouble()) } }.toString()
 
     /** Inside its frame, in points: a text box's words off its frame, a text's hugging them. */
     val pad get() = if (framed) 4f else 1f
@@ -111,48 +103,53 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
     fun unturned(r: android.graphics.RectF) = laid ?: if (look.turn % 180 == 90) r.height() to r.width() else r.width() to r.height()
 
     companion object {
-        fun parse(s: String): PdfText? = runCatching {
-            val o = JSONObject(s)
-            PdfText(o.getString("words"), PdfTextLook(o.optString("font", "Times New Roman"), o.optDouble("size", 12.0).toFloat(), o.optBoolean("bold"), o.optBoolean("italic"),
+        /**
+         * A new Words document's parts (its styles: Title, Heading 1…), for texts made here: single lines and nothing
+         * after a paragraph (Word's new documents' 1.08 and 8 pt would leave a typed line standing off its box).
+         */
+        private val BLANK: ByteArray by lazy {
+            val parts = OfficeFormats.unzip(OfficeFormats.write(OfficeDoc(emptyList()), OfficeKind.Docx))
+            parts["word/styles.xml"]?.let { st -> parts["word/styles.xml"] = String(st, Charsets.UTF_8)
+                .replace("""<w:spacing w:after="160" w:line="259" w:lineRule="auto"/>""", """<w:spacing w:after="0" w:line="240" w:lineRule="auto"/>""").toByteArray() }
+            OfficeFormats.zip(parts)
+        }
+
+        /** Words typed with [look] (a text put on before 27 Oct: its words, one look, [runs] with their own), as Words' paragraphs. */
+        operator fun invoke(words: String, look: PdfTextLook, framed: Boolean, runs: List<PdfRun> = emptyList()): PdfText {
+            var at = 0
+            val paras = words.split('\n').map { line ->
+                val from = at; at += line.length + 1
+                val cuts = sortedSetOf(0, line.length)
+                runs.forEach { r -> cuts += (r.from - from).coerceIn(0, line.length); cuts += (r.to - from).coerceIn(0, line.length) }
+                DocPara(OfficeFormats.tidy(cuts.toList().zipWithNext().filter { (a, b) -> b > a }.map { (a, b) ->
+                    val r = runs.firstOrNull { it.from <= from + a && it.to >= from + b }
+                    OfficeFormats.withFont(DocRun(line.substring(a, b), bold = look.bold || r?.bold == true, italic = look.italic || r?.italic == true,
+                        underline = look.underline || r?.underline == true, strike = r?.strike == true, sizePt = look.size,
+                        color = (r?.color ?: look.color).takeIf { it != 0 }, highlight = r?.highlight ?: look.highlight), OfficeKind.Docx, look.font)
+                }), align = look.align)
+            }
+            return PdfText(OfficeDoc(paras, basePt = look.size), look, framed)
+        }
+
+        /** As kept: its frame ([json]) and its words ([docx]; none: a text put on before 27 Oct, its words in [json]). */
+        fun parse(json: String, docx: ByteArray? = null): PdfText? = runCatching {
+            val o = JSONObject(json)
+            val look = PdfTextLook(o.optString("font", "Times New Roman"), o.optDouble("size", 12.0).toFloat(), o.optBoolean("bold"), o.optBoolean("italic"),
                 o.optBoolean("underline"), o.optInt("color", 0), o.optInt("highlight", -1).takeIf { it >= 0 }, runCatching { DocAlign.valueOf(o.optString("align")) }.getOrDefault(DocAlign.Start),
                 o.optInt("fill", -1).takeIf { it >= 0 }, o.optInt("line", if (o.optBoolean("framed")) 0 else -1).takeIf { it >= 0 }, // a box put on before borders were chosen: its black frame
-                Math.floorMod(o.optInt("turn"), 360)),
-                o.optBoolean("framed"), o.optJSONArray("runs")?.let { a -> (0 until a.length()).map { k -> a.getJSONObject(k).let { r ->
+                Math.floorMod(o.optInt("turn"), 360))
+            val t = if (docx != null) PdfText(OfficeFormats.read(docx, OfficeKind.Docx), look, o.optBoolean("framed")).also { it.source = docx }
+                else PdfText(o.getString("words"), look, o.optBoolean("framed"), o.optJSONArray("runs")?.let { a -> (0 until a.length()).map { k -> a.getJSONObject(k).let { r ->
                     PdfRun(r.getInt("from"), r.getInt("to"), r.optBoolean("b"), r.optBoolean("i"), r.optBoolean("u"), r.optBoolean("s"),
-                        r.optInt("color", -1).takeIf { it >= 0 }, r.optInt("highlight", -1).takeIf { it >= 0 }) } } }.orEmpty()).also { t ->
-                if (o.has("laidW")) t.laid = o.getDouble("laidW").toFloat() to o.getDouble("laidH").toFloat() }
+                        r.optInt("color", -1).takeIf { it >= 0 }, r.optInt("highlight", -1).takeIf { it >= 0 }) } } }.orEmpty())
+            t.also { if (o.has("laidW")) it.laid = o.getDouble("laidW").toFloat() to o.getDouble("laidH").toFloat() }
         }.getOrNull()
 
         /** Its place on the page for [w] × [h] laid out, turned: the box round the turned one. */
-        fun bounds(t: PdfText, w: Float, h: Float): Pair<Float, Float> {
-            val a = Math.toRadians(t.look.turn.toDouble()); val c = kotlin.math.abs(kotlin.math.cos(a)).toFloat(); val s = kotlin.math.abs(kotlin.math.sin(a)).toFloat()
-            return ceil(w * c + h * s - 0.01f) to ceil(w * s + h * c - 0.01f) // a hair off: a quarter turn's cos is 6e-17, not 0
-        }
+        fun bounds(t: PdfText, w: Float, h: Float): Pair<Float, Float> = turnedBox(w, h, t.look.turn.toFloat())
 
-        private fun layout(t: PdfText, width: Float): StaticLayout {
-            val l = t.look
-            val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                textSize = l.size; color = 0xFF000000.toInt() or l.color; isUnderlineText = l.underline
-                fontFeatureSettings = "'liga' 0, 'clig' 0" // a joined pair ("ll" in a script font) copied and found as nothing in the PDF
-                typeface = Typeface.create(OfficeFonts.typeface(l.font) ?: Typeface.DEFAULT, if (l.bold) 700 else 400, l.italic)
-            }
-            val s = SpannableString(t.words)
-            l.highlight?.let { s.setSpan(BackgroundColorSpan(0xFF000000.toInt() or it), 0, s.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
-            // words with their own look, over the text's: the font's own bold and italic faces (not drawn thicker or slanted)
-            val base = OfficeFonts.typeface(l.font) ?: Typeface.DEFAULT
-            t.runs.filter { it.from < minOf(it.to, s.length) }.forEach { r ->
-                fun span(o: Any) = s.setSpan(o, r.from, minOf(r.to, s.length), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                if (r.bold || r.italic) span(android.text.style.TypefaceSpan(Typeface.create(base, if (l.bold || r.bold) 700 else 400, l.italic || r.italic)))
-                if (r.underline) span(android.text.style.UnderlineSpan())
-                if (r.strike) span(android.text.style.StrikethroughSpan())
-                r.color?.let { span(android.text.style.ForegroundColorSpan(0xFF000000.toInt() or it)) }
-                r.highlight?.let { span(BackgroundColorSpan(0xFF000000.toInt() or it)) }
-            }
-            return StaticLayout.Builder.obtain(s, 0, s.length, paint, ceil(width).toInt().coerceAtLeast(1))
-                .setAlignment(when (l.align) { DocAlign.Center -> Layout.Alignment.ALIGN_CENTER; DocAlign.End -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL })
-                .setJustificationMode(if (l.align == DocAlign.Justify) Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE)
-                .setIncludePad(false).build() // as Compose's field lays it out while it is typed
-        }
+        /** Its words laid out by Words' engine [width] across (Slides' boxes' way). */
+        private fun block(t: PdfText, width: Float): Block = OfficePages.stack(t.doc.copy(ligatures = false), t.doc.paras, t.styles, DocPage(), width.coerceAtLeast(1f), { null }, null, 0f, 0f)
 
         /**
          * Its size on the page (points) given [room] across: a text box keeps the width it was drawn and grows down to
@@ -160,9 +157,9 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
          */
         fun size(t: PdfText, room: Float, minHeight: Float = 0f): Pair<Float, Float> {
             val inner = room - 2 * t.pad
-            val l = layout(t, inner)
-            val w = if (t.framed) room else (0 until l.lineCount).maxOfOrNull { l.getLineWidth(it) }.let { (it ?: 0f) + 2 * t.pad }.coerceAtMost(room)
-            return ceil(w) to ceil(maxOf(minHeight, l.height + 2 * t.pad))
+            val b = block(t, inner)
+            val w = if (t.framed) room else (b.pieces.maxOfOrNull { pc -> (pc.firstLine..pc.lastLine).maxOfOrNull { pc.layout.getLineWidth(it) / 20f + pc.x } ?: 0f } ?: 0f).let { it + 2 * t.pad }.coerceAtMost(room)
+            return ceil(w) to ceil(maxOf(minHeight, b.height + 2 * t.pad))
         }
 
         /**
@@ -185,9 +182,8 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
         private fun draw(c: Canvas, t: PdfText, w: Float, h: Float) {
             t.look.fill?.let { f -> c.drawRect(0f, 0f, w, h, Paint().apply { color = 0xFF000000.toInt() or f }) }
             t.look.line?.let { l -> c.drawRect(0.5f, 0.5f, w - 0.5f, h - 0.5f, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 0.75f; color = 0xFF000000.toInt() or l }) }
-            // a text box's alignment is across the box; a text's within its own width (its longest line)
-            val l = layout(t, w - 2 * t.pad)
-            c.save(); c.translate(t.pad, t.pad); l.draw(c); c.restore()
+            val b = block(t, w - 2 * t.pad)
+            c.save(); c.translate(t.pad, t.pad); LaidPage.drawParts(c, b.pieces, b.boxes, b.lines); c.restore()
         }
     }
 }
@@ -198,73 +194,36 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
  */
 internal data class PdfTyping(val page: Int, val x: Float, val y: Float, val room: Float, val minHeight: Float, val framed: Boolean, val replacing: Int? = null)
 
-/** The words typed on the page itself, in their look as they will be put on ([page] the page's size in points). */
+/**
+ * The words typed on the page itself in Words' editor ([state], its letters' sizes Words' editor's: [basePt] shown at
+ * [BASE_SP]), scaled so they stand on the page as they will be put on; [page] the page's size in points.
+ */
 @Composable
-internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t: PdfTyping, state: com.mohamedrejeb.richeditor.model.RichTextState, look: PdfTextLook) =
+internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t: PdfTyping, state: com.mohamedrejeb.richeditor.model.RichTextState, look: PdfTextLook, basePt: Float) =
     BoxWithConstraints(Modifier.matchParentSize()) {
-        val k = maxWidth / page.width // a page point on the screen
+        val k = constraints.maxWidth / page.width // pixels a page point
+        val density = LocalDensity.current
+        val sp = with(density) { BASE_SP.sp.toPx() }
+        val s = (k * basePt / sp).coerceAtLeast(0.05f) // Words' editor's size to the page's
         val pad = if (t.framed) 4f else 1f
         val focus = remember { FocusRequester() }
         LaunchedEffect(t) { focus.requestFocus() } // the keyboard at once
         // the selection blue on the white page whatever the app's theme (dark: Ctrl+A's selection hardly showed, 24 Oct)
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
             androidx.compose.foundation.text.selection.TextSelectionColors(handleColor = Color(0xFF1A73E8), backgroundColor = Color(0x661A73E8))) {
-        // Words' editor: some words bold, coloured… as Words' letters (the text's own look under them)
-        com.mohamedrejeb.richeditor.ui.BasicRichTextEditor(state, cursorBrush = SolidColor(Color.Black),
-            modifier = Modifier.offset(k * t.x, k * t.y).width(k * t.room).heightIn(min = k * maxOf(t.minHeight, look.size * 1.2f + 2 * pad))
-                // the words as they were hidden while typed again; the box's own fill
-                .background(look.fill?.let { Color(0xFF000000 or it.toLong()) } ?: if (t.replacing != null) Color.White else Color.Transparent)
-                .border(1.dp, look.line?.let { Color(0xFF000000 or it.toLong()) } ?: Color(0x991A73E8)).padding(k * pad).focusRequester(focus),
-            textStyle = TextStyle(color = Color(0xFF000000 or look.color.toLong()), fontSize = with(LocalDensity.current) { (k * look.size).toSp() },
-                fontFamily = OfficeFonts.family(look.font), fontWeight = if (look.bold) FontWeight.Bold else FontWeight.Normal,
-                fontStyle = if (look.italic) FontStyle.Italic else FontStyle.Normal, textDecoration = if (look.underline) TextDecoration.Underline else null,
-                background = look.highlight?.let { Color(0xFF000000 or it.toLong()) } ?: Color.Unspecified,
-                textAlign = when (look.align) { DocAlign.Center -> TextAlign.Center; DocAlign.End -> TextAlign.End; DocAlign.Justify -> TextAlign.Justify; else -> TextAlign.Start }))
+        with(density) {
+            com.mohamedrejeb.richeditor.ui.BasicRichTextEditor(state, cursorBrush = SolidColor(Color.Black),
+                // laid out as wide as Words' editor's size makes it, then scaled to the page (not squeezed into the page's width first)
+                modifier = Modifier.offset((k * t.x).toDp(), (k * t.y).toDp()).wrapContentSize(androidx.compose.ui.Alignment.TopStart, unbounded = true)
+                    .graphicsLayer { scaleX = s; scaleY = s; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f) }
+                    .requiredWidth((k * t.room / s).toDp()).heightIn(min = (k * maxOf(t.minHeight, basePt * 1.2f + 2 * pad) / s).toDp())
+                    // the words as they were hidden while typed again; the box's own fill
+                    .background(look.fill?.let { Color(0xFF000000 or it.toLong()) } ?: if (t.replacing != null) Color.White else Color.Transparent)
+                    .border(1.dp, look.line?.let { Color(0xFF000000 or it.toLong()) } ?: Color(0x991A73E8)).padding((k * pad / s).toDp()).focusRequester(focus),
+                textStyle = TextStyle(color = Color(0xFF000000 or look.color.toLong()), fontSize = BASE_SP.sp, fontFamily = OfficeFonts.family(look.font)))
+        }
         }
     }
-
-/** Typing on the page: Words' Home tools for its look ([PdfLookTools]); × leaves it as it was, ✓ puts it on. */
-@Composable
-internal fun PdfTextTools(w: Color, look: PdfTextLook, set: (PdfTextLook) -> Unit, font: () -> Unit, cancel: () -> Unit, done: () -> Unit,
-    words: com.mohamedrejeb.richeditor.model.RichTextState? = null) =
-    RibbonLine(rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
-        Tool(R.drawable.ic_close, stringResource(R.string.pdf_leave_it), w, click = cancel)
-        PdfLookTools(w, look, set, font, words)
-        RibbonDivider(w)
-        RibbonButton(stringResource(R.string.common_done), w, R.drawable.ic_check, click = done)
-    }
-
-/**
- * A text's look as a Slides box's Home tools give it: font, size, B I U, colour, highlight, the box's fill and border,
- * alignment. While typing ([words]) with words selected, B I U, colour and highlight go on those words only, as Words'.
- */
-@Composable
-internal fun PdfLookTools(w: Color, look: PdfTextLook, set: (PdfTextLook) -> Unit, font: () -> Unit, words: com.mohamedrejeb.richeditor.model.RichTextState? = null) {
-    val sel = words?.takeIf { !it.selection.collapsed }
-    val now = sel?.currentSpanStyle
-    FontButton(look.font, w, click = font)
-    val pt = Math.round(look.size)
-    SizeStepper("$pt", w, pt > 4, pt < 200, { set(look.copy(size = (pt - 1).toFloat())) }, { set(look.copy(size = (pt + 1).toFloat())) })
-    RibbonDivider(w)
-    val bold = look.bold || (now?.fontWeight?.weight ?: 0) >= 600; val italic = look.italic || now?.fontStyle == FontStyle.Italic
-    val under = look.underline || now?.textDecoration?.contains(TextDecoration.Underline) == true
-    Tool(R.drawable.ic_format_bold, stringResource(R.string.words_bold), w, on = bold) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) else set(look.copy(bold = !look.bold)) }
-    Tool(R.drawable.ic_format_italic, stringResource(R.string.words_italic), w, on = italic) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontStyle = FontStyle.Italic)) else set(look.copy(italic = !look.italic)) }
-    Tool(R.drawable.ic_format_underlined, stringResource(R.string.words_underline), w, on = under) { if (sel != null) sel.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(textDecoration = TextDecoration.Underline)) else set(look.copy(underline = !look.underline)) }
-    Swatches(w, R.drawable.ic_format_color_text, stringResource(R.string.words_text_colour), TEXT_COLOURS) { c ->
-        if (sel != null) { sel.removeSpanStyle(androidx.compose.ui.text.SpanStyle(color = sel.currentSpanStyle.color)); if (c != null) sel.addSpanStyle(androidx.compose.ui.text.SpanStyle(color = c)) }
-        else set(look.copy(color = (c ?: Color.Black).toArgb() and 0xFFFFFF)) }
-    Swatches(w, R.drawable.ic_highlighter, stringResource(R.string.words_highlight), HIGHLIGHT_COLOURS) { c ->
-        if (sel != null) { sel.removeSpanStyle(androidx.compose.ui.text.SpanStyle(background = sel.currentSpanStyle.background)); if (c != null) sel.addSpanStyle(androidx.compose.ui.text.SpanStyle(background = c)) }
-        else set(look.copy(highlight = c?.let { it.toArgb() and 0xFFFFFF })) }
-    Swatches(w, R.drawable.ic_format_color_fill, stringResource(R.string.words_fill), TEXT_COLOURS) { c -> set(look.copy(fill = c?.let { it.toArgb() and 0xFFFFFF })) }
-    Swatches(w, R.drawable.ic_border_outer, stringResource(R.string.pdf_border), TEXT_COLOURS) { c -> set(look.copy(line = c?.let { it.toArgb() and 0xFFFFFF })) }
-    RibbonDivider(w)
-    listOf(Triple(DocAlign.Start, R.drawable.ic_align_left, R.string.words_align_left), Triple(DocAlign.Center, R.drawable.ic_align_center, R.string.words_align_center),
-        Triple(DocAlign.End, R.drawable.ic_align_right, R.string.words_align_right), Triple(DocAlign.Justify, R.drawable.ic_align_justify, R.string.words_align_justify)).forEach { (a, icon, label) ->
-        Tool(icon, stringResource(label), w, on = look.align == a) { set(look.copy(align = a)) }
-    }
-}
 
 /** Where a chosen text is being dragged, sized or turned to (page points, degrees) until the finger lifts: drawn, then put on. */
 internal class PdfFramePreview {
@@ -402,3 +361,7 @@ internal object PdfMargins {
     fun load(context: android.content.Context) = page(context.getSharedPreferences("office_editor", android.content.Context.MODE_PRIVATE).getString("pdf_margins", "Normal") ?: "Normal")
     fun save(context: android.content.Context, name: String) = context.getSharedPreferences("office_editor", android.content.Context.MODE_PRIVATE).edit().putString("pdf_margins", name).apply()
 }
+
+/** [paras] in [look]'s font (a text's one font, as a Slides box's), its colour on words with none of their own. */
+internal fun fonted(paras: List<DocPara>, look: PdfTextLook): List<DocPara> = paras.map { p -> p.copy(runs = p.runs.map { r ->
+    if (r.image != null) r else OfficeFormats.withFont(r, OfficeKind.Docx, look.font).let { if (it.color == null && look.color != 0) it.copy(color = look.color) else it } }) }

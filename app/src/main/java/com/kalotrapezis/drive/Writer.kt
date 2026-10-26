@@ -194,13 +194,13 @@ internal val EXCEL_GREEN = Color(0xFF107C41)
 internal val POWERPOINT_ORANGE = Color(0xFFB7472A) // deeper than the Office group's orange (asked 2026-09-27)
 
 /** The editor's normal text size; the document's own normal size is shown at this size, the rest in proportion. */
-private const val BASE_SP = 16f
+internal const val BASE_SP = 16f
 
 /** Pictures are drawn at most this wide (sp) — about the page's width on a phone; the file keeps their real size. */
 private const val MAX_PICTURE_SP = 300f
 /** Superscript and subscript are shown this much smaller; a size the file sets and the document's own are told apart by
  *  the factor (the editor keeps only the size shown). */
-private const val SCRIPT_SIZE = 0.7f
+internal const val SCRIPT_SIZE = 0.7f
 /** Writer's own changes kept for undo; each is the whole document, so not without end. */
 private const val UNDO_STEPS = 50
 /** How wide a tablet's comments pane is. */
@@ -692,6 +692,10 @@ internal object WriterBridge {
             .onFailure { WriterLog.w("paragraph spacing", it) }
         return changed
     }
+
+    /** The editor's paragraphs with what it does not hold carried over from [old]: each paragraph's own formatting, headings' runs, fonts (Words' and the PDF's texts). */
+    fun fromEditorKeeping(old: List<DocPara>, rich: RichTextDocument, basePt: Float, pictures: Map<String, DocImage> = emptyMap()): List<DocPara> =
+        OfficeFormats.carryFonts(old, keepHeadingRuns(old, OfficeFormats.carryKeep(old, fromEditor(rich, basePt, pictures))))
 
     fun fromEditor(rich: RichTextDocument, basePt: Float, pictures: Map<String, DocImage> = emptyMap()): List<DocPara> {
         val scale = BASE_SP / basePt
@@ -1466,8 +1470,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     }
 
     // The editor does not hold each paragraph's own formatting (spacing, indents…); it is carried over from the file.
-    fun current(shownPictures: Map<String, DocImage> = pictures) = meta.copy(paras = OfficeFormats.carryFonts(meta.paras, WriterBridge.keepHeadingRuns(meta.paras,
-        OfficeFormats.carryKeep(meta.paras, WriterBridge.fromEditor(state.toRichTextDocument(), meta.basePt, shownPictures)))))
+    fun current(shownPictures: Map<String, DocImage> = pictures) = meta.copy(paras = WriterBridge.fromEditorKeeping(meta.paras, state.toRichTextDocument(), meta.basePt, shownPictures))
     // Recovery includes the active cell without committing it or changing the editor's Undo history.
     fun recoverable(): OfficeDoc {
         val edit = cellEdit ?: return current()

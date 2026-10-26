@@ -1636,6 +1636,7 @@ internal object OfficePages {
             color = look.color?.let { 0xFF000000.toInt() or it } ?: Color.BLACK
             textSize = (markPt ?: size) * U
             typeface = OfficeFonts.styled(OfficeFonts.typeface(look.font), look.bold == true, look.italic == true)
+            if (!doc.ligatures) fontFeatureSettings = "'liga' 0, 'clig' 0"
         }
         val width = Math.round((page.textWidth - look.right + shift) * U).coerceAtLeast(40)
         val aligned = p.align.takeIf { it != DocAlign.Start || p.keep?.parts?.any { k -> k.first == "jc" } == true } ?: look.align ?: DocAlign.Start // its own (left said in the file too), else its style's

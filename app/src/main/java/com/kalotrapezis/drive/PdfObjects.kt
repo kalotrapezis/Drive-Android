@@ -57,9 +57,10 @@ internal fun signatureWords(png: ByteArray, width: Float = 140f): PdfWords {
  * it on the page (points from the page's top left, turned), and what it is — a Words object ([words]), a Tetra text
  * ([text]) or another app's annotation of [type].
  */
-internal class PdfObject(val page: Int, val id: Int, val rect: RectF, val type: Int, private val docx: ByteArray? = null, val text: PdfText? = null) {
-    /** Read when first wanted (a page's objects are listed at every change, most never chosen). */
-    val words: PdfWords? by lazy { docx?.let(PdfWords::read) }
+internal class PdfObject(val page: Int, val id: Int, val rect: RectF, val type: Int, private val docx: ByteArray? = null, private val json: String? = null) {
+    /** Read when first wanted (a page's objects are listed at every change, most never chosen): a text's frame and words, or a Words object. */
+    val text: PdfText? by lazy { json?.let { PdfText.parse(it, docx) } }
+    val words: PdfWords? by lazy { if (json == null) docx?.let(PdfWords::read) else null }
     /** Words' name for its kind, its tab's name. */
     val kind: String get() = words?.kind ?: if (text != null) "Text box" else when (type) {
         PDFAnnotation.TYPE_STAMP -> "Image"; PDFAnnotation.TYPE_FREE_TEXT -> "Text box"; PDFAnnotation.TYPE_INK -> "Drawing"; else -> "Shape" }
@@ -67,7 +68,7 @@ internal class PdfObject(val page: Int, val id: Int, val rect: RectF, val type: 
     val laid: Pair<Float, Float> get() = words?.laid ?: text?.unturned(rect) ?: (rect.width() to rect.height())
     val turn: Float get() = words?.turn ?: text?.look?.turn?.toFloat() ?: 0f
     /** Tetra's own: everything of Words' can be done to it; another app's is only moved, sized and deleted. */
-    val ours get() = docx != null || text != null
+    val ours get() = docx != null || json != null
 }
 
 /** The kinds of annotation chosen as objects (a highlight or a note is a comment, a field the form's). */
@@ -80,10 +81,10 @@ internal fun PDFAnnotation.id() = getObject().asIndirect()
 internal fun PdfDoc.objects(i: Int): List<PdfObject> = synchronized(this) { withPage(i) { p ->
     val o = p.bounds
     (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty().filter { it.type in CHOSEN_TYPES }.map { a ->
-        val r = a.bounds; val obj = a.getObject()
+        val r = runCatching { a.rect }.getOrNull() ?: a.bounds; val obj = a.getObject() // ink, lines and polygons have no Rect of their own in MuPDF's eyes
         val docx = obj.get(WORDS_KEY).takeIf { it.isStream }?.let { runCatching { it.readStream() }.getOrNull() }
-        val text = if (docx == null) obj.get(TYPED_KEY).takeIf { !it.isNull }?.asString()?.let(PdfText::parse) else null
-        PdfObject(i, a.id(), RectF(r.x0 - o.x0, r.y0 - o.y0, r.x1 - o.x0, r.y1 - o.y0), a.type, docx, text)
+        val json = obj.get(TYPED_KEY).takeIf { !it.isNull }?.asString()
+        PdfObject(i, a.id(), RectF(r.x0 - o.x0, r.y0 - o.y0, r.x1 - o.x0, r.y1 - o.y0), a.type, docx, json)
     }
 } }
 

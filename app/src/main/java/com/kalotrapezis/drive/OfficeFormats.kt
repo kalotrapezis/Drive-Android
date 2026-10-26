@@ -709,6 +709,8 @@ internal data class OfficeDoc(
     val numbering: List<Pair<String, String>>? = null, // Writer's own numbered lists, each level's (numFmt, lvlText) (Home › Multilevel list); null: 1. 2. 3.
     val citeStyle: CiteStyle = CiteStyle.APA, // References › Style: the citations' and the list's (Word's sources part's StyleName)
     val footFormat: String = NoteFormats.FOOT, val endFormat: String = NoteFormats.END, // the notes' numbers, Word's names (NoteFormats)
+    // letters joined where a font joins them (fi, ll): drawn so; a PDF's texts never, so their words copy and are found as typed
+    val ligatures: Boolean = true,
 ) {
     /** The comments some letters still carry (the text of one deleted, it goes, as in Word). */
     val liveComments: List<DocComment> get() {

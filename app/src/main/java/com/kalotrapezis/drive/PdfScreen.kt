@@ -896,6 +896,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             setDefaultAppearance("Helv", t.look.size, rgb(t.look.color)); setContents(t.words); setBorderWidth(0f)
             setAppearance(com.artifex.mupdf.fitz.Rect(0f, 0f, w, h), res, com.artifex.mupdf.fitz.Buffer().apply { writeBytes(contents) })
             getObject().put(TYPED_KEY, pdf!!.newString(t.json(lw to lh)))
+            getObject().put(WORDS_KEY, pdfDoc.addStream(com.artifex.mupdf.fitz.Buffer().apply { writeBytes(t.docx()) }, pdfDoc.newDictionary()))
             id = id()
         }
         true
@@ -1146,7 +1147,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var writing by remember { mutableStateOf<Pair<Int, Offset>?>(null) } // a note being written: its page and place
     var reading by remember { mutableStateOf<String?>(null) } // a note tapped: its words
     var typing by remember { mutableStateOf<PdfTyping?>(null) } // Fill & Sign › Text or Review › Text box being typed on the page
-    val typed = remember { com.mohamedrejeb.richeditor.model.RichTextState() } // the words typed, in Words' editor (some words with their own look)
+    val typed = remember { com.mohamedrejeb.richeditor.model.RichTextState() } // the words typed, in Words' editor
+    var typingText by remember { mutableStateOf<PdfText?>(null) } // the text being typed: its paragraphs as they were, its styles
     var textLook by remember { mutableStateOf(PdfTextLook()) } // the last look used: the next text starts with it
     var fontBefore by remember { mutableStateOf<String?>(null) } // Font's strip open: the font before it (Cancel puts it back)
     var chosen by remember { mutableStateOf<PdfObject?>(null) } // what is chosen on a page, as Words' picture, shape or text box
@@ -1160,6 +1162,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var shapeOptions by remember { mutableStateOf(false) } // Picture › Shape options
     var redrawing by remember { mutableStateOf(false) } // a signature's Redraw
     var replacing by remember { mutableStateOf(false) } // Picture › Replace: the next picture picked takes the chosen one's place
+    var paragraphPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home › Line spacing, More…: Words' Paragraph window
     // an object chosen: its own tab shown, named by its kind (Words' Image, Shape, Text box…); none chosen: the tab before
     LaunchedEffect(chosen != null) {
         if (chosen != null) { if (tab != "Selection" && tab != OBJECT_TAB) { tabBefore = tab; tab = OBJECT_TAB } }
@@ -1248,14 +1251,16 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             r.onSuccess { (p0, id) -> version++; chosen = d.objectById(p0 ?: page, id) }.onFailure { WriterLog.e("PDF: image", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_image_failed), Toast.LENGTH_LONG).show() }
         }
     }
-    /** Typing on the page starts at [t]; [old]: a text put on before, typed in again with its look. */
+    /** Typing on the page starts at [t] in Words' editor; [old]: a text put on before, typed in again. Home's tab shows, as Words' while typing. */
     fun startTyping(t: PdfTyping, old: PdfText? = null) {
         chosen = null
         // a new text box starts with a border (as before), a new text with neither border nor fill
         textLook = old?.look ?: if (t.framed) textLook.copy(line = textLook.line ?: 0x000000) else textLook.copy(line = null, fill = null)
-        val words = old?.words.orEmpty()
-        typed.setText(words); old?.runs?.forEach { r -> if (r.to <= words.length) typed.addSpanStyle(r.style(), androidx.compose.ui.text.TextRange(r.from, r.to)) }
-        typed.selection = androidx.compose.ui.text.TextRange(words.length); typing = t
+        val base = old ?: PdfText(OfficeDoc(listOf(DocPara(emptyList())), basePt = textLook.size), textLook, t.framed) // one empty paragraph, as a new document
+        typingText = base
+        typed.setRichTextDocument(WriterBridge.toEditor(base.doc, HashMap(), base.styles))
+        typed.selection = androidx.compose.ui.text.TextRange(typed.annotatedString.text.length); typing = t
+        tab = "Home"
     }
     /** A text put on before ([o]), tapped: typed in again in its place. */
     fun retype(o: PdfObject) { val old = o.text ?: return; val r = o.rect; val (uw, uh) = old.unturned(r)
@@ -1265,10 +1270,12 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     fun putTyped() {
         val t = typing ?: return; typing = null; fontBefore = null
         val d = doc ?: return
-        val words = typed.toText()
-        if (words.isBlank() && t.replacing == null) return
+        val base = typingText ?: return; typingText = null
+        // Words' own step from its editor to its paragraphs; the text's font on all its words, its colour on words with none
+        val text = base.with(fonted(WriterBridge.fromEditorKeeping(base.doc.paras, typed.toRichTextDocument(), base.doc.basePt), textLook)).with(textLook)
+        if (text.words.isBlank() && t.replacing == null) return
         var id = 0
-        change { id = d.putText(t.page, t.x, t.y, PdfText(words.trimEnd(), textLook, t.framed, PdfRun.of(typed.annotatedString, words)), t.room, t.minHeight, t.replacing) }
+        change { id = d.putText(t.page, t.x, t.y, text, t.room, t.minHeight, t.replacing) }
         WriterLog.i("PDF: text ${if (t.replacing != null) "changed" else "put on"} (${textLook.font}, ${textLook.size} pt)")
         // it stays chosen, as a Slides box after typing: moved, sized, restyled from there
         if (id != 0) chosen = d.objectById(t.page, id)
@@ -1366,7 +1373,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 change { id = d.putWords(i, cw, cx.coerceAtMost(s.width - 12f), cy.coerceAtMost(s.height - 8f)) }
             }
             c?.text != null -> {
-                val ct = c.text; val r = c.rect; val (uw, uh) = ct.unturned(r)
+                val ct = c.text!!; val r = c.rect; val (uw, uh) = ct.unturned(r)
                 val x = (at?.x ?: (r.left + 12f)).coerceAtMost(s.width - 12f); val y = (at?.y ?: (r.top + 12f)).coerceAtMost(s.height - 8f)
                 change { id = d.putText(i, x, y, ct, if (ct.framed || ct.turned) uw else maxOf(uw, s.width - x - 18f), if (ct.framed) uh else 0f) }
             }
@@ -1404,6 +1411,15 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         val img = DocImage(o.img.key, null, if (turn % 180 != 0) h else w, if (turn % 180 != 0) w else h, bytes = bytes, extension = if (png) "png" else "jpg", wrap = PictureWrap.InFront)
         reput(PdfWords.of(img).let { n -> Arrange.rotated(n.img, o.turn)?.let(n::with) ?: n })
     }
+    // Home's target (Words' Home): the words being typed, else a chosen text's words, all chosen, in an editor of their own
+    val chosenText = chosen?.text
+    val scratch = remember(chosen?.id, version) { chosenText?.let { t -> com.mohamedrejeb.richeditor.model.RichTextState().apply {
+        setRichTextDocument(WriterBridge.toEditor(t.doc, HashMap(), t.styles)); selection = androidx.compose.ui.text.TextRange(0, annotatedString.text.length) } } }
+    val homeTarget: PdfTextTarget? = typingText?.takeIf { typing != null }?.let { base -> PdfTextTarget(typed, base, {}) { ps ->
+        val nb = base.with(ps); typingText = nb; val sel = typed.selection; typed.setRichTextDocument(WriterBridge.toEditor(nb.doc, HashMap(), nb.styles), sel) } }
+        ?: if (chosenText != null && scratch != null) PdfTextTarget(scratch, chosenText, {
+            rechange(t = chosenText.with(WriterBridge.fromEditorKeeping(chosenText.doc.paras, scratch.toRichTextDocument(), chosenText.doc.basePt))) }) { ps -> rechange(t = chosenText.with(ps)) }
+        else null
     BackHandler(enabled = editing || organize) { if (organize) organize = false else if (typing != null) putTyped() else if (chosen != null) chosen = null else if (tool != null) tool = null else if (doc?.dirty == true) leaving = true else editing = false }
     /** What a finger did on page [i] with the tool on: [pts] its path in page points (a tap: one point). */
     fun onPage(i: Int, pts: List<Offset>) {
@@ -1510,6 +1526,13 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         signing = false
         runCatching { signatureFile.writeBytes(png) }.onSuccess { tool = PdfTool.Sign; Toast.makeText(context, R.string.pdf_signature_kept, Toast.LENGTH_LONG).show() }
     }
+    // Home › Line spacing and More…: Words' Paragraph window, for the paragraphs Home's target has chosen
+    paragraphPage?.let { (at, look) -> ParagraphDialog(look, { paragraphPage = null }) { now ->
+        paragraphPage = null
+        homeTarget?.let { t -> t.paras(t.now().mapIndexed { i, p -> if (i !in at) p else p.copy(keep = OfficeFormats.withSpacing(p.keep, OfficeKind.Docx,
+            now.lineMultiple.takeIf { now.lineExact == null && it != look.lineMultiple }, now.before.takeIf { it != look.before }, now.after.takeIf { it != look.after },
+            now.left.takeIf { it != look.left }, now.firstLine.takeIf { it != look.firstLine }, now.right.takeIf { it != look.right })) }) }
+    } }
     // Picture › Size, Rotate, Position, Shape options and a signature's Redraw: Words' own windows
     chosen?.let { c ->
         val d0 = doc ?: return@let
@@ -1517,6 +1540,15 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             PictureSizeDialog(lw, lh, c.words?.let { o -> picturePainter(o.img, o.parts) } ?: androidx.compose.ui.graphics.painter.ColorPainter(Color.LightGray),
                 { sizing = false }) { nw, nh -> sizing = false; sizeChosen(nw, nh) } }
         if (rotating) RotateDialog(c.turn, { rotating = false }) { deg -> rotating = false; turnChosen(deg) }
+        // a text box's own: its fill and border, its size and turn (Words' window; dash, shadow and alt text are a shape's)
+        if (shapeOptions) c.text?.let { t -> val (lw, lh) = c.laid
+            ShapeOptionsDialog(ShapeOptions(t.look.fill?.let { 0xFF000000.toInt() or it }, t.look.line?.let { 0xFF000000.toInt() or it }, 0.75f, lw, lh, c.turn, ""), { shapeOptions = false }) { op ->
+                shapeOptions = false
+                val l = t.look.copy(fill = op.fill?.takeIf { it ushr 24 != 0 }?.and(0xFFFFFF), line = op.line?.and(0xFFFFFF))
+                if (l != t.look) rechange(t = t.with(l))
+                if (op.widthPt != lw || op.heightPt != lh) sizeChosen(op.widthPt, op.heightPt)
+                if (op.degrees != c.turn) turnChosen(op.degrees)
+            } }
         if (shapeOptions) c.words?.let { o -> ShapePicture.of(o.img)?.let { sp -> val img = o.img
             ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img), sp.dash, sp.shadow), { shapeOptions = false }) { op ->
                 shapeOptions = false
@@ -1887,7 +1919,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                             { positioning = true },
                                             ::moveChosen), marks, matches?.getOrNull(match)?.takeIf { it.page == i }, hide = chosen?.takeIf { it.page == i && typing == null }, preview = framePreview) {
                                     if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
-                                    typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook) }
+                                    typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook, typingText?.doc?.basePt ?: textLook.size) }
                                     pageMenu?.takeIf { it.first == i }?.let { (_, spot, pt) -> OfficeMenu(spot, { pageMenu = null }) {
                                         @Composable fun entry(label: String, icon: Int, act: () -> Unit) = OfficeMenuItem(label, icon) { pageMenu = null; WriterLog.i("PDF: menu › $label"); act() }
                                         val c = chosen
@@ -1934,10 +1966,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         if (typing != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
             ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
         // a chosen text: the font a card shows put on at once (Cancel puts the one before back)
-        else if (ch0 != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(ch0.text!!.look.font),
-            cancel = { if (ch0.text!!.look.font != before) rechange(t = ch0.text!!.copy(look = ch0.text!!.look.copy(font = before))); fontBefore = null },
-            ok = { fontBefore = null }, pick = { c -> (c as? FontChoice)?.let { rechange(t = ch0.text!!.copy(look = ch0.text!!.look.copy(font = it.name))) } },
-            fonts = STYLE_FONTS, now = ch0.text!!.look.font)
+        else if (ch0 != null && before != null) ch0.text!!.let { ct -> fun inFont(f: String) = ct.look.copy(font = f).let { l -> ct.with(fonted(ct.doc.paras, l)).with(l) }
+            DesignGalleryStrip(DesignGallery.Font, FontChoice(ct.look.font),
+                cancel = { if (ct.look.font != before) rechange(t = inFont(before)); fontBefore = null },
+                ok = { fontBefore = null }, pick = { c -> (c as? FontChoice)?.let { rechange(t = inFont(it.name)) } },
+                fonts = STYLE_FONTS, now = ct.look.font) }
         // Home with nothing chosen: the next text's font
         else if (before != null && editing) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
             ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
@@ -1946,8 +1979,6 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             Surface(color = Color.Black, contentColor = w, modifier = (if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth())
                 .then(if (typing != null) Modifier.imePadding() else Modifier)) {
                 OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) { Column {
-                    // typing on the page: Words' Home tools for its look instead of the tabs, × and ✓ at the ends
-                    if (typing != null) { PdfTextTools(w, textLook, { textLook = it }, { fontBefore = textLook.font }, { typing = null }, ::putTyped, typed); return@Column }
                     // a text chosen, as a Slides box: Selection first (Cut, Copy, Paste, formatting), the text's own tab last in the lighter colour
                     // Words' tabs in Words' order (the user, 24 Oct: "take a look on what the other applets have"), the PDF's own among them
                     val tabNames = mapOf("Selection" to stringResource(R.string.words_tab_selection), "File" to stringResource(R.string.words_tab_file),
@@ -1957,7 +1988,12 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         OBJECT_TAB to (chosen?.kind?.let { if (it == "Drawing") stringResource(R.string.pdf_drawing) else objectKindName(it) } ?: ""))
                     OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
                         OBJECT_TAB.takeIf { chosen != null }),
-                        tab, w, PDF_RED, { tab = it; tool = null }, contextual = OBJECT_TAB, label = { tabNames[it] ?: it })
+                        tab, w, PDF_RED, { tab = it; tool = null }, contextual = OBJECT_TAB, label = { tabNames[it] ?: it }) {
+                        // typing: ✓ puts the words on; an object chosen: ✕ lets go of it (Words')
+                        if (typing != null) Tool(R.drawable.ic_check, stringResource(R.string.common_done), w, on = true) { putTyped() }
+                        else if (chosen != null) androidx.compose.material3.IconButton(onClick = { chosen = null }, modifier = Modifier.size(36.dp)) {
+                            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_close), modifier = Modifier.size(16.dp)) }
+                    }
                     @Composable fun ToolButton(t: PdfTool) = RibbonButton(stringResource(t.label), w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
                     key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                         val c0 = chosen
@@ -1990,15 +2026,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             RibbonButton(stringResource(R.string.common_settings), w, R.drawable.ic_settings) { officeSettings = true }
                             return@RibbonLine
                         }
-                        // Home, as Slides': a new text's tools, then the look — of the chosen text, else the next one typed
+                        // Words' Home: the words being typed, a chosen text's (all of them), else the font, size and colour the next text takes
                         if (tab == "Home") {
-                            ToolButton(PdfTool.Text); ToolButton(PdfTool.TextBox)
-                            RibbonDivider(w)
-                            val ct0 = c0?.text
-                            val look = ct0?.look ?: textLook
-                            PdfLookTools(w, look, { l -> if (ct0 != null) rechange(t = ct0.copy(look = l)) else textLook = l }, { fontBefore = look.font })
-                            Tool(R.drawable.ic_format_clear, stringResource(R.string.words_clear_formatting), w) {
-                                if (ct0 != null) rechange(t = ct0.copy(look = PdfTextLook(fill = look.fill, line = look.line, turn = look.turn), runs = emptyList())) else textLook = PdfTextLook() }
+                            PdfHomeTools(w, homeTarget, homeTarget?.text?.look?.takeIf { typing == null } ?: textLook, { textLook = it }, { fontBefore = (homeTarget?.text?.look?.takeIf { typing == null } ?: textLook).font }) { at, look -> paragraphPage = at to look }
                             return@RibbonLine
                         }
                         // Layout, as Words' and Tables': the pages' size and way round (all of them, as Word's without sections), the margins
@@ -2074,7 +2104,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                 return@RibbonLine
                             }
                             if (c0.text != null) RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit) { retype(c0) }
-                            if (img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton(stringResource(R.string.words_shape_options), w, R.drawable.ic_tune) { shapeOptions = true }
+                            if (c0.text != null || img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton(stringResource(R.string.words_shape_options), w, R.drawable.ic_tune) { shapeOptions = true }
                             RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio) { sizing = true }
                             RibbonDivider(w)
                             RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with) { positioning = true }

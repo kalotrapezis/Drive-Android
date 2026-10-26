@@ -27,7 +27,8 @@ class PdfTextDeviceTest {
         val d = PdfDoc(f)
         d.putText(0, 100f, 100f, t, 300f, 40f)
         val (r, back) = d.typedAt(0, Offset(150f, 120f))!!
-        assertEquals(t, back)
+        assertEquals(t.words, back.words)
+        assertTrue("its words Words' paragraphs, bold, centred", back.doc.paras.all { p -> p.align == DocAlign.Center && p.runs.all { it.bold } })
         assertEquals(300f, r.width())
         assertTrue(r.height() >= 2 * 24f) // two lines grew it past the 40 drawn
         d.save(java.io.File(dir, "base.pdf")); d.close()
@@ -36,7 +37,7 @@ class PdfTextDeviceTest {
         // Words' Times twin, bold, embedded (not MuPDF's own Helvetica made again from the fallback look)
         assertTrue("its font embedded", bytes.contains("LiberationSerif-Bold") && bytes.contains("/FontFile"))
         val again = PdfDoc(f)
-        assertEquals(t, again.typedAt(0, Offset(150f, 120f))?.second)
+        assertEquals(t.words, again.typedAt(0, Offset(150f, 120f))?.second?.words)
         // drawn in its red, inside its box (595 px across: a point a pixel)
         val bmp = kotlinx.coroutines.runBlocking { again.page(0, 595) }!!
         var red = 0
@@ -45,11 +46,11 @@ class PdfTextDeviceTest {
         }
         assertTrue("red letters in the box ($red)", red > 200)
         // typed in again: one text, the new words
-        again.putText(0, r.left, r.top, t.copy(words = "Changed"), r.width(), r.height(), replacing = again.objectAt(0, Offset(r.centerX(), r.centerY()))!!.id)
+        again.putText(0, r.left, r.top, PdfText("Changed", look, true), r.width(), r.height(), replacing = again.objectAt(0, Offset(r.centerX(), r.centerY()))!!.id)
         assertEquals("Changed", again.typedAt(0, Offset(r.centerX(), r.centerY()))?.second?.words)
         assertEquals(1, again.comments().size)
         // emptied: gone
-        again.putText(0, r.left, r.top, t.copy(words = ""), r.width(), r.height(), replacing = again.objectAt(0, Offset(r.centerX(), r.centerY()))!!.id)
+        again.putText(0, r.left, r.top, PdfText("", look, true), r.width(), r.height(), replacing = again.objectAt(0, Offset(r.centerX(), r.centerY()))!!.id)
         assertNull(again.typedAt(0, Offset(r.centerX(), r.centerY())))
         assertEquals(0, again.comments().size)
         again.close()
@@ -94,26 +95,28 @@ class PdfTextDeviceTest {
     @Test fun wordsWithTheirOwnLook() {
         val target = InstrumentationRegistry.getInstrumentation().targetContext
         OfficeFonts.assets = target.assets
-        // as typed in Words' editor: two lines, one word bold and red
+        // two lines, one word bold and red (a text put on before 27 Oct, its runs read into Words' runs)
         val words = "Plain words\nbold one"
+        val t = PdfText(words, PdfTextLook(size = 30f), framed = false, runs = listOf(PdfRun(12, 16, bold = true, color = 0xFF0000)))
+        val bold = t.doc.paras[1].runs.first()
+        assertEquals("bold", bold.text); assertTrue(bold.bold); assertEquals(0xFF0000, bold.color)
+        // typed in again in Words' editor and back: the same runs (Words' own step)
         val state = com.mohamedrejeb.richeditor.model.RichTextState()
-        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            state.setText(words)
-            state.addSpanStyle(PdfRun(12, 16, bold = true, color = 0xFF0000).style(), androidx.compose.ui.text.TextRange(12, 16))
+        var again0: List<DocPara> = emptyList()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            state.setRichTextDocument(WriterBridge.toEditor(t.doc, HashMap(), t.styles))
+            again0 = WriterBridge.fromEditorKeeping(t.doc.paras, state.toRichTextDocument(), t.doc.basePt)
         }
-        assertEquals(words, state.toText())
-        val runs = PdfRun.of(state.annotatedString, words)
-        assertEquals(listOf(PdfRun(12, 16, bold = true, color = 0xFF0000)), runs)
-        // put on, saved, read back: the runs kept, the red word drawn red and the plain ones black
+        assertEquals(t.doc.paras.map { p -> p.runs.map { it.text to it.bold } }, again0.map { p -> p.runs.map { it.text to it.bold } })
+        // put on, saved, read back: the red word drawn red and the plain ones black
         val dir = java.io.File(target.cacheDir, "pdf-text-test3").apply { deleteRecursively() }
         val f = Pdf.newBlank(dir)
         val d = PdfDoc(f)
-        val t = PdfText(words, PdfTextLook(size = 30f), framed = false, runs = runs)
         d.putText(0, 50f, 50f, t, 400f)
         d.save(java.io.File(dir, "base.pdf")); d.close()
         val again = PdfDoc(f)
         val (r, back) = again.typedAt(0, Offset(60f, 60f))!!
-        assertEquals(runs, back.runs)
+        assertEquals(0xFF0000, back.doc.paras[1].runs.first { it.text == "bold" }.color)
         val bmp = kotlinx.coroutines.runBlocking { again.page(0, 595) }!!
         fun count(x0: Int, x1: Int, y0: Int, y1: Int, red: Boolean) = (y0 until y1).sumOf { y -> (x0 until x1).count { x -> val c = bmp.getPixel(x, y)
             if (red) android.graphics.Color.red(c) > 180 && android.graphics.Color.green(c) < 100 else android.graphics.Color.red(c) < 80 && android.graphics.Color.green(c) < 80 } }
@@ -127,7 +130,10 @@ class PdfTextDeviceTest {
     @Test fun lookKeptInTheFile() {
         val t = PdfText("xyz", PdfTextLook(fill = 0xFFFF00, line = 0x0070C0, highlight = 0x00FF00, align = DocAlign.End, turn = 270), framed = true,
             runs = listOf(PdfRun(0, 2, italic = true, underline = true, strike = true, highlight = 0x00FFFF)))
-        assertEquals(t, PdfText.parse(t.json()))
+        val back = PdfText.parse(t.json(), t.docx())!!
+        assertEquals(t.words, back.words); assertEquals(t.framed, back.framed)
+        assertEquals(listOf(0xFFFF00, 0x0070C0, 270), listOf(back.look.fill, back.look.line, back.look.turn))
+        assertTrue(back.doc.paras[0].runs[0].italic && back.doc.paras[0].align == DocAlign.End)
         // a box put on before fills and borders were chosen (24 Oct, first build): its black frame kept
         assertEquals(0x000000, PdfText.parse("""{"words":"a","framed":true}""")?.look?.line)
         assertNull(PdfText.parse("""{"words":"a","framed":false}""")?.look?.line)

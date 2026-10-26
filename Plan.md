@@ -12,9 +12,15 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
-- [~] (setup-guide session, 26 Oct; Drive-Android `claude/setup-guide-19862a`) **(5b) the graphical guide**: plan shown to the
-      user first (chapters, one page = replicated Tetra UI with the spot ringed, "Try it" docks the step under the real
-      screen); nothing built before their yes. The pairing chapter last, from the role session's screens.
+- [~] (setup-guide session, 26 Oct; Drive-Android `claude/setup-guide-19862a`, Drive `setup-guide`) **(5b) the graphical
+      guide**, built, in all 24 languages: Android Guide.kt — on first start (it replaced the photo screen; its photo
+      question is a Permissions step), Settings › Guide; chapters Welcome, Your computer (works alone; Local Sync › Scan a
+      code), Permissions (9, each with its state and Allow), Home (6), Files (7), Settings (2); each step a drawn copy of
+      Tetra's own piece with the spot ringed, Try it docks the step under the real screen (beside it on a tablet). Desktop
+      Guide.tsx — a panel beside the page, first time and Settings › Guide; Your devices (the server-or-client page, the
+      server = "the final device responsible for the backups and sharing of files", Add a device, the key), Files,
+      Settings. 660 Android / 155 desktop tests pass; desktop seen from source (hidden copy). **Left: the tablet check**
+      (not connected); Android's own "Allow all"/"While using the app" in 23 languages are unchecked; no native readers.
 - [ ] **TOP OF THE LIST — the PDF editor works exactly like Words** — **with the user, when they have time, watching each step; no agent starts it alone** (the user, 26 Oct, on the tablet: "I don't like how PDF
       does things. If we need to, we build our own stuff like we did with the rest of Office. Everything works completely
       differently from Words"). Screenshots, kept local and out of git: `user-screenshots/2026-10-26-pdf-vs-words/` — 1–3

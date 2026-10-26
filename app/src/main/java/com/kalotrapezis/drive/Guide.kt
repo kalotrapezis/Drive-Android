@@ -11,6 +11,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -38,6 +40,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -373,10 +376,11 @@ private fun askIcon(ask: GuideAsk?) = when (ask) {
             MiniApplet(R.drawable.calendar_art, R.string.app_calendar)
         }
         GuidePic.HomePencil -> HomeHeader(name) { Box(Modifier.size(40.dp).mark(), contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_edit), contentDescription = null) } }
-        GuidePic.HomeMove -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            EditedPart(Modifier.mark())
-            Icon(painterResource(R.drawable.ic_arrow_forward), contentDescription = null, tint = markColour())
-            Box(Modifier.size(88.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f)))
+        // the part held, carried to the empty cell, and again
+        GuidePic.HomeMove -> Box(Modifier.width(224.dp).height(96.dp), contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.align(Alignment.CenterEnd).size(88.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f)))
+            val t = loop(2800)
+            EditedPart(Modifier.graphicsLayer { translationX = 136.dp.toPx() * eased(t, 0.15f, 0.7f); val lift = if (t in 0.1f..0.75f) 1.06f else 1f; scaleX = lift; scaleY = lift }.mark())
         }
         GuidePic.HomeSize -> EditedPart(sizeMark = Modifier.mark())
         GuidePic.HomeHide -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -397,11 +401,14 @@ private fun askIcon(ask: GuideAsk?) = when (ask) {
             MiniFile(R.drawable.ic_check, "Report.docx", "Words", chosen = true, modifier = Modifier.mark())
             MiniFile(R.drawable.ic_table, "Budget.xlsx", "Tables")
         }
-        GuidePic.FilesBar -> Island {
+        GuidePic.FilesBar -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Island {
             Row { listOf(R.drawable.ic_share, R.drawable.ic_copy, R.drawable.ic_move, R.drawable.ic_tag, R.drawable.ic_favorite_border, R.drawable.ic_delete).forEach { icon ->
                 Box(Modifier.size(44.dp).then(if (icon == R.drawable.ic_move) Modifier.mark() else Modifier), contentAlignment = Alignment.Center) { Icon(painterResource(icon), contentDescription = null) }
             } }
             Text(androidx.compose.ui.res.pluralStringResource(R.plurals.files_selected, 1, 1), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(bottom = 6.dp))
+        }
+            Flow(listOf(R.drawable.ic_folder_documents, R.drawable.ic_folder), label = stringResource(R.string.common_move))
+            Flow(listOf(R.drawable.ic_folder_documents, R.drawable.ic_folder), copy = true, label = stringResource(R.string.common_copy))
         }
         GuidePic.FilesWhere -> Column(Modifier.widthIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.files_move_into), style = MaterialTheme.typography.bodyMedium)
@@ -427,17 +434,14 @@ private fun askIcon(ask: GuideAsk?) = when (ask) {
                 Box(Modifier.padding(top = 6.dp).width(40.dp).height(14.dp).mark(), contentAlignment = Alignment.Center) { Box(Modifier.width(28.dp).height(3.dp).background(islandContentColor().copy(alpha = 0.65f), CircleShape)) }
                 Row(Modifier.padding(8.dp)) { listOf(R.drawable.ic_home, R.drawable.ic_favorite_border, R.drawable.ic_folder, R.drawable.ic_add).forEach { Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { Icon(painterResource(it), null) } } }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(painterResource(R.drawable.ic_delete), null); Text(stringResource(R.string.files_trash), style = MaterialTheme.typography.titleMedium)
-                Icon(painterResource(R.drawable.ic_arrow_forward), null)
-                Icon(painterResource(R.drawable.ic_restore), contentDescription = null); Text(stringResource(R.string.files_restore), style = MaterialTheme.typography.titleMedium)
-            }
+            Flow(listOf(R.drawable.ic_folder, R.drawable.ic_delete), back = true, label = stringResource(R.string.files_trash) + " · " + stringResource(R.string.photos_restore))
         }
         GuidePic.Alone -> SyncHeader()
         GuidePic.SyncScan -> Column(Modifier.widthIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SyncHeader()
             MiniButton(stringResource(R.string.sync_scan_code), Modifier.fillMaxWidth().mark(), R.drawable.ic_qr_code)
             MiniButton(stringResource(R.string.sync_show_device), Modifier.fillMaxWidth(), R.drawable.ic_id_card)
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Flow(listOf(R.drawable.ic_gallery, R.drawable.ic_computer), copy = true) }
         }
         GuidePic.SettingsLook -> Rows {
             MiniRow(R.drawable.ic_sync, stringResource(R.string.app_sync), stringResource(R.string.settings_sync_summary))
@@ -449,6 +453,39 @@ private fun askIcon(ask: GuideAsk?) = when (ask) {
             }
         }
     }
+}
+
+/** 0 → 1 over [ms], over and over: the clock of a picture that moves. */
+@Composable private fun loop(ms: Int): Float =
+    rememberInfiniteTransition(label = "loop").animateFloat(0f, 1f, infiniteRepeatable(tween(ms, easing = LinearEasing)), label = "t").value
+
+/** Where [t] is between [from] and [to], 0 before and 1 after, eased in and out. */
+private fun eased(t: Float, from: Float, to: Float) = FastOutSlowInEasing.transform(((t - from) / (to - from)).coerceIn(0f, 1f))
+
+/**
+ * What a step does, played over and over (the user, 26 Oct: "if you throw files there they fly there, if you click copy
+ * there they go everywhere"): a file flies from one place to the other. [copy]: one stays behind; [back]: it goes in and
+ * comes out again (Trash, then Restore). The same as the desktop guide's Flow.
+ */
+@Composable private fun Flow(places: List<Int>, copy: Boolean = false, back: Boolean = false, label: String? = null) {
+    val t = loop(if (back) 3600 else 2600)
+    val span = 188.dp
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        label?.let { Text(it, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        Box(Modifier.width(240.dp).height(64.dp)) {
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                places.forEach { Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Icon(painterResource(it), null, Modifier.size(26.dp)) } }
+            }
+            if (copy) FlowFile(Modifier)
+            val at = if (back) eased(t, 0.08f, 0.38f) - eased(t, 0.55f, 0.88f) else eased(t, 0.12f, 0.62f)
+            val seen = if (back) 1f - 0.8f * at else 1f - eased(t, 0.62f, 0.75f)
+            FlowFile(Modifier.graphicsLayer { translationX = span.toPx() * at; alpha = seen; if (back) { scaleX = 1f - 0.4f * at; scaleY = scaleX } })
+        }
+    }
+}
+
+@Composable private fun FlowFile(modifier: Modifier) = Surface(modifier.padding(start = 13.dp), shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.background, shadowElevation = 2.dp) {
+    Icon(painterResource(R.drawable.ic_file), contentDescription = null, tint = markColour(), modifier = Modifier.padding(3.dp).size(20.dp))
 }
 
 @Composable private fun MiniApplet(art: Int, @StringRes label: Int, modifier: Modifier = Modifier) =

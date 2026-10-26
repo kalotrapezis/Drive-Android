@@ -4839,6 +4839,7 @@
     <string name="pdf_rotate_left_90">Rothlaigh ar chlé 90°</string>
     <string name="pdf_upright">Ingearach</string>
     <string name="pdf_duplicate">Dúbláil</string>
+    <string name="pdf_drawing">Líníocht</string>
     <string name="pdf_picture_more">Pictiúr…</string>
     <string name="pdf_insert_pdf">Cuir PDF isteach</string>
     <string name="pdf_remove_password">Bain an pasfhocal</string>

@@ -4749,6 +4749,7 @@
     <string name="pdf_rotate_left_90">Pasukti kairėn 90°</string>
     <string name="pdf_upright">Tiesiai</string>
     <string name="pdf_duplicate">Dubliuoti</string>
+    <string name="pdf_drawing">Piešinys</string>
     <string name="pdf_picture_more">Paveikslėlis…</string>
     <string name="pdf_insert_pdf">Įterpti PDF</string>
     <string name="pdf_remove_password">Šalinti slaptažodį</string>

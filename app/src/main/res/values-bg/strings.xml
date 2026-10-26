@@ -4569,6 +4569,7 @@
     <string name="pdf_rotate_left_90">Завърти наляво на 90°</string>
     <string name="pdf_upright">Изправено</string>
     <string name="pdf_duplicate">Дублирай</string>
+    <string name="pdf_drawing">Рисунка</string>
     <string name="pdf_picture_more">Картина…</string>
     <string name="pdf_insert_pdf">Вмъкни PDF</string>
     <string name="pdf_remove_password">Премахни паролата</string>

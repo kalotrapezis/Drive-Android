@@ -4569,6 +4569,7 @@
     <string name="pdf_rotate_left_90">Forgatás balra 90°-kal</string>
     <string name="pdf_upright">Függőleges</string>
     <string name="pdf_duplicate">Kettőzés</string>
+    <string name="pdf_drawing">Rajz</string>
     <string name="pdf_picture_more">Kép…</string>
     <string name="pdf_insert_pdf">PDF beszúrása</string>
     <string name="pdf_remove_password">Jelszó eltávolítása</string>

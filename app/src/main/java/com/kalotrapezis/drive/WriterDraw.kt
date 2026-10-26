@@ -301,12 +301,26 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDr
 @Composable
 internal fun PositionDialog(page: LaidPage, key: String, dismiss: () -> Unit, place: (Float, Float) -> Unit) {
     val float = page.floats.firstOrNull { it.key == key }
-    val aspect = page.page.height / page.page.width
+    PositionDialog(page.page.width, page.page.height, float?.let { android.graphics.RectF(it.x, it.y, it.x + it.w, it.y + it.h) }, page,
+        { n -> page.draw(n, skip = key) }, { n, x, y -> float?.drawAt(n, x, y) }, dismiss, place)
+}
+
+/**
+ * Position's page, whatever draws it (Words' laid page, a PDF's): a page [pageW] × [pageH] points drawn by [drawPage]
+ * without the object, the object's place [box] on it and [drawObject] drawing it with its top left at a point; [again]
+ * changes when the page comes back after a [place].
+ */
+@Composable
+internal fun PositionDialog(pageW: Float, pageH: Float, box: android.graphics.RectF?, again: Any?, drawPage: (android.graphics.Canvas) -> Unit,
+    drawObject: (android.graphics.Canvas, Float, Float) -> Unit, dismiss: () -> Unit, place: (Float, Float) -> Unit) {
+    class Float_(val x: Float, val y: Float, val w: Float, val h: Float)
+    val float = box?.let { Float_(it.left, it.top, it.width(), it.height()) }
+    val aspect = pageH / pageW
     var zoom by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var moved by remember { mutableStateOf(Offset.Zero) } // pt, while dragging and until the page comes back
     var last by remember { mutableStateOf<Offset?>(null) }
-    androidx.compose.runtime.LaunchedEffect(page) { moved = Offset.Zero }
+    androidx.compose.runtime.LaunchedEffect(again) { moved = Offset.Zero }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 900.dp).systemBarsPadding().padding(12.dp), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -314,8 +328,8 @@ internal fun PositionDialog(page: LaidPage, key: String, dismiss: () -> Unit, pl
                 val room = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp - 200.dp).coerceAtLeast(160.dp)
                 // The whole page in view (two fingers zoom in).
                 Box(Modifier.align(Alignment.CenterHorizontally).height(room).aspectRatio(1 / aspect).clip(RoundedCornerShape(8.dp)).background(Color(0xFF5F6368))) {
-                    Canvas(Modifier.matchParentSize().clipToBounds().pointerInput(page) {
-                        fun at(p: Offset) = (p - pan) / (size.width * zoom) * page.page.width // in points on the page
+                    Canvas(Modifier.matchParentSize().clipToBounds().pointerInput(again) {
+                        fun at(p: Offset) = (p - pan) / (size.width * zoom) * pageW // in points on the page
                         detectDraw(
                             start = { p -> val q = at(p); last = q.takeIf { float != null && it.x in float.x..float.x + float.w && it.y in float.y..float.y + float.h } },
                             move = { p -> last?.let { l -> val q = at(p); moved += q - l; last = q } },
@@ -329,13 +343,13 @@ internal fun PositionDialog(page: LaidPage, key: String, dismiss: () -> Unit, pl
                                 zoom = z
                             })
                     }) {
-                        drawIntoCanvas { c -> val n = c.nativeCanvas; val k = size.width * zoom / page.page.width
+                        drawIntoCanvas { c -> val n = c.nativeCanvas; val k = size.width * zoom / pageW
                             n.save(); n.translate(pan.x, pan.y); n.scale(k, k)
-                            n.drawRect(0f, 0f, page.page.width, page.page.height, android.graphics.Paint().apply { color = android.graphics.Color.WHITE })
-                            page.draw(n, skip = key)
+                            n.drawRect(0f, 0f, pageW, pageH, android.graphics.Paint().apply { color = android.graphics.Color.WHITE })
+                            drawPage(n)
                             float?.let { f ->
                                 val x = f.x + moved.x; val y = f.y + moved.y
-                                f.drawAt(n, x, y)
+                                drawObject(n, x, y)
                                 n.drawRect(x, y, x + f.w, y + f.h, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                                     style = android.graphics.Paint.Style.STROKE; strokeWidth = 1.5f / k * 2; color = 0xFF1A73E8.toInt() })
                             }

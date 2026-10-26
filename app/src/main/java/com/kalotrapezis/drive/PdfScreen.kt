@@ -69,6 +69,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
@@ -193,7 +195,9 @@ internal enum class PdfTool(@androidx.annotation.StringRes val label: Int, val i
 /** PDF's standard stamps, as every reader names and draws them. */
 internal const val PICTURE_STAMP = "Picture"
 /** Tetra's key on a text it put on ([PdfDoc.putText]): its words and look, to be typed in again. */
-private const val TYPED_KEY = "TetraText"
+internal const val TYPED_KEY = "TetraText"
+/** The chosen object's own tab (shown by its kind's name, as Words' Image, Shape, Text box…). */
+private const val OBJECT_TAB = "Object"
 internal val STAMPS = listOf("Approved", "Draft", "Final", "Confidential", "Experimental", "Expired", "NotApproved", "ForComment", "AsIs", "Sold",
     "Departmental", "NotForPublicRelease", "TopSecret", "ForPublicRelease")
 
@@ -303,7 +307,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     // —— comments (Plan.md § PDF, Phase 1): points are page points from the page's top left, as [sizes] and [find] ——
 
     private fun rgb(c: Int) = floatArrayOf((c shr 16 and 0xFF) / 255f, (c shr 8 and 0xFF) / 255f, (c and 0xFF) / 255f)
-    private fun annotate(i: Int, what: String, make: (com.artifex.mupdf.fitz.PDFPage, Float, Float) -> Boolean): Boolean {
+    internal fun annotate(i: Int, what: String, make: (com.artifex.mupdf.fitz.PDFPage, Float, Float) -> Boolean): Boolean {
         var made = false
         edit(what) { _ -> page(i) { p -> val o = p.bounds; made = make(p as com.artifex.mupdf.fitz.PDFPage, o.x0, o.y0); p.update() } }
         return made
@@ -878,59 +882,34 @@ internal class PdfDoc(private val file: File, password: String? = null) {
      * Words with their look ([PdfText]) on page [i], their top left at [x], [y] (page points), [room] across (a text box:
      * its width; a text: as far as its longest line), at least [minHeight] tall: a text annotation whose look is the
      * words laid out by Android with their font embedded (MuPDF's own text boxes know only its few fonts), its words kept
-     * in it for other readers and the look in Tetra's own key. [replacing]: a point on the one it was, taken out in the same step.
+     * in it for other readers and the look in Tetra's own key. [replacing]: the one it was ([PdfObject.id]), taken out in
+     * the same step. Its id (0: emptied, only taken out).
      */
-    fun putText(i: Int, x: Float, y: Float, t: PdfText, room: Float, minHeight: Float = 0f, replacing: Offset? = null) = annotate(i, "Text") { p, x0, y0 ->
-        replacing?.let { at -> typedAt(p, at.x + x0, at.y + y0)?.let { p.deleteAnnotation(it.first) } }
+    fun putText(i: Int, x: Float, y: Float, t: PdfText, room: Float, minHeight: Float = 0f, replacing: Int? = null): Int { var id = 0; annotate(i, "Text") { p, x0, y0 ->
+        replacing?.let { r -> p.annotations.orEmpty().firstOrNull { it.id() == r }?.let(p::deleteAnnotation) }
         if (t.words.isBlank()) return@annotate true // emptied: only taken out
         val (lw, lh) = PdfText.size(t, room, minHeight)
         val (w, h) = PdfText.bounds(t, lw, lh) // its place on the page, turned
-        val src = com.artifex.mupdf.fitz.Document.openDocument(PdfText.pdf(t, lw, lh), "application/pdf")
+        val (res, contents) = grafted(PdfText.pdf(t, lw, lh))
+        p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT).apply {
+            setRect(com.artifex.mupdf.fitz.Rect(x + x0, y + y0, x + x0 + w, y + y0 + h))
+            setDefaultAppearance("Helv", t.look.size, rgb(t.look.color)); setContents(t.words); setBorderWidth(0f)
+            setAppearance(com.artifex.mupdf.fitz.Rect(0f, 0f, w, h), res, com.artifex.mupdf.fitz.Buffer().apply { writeBytes(contents) })
+            getObject().put(TYPED_KEY, pdf!!.newString(t.json(lw to lh)))
+            id = id()
+        }
+        true
+    }; return id }
+    /** A one-page PDF's drawing ([onePage], Android's) taken into this one: its resources and its page's contents, to be an annotation's look. */
+    internal fun grafted(onePage: ByteArray): Pair<com.artifex.mupdf.fitz.PDFObject, ByteArray> {
+        val src = com.artifex.mupdf.fitz.Document.openDocument(onePage, "application/pdf")
         try {
             val sp = (src.asPDF() ?: error("No PDF")).findPage(0)
             val c = sp.get("Contents")
             val contents = if (c.isArray) (0 until c.size()).fold(ByteArray(0)) { all, k -> all + c.get(k).readStream() + '\n'.code.toByte() } else c.readStream()
-            val res = pdf!!.graftObject(sp.get("Resources"))
-            p.createAnnotation(com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT).apply {
-                setRect(com.artifex.mupdf.fitz.Rect(x + x0, y + y0, x + x0 + w, y + y0 + h))
-                setDefaultAppearance("Helv", t.look.size, rgb(t.look.color)); setContents(t.words); setBorderWidth(0f)
-                setAppearance(com.artifex.mupdf.fitz.Rect(0f, 0f, w, h), res, com.artifex.mupdf.fitz.Buffer().apply { writeBytes(contents) })
-                getObject().put(TYPED_KEY, pdf!!.newString(t.json(lw to lh)))
-            }
+            return pdfDoc.graftObject(sp.get("Resources")) to contents
         } finally { src.destroy() }
-        true
     }
-    /**
-     * Words put on with [putText] under [at] on page [i] moved among the page's comments, pictures and drawings (Word's
-     * Arrange): [to] 1 forward, -1 backward, 2 to the front, -2 to the back. False when there was nowhere to go.
-     */
-    fun restack(i: Int, at: Offset, to: Int): Boolean {
-        var moved = false
-        annotate(i, if (to > 0) "Bring forward" else "Send backward") { p, x0, y0 ->
-            val me = typedAt(p, at.x + x0, at.y + y0)?.first?.getObject() ?: return@annotate false
-            val annots = p.getObject().get("Annots").takeIf { it.isArray } ?: return@annotate false
-            val list = (0 until annots.size()).map { annots.get(it) }.toMutableList()
-            val k = list.indexOfFirst { runCatching { it.asIndirect() == me.asIndirect() }.getOrDefault(false) }.takeIf { it >= 0 } ?: return@annotate false
-            val n = when (to) { 2 -> list.size - 1; -2 -> 0; else -> (k + to).coerceIn(0, list.size - 1) }
-            if (n == k) return@annotate false
-            list.add(n, list.removeAt(k)) // drawn in this order: the last on top
-            val again = pdf!!.newArray(); list.forEach { again.push(it) }; p.getObject().put("Annots", again)
-            moved = true; true
-        }
-        return moved
-    }
-    /** Words put on with [putText] under [at] on page [i]: where they are (page points) and how they were typed. */
-    fun typedAt(i: Int, at: Offset): Pair<android.graphics.RectF, PdfText>? = synchronized(this) { page(i) { p ->
-        val o = p.bounds
-        typedAt(p as? com.artifex.mupdf.fitz.PDFPage ?: return@page null, at.x + o.x0, at.y + o.y0)?.let { (a, t) ->
-            val r = a.rect; android.graphics.RectF(r.x0 - o.x0, r.y0 - o.y0, r.x1 - o.x0, r.y1 - o.y0) to t }
-    } }
-    private fun typedAt(p: com.artifex.mupdf.fitz.PDFPage, x: Float, y: Float) = p.annotations.orEmpty().reversed().firstNotNullOfOrNull { a ->
-        if (a.type != com.artifex.mupdf.fitz.PDFAnnotation.TYPE_FREE_TEXT) return@firstNotNullOfOrNull null
-        val r = a.rect; if (x < r.x0 - 4 || x > r.x1 + 4 || y < r.y0 - 4 || y > r.y1 + 4) return@firstNotNullOfOrNull null
-        a.getObject().get(TYPED_KEY).takeIf { !it.isNull }?.asString()?.let(PdfText::parse)?.let { a to it }
-    }
-
     /** The comment under [at] (the topmost, a few points round it), deleted: false when there is none. */
     fun deleteAt(i: Int, at: Offset) = annotate(i, "Delete comment") { p, x0, y0 ->
         val x = at.x + x0; val y = at.y + y0; val slop = 6f
@@ -967,26 +946,35 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     }
 
     private inline fun <T> page(i: Int, use: (com.artifex.mupdf.fitz.Page) -> T): T { val p = doc.loadPage(i); try { return use(p) } finally { p.destroy() } }
+    /** Page [i] loaded for [use] (PdfObjects.kt's); the caller holds the lock. */
+    internal fun <T> withPage(i: Int, use: (com.artifex.mupdf.fitz.Page) -> T): T = page(i, use)
+    /** The PDF being edited (PdfObjects.kt's; inside [annotate]). */
+    internal val pdfDoc get() = pdf ?: throw PdfError(R.string.pdf_cannot_edit)
 
     // an eighth of the app's memory, at most 96 MB: a few screens of pages
     private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceAtMost(96L shl 20).toInt()) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
 
-    fun cached(i: Int, w: Int): Bitmap? = cache.get("$i/$w")
+    fun cached(i: Int, w: Int, hide: Int? = null): Bitmap? = cache.get("$i/$w/$hide")
 
-    /** Page [i] drawn [w] px wide, its comments and form fields too; null when closed, scrolled away before its turn, or it could not be drawn (left white). */
-    suspend fun page(i: Int, w: Int): Bitmap? = cached(i, w) ?: withContext(Dispatchers.IO) {
+    /**
+     * Page [i] drawn [w] px wide, its comments and form fields too ([hide]: but that object, being moved over it); null
+     * when closed, scrolled away before its turn, or it could not be drawn (left white).
+     */
+    suspend fun page(i: Int, w: Int, hide: Int? = null): Bitmap? = cached(i, w, hide) ?: withContext(Dispatchers.IO) {
         synchronized(this@PdfDoc) {
             ensureActive() // a page flung past while it waited is not drawn
             if (closed) return@synchronized null
-            cached(i, w) ?: runCatching {
+            cached(i, w, hide) ?: runCatching {
                 val start = System.nanoTime()
-                val b = page(i) { p -> com.artifex.mupdf.fitz.android.AndroidDrawDevice.drawPageFitWidth(p, w) }
+                val b = page(i) { p ->
+                    hide?.let { id -> (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty().firstOrNull { it.id() == id }?.setHiddenForEditing(true) }
+                    com.artifex.mupdf.fitz.android.AndroidDrawDevice.drawPageFitWidth(p, w) }
                 val ms = (System.nanoTime() - start) / 1_000_000
                 // the first page's time, then only slow ones (the log is not a list of every page scrolled by)
                 if (!logged || ms >= 150) { logged = true; WriterLog.i("PDF: page ${i + 1} at $w px: $ms ms") }
-                b.also { cache.put("$i/$w", it) }
+                b.also { cache.put("$i/$w/$hide", it) }
             }.onFailure { WriterLog.w("PDF: page ${i + 1} could not be drawn", it) }.getOrNull()
         }
     }
@@ -1161,15 +1149,21 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     val typed = remember { com.mohamedrejeb.richeditor.model.RichTextState() } // the words typed, in Words' editor (some words with their own look)
     var textLook by remember { mutableStateOf(PdfTextLook()) } // the last look used: the next text starts with it
     var fontBefore by remember { mutableStateOf<String?>(null) } // Font's strip open: the font before it (Cancel puts it back)
-    var chosen by remember { mutableStateOf<Triple<Int, android.graphics.RectF, PdfText>?>(null) } // a text put on, chosen (Slides' first tap): its page, place, words
-    val framePreview = remember { PdfFramePreview() } // where a finger or an arrow has the chosen text, until put on
-    var clip by remember { mutableStateOf<Pair<android.graphics.RectF, PdfText>?>(null) } // Copy's text, for Paste
+    var chosen by remember { mutableStateOf<PdfObject?>(null) } // what is chosen on a page, as Words' picture, shape or text box
+    val framePreview = remember { PdfFramePreview() } // where a finger or an arrow has the chosen object, until put on
+    var clip by remember { mutableStateOf<PdfObject?>(null) } // Copy's object, for Paste
     var copiedLook by remember { mutableStateOf<PdfTextLook?>(null) } // Selection › Copy formatting, for Paste formatting (Slides')
-    var tabBefore by remember { mutableStateOf("Home") } // the tab shown before a text was chosen, back when none is
-    // a text chosen: its own tab shown (as Words' Image tab when a picture is tapped); none chosen: the tab before
+    var tabBefore by remember { mutableStateOf("Home") } // the tab shown before an object was chosen, back when none is
+    var sizing by remember { mutableStateOf(false) } // Picture › Size
+    var rotating by remember { mutableStateOf(false) } // Picture › Rotate
+    var positioning by remember { mutableStateOf(false) } // Picture › Position
+    var shapeOptions by remember { mutableStateOf(false) } // Picture › Shape options
+    var redrawing by remember { mutableStateOf(false) } // a signature's Redraw
+    var replacing by remember { mutableStateOf(false) } // Picture › Replace: the next picture picked takes the chosen one's place
+    // an object chosen: its own tab shown, named by its kind (Words' Image, Shape, Text box…); none chosen: the tab before
     LaunchedEffect(chosen != null) {
-        if (chosen != null) { if (tab != "Selection" && tab != "Text box") { tabBefore = tab; tab = "Text box" } }
-        else if (tab == "Selection" || tab == "Text box") tab = tabBefore
+        if (chosen != null) { if (tab != "Selection" && tab != OBJECT_TAB) { tabBefore = tab; tab = OBJECT_TAB } }
+        else if (tab == "Selection" || tab == OBJECT_TAB) tab = tabBefore
     }
     var pageMenu by remember { mutableStateOf<Triple<Int, Offset, Offset>?>(null) } // a right-click's menu: its page, where (px on the page), where (page points)
     var filling by remember { mutableStateOf<Triple<Int, Offset, PdfField>?>(null) } // a form's text or choice field tapped
@@ -1192,6 +1186,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var ocrJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var pane by remember { mutableStateOf<String?>(null) } // "Comments" or "Bookmarks", beside the pages (a phone: over their lower half)
     var version by remember { mutableStateOf(0) } // after each change: the pages drawn again
+    // each page's objects, read once a change (a finger's touch asks which is under it)
+    val pageObjects = remember(version, doc) { HashMap<Int, List<PdfObject>>() }
+    fun objectsOn(i: Int) = pageObjects.getOrPut(i) { doc?.objects(i).orEmpty() }
     var organize by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
     var showVersions by remember { mutableStateOf(false) }
@@ -1238,10 +1235,17 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 val raw = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
                 val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size) ?: throw PdfError(R.string.pdf_not_a_picture)
                 val k = minOf(1f, 1600f / bmp.width); val small = android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * k).toInt().coerceAtLeast(1), (bmp.height * k).toInt().coerceAtLeast(1), true)
-                val png = java.io.ByteArrayOutputStream().also { small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }.toByteArray()
-                d.image(page, png, small.height.toFloat() / small.width)
+                val jpg = java.io.ByteArrayOutputStream().also { small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }.toByteArray()
+                val aspect = small.height.toFloat() / small.width
+                // Words' picture: half the page across, in its middle (Replace: the chosen one's width, its place)
+                val old = chosen?.takeIf { replacing && it.words != null }
+                val s = d.sizes[old?.page ?: page]; val w = old?.laid?.first ?: (s.width / 2)
+                val img = PdfWords.of(DocImage("n" + java.util.UUID.randomUUID(), null, w, w * aspect, bytes = jpg, extension = "jpg", wrap = PictureWrap.InFront))
+                val turned = old?.words?.turn?.let { t -> Arrange.rotated(img.img, t)?.let(img::with) } ?: img
+                old?.page to d.putWords(old?.page ?: page, turned, old?.rect?.centerX() ?: (s.width / 2), old?.rect?.centerY() ?: (s.height / 2), old?.id)
             } }
-            r.onSuccess { version++ }.onFailure { WriterLog.e("PDF: image", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_image_failed), Toast.LENGTH_LONG).show() }
+            replacing = false
+            r.onSuccess { (p0, id) -> version++; chosen = d.objectById(p0 ?: page, id) }.onFailure { WriterLog.e("PDF: image", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_image_failed), Toast.LENGTH_LONG).show() }
         }
     }
     /** Typing on the page starts at [t]; [old]: a text put on before, typed in again with its look. */
@@ -1253,96 +1257,152 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         typed.setText(words); old?.runs?.forEach { r -> if (r.to <= words.length) typed.addSpanStyle(r.style(), androidx.compose.ui.text.TextRange(r.from, r.to)) }
         typed.selection = androidx.compose.ui.text.TextRange(words.length); typing = t
     }
-    /** A text put on before ([r] where it is), tapped: typed in again in its place. */
-    fun retype(i: Int, r: android.graphics.RectF, old: PdfText) { val (uw, uh) = old.unturned(r)
-        startTyping(PdfTyping(i, r.left, r.top, if (old.framed || old.turned) uw else maxOf(uw, (doc?.sizes?.getOrNull(i)?.width ?: 595f) - r.left - 18f),
-            if (old.framed) uh else 0f, old.framed, Offset(r.centerX(), r.centerY())), old) }
+    /** A text put on before ([o]), tapped: typed in again in its place. */
+    fun retype(o: PdfObject) { val old = o.text ?: return; val r = o.rect; val (uw, uh) = old.unturned(r)
+        startTyping(PdfTyping(o.page, r.left, r.top, if (old.framed || old.turned) uw else maxOf(uw, (doc?.sizes?.getOrNull(o.page)?.width ?: 595f) - r.left - 18f),
+            if (old.framed) uh else 0f, old.framed, o.id), old) }
     /** The words typed put on the page, one undo step (emptied: the old one only taken out). */
     fun putTyped() {
         val t = typing ?: return; typing = null; fontBefore = null
         val d = doc ?: return
         val words = typed.toText()
         if (words.isBlank() && t.replacing == null) return
-        change { d.putText(t.page, t.x, t.y, PdfText(words.trimEnd(), textLook, t.framed, PdfRun.of(typed.annotatedString, words)), t.room, t.minHeight, t.replacing) }
+        var id = 0
+        change { id = d.putText(t.page, t.x, t.y, PdfText(words.trimEnd(), textLook, t.framed, PdfRun.of(typed.annotatedString, words)), t.room, t.minHeight, t.replacing) }
         WriterLog.i("PDF: text ${if (t.replacing != null) "changed" else "put on"} (${textLook.font}, ${textLook.size} pt)")
         // it stays chosen, as a Slides box after typing: moved, sized, restyled from there
-        if (words.isNotBlank()) chosen = d.typedAt(t.page, Offset(t.x + 1f, t.y + 1f))?.let { (r, pt) -> Triple(t.page, r, pt) }
+        if (id != 0) chosen = d.objectById(t.page, id)
     }
     /**
      * The chosen text put on again, one undo step: at [x], [y], [room] across and at least [minH] tall, as [t] — it stays
      * chosen. A text box keeps its width; a text is as wide as its words up to the page's edge.
      */
     fun rechange(x: Float? = null, y: Float? = null, room: Float? = null, minH: Float? = null, t: PdfText? = null) {
-        val (i, r, old) = chosen ?: return; val d = doc ?: return
+        val c = chosen ?: return; val old = c.text ?: return; val d = doc ?: return
+        val i = c.page; val r = c.rect
         val s = d.sizes.getOrNull(i) ?: return; val nt = t ?: old
         val (uw, uh) = old.unturned(r) // as laid out before turning
         val nx = (x ?: r.left).coerceIn(0f, maxOf(0f, s.width - 12f)); val ny = (y ?: r.top).coerceIn(0f, maxOf(0f, s.height - 8f))
-        change { d.putText(i, nx, ny, nt, room ?: if (nt.framed || nt.turned) uw else maxOf(uw, s.width - nx - 18f), minH ?: if (nt.framed) uh else 0f, Offset(r.centerX(), r.centerY())) }
-        chosen = d.typedAt(i, Offset(nx + 1f, ny + 1f))?.let { (nr, pt) -> Triple(i, nr, pt) }
+        var id = 0
+        change { id = d.putText(i, nx, ny, nt, room ?: if (nt.framed || nt.turned) uw else maxOf(uw, s.width - nx - 18f), minH ?: if (nt.framed) uh else 0f, c.id) }
+        chosen = d.objectById(i, id)
     }
-    /** The chosen text stretched by Words' handles to [lw] × [lh] before turning: a fixed width from then on (a text becomes a box without a border). */
-    fun sizeChosen(lw: Float, lh: Float) {
-        val t = chosen?.third ?: return
-        rechange(room = lw.coerceAtLeast(12f), minH = lh.coerceAtLeast(8f), t = t.copy(framed = true))
+    /** The chosen Words object put on again as [w], its middle at [cx], [cy] (one undo step); it stays chosen. */
+    fun reput(w: PdfWords, cx: Float? = null, cy: Float? = null) {
+        val c = chosen ?: return; val d = doc ?: return
+        var id = 0
+        change { id = d.putWords(c.page, w, cx ?: c.rect.centerX(), cy ?: c.rect.centerY(), c.id) }
+        chosen = d.objectById(c.page, id)
     }
-    /** The arrows' nudge put on where they have got to (one step of Undo for a whole press). */
-    fun nudged() { val sh = framePreview.shift; framePreview.reset(); if (sh != Offset.Zero) chosen?.second?.let { r -> rechange(x = r.left + sh.x, y = r.top + sh.y) } }
-    /** The chosen text turned to [to] degrees clockwise about its middle (one undo step). */
-    fun turnChosen(to: Int) {
-        val (_, r, old) = chosen ?: return; val (lw, lh) = old.unturned(r)
-        val nt = old.copy(look = old.look.copy(turn = Math.floorMod(to, 360))); val (bw, bh) = PdfText.bounds(nt, lw, lh)
-        rechange(x = r.centerX() - bw / 2, y = r.centerY() - bh / 2, t = nt)
-        WriterLog.i("PDF: text turned ${nt.look.turn}°")
-    }
-    /** The chosen text taken off the page (one undo step). */
-    fun deleteChosen() {
-        val (i, r, old) = chosen ?: return; chosen = null
-        doc?.let { d -> change { d.putText(i, r.left, r.top, old.copy(words = ""), r.width(), 0f, Offset(r.centerX(), r.centerY())) } }
-        WriterLog.i("PDF: text deleted")
-    }
-    /** Word's Align on the page for the chosen text: at the margin it is put by (Layout › Margins), or the middle. */
-    fun position(across: Char?, down: Char?) {
-        val (i, r, _) = chosen ?: return; val s = doc?.sizes?.getOrNull(i) ?: return; val m = margins
-        rechange(x = when (across) { 'l' -> m.left; 'c' -> (s.width - r.width()) / 2; 'r' -> s.width - m.right - r.width(); else -> null },
-            y = when (down) { 't' -> m.top; 'm' -> (s.height - r.height()) / 2; 'b' -> s.height - m.bottom - r.height(); else -> null })
-        WriterLog.i("PDF: text positioned ${across ?: ""}${down ?: ""}")
-    }
-    /** Copy (Cut): the chosen text kept for Paste, as Slides' items; its words on the clipboard for other apps. */
-    fun copyChosen(): Boolean {
-        val (_, r, t) = chosen ?: return false
-        clip = android.graphics.RectF(r) to t
-        runCatching { context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("PDF text", t.words)) }
-        WriterLog.i("PDF: text copied"); return true
+    /** The chosen object moved [dx], [dy] points, kept on its page (one undo step). */
+    fun moveChosen(dx: Float, dy: Float) {
+        val c = chosen ?: return; val d = doc ?: return; val s = d.sizes.getOrNull(c.page) ?: return
+        // at least a corner of it left on the page
+        val mx = dx.coerceIn(-c.rect.right + 12f, s.width - c.rect.left - 12f); val my = dy.coerceIn(-c.rect.bottom + 8f, s.height - c.rect.top - 8f)
+        if (mx == 0f && my == 0f) return
+        when {
+            c.text != null -> rechange(x = c.rect.left + mx, y = c.rect.top + my)
+            c.words != null -> reput(c.words!!, c.rect.centerX() + mx, c.rect.centerY() + my)
+            else -> { var id = 0; change { id = d.moveObject(c.page, c, mx, my) }; chosen = d.objectById(c.page, id) }
+        }
     }
     /**
-     * Paste on page [i]: what was copied here, a little lower and to the right of where it stood (Slides' way); else
-     * words copied in another app, a new text in the look last used, 2 cm in from the top left.
+     * The chosen object stretched by Words' handles or Size to [lw] × [lh] before turning, its top left kept (a text
+     * gets a fixed width from then on: a box without a border).
+     */
+    fun sizeChosen(lw: Float, lh: Float) {
+        val c = chosen ?: return; val d = doc ?: return
+        val w = lw.coerceAtLeast(8f); val h = lh.coerceAtLeast(8f)
+        c.text?.let { t -> rechange(room = w.coerceAtLeast(12f), minH = h, t = t.copy(framed = true)); return }
+        c.words?.let { o -> val (ow, oh) = o.laid; val mid = turnedBy(Offset((w - ow) / 2, (h - oh) / 2), c.turn)
+            reput(o.with(PictureXml.resized(o.img, w, h)), c.rect.centerX() + mid.x, c.rect.centerY() + mid.y); return }
+        change { d.sizeOther(c.page, c, w, h) }; chosen = d.objectById(c.page, c.id)
+    }
+    /** The arrows' nudge put on where they have got to (one step of Undo for a whole press). */
+    fun nudged() { val sh = framePreview.shift; framePreview.reset(); if (sh != Offset.Zero) moveChosen(sh.x, sh.y) }
+    /** The chosen object turned to [to] degrees clockwise about its middle (one undo step). */
+    fun turnChosen(to: Float) {
+        val c = chosen ?: return
+        c.words?.let { o -> Arrange.rotated(o.img, to)?.let { reput(o.with(it)) }; WriterLog.i("PDF: ${o.kind} turned ${Math.round(to)}°"); return }
+        val old = c.text ?: return; val (lw, lh) = old.unturned(c.rect)
+        val nt = old.copy(look = old.look.copy(turn = Math.floorMod(Math.round(to), 360))); val (bw, bh) = PdfText.bounds(nt, lw, lh)
+        rechange(x = c.rect.centerX() - bw / 2, y = c.rect.centerY() - bh / 2, t = nt)
+        WriterLog.i("PDF: text turned ${nt.look.turn}°")
+    }
+    /** Whether the chosen object can be turned: Tetra's own (another app's keeps its way up). */
+    fun turnable(c: PdfObject) = c.text != null || c.words?.let { Arrange.rotated(it.img, 0f) != null } == true
+    /** The chosen object taken off the page (one undo step). */
+    fun deleteChosen() {
+        val c = chosen ?: return; chosen = null; val d = doc ?: return
+        change { d.deleteObject(c.page, c.id) }
+        WriterLog.i("PDF: ${c.kind} deleted")
+    }
+    /** Word's Align on the page for the chosen object: at the margin it is put by (Layout › Margins), or the middle. */
+    fun alignChosen(across: Char?, down: Char?) {
+        val c = chosen ?: return; val r = c.rect; val s = doc?.sizes?.getOrNull(c.page) ?: return; val m = margins
+        val x = when (across) { 'l' -> m.left; 'c' -> (s.width - r.width()) / 2; 'r' -> s.width - m.right - r.width(); else -> r.left }
+        val y = when (down) { 't' -> m.top; 'm' -> (s.height - r.height()) / 2; 'b' -> s.height - m.bottom - r.height(); else -> r.top }
+        moveChosen(x - r.left, y - r.top)
+        WriterLog.i("PDF: ${c.kind} aligned ${across ?: ""}${down ?: ""}")
+    }
+    /** Copy (Cut): the chosen object kept for Paste, as Slides' items; a text's words on the clipboard for other apps. */
+    fun copyChosen(): Boolean {
+        val c = chosen?.takeIf { it.ours } ?: return false
+        clip = c
+        c.text?.let { t -> runCatching { context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("PDF text", t.words)) } }
+        WriterLog.i("PDF: ${c.kind} copied"); return true
+    }
+    /**
+     * Paste on page [i]: what was copied here, a little lower and to the right of where it stood (Slides' way), or at
+     * [at]; else words copied in another app, a new text in the look last used, at the margins' corner.
      */
     fun paste(i: Int, at: Offset? = null) {
         val d = doc ?: return; val s = d.sizes.getOrNull(i) ?: return; val m = margins.left; val mt = margins.top
-        val t: PdfText; val x: Float; val y: Float; val room: Float; val minH: Float
         val c = clip
-        if (c != null) {
-            val (r, ct) = c; val (uw, uh) = ct.unturned(r)
-            t = ct; x = at?.x ?: (r.left + 12f); y = at?.y ?: (r.top + 12f); room = if (ct.framed || ct.turned) uw else maxOf(uw, s.width - x - 18f); minH = if (ct.framed) uh else 0f
-        } else {
-            val words = runCatching { context.getSystemService(ClipboardManager::class.java)?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() }.getOrNull()?.trim()
-            if (words.isNullOrEmpty()) { Toast.makeText(context, R.string.pdf_nothing_to_paste, Toast.LENGTH_SHORT).show(); return }
-            t = PdfText(words, textLook.copy(fill = null, line = null, turn = 0), false); x = at?.x ?: m; y = at?.y ?: mt; room = maxOf(72f, s.width - x - margins.right); minH = 0f
+        var id = 0
+        when {
+            c?.words != null -> { val cw = c.words!!
+                val cx = at?.x?.plus(c.rect.width() / 2) ?: (c.rect.centerX() + 12f); val cy = at?.y?.plus(c.rect.height() / 2) ?: (c.rect.centerY() + 12f)
+                change { id = d.putWords(i, cw, cx.coerceAtMost(s.width - 12f), cy.coerceAtMost(s.height - 8f)) }
+            }
+            c?.text != null -> {
+                val ct = c.text; val r = c.rect; val (uw, uh) = ct.unturned(r)
+                val x = (at?.x ?: (r.left + 12f)).coerceAtMost(s.width - 12f); val y = (at?.y ?: (r.top + 12f)).coerceAtMost(s.height - 8f)
+                change { id = d.putText(i, x, y, ct, if (ct.framed || ct.turned) uw else maxOf(uw, s.width - x - 18f), if (ct.framed) uh else 0f) }
+            }
+            else -> {
+                val words = runCatching { context.getSystemService(ClipboardManager::class.java)?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() }.getOrNull()?.trim()
+                if (words.isNullOrEmpty()) { Toast.makeText(context, R.string.pdf_nothing_to_paste, Toast.LENGTH_SHORT).show(); return }
+                val x = (at?.x ?: m).coerceAtMost(s.width - 12f); val y = (at?.y ?: mt).coerceAtMost(s.height - 8f)
+                change { id = d.putText(i, x, y, PdfText(words, textLook.copy(fill = null, line = null, turn = 0), false), maxOf(72f, s.width - x - margins.right), 0f) }
+            }
         }
-        val px = x.coerceAtMost(s.width - 12f); val py = y.coerceAtMost(s.height - 8f)
-        change { d.putText(i, px, py, t, room, minH) }
-        chosen = d.typedAt(i, Offset(px + 1f, py + 1f))?.let { (nr, pt) -> Triple(i, nr, pt) }
-        WriterLog.i("PDF: text pasted")
+        if (id != 0) chosen = d.objectById(i, id)
+        WriterLog.i("PDF: pasted")
     }
-    /** Duplicate (Ctrl+D): a copy of the chosen text beside it, Copy's text and the clipboard left as they were. */
-    fun duplicateChosen() { val (i, r, t) = chosen ?: return; val keep = clip; clip = android.graphics.RectF(r) to t; paste(i); clip = keep }
-    /** The chosen text one step forward or backward among the page's comments, pictures and drawings ([to] as [PdfDoc.restack]). */
+    /** Duplicate (Ctrl+D): a copy of the chosen object beside it, Copy's and the clipboard left as they were. */
+    fun duplicateChosen() { val c = chosen?.takeIf { it.ours } ?: return; val keep = clip; clip = c; paste(c.page); clip = keep }
+    /** The chosen object one step forward or backward among the page's objects and comments ([to] as [restackObject]). */
     fun restackChosen(to: Int) {
-        val (i, r, _) = chosen ?: return; val d = doc ?: return
+        val c = chosen ?: return; val d = doc ?: return
         var moved = false
-        change { moved = d.restack(i, Offset(r.centerX(), r.centerY()), to) }
+        change { moved = d.restackObject(c.page, c.id, to) }
         if (!moved) Toast.makeText(context, if (to > 0) R.string.pdf_in_front_already else R.string.pdf_at_back_already, Toast.LENGTH_SHORT).show()
+    }
+    /** Picture › Save as (Words'): the picture into the phone's Pictures/Tetra. */
+    fun savePicture(o: PdfWords) { val b = o.bytes() ?: return
+        scope.launch { Toast.makeText(context, savePictureToPhone(context, b, o.img.extension, file?.name ?: "PDF"), Toast.LENGTH_LONG).show() } }
+    /** Turn left, Turn right and Flip (Words' Picture tab): the picture itself turned or mirrored ([turn] degrees, [flip]). */
+    fun transformChosen(turn: Int, flip: Boolean) {
+        val o = chosen?.words ?: return; val b = o.bytes() ?: return
+        val bmp = android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size) ?: return
+        val m = android.graphics.Matrix().apply { if (flip) postScale(-1f, 1f); postRotate(turn.toFloat()) }
+        val out = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
+        val png = o.img.extension.lowercase() == "png"
+        val bytes = java.io.ByteArrayOutputStream().also { out.compress(if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
+        val (w, h) = o.laid
+        val img = DocImage(o.img.key, null, if (turn % 180 != 0) h else w, if (turn % 180 != 0) w else h, bytes = bytes, extension = if (png) "png" else "jpg", wrap = PictureWrap.InFront)
+        reput(PdfWords.of(img).let { n -> Arrange.rotated(n.img, o.turn)?.let(n::with) ?: n })
     }
     BackHandler(enabled = editing || organize) { if (organize) organize = false else if (typing != null) putTyped() else if (chosen != null) chosen = null else if (tool != null) tool = null else if (doc?.dirty == true) leaving = true else editing = false }
     /** What a finger did on page [i] with the tool on: [pts] its path in page points (a tap: one point). */
@@ -1351,8 +1411,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         chosen = null // a tap off the chosen text: none chosen (on it, its frame takes the tap)
         val d = doc ?: return; val t = tool ?: run {
             if (pts.size != 1) return
-            // a text put on before, tapped while editing: chosen, as a Slides box (a second tap types in it)
-            if (editing) d.typedAt(i, pts[0])?.let { (r, old) -> chosen = Triple(i, r, old); return }
+            // an object tapped while editing: chosen, as Words' (a text: a second tap types in it)
+            if (editing) objectsOn(i).lastOrNull { o -> o.rect.let { r -> pts[0].x >= r.left - 4 && pts[0].x <= r.right + 4 && pts[0].y >= r.top - 4 && pts[0].y <= r.bottom + 4 } }?.let { chosen = it; return }
             // no tool: a form's field is filled in (a box ticked at once), a note tapped shows its words
             d.fieldAt(i, pts[0])?.let { f ->
                 if (f.readOnly) { Toast.makeText(context, R.string.pdf_field_read_only, Toast.LENGTH_SHORT).show(); return }
@@ -1394,16 +1454,17 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             PdfTool.Marker -> if (pts.size > 1) change { d.ink(i, listOf(pts), 0xFFEB3B, 12f) }
             PdfTool.Erase -> change { if (!d.deleteAt(i, a)) Toast.makeText(context, R.string.pdf_no_comment_there, Toast.LENGTH_SHORT).show() }
             // the words start where the finger was (its line through the tap), as far across as the page leaves room
-            PdfTool.Text -> d.typedAt(i, a)?.let { (r, old) -> retype(i, r, old) }
+            PdfTool.Text -> d.objectAt(i, a)?.takeIf { it.text != null }?.let(::retype)
                 ?: startTyping(PdfTyping(i, a.x, a.y - textLook.size * 0.8f, (d.sizes[i].width - a.x - minOf(margins.right, d.sizes[i].width - a.x - 72f)).coerceAtLeast(72f), 0f, false))
             PdfTool.Tick -> change { d.mark(i, a, '✓', fillSize * 1.3f, 0x000000) }
             PdfTool.Cross -> change { d.mark(i, a, '✗', fillSize * 1.3f, 0x000000) }
             PdfTool.Dot -> change { d.mark(i, a, '•', fillSize * 1.3f, 0x000000) }
             PdfTool.Date -> change { d.text(i, a - Offset(0f, fillSize * 0.6f), java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")), fillSize, 0x000000) }
-            PdfTool.Sign -> if (!signatureFile.isFile) signing = true else change {
-                val b = signatureFile.readBytes(); val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, o)
-                val w = 140f; d.picture(i, a - Offset(w / 2, w * o.outHeight / o.outWidth.coerceAtLeast(1) / 2), b, w, o.outHeight.toFloat() / o.outWidth.coerceAtLeast(1))
+            PdfTool.Sign -> if (!signatureFile.isFile) signing = true else {
+                // Words' signature (Insert › Signature): a picture named so, chosen after, moved and sized as any
+                var id = 0
+                change { id = d.putWords(i, signatureWords(signatureFile.readBytes()), a.x, a.y) }
+                tool = null; chosen = d.objectById(i, id)
             }
         }
     }
@@ -1448,6 +1509,40 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     if (signing) DrawDialog(200f, { signing = false }, boxAspect = 0.4f) { png, _, _, _, _ ->
         signing = false
         runCatching { signatureFile.writeBytes(png) }.onSuccess { tool = PdfTool.Sign; Toast.makeText(context, R.string.pdf_signature_kept, Toast.LENGTH_LONG).show() }
+    }
+    // Picture › Size, Rotate, Position, Shape options and a signature's Redraw: Words' own windows
+    chosen?.let { c ->
+        val d0 = doc ?: return@let
+        if (sizing) { val (lw, lh) = c.laid
+            PictureSizeDialog(lw, lh, c.words?.let { o -> picturePainter(o.img, o.parts) } ?: androidx.compose.ui.graphics.painter.ColorPainter(Color.LightGray),
+                { sizing = false }) { nw, nh -> sizing = false; sizeChosen(nw, nh) } }
+        if (rotating) RotateDialog(c.turn, { rotating = false }) { deg -> rotating = false; turnChosen(deg) }
+        if (shapeOptions) c.words?.let { o -> ShapePicture.of(o.img)?.let { sp -> val img = o.img
+            ShapeOptionsDialog(ShapeOptions(sp.fill, sp.line, sp.lineWidth, img.widthPt, img.heightPt, Arrange.rotationOf(img), PictureXml.altOf(img), sp.dash, sp.shadow), { shapeOptions = false }) { op ->
+                shapeOptions = false
+                var next = PictureXml.shapeLook(img, op.fill, op.line, op.lineWidth, op.dash, op.shadow) ?: img
+                if (op.widthPt != img.widthPt || op.heightPt != img.heightPt) next = PictureXml.resized(next, op.widthPt, op.heightPt)
+                if (op.degrees != Arrange.rotationOf(img)) next = Arrange.rotated(next, op.degrees) ?: next
+                if (op.alt != PictureXml.altOf(img)) next = PictureXml.withAlt(next, op.alt) ?: next
+                reput(o.with(next))
+                WriterLog.i("PDF: shape options ${op.widthPt.toInt()}×${op.heightPt.toInt()} ${op.degrees}°")
+            } } }
+        if (positioning) {
+            // the page without it and it alone, drawn by MuPDF (a page's drawing at most 1200 px across)
+            val s = d0.sizes[c.page]; val px = 1200
+            var under by remember(c.id, version) { mutableStateOf<Bitmap?>(null) }
+            var it0 by remember(c.id, version) { mutableStateOf<Bitmap?>(null) }
+            LaunchedEffect(c.id, version) { under = d0.page(c.page, px, c.id); it0 = withContext(Dispatchers.IO) { d0.objectPicture(c.page, c.id, px) } }
+            val k = s.width / px
+            PositionDialog(s.width, s.height, c.rect, c.id to version, { n -> under?.let { b -> n.save(); n.scale(k, k); n.drawBitmap(b, 0f, 0f, null); n.restore() } },
+                { n, x, y -> it0?.let { b -> n.save(); n.translate(x, y); n.scale(c.rect.width() / b.width, c.rect.height() / b.height); n.drawBitmap(b, 0f, 0f, null); n.restore() } },
+                { positioning = false }) { x, y -> moveChosen(x - c.rect.left, y - c.rect.top) }
+        }
+        if (redrawing) DrawDialog(200f, { redrawing = false }, boxAspect = 0.4f) { png, _, _, _, _ ->
+            redrawing = false
+            val (lw, _) = c.laid
+            reput(signatureWords(png, lw).let { n -> c.words?.turn?.let { t -> Arrange.rotated(n.img, t)?.let(n::with) } ?: n })
+        }
     }
     filling?.let { (i, at0, f) ->
         var value by remember { mutableStateOf(f.value) }
@@ -1602,18 +1697,18 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             k.isCtrlPressed && k.key == Key.S -> { if (d.dirty) save(); true }
             k.isCtrlPressed && (k.key == Key.Y || (k.key == Key.Z && k.isShiftPressed)) -> { chosen = null; change { d.redo() }; true }
             k.isCtrlPressed && k.key == Key.Z -> { chosen = null; change { d.undo() }; true }
-            k.isCtrlPressed && k.key == Key.V -> { paste(c?.first ?: at); true }
+            k.isCtrlPressed && k.key == Key.V -> { paste(c?.page ?: at); true }
             c == null -> false
             k.isCtrlPressed && k.key == Key.C -> { copyChosen(); true }
             k.isCtrlPressed && k.key == Key.X -> { if (copyChosen()) deleteChosen(); true }
             k.isCtrlPressed && k.key == Key.D -> { duplicateChosen(); true }
             k.key == Key.Delete || k.key == Key.Backspace -> { deleteChosen(); true }
-            k.key == Key.Enter -> { retype(c.first, c.second, c.third); true }
+            k.key == Key.Enter -> { retype(c); true }
             k.key == Key.Escape -> { chosen = null; true }
-            k.key == Key.DirectionLeft -> { rechange(x = c.second.left - step); true }
-            k.key == Key.DirectionRight -> { rechange(x = c.second.left + step); true }
-            k.key == Key.DirectionUp -> { rechange(y = c.second.top - step); true }
-            k.key == Key.DirectionDown -> { rechange(y = c.second.top + step); true }
+            k.key == Key.DirectionLeft -> { moveChosen(-step, 0f); true }
+            k.key == Key.DirectionRight -> { moveChosen(step, 0f); true }
+            k.key == Key.DirectionUp -> { moveChosen(0f, -step); true }
+            k.key == Key.DirectionDown -> { moveChosen(0f, step); true }
             else -> false
         }
     }) {
@@ -1778,24 +1873,26 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                                 down.consume()
                                                 if (typing != null) putTyped()
                                                 val pt = down.position / (size.width / s.width)
-                                                chosen = doc?.typedAt(i, pt)?.let { (r, t) -> Triple(i, r, t) }
+                                                chosen = doc?.objectAt(i, pt)
                                                 pageMenu = Triple(i, down.position, pt)
                                             }
                                         }
-                                        // a text on this page as a text box in Words: pressed and dragged it moves at once, a tap chooses it, a tap on the chosen one types in it
-                                        .pdfTextGestures(s, editing && typing == null && (tool == null || tool == PdfTool.Text || tool == PdfTool.TextBox),
-                                            { pt -> doc?.typedAt(i, pt) != null },
-                                            { chosen?.takeIf { it.first == i }?.let { (_, r, t) -> Triple(r, t.unturned(r), t.look.turn) } }, framePreview,
-                                            { pt -> doc?.typedAt(i, pt)?.let { (r, t) -> chosen = Triple(i, r, t); tool = null } },
-                                            { chosen?.let { (ci, r, t) -> retype(ci, r, t) } },
-                                            { dx, dy -> chosen?.second?.let { r -> rechange(x = r.left + dx, y = r.top + dy) } }), marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
+                                        // an object on this page as Words' (the user, 26 Oct): pressed and dragged it moves at once, a tap chooses it,
+                                        // a long press opens Position, a tap on a chosen text types in it
+                                        .pdfObjectGestures(s, editing && typing == null && (tool == null || tool == PdfTool.Text || tool == PdfTool.TextBox),
+                                            { pt -> objectsOn(i).lastOrNull { o -> o.rect.let { r -> pt.x >= r.left - 4 && pt.x <= r.right + 4 && pt.y >= r.top - 4 && pt.y <= r.bottom + 4 } } },
+                                            { chosen?.takeIf { it.page == i } }, framePreview,
+                                            { o -> chosen = o; tool = null },
+                                            { chosen?.let(::retype) },
+                                            { positioning = true },
+                                            ::moveChosen), marks, matches?.getOrNull(match)?.takeIf { it.page == i }, hide = chosen?.takeIf { it.page == i && typing == null }, preview = framePreview) {
                                     if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
                                     typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook) }
                                     pageMenu?.takeIf { it.first == i }?.let { (_, spot, pt) -> OfficeMenu(spot, { pageMenu = null }) {
                                         @Composable fun entry(label: String, icon: Int, act: () -> Unit) = OfficeMenuItem(label, icon) { pageMenu = null; WriterLog.i("PDF: menu › $label"); act() }
                                         val c = chosen
                                         if (c != null) {
-                                            entry(stringResource(R.string.words_edit_text), R.drawable.ic_edit) { retype(c.first, c.second, c.third) }
+                                            if (c.text != null) entry(stringResource(R.string.words_edit_text), R.drawable.ic_edit) { retype(c) }
                                             entry(stringResource(R.string.common_cut), R.drawable.ic_content_cut) { if (copyChosen()) deleteChosen() }
                                             entry(stringResource(R.string.common_copy), R.drawable.ic_copy) { copyChosen() }
                                         }
@@ -1806,8 +1903,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                             entry(stringResource(R.string.common_delete), R.drawable.ic_delete) { deleteChosen() }
                                         }
                                     } }
-                                    chosen?.takeIf { it.first == i && typing == null }?.let { (_, r, t) ->
-                                        PdfChosenHandles(s, r, t.unturned(r), t.look.turn, framePreview, ::sizeChosen, ::turnChosen)
+                                    chosen?.takeIf { it.page == i && typing == null }?.let { c ->
+                                        PdfChosenHandles(s, c.rect, c.laid, c.turn, framePreview, turnable(c), c.kind == "Image" || c.kind == "Signature", ::sizeChosen, ::turnChosen)
                                     }
                                 }
                               } }
@@ -1833,14 +1930,14 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         val d = doc
         // typing on the page: Font's strip in the ribbon's place, as Words' and Slides'; a card tapped shows on the words at once
         val before = fontBefore
-        val ch0 = chosen
+        val ch0 = chosen?.takeIf { it.text != null }
         if (typing != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
             ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
         // a chosen text: the font a card shows put on at once (Cancel puts the one before back)
-        else if (ch0 != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(ch0.third.look.font),
-            cancel = { if (ch0.third.look.font != before) rechange(t = ch0.third.copy(look = ch0.third.look.copy(font = before))); fontBefore = null },
-            ok = { fontBefore = null }, pick = { c -> (c as? FontChoice)?.let { rechange(t = ch0.third.copy(look = ch0.third.look.copy(font = it.name))) } },
-            fonts = STYLE_FONTS, now = ch0.third.look.font)
+        else if (ch0 != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(ch0.text!!.look.font),
+            cancel = { if (ch0.text!!.look.font != before) rechange(t = ch0.text!!.copy(look = ch0.text!!.look.copy(font = before))); fontBefore = null },
+            ok = { fontBefore = null }, pick = { c -> (c as? FontChoice)?.let { rechange(t = ch0.text!!.copy(look = ch0.text!!.look.copy(font = it.name))) } },
+            fonts = STYLE_FONTS, now = ch0.text!!.look.font)
         // Home with nothing chosen: the next text's font
         else if (before != null && editing) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
             ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
@@ -1857,10 +1954,10 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         "Home" to stringResource(R.string.words_tab_home), "Insert" to stringResource(R.string.words_tab_insert), "Draw" to stringResource(R.string.words_tab_draw),
                         "Layout" to stringResource(R.string.words_tab_layout), "Pages" to stringResource(R.string.words_pages), "Review" to stringResource(R.string.words_tab_review),
                         "Fill & Sign" to stringResource(R.string.pdf_tab_fill_sign), "Protect" to stringResource(R.string.pdf_tab_protect), "View" to stringResource(R.string.words_tab_view),
-                        "Text box" to stringResource(R.string.words_text_box))
+                        OBJECT_TAB to (chosen?.kind?.let { if (it == "Drawing") stringResource(R.string.pdf_drawing) else objectKindName(it) } ?: ""))
                     OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
-                        "Text box".takeIf { chosen != null }),
-                        tab, w, PDF_RED, { tab = it; tool = null }, contextual = "Text box", label = { tabNames[it] ?: it })
+                        OBJECT_TAB.takeIf { chosen != null }),
+                        tab, w, PDF_RED, { tab = it; tool = null }, contextual = OBJECT_TAB, label = { tabNames[it] ?: it })
                     @Composable fun ToolButton(t: PdfTool) = RibbonButton(stringResource(t.label), w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
                     key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                         val c0 = chosen
@@ -1897,10 +1994,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         if (tab == "Home") {
                             ToolButton(PdfTool.Text); ToolButton(PdfTool.TextBox)
                             RibbonDivider(w)
-                            val look = c0?.third?.look ?: textLook
-                            PdfLookTools(w, look, { l -> if (c0 != null) rechange(t = c0.third.copy(look = l)) else textLook = l }, { fontBefore = look.font })
+                            val ct0 = c0?.text
+                            val look = ct0?.look ?: textLook
+                            PdfLookTools(w, look, { l -> if (ct0 != null) rechange(t = ct0.copy(look = l)) else textLook = l }, { fontBefore = look.font })
                             Tool(R.drawable.ic_format_clear, stringResource(R.string.words_clear_formatting), w) {
-                                if (c0 != null) rechange(t = c0.third.copy(look = PdfTextLook(fill = look.fill, line = look.line, turn = look.turn), runs = emptyList())) else textLook = PdfTextLook() }
+                                if (ct0 != null) rechange(t = ct0.copy(look = PdfTextLook(fill = look.fill, line = look.line, turn = look.turn), runs = emptyList())) else textLook = PdfTextLook() }
                             return@RibbonLine
                         }
                         // Layout, as Words' and Tables': the pages' size and way round (all of them, as Word's without sections), the margins
@@ -1943,47 +2041,61 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             RibbonButton(stringResource(R.string.words_unit_inches), w, on = WriterUnits.inches) { WriterUnits.set(context, true) }
                             return@RibbonLine
                         }
-                        // Slides' Selection tab: what is chosen cut, copied, pasted; words pasted alone; its look copied and put on another
+                        // Words' Selection tab: what is chosen cut, copied, pasted; words pasted alone; a text's look copied and put on another
                         if (tab == "Selection" && c0 != null) {
-                            val (ci, _, ct) = c0
-                            RibbonButton(stringResource(R.string.common_cut), w, R.drawable.ic_content_cut) { if (copyChosen()) deleteChosen() }
-                            RibbonButton(stringResource(R.string.common_copy), w, R.drawable.ic_copy) { copyChosen() }
-                            RibbonButton(stringResource(R.string.common_paste), w, R.drawable.ic_content_paste, enabled = clip != null) { paste(ci) }
+                            val ct = c0.text
+                            RibbonButton(stringResource(R.string.common_cut), w, R.drawable.ic_content_cut, enabled = c0.ours) { if (copyChosen()) deleteChosen() }
+                            RibbonButton(stringResource(R.string.common_copy), w, R.drawable.ic_copy, enabled = c0.ours) { copyChosen() }
+                            RibbonButton(stringResource(R.string.common_paste), w, R.drawable.ic_content_paste, enabled = clip != null) { paste(c0.page) }
+                            RibbonButton(stringResource(R.string.words_paste_text_only), w, R.drawable.ic_content_paste) { val keep = clip; clip = null; paste(c0.page); clip = keep }
                             RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_paste_text_only), w, R.drawable.ic_content_paste) { val keep = clip; clip = null; paste(ci); clip = keep }
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_copy_formatting), w, R.drawable.ic_format_paint) { copiedLook = ct.look; Toast.makeText(context, R.string.pdf_formatting_copied, Toast.LENGTH_SHORT).show() }
+                            RibbonButton(stringResource(R.string.words_copy_formatting), w, R.drawable.ic_format_paint, enabled = ct != null) { ct?.let { copiedLook = it.look; Toast.makeText(context, R.string.pdf_formatting_copied, Toast.LENGTH_SHORT).show() } }
                             // its turn, fill and border its own, as Slides' (the words' look only)
-                            RibbonButton(stringResource(R.string.words_paste_formatting), w, R.drawable.ic_format_paint, enabled = copiedLook != null) { copiedLook?.let { l ->
+                            RibbonButton(stringResource(R.string.words_paste_formatting), w, R.drawable.ic_format_paint, enabled = ct != null && copiedLook != null) { val l = copiedLook; if (ct != null && l != null) {
                                 rechange(t = ct.copy(look = l.copy(turn = ct.look.turn, fill = ct.look.fill, line = ct.look.line))); WriterLog.i("PDF: formatting pasted") } }
                             return@RibbonLine
                         }
-                        // the text's own tab (Slides' item tab): its look at once, where it stands, Edit text, Delete
-                        if (tab == "Text box" && c0 != null) {
-                            val (ci, cr, ct) = c0
-                            RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit) { retype(ci, cr, ct) }
+                        // the chosen object's own tab, named by its kind, as Words' Picture tab (the user, 26 Oct: "the same ribbon tabs and items in the same places")
+                        if (tab == OBJECT_TAB && c0 != null) {
+                            val o = c0.words; val img = o?.img
+                            val ours = c0.ours; val turns = turnable(c0)
+                            val picture = img != null && o.bytes() != null && img.box == null && img.chart == null && img.math == null && img.group == null
+                            if (c0.kind == "Signature") {
+                                // a signature's own tab, as Words' (Size, Position, Rotate | Bring to front, Send to back | Redraw, Delete)
+                                RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio) { sizing = true }
+                                RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with) { positioning = true }
+                                RibbonButton(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, enabled = turns) { rotating = true }
+                                RibbonDivider(w)
+                                RibbonButton(stringResource(R.string.words_bring_to_front), w, R.drawable.ic_flip_to_front) { restackChosen(2) }
+                                RibbonButton(stringResource(R.string.words_send_to_back), w, R.drawable.ic_flip_to_back) { restackChosen(-2) }
+                                RibbonDivider(w)
+                                RibbonButton(stringResource(R.string.words_redraw), w, R.drawable.ic_draw) { redrawing = true }
+                                RibbonButton(stringResource(R.string.common_delete), w, R.drawable.ic_delete) { deleteChosen() }
+                                return@RibbonLine
+                            }
+                            if (c0.text != null) RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit) { retype(c0) }
+                            if (img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton(stringResource(R.string.words_shape_options), w, R.drawable.ic_tune) { shapeOptions = true }
+                            RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio) { sizing = true }
                             RibbonDivider(w)
-                            PdfLookTools(w, ct.look, { l -> rechange(t = ct.copy(look = l)) }, { fontBefore = ct.look.font })
-                            Tool(R.drawable.ic_format_clear, stringResource(R.string.words_clear_formatting), w) { rechange(t = ct.copy(look = PdfTextLook(fill = ct.look.fill, line = ct.look.line, turn = ct.look.turn), runs = emptyList())) }
+                            RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with) { positioning = true }
                             RibbonDivider(w)
-                            RibbonMenu(stringResource(R.string.words_position), w, R.drawable.ic_align_horizontal_center, preset = false, choices = listOf(
-                                MenuChoice(stringResource(R.string.words_left), icon = R.drawable.ic_align_left) { position('l', null) }, MenuChoice(stringResource(R.string.words_centre), icon = R.drawable.ic_align_center) { position('c', null) },
-                                MenuChoice(stringResource(R.string.words_right), icon = R.drawable.ic_align_right) { position('r', null) }, MenuChoice(stringResource(R.string.words_top), icon = R.drawable.ic_vertical_align_top) { position(null, 't') },
-                                MenuChoice(stringResource(R.string.pdf_middle), icon = R.drawable.ic_vertical_align_center) { position(null, 'm') }, MenuChoice(stringResource(R.string.words_bottom), icon = R.drawable.ic_vertical_align_bottom) { position(null, 'b') }))
-                            // the arrows (the user, 25 Oct): a point at a tap, held it goes on; put on when let go
-                            NudgeTool(R.drawable.ic_arrow_forward, 180f, stringResource(R.string.pdf_move_left), w, { framePreview.shift += Offset(-it, 0f) }, ::nudged)
-                            NudgeTool(R.drawable.ic_arrow_forward, 0f, stringResource(R.string.pdf_move_right), w, { framePreview.shift += Offset(it, 0f) }, ::nudged)
-                            NudgeTool(R.drawable.ic_arrow_upward, 0f, stringResource(R.string.pdf_move_up), w, { framePreview.shift += Offset(0f, -it) }, ::nudged)
-                            NudgeTool(R.drawable.ic_arrow_downward, 0f, stringResource(R.string.pdf_move_down), w, { framePreview.shift += Offset(0f, it) }, ::nudged)
-                            RibbonMenu(stringResource(R.string.pdf_arrange), w, R.drawable.ic_flip_to_front, preset = false, choices = listOf(
-                                MenuChoice(stringResource(R.string.words_bring_to_front), icon = R.drawable.ic_flip_to_front) { restackChosen(2) }, MenuChoice(stringResource(R.string.pdf_bring_forward), icon = R.drawable.ic_flip_to_front) { restackChosen(1) },
-                                MenuChoice(stringResource(R.string.pdf_send_backward), icon = R.drawable.ic_flip_to_back) { restackChosen(-1) }, MenuChoice(stringResource(R.string.words_send_to_back), icon = R.drawable.ic_flip_to_back) { restackChosen(-2) }))
-                            RibbonMenu(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, preset = false, choices = listOf(
-                                MenuChoice(stringResource(R.string.pdf_rotate_right_90), icon = R.drawable.ic_rotate_right) { turnChosen(ct.look.turn + 90) },
-                                MenuChoice(stringResource(R.string.pdf_rotate_left_90), icon = R.drawable.ic_rotate_left) { turnChosen(ct.look.turn - 90) },
-                                MenuChoice(stringResource(R.string.pdf_upright), enabled = ct.look.turn != 0) { turnChosen(0) }))
+                            RibbonButton(stringResource(R.string.words_bring_to_front), w, R.drawable.ic_flip_to_front) { restackChosen(2) }
+                            RibbonButton(stringResource(R.string.words_send_to_back), w, R.drawable.ic_flip_to_back) { restackChosen(-2) }
+                            RibbonButton(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, enabled = turns) { rotating = true }
+                            RibbonMenu(stringResource(R.string.words_align), w, R.drawable.ic_align_horizontal_center, preset = false, choices = listOf(
+                                MenuChoice(stringResource(R.string.words_align_left)) { alignChosen('l', null) }, MenuChoice(stringResource(R.string.words_align_centre)) { alignChosen('c', null) },
+                                MenuChoice(stringResource(R.string.words_align_right)) { alignChosen('r', null) }, MenuChoice(stringResource(R.string.words_align_top)) { alignChosen(null, 't') },
+                                MenuChoice(stringResource(R.string.words_align_middle)) { alignChosen(null, 'm') }, MenuChoice(stringResource(R.string.words_align_bottom)) { alignChosen(null, 'b') }))
+                            if (picture) {
+                                RibbonDivider(w)
+                                RibbonButton(stringResource(R.string.words_turn_left), w, R.drawable.ic_rotate_left) { transformChosen(-90, false) }
+                                RibbonButton(stringResource(R.string.words_turn_right), w, R.drawable.ic_rotate_right) { transformChosen(90, false) }
+                                RibbonButton(stringResource(R.string.words_flip), w, R.drawable.ic_flip) { transformChosen(0, true) }
+                            }
                             RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.pdf_duplicate), w, R.drawable.ic_add_to_collection) { duplicateChosen() }
+                            if (picture) RibbonButton(stringResource(R.string.words_replace), w, R.drawable.ic_gallery) { replacing = true; pickImage.launch(arrayOf("image/*")) }
+                            if (picture) RibbonButton(stringResource(R.string.words_save_as), w, R.drawable.ic_save) { savePicture(o) }
+                            RibbonButton(stringResource(R.string.pdf_duplicate), w, R.drawable.ic_add_to_collection, enabled = ours) { duplicateChosen() }
                             RibbonButton(stringResource(R.string.common_delete), w, R.drawable.ic_delete) { deleteChosen() }
                             return@RibbonLine
                         }
@@ -2117,12 +2229,25 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
 /** Page [i], drawn [widthPx] wide off the main thread (the sharper one in when it is ready); words found marked on it, the current one stronger. */
 @Composable
 private fun PdfPage(doc: PdfDoc, i: Int, widthPx: Int, modifier: Modifier, marks: List<PdfMatch> = emptyList(), current: PdfMatch? = null,
-    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {}) {
+    hide: PdfObject? = null, preview: PdfFramePreview? = null, content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {}) {
     val s = doc.sizes[i]
     var bitmap by remember(i) { mutableStateOf(doc.cached(i, widthPx)) }
-    LaunchedEffect(i, widthPx) { doc.page(i, widthPx)?.let { bitmap = it } }
+    // a chosen object: the page without it and it alone, swapped in together (no moment without it), it drawn where a finger has it
+    var lifted by remember(i) { mutableStateOf<Pair<Int, Bitmap>?>(null) }
+    LaunchedEffect(i, widthPx, hide?.id) {
+        val b = doc.page(i, widthPx, hide?.id) ?: return@LaunchedEffect
+        val o = hide?.id?.let { id -> withContext(Dispatchers.IO) { doc.objectPicture(i, id, widthPx) }?.let { id to it } }
+        bitmap = b; lifted = o
+    }
     Box(modifier.aspectRatio(s.width / s.height).background(Color.White)) {
         bitmap?.let { Image(it.asImageBitmap(), contentDescription = stringResource(R.string.pdf_page_n, i + 1), modifier = Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
+        lifted?.takeIf { it.first == hide?.id }?.let { (_, b) -> val r = hide!!.rect; val turn = hide.turn; val img = remember(b) { b.asImageBitmap() }
+            Canvas(Modifier.fillMaxSize()) {
+                val k = size.width / s.width; val sh = preview?.shift ?: Offset.Zero; val spin = preview?.spin?.let { it - turn } ?: 0f
+                translate(sh.x * k, sh.y * k) { rotate(spin, Offset(r.centerX() * k, r.centerY() * k)) {
+                    drawImage(img, dstOffset = androidx.compose.ui.unit.IntOffset(Math.round(r.left * k), Math.round(r.top * k)),
+                        dstSize = androidx.compose.ui.unit.IntSize(Math.round(r.width() * k).coerceAtLeast(1), Math.round(r.height() * k).coerceAtLeast(1))) } }
+            } }
         if (marks.isNotEmpty()) Canvas(Modifier.fillMaxSize()) {
             val k = size.width / s.width
             for (m in marks) for (r in m.boxes) drawRect(if (m === current) Color(0x88FF8A00) else Color(0x66FFEB3B), Offset(r.left * k, r.top * k), Size(r.width() * k, r.height() * k))

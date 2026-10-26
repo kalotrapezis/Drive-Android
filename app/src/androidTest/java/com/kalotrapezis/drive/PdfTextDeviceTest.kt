@@ -45,11 +45,11 @@ class PdfTextDeviceTest {
         }
         assertTrue("red letters in the box ($red)", red > 200)
         // typed in again: one text, the new words
-        again.putText(0, r.left, r.top, t.copy(words = "Changed"), r.width(), r.height(), replacing = Offset(r.centerX(), r.centerY()))
+        again.putText(0, r.left, r.top, t.copy(words = "Changed"), r.width(), r.height(), replacing = again.objectAt(0, Offset(r.centerX(), r.centerY()))!!.id)
         assertEquals("Changed", again.typedAt(0, Offset(r.centerX(), r.centerY()))?.second?.words)
         assertEquals(1, again.comments().size)
         // emptied: gone
-        again.putText(0, r.left, r.top, t.copy(words = ""), r.width(), r.height(), replacing = Offset(r.centerX(), r.centerY()))
+        again.putText(0, r.left, r.top, t.copy(words = ""), r.width(), r.height(), replacing = again.objectAt(0, Offset(r.centerX(), r.centerY()))!!.id)
         assertNull(again.typedAt(0, Offset(r.centerX(), r.centerY())))
         assertEquals(0, again.comments().size)
         again.close()

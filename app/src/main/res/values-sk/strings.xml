@@ -4749,6 +4749,7 @@
     <string name="pdf_rotate_left_90">Otočiť doľava o 90°</string>
     <string name="pdf_upright">Vzpriamene</string>
     <string name="pdf_duplicate">Duplikovať</string>
+    <string name="pdf_drawing">Kresba</string>
     <string name="pdf_picture_more">Obrázok…</string>
     <string name="pdf_insert_pdf">Vložiť PDF</string>
     <string name="pdf_remove_password">Odstrániť heslo</string>

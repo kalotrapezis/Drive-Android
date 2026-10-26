@@ -4569,6 +4569,7 @@
     <string name="pdf_rotate_left_90">Roter 90° mod venstre</string>
     <string name="pdf_upright">Lodret</string>
     <string name="pdf_duplicate">Dupliker</string>
+    <string name="pdf_drawing">Tegning</string>
     <string name="pdf_picture_more">Billede…</string>
     <string name="pdf_insert_pdf">Indsæt PDF</string>
     <string name="pdf_remove_password">Fjern adgangskode</string>

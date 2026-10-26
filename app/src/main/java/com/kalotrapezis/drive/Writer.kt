@@ -4698,62 +4698,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                 "props" -> TablePropertiesDialog(table, ref.row, ref.cell, { tableDialog = null }) { tableDialog = null; changeTable(key, img, it) }
             }
         }
-        if (sizing) {
-            // In pixels, horizontal × vertical (asked 2026-09-27), as Word counts them: 96 to the inch. Or dragged by
-            // its side or corner, the numbers following (asked 2026-09-28); the chain keeps its proportions.
-            val ratio = img.heightPt / img.widthPt
-            var a by remember { mutableFloatStateOf(img.widthPt / 0.75f) }
-            var d by remember { mutableFloatStateOf(img.heightPt / 0.75f) }
-            var across by remember { mutableStateOf(a.roundToInt().toString()) }
-            var down by remember { mutableStateOf(d.roundToInt().toString()) }
-            var chained by remember { mutableStateOf(true) }
-            fun setA(v: Float, typed: String? = null) { a = v.coerceIn(1f, 10000f); across = typed ?: a.roundToInt().toString(); if (chained) { d = (a * ratio).coerceAtLeast(1f); down = d.roundToInt().toString() } }
-            fun setD(v: Float, typed: String? = null) { d = v.coerceIn(1f, 10000f); down = typed ?: d.roundToInt().toString(); if (chained) { a = (d / ratio).coerceAtLeast(1f); across = a.roundToInt().toString() } }
-            val ok = across.toIntOrNull() in 1..10000 && down.toIntOrNull() in 1..10000
-            val painter = picturePainter(img, packageParts)
-            AlertDialog(
-                onDismissRequest = { sizing = false },
-                title = { Text(stringResource(R.string.words_picture_size)) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // The picture, its top left fixed; handles on its right side, bottom side and corner.
-                        BoxWithConstraints(Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF303030)).padding(12.dp)) {
-                            val frameW = constraints.maxWidth.toFloat(); val frameH = constraints.maxHeight.toFloat()
-                            val shown = remember { minOf(frameW * 0.7f / a, frameH * 0.7f / d) } // screen px per picture px, at first
-                            fun fit() = minOf(shown, frameW / a, frameH / d)
-                            val density = LocalDensity.current
-                            val bw = a * fit(); val bh = d * fit()
-                            with(density) {
-                                Image(painter, contentDescription = stringResource(R.string.words_picture), contentScale = ContentScale.FillBounds, modifier = Modifier.size(bw.toDp(), bh.toDp()).border(1.dp, Color(0xFF1A73E8)))
-                                @Composable fun Handle(x: Float, y: Float, drag: (Float, Float) -> Unit) = Box(
-                                    Modifier.offset { IntOffset((x - 22.dp.toPx()).roundToInt(), (y - 22.dp.toPx()).roundToInt()) }.size(44.dp)
-                                        .pointerInput(Unit) { detectDragGestures { change, delta -> change.consume(); drag(delta.x / fit(), delta.y / fit()) } },
-                                    contentAlignment = Alignment.Center,
-                                ) { Box(Modifier.size(14.dp).clip(CircleShape).background(Color(0xFF1A73E8)).border(2.dp, Color.White, CircleShape)) }
-                                Handle(bw, bh / 2) { dx, _ -> setA(a + dx) }
-                                Handle(bw / 2, bh) { _, dy -> setD(d + dy) }
-                                Handle(bw, bh) { dx, dy -> if (!chained) { setA(a + dx); setD(d + dy) } else if (kotlin.math.abs(dx) >= kotlin.math.abs(dy)) setA(a + dx) else setD(d + dy) }
-                            }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(across, { t -> val v = t.filter(Char::isDigit).take(5); v.toIntOrNull()?.let { setA(it.toFloat(), v) } ?: run { across = v } },
-                                    singleLine = true, label = { Text(stringResource(R.string.words_horizontal)) }, suffix = { Text("px") }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
-                                OutlinedTextField(down, { t -> val v = t.filter(Char::isDigit).take(5); v.toIntOrNull()?.let { setD(it.toFloat(), v) } ?: run { down = v } },
-                                    singleLine = true, label = { Text(stringResource(R.string.words_vertical)) }, suffix = { Text("px") }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
-                            }
-                            // The chain: on, the two sides change together.
-                            Tool(R.drawable.ic_link, stringResource(if (chained) R.string.words_proportions_kept else R.string.words_proportions_free), MaterialTheme.colorScheme.onSurface, on = chained) {
-                                chained = !chained
-                                if (chained) setA(a) // back to the picture's own proportions
-                            }
-                        }
-                    }
-                },
-                confirmButton = { TextButton(enabled = ok, onClick = { sizing = false; changePicture(key, PictureXml.resized(img, across.toInt() * 0.75f, down.toInt() * 0.75f)) }) { Text(stringResource(R.string.common_ok)) } },
-                dismissButton = { TextButton(onClick = { sizing = false }) { Text(stringResource(R.string.common_cancel)) } },
-            )
-        }
+        if (sizing) PictureSizeDialog(img.widthPt, img.heightPt, picturePainter(img, packageParts), { sizing = false }) { w, h -> sizing = false; changePicture(key, PictureXml.resized(img, w, h)) }
         if (wrapping) {
             val now = PictureXml.wrapOf(img)
             AlertDialog(
@@ -5063,7 +5008,7 @@ private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = f
 
 /** A picture of the document, from the file's own parts or a new picture's bytes. A chart or shape is a grey box. */
 @Composable
-private fun picturePainter(img: DocImage, parts: Map<String, ByteArray>): Painter {
+internal fun picturePainter(img: DocImage, parts: Map<String, ByteArray>): Painter {
     val bitmap by produceState<ImageBitmap?>(null, img, parts) {
         val bytes = img.bytes ?: img.part?.let { parts[it] }
         value = bytes?.let { withContext(Dispatchers.IO) { runCatching { OfficePages.croppedPicture(img, it, 1400)?.asImageBitmap() }.getOrNull() } }

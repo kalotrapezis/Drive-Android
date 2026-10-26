@@ -4569,6 +4569,7 @@
     <string name="pdf_rotate_left_90">90° linksom draaien</string>
     <string name="pdf_upright">Rechtop</string>
     <string name="pdf_duplicate">Dupliceren</string>
+    <string name="pdf_drawing">Tekening</string>
     <string name="pdf_picture_more">Afbeelding…</string>
     <string name="pdf_insert_pdf">PDF invoegen</string>
     <string name="pdf_remove_password">Wachtwoord verwijderen</string>

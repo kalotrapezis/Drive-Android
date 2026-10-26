@@ -4569,6 +4569,7 @@
     <string name="pdf_rotate_left_90">Ruota a sinistra di 90°</string>
     <string name="pdf_upright">Dritto</string>
     <string name="pdf_duplicate">Duplica</string>
+    <string name="pdf_drawing">Disegno</string>
     <string name="pdf_picture_more">Immagine…</string>
     <string name="pdf_insert_pdf">Inserisci PDF</string>
     <string name="pdf_remove_password">Rimuovi password</string>

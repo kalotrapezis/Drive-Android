@@ -4568,6 +4568,7 @@
     <string name="pdf_rotate_left_90">Περιστροφή αριστερά 90°</string>
     <string name="pdf_upright">Χωρίς περιστροφή</string>
     <string name="pdf_duplicate">Διπλότυπο</string>
+    <string name="pdf_drawing">Σχέδιο</string>
     <string name="pdf_picture_more">Εικόνα…</string>
     <string name="pdf_insert_pdf">Εισαγωγή PDF</string>
     <string name="pdf_remove_password">Κατάργηση κωδικού</string>

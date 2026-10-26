@@ -4570,6 +4570,7 @@
     <string name="pdf_rotate_left_90">Rotate left 90°</string>
     <string name="pdf_upright">Upright</string>
     <string name="pdf_duplicate">Duplicate</string>
+    <string name="pdf_drawing">Drawing</string>
     <string name="pdf_picture_more">Picture…</string>
     <string name="pdf_insert_pdf">Insert PDF</string>
     <string name="pdf_remove_password">Remove password</string>

@@ -4659,6 +4659,7 @@
     <string name="pdf_rotate_left_90">Rotire la stânga 90°</string>
     <string name="pdf_upright">Drept</string>
     <string name="pdf_duplicate">Dublare</string>
+    <string name="pdf_drawing">Desen</string>
     <string name="pdf_picture_more">Imagine…</string>
     <string name="pdf_insert_pdf">Inserare PDF</string>
     <string name="pdf_remove_password">Elimină parola</string>

@@ -194,9 +194,9 @@ internal data class PdfText(val words: String, val look: PdfTextLook, val framed
 
 /**
  * Words being typed on page [page]: their top left at [x], [y] (page points), [room] across, at least [minHeight] tall;
- * [framed] a text box; [replacing] a point on the text typed in again (taken out when these go on).
+ * [framed] a text box; [replacing] the text typed in again ([PdfObject.id]: taken out when these go on).
  */
-internal data class PdfTyping(val page: Int, val x: Float, val y: Float, val room: Float, val minHeight: Float, val framed: Boolean, val replacing: androidx.compose.ui.geometry.Offset? = null)
+internal data class PdfTyping(val page: Int, val x: Float, val y: Float, val room: Float, val minHeight: Float, val framed: Boolean, val replacing: Int? = null)
 
 /** The words typed on the page itself, in their look as they will be put on ([page] the page's size in points). */
 @Composable
@@ -284,35 +284,35 @@ private val CHOSEN_BLUE = Color(0xFF1A73E8)
  * [preview] where a finger has it. [sized] gets its new size before turning, [turned] its new turn.
  */
 @Composable
-internal fun BoxScope.PdfChosenHandles(page: androidx.compose.ui.geometry.Size, r: android.graphics.RectF, laid: Pair<Float, Float>, turn: Int, preview: PdfFramePreview,
-    sized: (Float, Float) -> Unit, turned: (Int) -> Unit) = BoxWithConstraints(Modifier.matchParentSize()) {
+internal fun BoxScope.PdfChosenHandles(page: androidx.compose.ui.geometry.Size, r: android.graphics.RectF, laid: Pair<Float, Float>, turn: Float, preview: PdfFramePreview,
+    rotatable: Boolean, keepAspect: Boolean, sized: (Float, Float) -> Unit, turned: (Float) -> Unit) = BoxWithConstraints(Modifier.matchParentSize()) {
     val k = constraints.maxWidth / page.width // pixels a page point
     val (lw0, lh0) = laid
     val lw = maxOf(12f, lw0 + preview.grow.x); val lh = maxOf(8f, lh0 + preview.grow.y)
     // stretched from its top left as Words', moved with the finger
     val left = (r.centerX() + preview.shift.x - lw0 / 2) * k; val top = (r.centerY() + preview.shift.y - lh0 / 2) * k
-    val angle = preview.spin ?: turn.toFloat()
+    val angle = preview.spin ?: turn
     androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
         rotate(angle, androidx.compose.ui.geometry.Offset(left + lw * k / 2, top + lh * k / 2)) {
             drawRect(CHOSEN_BLUE, androidx.compose.ui.geometry.Offset(left, top), androidx.compose.ui.geometry.Size(lw * k, lh * k), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx())) }
     }
     if (preview.shift == androidx.compose.ui.geometry.Offset.Zero) // as Words', none while it is dragged
-        ObjectHandles(left, top, lw * k, lh * k, angle, rotatable = true, keepAspect = false,
+        ObjectHandles(left, top, lw * k, lh * k, angle, rotatable = rotatable, keepAspect = keepAspect,
             size = { a, b -> preview.grow = androidx.compose.ui.geometry.Offset(a / k - lw0, b / k - lh0) },
             sized = { val g = preview.grow; preview.reset(); if (g != androidx.compose.ui.geometry.Offset.Zero) sized(lw0 + g.x, lh0 + g.y) },
-            turn = { preview.spin = it }, turned = { val a = preview.spin; preview.reset(); a?.let { turned(Math.round(it)) } })
+            turn = { preview.spin = it }, turned = { val a = preview.spin; preview.reset(); a?.let { turned(it) } })
 }
 
 /**
- * A text on the page under a finger or the mouse, as a text box in Words (the user, 25 Oct: "when I press it with the
- * mouse or the finger, it is to move it, nothing else"): pressed and dragged it moves at once — chosen if it was not
- * ([choose]) — shown in [preview] and [moved] when let go; a tap chooses it, a tap on the chosen one types in it
- * ([edit]). [textAt] whether a text is under a point (page points); [chosen] the chosen one's place and its size and
- * turn, for Words' handles, which keep their own touches. Elsewhere the page's own.
+ * An object on the page under a finger or the mouse, as Words' (the user, 25–26 Oct: "when I press it with the mouse or
+ * the finger, it is to move it"): pressed and dragged it moves at once — chosen if it was not ([choose]) — shown in
+ * [preview] and [moved] when let go; a tap chooses it, a tap on a chosen text types in it ([edit]); held still it is
+ * chosen and Position opens ([long], Words' long press). [objectAt] the object under a point (page points); [chosen]
+ * the chosen one, whose handles keep their own touches. Elsewhere the page's own.
  */
-internal fun Modifier.pdfTextGestures(page: androidx.compose.ui.geometry.Size, on: Boolean, textAt: (androidx.compose.ui.geometry.Offset) -> Boolean,
-    chosen: () -> Triple<android.graphics.RectF, Pair<Float, Float>, Int>?, preview: PdfFramePreview, choose: (androidx.compose.ui.geometry.Offset) -> Unit,
-    edit: () -> Unit, moved: (Float, Float) -> Unit): Modifier = if (!on) this else pointerInput(page) {
+internal fun Modifier.pdfObjectGestures(page: androidx.compose.ui.geometry.Size, on: Boolean, objectAt: (androidx.compose.ui.geometry.Offset) -> PdfObject?,
+    chosen: () -> PdfObject?, preview: PdfFramePreview, choose: (PdfObject) -> Unit, edit: () -> Unit, long: () -> Unit,
+    moved: (Float, Float) -> Unit): Modifier = if (!on) this else pointerInput(page) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
         if (currentEvent.buttons.isSecondaryPressed) return@awaitEachGesture // a mouse's right button: the menu's
@@ -321,25 +321,42 @@ internal fun Modifier.pdfTextGestures(page: androidx.compose.ui.geometry.Size, o
         val c = chosen()
         // on one of Words' handles of the chosen one: theirs ([ObjectHandles]: 32 dp grips, the knob 36 dp over the top)
         if (c != null) {
-            val (r, laid, turn) = c; val mid = androidx.compose.ui.geometry.Offset(r.centerX() * k, r.centerY() * k)
-            val w = laid.first * k; val h = laid.second * k
+            val (lw, lh) = c.laid; val mid = androidx.compose.ui.geometry.Offset(c.rect.centerX() * k, c.rect.centerY() * k)
+            val w = lw * k; val h = lh * k
             val grips = listOf(androidx.compose.ui.geometry.Offset(w / 2, h / 2), androidx.compose.ui.geometry.Offset(w / 2, 0f), androidx.compose.ui.geometry.Offset(0f, h / 2),
-                androidx.compose.ui.geometry.Offset(0f, -h / 2 - 36.dp.toPx())).map { mid + turnedBy(it, turn.toFloat()) }
+                androidx.compose.ui.geometry.Offset(0f, -h / 2 - 36.dp.toPx())).map { mid + turnedBy(it, c.turn) }
             if (grips.any { (it - down.position).getDistance() < 16.dp.toPx() }) return@awaitEachGesture
         }
-        val onChosen = c?.first?.let { r -> p.x in r.left..r.right && p.y in r.top..r.bottom } == true
-        if (!onChosen && !textAt(p)) return@awaitEachGesture
+        val onChosen = c?.rect?.let { r -> p.x in r.left..r.right && p.y in r.top..r.bottom } == true
+        val under = if (onChosen) c else objectAt(p)
+        if (under == null) return@awaitEachGesture
         down.consume()
-        var going = false
+        var going = false; var lifted = false
+        // still until the finger moves, lifts or has been held a long press's time
+        val decided = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            while (true) {
+                val ch = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                if (ch == null || !ch.pressed) { ch?.consume(); lifted = true; return@withTimeoutOrNull true }
+                ch.consume()
+                if ((ch.position - down.position).getDistance() > viewConfiguration.touchSlop) { going = true; return@withTimeoutOrNull true }
+            }
+            @Suppress("UNREACHABLE_CODE") true
+        }
+        if (decided == null) { // held: chosen, and Position (Words')
+            if (!onChosen) choose(under)
+            long()
+            while (true) { val ch = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break; ch.consume(); if (!ch.pressed) break }
+            return@awaitEachGesture
+        }
+        if (lifted) { if (onChosen) edit() else choose(under); return@awaitEachGesture } // a tap chooses it; on a chosen text, its words are typed in
+        if (!onChosen) choose(under)
         while (true) {
             val ch = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
             ch.consume()
-            if (!going && (ch.position - down.position).getDistance() > viewConfiguration.touchSlop) { going = true; if (!onChosen) choose(p) }
-            if (going) preview.shift = ch.position / k - p
+            preview.shift = ch.position / k - p
             if (!ch.pressed) break
         }
-        if (going) { val sh = preview.shift; preview.reset(); moved(sh.x, sh.y) }
-        else if (onChosen) edit() else choose(p) // a tap chooses it; on the chosen one, its words are typed in
+        val sh = preview.shift; preview.reset(); if (going) moved(sh.x, sh.y)
     }
 }
 

@@ -4749,6 +4749,7 @@
     <string name="pdf_rotate_left_90">Zasukaj levo za 90°</string>
     <string name="pdf_upright">Pokončno</string>
     <string name="pdf_duplicate">Podvoji</string>
+    <string name="pdf_drawing">Risba</string>
     <string name="pdf_picture_more">Slika…</string>
     <string name="pdf_insert_pdf">Vstavi PDF</string>
     <string name="pdf_remove_password">Odstrani geslo</string>

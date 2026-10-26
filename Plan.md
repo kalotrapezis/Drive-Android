@@ -24,7 +24,7 @@ How to write here:
       660 Android / 159 desktop tests pass. Seen on the tablet 971f6b37 (Greek) except the last round (catalog, pencil,
       fixes after the walk-through) and the first-start path (not run: it needs empty app data); desktop seen from source.
       **Open:** Android's own "Allow all" / "While using the app" in 23 languages unchecked; no native readers.
-- [ ] **TOP OF THE LIST — the PDF editor works exactly like Words** — **with the user, when they have time, watching each step; no agent starts it alone** (the user, 26 Oct, on the tablet: "I don't like how PDF
+- [~] (pdf-like-words session, 26 Oct; branch `claude/pdf-like-words`, started with the user; the item-by-item list in PDF_LIKE_WORDS.md) **TOP OF THE LIST — the PDF editor works exactly like Words** — **with the user, when they have time, watching each step; no agent starts it alone** (the user, 26 Oct, on the tablet: "I don't like how PDF
       does things. If we need to, we build our own stuff like we did with the rest of Office. Everything works completely
       differently from Words"). Screenshots, kept local and out of git: `user-screenshots/2026-10-26-pdf-vs-words/` — 1–3
       Words' Position (the page shown small, "Drag it into place", Done), 4 Words' text box chosen (thin outline, one round

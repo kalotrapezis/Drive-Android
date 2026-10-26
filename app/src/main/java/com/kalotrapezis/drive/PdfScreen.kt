@@ -69,6 +69,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.draw.clip
@@ -1162,6 +1163,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var shapeOptions by remember { mutableStateOf(false) } // Picture › Shape options
     var redrawing by remember { mutableStateOf(false) } // a signature's Redraw
     var replacing by remember { mutableStateOf(false) } // Picture › Replace: the next picture picked takes the chosen one's place
+    var ribbonOverKeyboard by remember { mutableStateOf(false) } // a phone typing: Words' whole ribbon over the keyboard, not its bar
+    // the keyboard bar's dictation: what was said where the cursor is, a space between it and the words beside it (Words')
+    val dictate = rememberDictation { said -> val t = typed.annotatedString.text
+        val before = t.getOrNull(typed.selection.min - 1); val after = t.getOrNull(typed.selection.max)
+        typed.addTextAfterSelection((if (before != null && !before.isWhitespace()) " " else "") + said + (if (after != null && after.isLetterOrDigit()) " " else "")) }
     var paragraphPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home › Line spacing, More…: Words' Paragraph window
     // an object chosen: its own tab shown, named by its kind (Words' Image, Shape, Text box…); none chosen: the tab before
     LaunchedEffect(chosen != null) {
@@ -1721,6 +1727,320 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     // a keyboard's shortcuts, as Slides' (asked 24 Oct: "look how the other applets work"): the screen holds the keys while nothing is typed in
     val keys = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(editing, typing == null) { if (typing == null) runCatching { keys.requestFocus() } }
+    // the ribbon while editing: at the bottom for a finger, under the top bar while a mouse is in use or as Settings say (Words')
+    val ribbon: @Composable () -> Unit = {
+    // the ribbon while editing, at the bottom as Slides' (a tablet: the floating island; a phone: across the bottom)
+    val d = doc
+    // typing on the page: Font's strip in the ribbon's place, as Words' and Slides'; a card tapped shows on the words at once
+    val before = fontBefore
+    val ch0 = chosen?.takeIf { it.text != null }
+    if (typing != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
+        ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
+    // a chosen text: the font a card shows put on at once (Cancel puts the one before back)
+    else if (ch0 != null && before != null) ch0.text!!.let { ct -> fun inFont(f: String) = ct.look.copy(font = f).let { l -> ct.with(fonted(ct.doc.paras, l)).with(l) }
+        DesignGalleryStrip(DesignGallery.Font, FontChoice(ct.look.font),
+            cancel = { if (ct.look.font != before) rechange(t = inFont(before)); fontBefore = null },
+            ok = { fontBefore = null }, pick = { c -> (c as? FontChoice)?.let { rechange(t = inFont(it.name)) } },
+            fonts = STYLE_FONTS, now = ct.look.font) }
+    // Home with nothing chosen: the next text's font
+    else if (before != null && editing) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
+        ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
+    else if (editing && d != null) {
+        val w = Color.White
+        Surface(color = Color.Black, contentColor = w, modifier = (if (wide) Modifier.fillMaxWidth().then(if (OfficeUi.top) Modifier else Modifier.bottomBarPadding()).padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth())
+            .then(if (typing != null) Modifier.imePadding() else Modifier)) {
+            // a phone typing with its keyboard up: Words' bar on the keyboard (B, I, U, highlighter, dictation, ⋯ the whole ribbon, the keyboard away)
+            val imeOpen = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(LocalDensity.current) > 0
+            LaunchedEffect(imeOpen, typing != null) { if (!imeOpen || typing == null) ribbonOverKeyboard = false }
+            if (typing != null && imeOpen && !wide && !ribbonOverKeyboard) {
+                val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                val span = typed.currentSpanStyle
+                KeyboardBar(w, (span.fontWeight?.weight ?: 400) >= 600, span.fontStyle == androidx.compose.ui.text.font.FontStyle.Italic,
+                    span.textDecoration?.contains(androidx.compose.ui.text.style.TextDecoration.Underline) == true,
+                    { typed.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)) },
+                    { typed.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) },
+                    { typed.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)) },
+                    { c -> if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { typed.removeSpanStyle(androidx.compose.ui.text.SpanStyle(background = it)) }
+                        else typed.addSpanStyle(androidx.compose.ui.text.SpanStyle(background = c)) },
+                    { dictate?.invoke() ?: Toast.makeText(context, R.string.words_no_voice_typing, Toast.LENGTH_SHORT).show() }, { ribbonOverKeyboard = true }, { keyboard?.hide() })
+            } else
+            OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else if (OfficeUi.top) Modifier else Modifier.bottomBarPadding()) { Column {
+                // a text chosen, as a Slides box: Selection first (Cut, Copy, Paste, formatting), the text's own tab last in the lighter colour
+                // Words' tabs in Words' order (the user, 24 Oct: "take a look on what the other applets have"), the PDF's own among them
+                val tabNames = mapOf("Selection" to stringResource(R.string.words_tab_selection), "File" to stringResource(R.string.words_tab_file),
+                    "Home" to stringResource(R.string.words_tab_home), "Insert" to stringResource(R.string.words_tab_insert), "Draw" to stringResource(R.string.words_tab_draw),
+                    "Layout" to stringResource(R.string.words_tab_layout), "Pages" to stringResource(R.string.words_pages), "Review" to stringResource(R.string.words_tab_review),
+                    "Fill & Sign" to stringResource(R.string.pdf_tab_fill_sign), "Protect" to stringResource(R.string.pdf_tab_protect), "View" to stringResource(R.string.words_tab_view),
+                    OBJECT_TAB to (chosen?.kind?.let { if (it == "Drawing") stringResource(R.string.pdf_drawing) else objectKindName(it) } ?: ""))
+                OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
+                    OBJECT_TAB.takeIf { chosen != null }),
+                    tab, w, PDF_RED, { tab = it; tool = null }, contextual = OBJECT_TAB, label = { tabNames[it] ?: it }) {
+                    // typing: ✓ puts the words on; an object chosen: ✕ lets go of it (Words')
+                    if (ribbonOverKeyboard) Tool(R.drawable.ic_more_horiz, stringResource(R.string.words_back_to_keyboard_bar), w, on = true) { ribbonOverKeyboard = false }
+                    else if (typing != null) Tool(R.drawable.ic_check, stringResource(R.string.common_done), w, on = true) { putTyped() }
+                    else if (chosen != null) androidx.compose.material3.IconButton(onClick = { chosen = null }, modifier = Modifier.size(36.dp)) {
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_close), modifier = Modifier.size(16.dp)) }
+                }
+                @Composable fun ToolButton(t: PdfTool) = RibbonButton(stringResource(t.label), w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
+                key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                    val c0 = chosen
+                    // Words', Tables' and Slides' File: the file's own actions
+                    if (tab == "File") {
+                        RibbonButton(stringResource(R.string.common_save), w, R.drawable.ic_save, enabled = d.dirty) { save() }
+                        RibbonButton(stringResource(R.string.words_save_copy), w, R.drawable.ic_copy, enabled = file != null) {
+                            file?.let { f -> save(to = generateSequence(1) { it + 1 }.map { File(f.parentFile, "${f.nameWithoutExtension} (copy${if (it == 1) "" else " $it"}).pdf") }.first { !it.exists() }, copy = true) } }
+                        RibbonButton(stringResource(R.string.words_autosave), w, R.drawable.ic_history, on = autoSave) {
+                            autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
+                            Toast.makeText(context, if (autoSave) R.string.words_autosave_on else R.string.words_autosave_off_msg, Toast.LENGTH_SHORT).show() }
+                        FavouriteFileButton(file, w) // a phone: the Office home's favourite (a tablet: the heart in the top bar)
+                        RibbonButton(stringResource(R.string.words_save_as), w, R.drawable.ic_save, enabled = file != null) { naming = "as" }
+                        RibbonButton(stringResource(R.string.common_rename), w, R.drawable.ic_edit, enabled = file != null) { naming = "rename" }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_versions), w, R.drawable.ic_history, enabled = file != null) { showVersions = true }
+                        RibbonButton(stringResource(R.string.pdf_edit_in_words), w, R.drawable.ic_edit_note) { exportWords() }
+                        RibbonButton(stringResource(R.string.pdf_export_text), w, R.drawable.ic_text_fields) { exportText() }
+                        RibbonButton(stringResource(R.string.common_print), w, R.drawable.ic_print) { if (d.dirty) save { print() } else print() }
+                        file?.let { f ->
+                            RibbonDivider(w)
+                            // a change saved first, so what goes is what shows (Slides')
+                            RibbonButton(stringResource(R.string.common_share), w, R.drawable.ic_share) { if (d.dirty) save { shareDriveFile(context, f) } else shareDriveFile(context, f) }
+                            RibbonButton(stringResource(R.string.words_open_in_another_app), w, R.drawable.ic_open_with) { if (d.dirty) save { openElsewhere(context, f) } else openElsewhere(context, f) }
+                        }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_about_file), w, R.drawable.ic_info) { about = true }
+                        RibbonButton(stringResource(R.string.words_send_log), w, R.drawable.ic_share) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.common_settings), w, R.drawable.ic_settings) { officeSettings = true }
+                        return@RibbonLine
+                    }
+                    // Words' Home: the words being typed, a chosen text's (all of them), else the font, size and colour the next text takes
+                    if (tab == "Home") {
+                        PdfHomeTools(w, homeTarget, homeTarget?.text?.look?.takeIf { typing == null } ?: textLook, { textLook = it }, { fontBefore = (homeTarget?.text?.look?.takeIf { typing == null } ?: textLook).font }) { at, look -> paragraphPage = at to look }
+                        return@RibbonLine
+                    }
+                    // Layout, as Words' and Tables': the pages' size and way round (all of them, as Word's without sections), the margins
+                    if (tab == "Layout") {
+                        val now = d.sizes.getOrNull(at)
+                        RibbonMenu(stringResource(R.string.words_size), w, R.drawable.ic_fit_page, preset = false, choices = PdfPaper.all.map { (name, p) ->
+                            MenuChoice(stringResource(R.string.pdf_paper_size, name, WriterUnits.text(p.width), WriterUnits.text(p.height), unitName), checked = now?.let { PdfPaper.paper(it) } == name) {
+                                // the paper's size, each page kept the way round it was
+                                change { d.resize { s -> if (s.width > s.height) Size(p.height, p.width) else p } }; WriterLog.i("PDF: page size $name") } })
+                        RibbonButton(stringResource(R.string.words_portrait), w, R.drawable.ic_crop_portrait, on = now != null && now.height >= now.width) {
+                            change { d.resize { s -> if (s.width > s.height) Size(s.height, s.width) else s } }; WriterLog.i("PDF: portrait") }
+                        RibbonButton(stringResource(R.string.words_landscape), w, R.drawable.ic_crop_landscape, on = now != null && now.width > now.height) {
+                            change { d.resize { s -> if (s.height > s.width) Size(s.height, s.width) else s } }; WriterLog.i("PDF: landscape") }
+                        RibbonMenu(stringResource(R.string.words_margins), w, R.drawable.ic_margin, preset = false, choices = PdfMargins.all.map { (name, v) ->
+                            MenuChoice(stringResource(R.string.pdf_margin_size, stringResource(PdfMargins.labels.getValue(name)), WriterUnits.text(v.first), WriterUnits.text(v.second), unitName), checked = PdfMargins.nameOf(margins) == name) {
+                                margins = PdfMargins.page(name); PdfMargins.save(context, name) } })
+                        RibbonDivider(w)
+                        val page = at
+                        RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
+                        RibbonButton(stringResource(R.string.pdf_delete_page), w, R.drawable.ic_delete, enabled = d.sizes.size > 1) { change { d.delete(listOf(page)) } }
+                        RibbonButton(stringResource(R.string.pdf_rotate_left), w, R.drawable.ic_rotate_left) { change { d.rotate(listOf(page), -90) } }
+                        RibbonButton(stringResource(R.string.pdf_rotate_right), w, R.drawable.ic_rotate_right) { change { d.rotate(listOf(page), 90) } }
+                        return@RibbonLine
+                    }
+                    // View, as Words': the page list, comments, bookmarks; the zoom; one or two pages, as wide as the screen; rulers; the unit
+                    if (tab == "View") {
+                        RibbonButton(stringResource(R.string.words_navigation), w, R.drawable.ic_navigation, on = if (wide) navigation else pages) { if (wide) navigation = !navigation else pages = !pages }
+                        RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_comment, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
+                        RibbonButton(stringResource(R.string.pdf_bookmarks), w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
+                        RibbonDivider(w)
+                        Tool(R.drawable.ic_remove, stringResource(R.string.words_zoom_out), w, enabled = zoom > 1f) { zoom = (zoom - 0.25f).coerceAtLeast(1f); pan = Offset.Zero; settled = zoom }
+                        Text("${Math.round(zoom * 100)}%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(44.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Tool(R.drawable.ic_add, stringResource(R.string.words_zoom_in), w, enabled = zoom < Pdf.MAX_ZOOM) { zoom = (zoom + 0.25f).coerceAtMost(Pdf.MAX_ZOOM); pan = Offset.Zero; settled = zoom }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_fit_width), w, R.drawable.ic_fit_page, on = fitWidth) { val keep = at; fitWidth = !fitWidth; goTo(keep) }
+                        RibbonButton(stringResource(R.string.words_two_pages), w, R.drawable.ic_view_column, on = across == 2) { val keep = at; across = 3 - across; goTo(keep) }
+                        if (wide) RibbonButton(stringResource(R.string.pdf_ruler), w, R.drawable.ic_margin, on = rulers) { rulers = !rulers }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_unit_cm), w, on = !WriterUnits.inches) { WriterUnits.set(context, false) }
+                        RibbonButton(stringResource(R.string.words_unit_inches), w, on = WriterUnits.inches) { WriterUnits.set(context, true) }
+                        return@RibbonLine
+                    }
+                    // Words' Selection tab: what is chosen cut, copied, pasted; words pasted alone; a text's look copied and put on another
+                    if (tab == "Selection" && c0 != null) {
+                        val ct = c0.text
+                        RibbonButton(stringResource(R.string.common_cut), w, R.drawable.ic_content_cut, enabled = c0.ours) { if (copyChosen()) deleteChosen() }
+                        RibbonButton(stringResource(R.string.common_copy), w, R.drawable.ic_copy, enabled = c0.ours) { copyChosen() }
+                        RibbonButton(stringResource(R.string.common_paste), w, R.drawable.ic_content_paste, enabled = clip != null) { paste(c0.page) }
+                        RibbonButton(stringResource(R.string.words_paste_text_only), w, R.drawable.ic_content_paste) { val keep = clip; clip = null; paste(c0.page); clip = keep }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_copy_formatting), w, R.drawable.ic_format_paint, enabled = ct != null) { ct?.let { copiedLook = it.look; Toast.makeText(context, R.string.pdf_formatting_copied, Toast.LENGTH_SHORT).show() } }
+                        // its turn, fill and border its own, as Slides' (the words' look only)
+                        RibbonButton(stringResource(R.string.words_paste_formatting), w, R.drawable.ic_format_paint, enabled = ct != null && copiedLook != null) { val l = copiedLook; if (ct != null && l != null) {
+                            rechange(t = ct.copy(look = l.copy(turn = ct.look.turn, fill = ct.look.fill, line = ct.look.line))); WriterLog.i("PDF: formatting pasted") } }
+                        return@RibbonLine
+                    }
+                    // the chosen object's own tab, named by its kind, as Words' Picture tab (the user, 26 Oct: "the same ribbon tabs and items in the same places")
+                    if (tab == OBJECT_TAB && c0 != null) {
+                        val o = c0.words; val img = o?.img
+                        val ours = c0.ours; val turns = turnable(c0)
+                        val picture = img != null && o.bytes() != null && img.box == null && img.chart == null && img.math == null && img.group == null
+                        if (c0.kind == "Signature") {
+                            // a signature's own tab, as Words' (Size, Position, Rotate | Bring to front, Send to back | Redraw, Delete)
+                            RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio) { sizing = true }
+                            RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with) { positioning = true }
+                            RibbonButton(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, enabled = turns) { rotating = true }
+                            RibbonDivider(w)
+                            RibbonButton(stringResource(R.string.words_bring_to_front), w, R.drawable.ic_flip_to_front) { restackChosen(2) }
+                            RibbonButton(stringResource(R.string.words_send_to_back), w, R.drawable.ic_flip_to_back) { restackChosen(-2) }
+                            RibbonDivider(w)
+                            RibbonButton(stringResource(R.string.words_redraw), w, R.drawable.ic_draw) { redrawing = true }
+                            RibbonButton(stringResource(R.string.common_delete), w, R.drawable.ic_delete) { deleteChosen() }
+                            return@RibbonLine
+                        }
+                        if (c0.text != null) RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit) { retype(c0) }
+                        if (c0.text != null || img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton(stringResource(R.string.words_shape_options), w, R.drawable.ic_tune) { shapeOptions = true }
+                        RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio) { sizing = true }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with) { positioning = true }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_bring_to_front), w, R.drawable.ic_flip_to_front) { restackChosen(2) }
+                        RibbonButton(stringResource(R.string.words_send_to_back), w, R.drawable.ic_flip_to_back) { restackChosen(-2) }
+                        RibbonButton(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, enabled = turns) { rotating = true }
+                        RibbonMenu(stringResource(R.string.words_align), w, R.drawable.ic_align_horizontal_center, preset = false, choices = listOf(
+                            MenuChoice(stringResource(R.string.words_align_left)) { alignChosen('l', null) }, MenuChoice(stringResource(R.string.words_align_centre)) { alignChosen('c', null) },
+                            MenuChoice(stringResource(R.string.words_align_right)) { alignChosen('r', null) }, MenuChoice(stringResource(R.string.words_align_top)) { alignChosen(null, 't') },
+                            MenuChoice(stringResource(R.string.words_align_middle)) { alignChosen(null, 'm') }, MenuChoice(stringResource(R.string.words_align_bottom)) { alignChosen(null, 'b') }))
+                        if (picture) {
+                            RibbonDivider(w)
+                            RibbonButton(stringResource(R.string.words_turn_left), w, R.drawable.ic_rotate_left) { transformChosen(-90, false) }
+                            RibbonButton(stringResource(R.string.words_turn_right), w, R.drawable.ic_rotate_right) { transformChosen(90, false) }
+                            RibbonButton(stringResource(R.string.words_flip), w, R.drawable.ic_flip) { transformChosen(0, true) }
+                        }
+                        RibbonDivider(w)
+                        if (picture) RibbonButton(stringResource(R.string.words_replace), w, R.drawable.ic_gallery) { replacing = true; pickImage.launch(arrayOf("image/*")) }
+                        if (picture) RibbonButton(stringResource(R.string.words_save_as), w, R.drawable.ic_save) { savePicture(o) }
+                        RibbonButton(stringResource(R.string.pdf_duplicate), w, R.drawable.ic_add_to_collection, enabled = ours) { duplicateChosen() }
+                        RibbonButton(stringResource(R.string.common_delete), w, R.drawable.ic_delete) { deleteChosen() }
+                        return@RibbonLine
+                    }
+                    if (tab == "Review") {
+                        ToolButton(PdfTool.Highlight); ToolButton(PdfTool.Underline); ToolButton(PdfTool.Strike)
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.Note); ToolButton(PdfTool.TextBox); ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
+                        // Stamp: the kind chosen in a strip (✓/×, as Office's options), then a tap on the page puts it there
+                        val stampStrip = officeStrip(stringResource(R.string.pdf_stamp), ok = { st -> (st.picked as? String)?.let { stampName = it; tool = PdfTool.Stamp } }) { st ->
+                            STAMPS.forEach { n -> RibbonButton(n.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, on = st.picked == n) { st.picked = n } }
+                            val strips = LocalOfficeStrips.current
+                            RibbonButton(stringResource(R.string.pdf_picture_more), w, R.drawable.ic_gallery) { strips?.open = null; pickStamp.launch(arrayOf("image/*")) }
+                        }
+                        RibbonButton(if (tool != PdfTool.Stamp) stringResource(R.string.pdf_stamp) else if (stampName == PICTURE_STAMP) stringResource(R.string.words_picture)
+                            else stampName.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) {
+                            if (stampStrip != null) stampStrip() else tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp
+                        }
+                        // Words' colours, white among them (the user, 25 Oct: to cover what was drawn), and its highlighters; More… Words' table
+                        Swatches(w, R.drawable.ic_palette, stringResource(R.string.words_colour), (HIGHLIGHT_COLOURS + TEXT_COLOURS).distinct()) { c ->
+                            c?.let { markColour = (it.toArgb() and 0xFFFFFF) } }
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.Erase)
+                        RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_view_list, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
+                        return@RibbonLine
+                    }
+                    if (tab == "Insert") {
+                        // as Words' Insert: pages, words, pictures and drawings, notes, page furniture
+                        val page = at
+                        RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
+                        RibbonButton(stringResource(R.string.pdf_insert_pdf), w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.Text); ToolButton(PdfTool.TextBox)
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_picture), w, R.drawable.ic_gallery) { pickImage.launch(arrayOf("image/*")) }
+                        RibbonButton(stringResource(R.string.words_signature), w, R.drawable.ic_draw, on = tool == PdfTool.Sign) { if (!signatureFile.isFile) signing = true else tool = if (tool == PdfTool.Sign) null else PdfTool.Sign }
+                        RibbonButton(stringResource(R.string.pdf_stamp), w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) { tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp }
+                        ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.Note); ToolButton(PdfTool.Date)
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_page_numbers), w, R.drawable.ic_format_list_numbered) { change { d.headerFooter("", "{n} / {N}", 10f) } }
+                        RibbonButton(stringResource(R.string.words_header_footer), w, R.drawable.ic_text_fields) { asking = "header" }
+                        RibbonButton(stringResource(R.string.words_watermark), w, R.drawable.ic_branding_watermark) { asking = "watermark" }
+                        return@RibbonLine
+                    }
+                    if (tab == "Protect") {
+                        RibbonButton(stringResource(R.string.pdf_password), w, R.drawable.ic_lock) { asking = "password" }
+                        if (password != null) RibbonButton(stringResource(R.string.pdf_remove_password), w, R.drawable.ic_lock_open) { d.protect(null); version++
+                            Toast.makeText(context, R.string.pdf_password_off_on_save, Toast.LENGTH_LONG).show() }
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.RedactText)
+                        ToolButton(PdfTool.Redact)
+                        RibbonButton(stringResource(R.string.pdf_find_redact), w, R.drawable.ic_search) { asking = "redact" }
+                        RibbonButton(stringResource(R.string.pdf_redact_marked), w, R.drawable.ic_check) {
+                            var n = 0; change { n = d.applyRedactions() }
+                            Toast.makeText(context, if (n == 0) context.getString(R.string.pdf_mark_first) else context.resources.getQuantityString(R.plurals.pdf_redacted_pages, n, n), Toast.LENGTH_LONG).show()
+                        }
+                        return@RibbonLine
+                    }
+                    if (tab == "Fill & Sign") {
+                        ToolButton(PdfTool.Text); ToolButton(PdfTool.Tick); ToolButton(PdfTool.Cross); ToolButton(PdfTool.Dot); ToolButton(PdfTool.Date)
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.TextField); ToolButton(PdfTool.CheckBox)
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.Sign)
+                        RibbonButton(stringResource(if (signatureFile.isFile) R.string.pdf_new_signature else R.string.pdf_draw_signature), w, R.drawable.ic_edit) { signing = true }
+                        RibbonDivider(w)
+                        listOf(9f to R.string.pdf_small, 11f to R.string.pdf_normal, 14f to R.string.pdf_large).forEach { (pt, label) -> RibbonButton(stringResource(label), w, on = fillSize == pt) { fillSize = pt } }
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.Erase)
+                        return@RibbonLine
+                    }
+                    if (tab == "Draw") {
+                        ToolButton(PdfTool.Pen); ToolButton(PdfTool.Marker)
+                        // Words' text colours, white among them: a white pen covers a stroke (the user, 25 Oct)
+                        Swatches(w, R.drawable.ic_palette, stringResource(R.string.pdf_pen_colour), TEXT_COLOURS) { c ->
+                            c?.let { penColour = (it.toArgb() and 0xFFFFFF) } }
+                        RibbonDivider(w)
+                        listOf(1f to R.string.words_thin, 2f to R.string.words_medium, 4f to R.string.words_thick).forEach { (pt, label) -> RibbonButton(stringResource(label), w, on = penWidth == pt) { penWidth = pt } }
+                        RibbonDivider(w)
+                        ToolButton(PdfTool.Erase)
+                        return@RibbonLine
+                    }
+                    val page = at
+                    RibbonButton(stringResource(R.string.pdf_organize), w, R.drawable.ic_view_grid) { organize = true }
+                    RibbonDivider(w)
+                    RibbonButton(stringResource(R.string.pdf_rotate_left), w, R.drawable.ic_rotate_left) { change { d.rotate(listOf(page), -90) } }
+                    RibbonButton(stringResource(R.string.pdf_rotate_right), w, R.drawable.ic_rotate_right) { change { d.rotate(listOf(page), 90) } }
+                    RibbonButton(stringResource(R.string.pdf_delete_page), w, R.drawable.ic_delete, enabled = d.sizes.size > 1) { change { d.delete(listOf(page)) } }
+                    RibbonDivider(w)
+                    RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
+                    RibbonButton(stringResource(R.string.pdf_insert_pdf), w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
+                    RibbonButton(stringResource(R.string.pdf_bookmarks), w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
+                    RibbonButton(stringResource(R.string.pdf_recognize_text), w, R.drawable.ic_text_fields) {
+                        // every page without words of its own read (a scan, a photo), each one undo step; Find and Copy then work on it
+                        ocrJob = scope.launch {
+                            val todo = withContext(Dispatchers.IO) { d.sizes.indices.filter { !d.hasText(it) } }
+                            if (todo.isEmpty()) { Toast.makeText(context, R.string.pdf_all_have_text, Toast.LENGTH_SHORT).show(); return@launch }
+                            var words = 0
+                            for ((k, i) in todo.withIndex()) {
+                                reading2 = k + 1 to todo.size
+                                val got = withContext(Dispatchers.Default) { runCatching { val (bmp, sc) = d.scanOf(i); Ocr.words(context, bmp).also { ws -> d.addTextLayer(i, ws, sc) } } }
+                                got.onFailure { WriterLog.e("PDF: recognize text", it) }.onSuccess { words += it.size }
+                                version++
+                            }
+                            reading2 = null
+                            WriterLog.i("PDF: recognized ${todo.size} pages, $words words")
+                            Toast.makeText(context, context.resources.getQuantityString(R.plurals.pdf_ocr_done, todo.size, words, todo.size), Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    RibbonButton(stringResource(R.string.pdf_reduce_size), w, R.drawable.ic_compress) {
+                        d.shrink(); version++
+                        Toast.makeText(context, context.getString(R.string.pdf_shrink_note, (file?.length() ?: 0) / 1024), Toast.LENGTH_LONG).show()
+                    }
+                    RibbonButton(stringResource(R.string.pdf_extract_page), w, R.drawable.ic_copy) {
+                        val f = file ?: return@RibbonButton
+                        scope.launch {
+                            val to = generateSequence(1) { it }.let { _ -> var n = 0; var t: File; do { n++; t = File(f.parentFile, "${f.nameWithoutExtension} (page ${page + 1}${if (n > 1) " $n" else ""}).pdf") } while (t.exists()); t }
+                            withContext(Dispatchers.IO) { runCatching { d.extract(listOf(page), to) } }
+                                .onSuccess { Toast.makeText(context, context.getString(R.string.words_saved_as, to.name), Toast.LENGTH_LONG).show() }
+                                .onFailure { WriterLog.e("PDF: extract", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_extract_failed), Toast.LENGTH_LONG).show() }
+                        }
+                    }
+                } }
+            } }
+        }
+    }
+    }
     Column(Modifier.fillMaxSize().background(Color(0xFF2B2B2B)).focusRequester(keys).focusable().onPreviewKeyEvent { k ->
         if (k.type != KeyEventType.KeyDown || typing != null || !editing) return@onPreviewKeyEvent false
         val d = doc ?: return@onPreviewKeyEvent false
@@ -1817,6 +2137,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 }
             }
         }
+        if (OfficeUi.top) ribbon()
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val d = doc
             when {
@@ -1874,7 +2195,12 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         // Words' rulers on a tablet (one page across, not zoomed in): along the top for the page in view, down each page's side
                         val ruled = rulers && wide && editing && across == 1 && zoom == 1f
                         val rulerW = 18.dp; val sideRuler = if (ruled) rulerW + 12.dp else 0.dp // the side ruler and the row's gap after it
-                        val roomW = maxWidth - 24.dp; val roomH = maxHeight - 24.dp - (if (ruled) 22.dp else 0.dp)
+                        val roomW = maxWidth - 24.dp; val shownH = maxHeight - 24.dp - (if (ruled) 22.dp else 0.dp)
+                        // the keyboard up: the page keeps the size it had (it scrolls under the words being typed, as Words'), not shrunk to what is left
+                        val keyboard = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(density) > 0
+                        val calmH = remember { mutableStateOf(shownH) }
+                        androidx.compose.runtime.SideEffect { if (!keyboard) calmH.value = shownH }
+                        val roomH = if (keyboard) maxOf(calmH.value, shownH) else shownH
                         // the page shown on the screen: as wide as there is room (Fit width: all of it), no taller than the screen
                         fun widthOf(s: Size) = ((roomW - sideRuler - 12.dp * (across - 1)) / across).let { room -> if (fitWidth) room else minOf(room, roomH * (s.width / s.height)) }
                         fun pageOf(s: Size) = DocPage(s.width, s.height, margins.top, margins.bottom, margins.left, margins.right)
@@ -1958,301 +2284,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             if (d != null && pane != null && !wide) PdfPane(d, pane!!, editing, version, Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.55f),
                 { goTo(it) }, { pane = null }, { asking = "bookmark" }, { editing = true }) { act -> change(act) }
         }
-        // the ribbon while editing, at the bottom as Slides' (a tablet: the floating island; a phone: across the bottom)
-        val d = doc
-        // typing on the page: Font's strip in the ribbon's place, as Words' and Slides'; a card tapped shows on the words at once
-        val before = fontBefore
-        val ch0 = chosen?.takeIf { it.text != null }
-        if (typing != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
-            ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
-        // a chosen text: the font a card shows put on at once (Cancel puts the one before back)
-        else if (ch0 != null && before != null) ch0.text!!.let { ct -> fun inFont(f: String) = ct.look.copy(font = f).let { l -> ct.with(fonted(ct.doc.paras, l)).with(l) }
-            DesignGalleryStrip(DesignGallery.Font, FontChoice(ct.look.font),
-                cancel = { if (ct.look.font != before) rechange(t = inFont(before)); fontBefore = null },
-                ok = { fontBefore = null }, pick = { c -> (c as? FontChoice)?.let { rechange(t = inFont(it.name)) } },
-                fonts = STYLE_FONTS, now = ct.look.font) }
-        // Home with nothing chosen: the next text's font
-        else if (before != null && editing) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
-            ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
-        else if (editing && d != null) {
-            val w = Color.White
-            Surface(color = Color.Black, contentColor = w, modifier = (if (wide) Modifier.fillMaxWidth().bottomBarPadding().padding(12.dp).clip(MaterialTheme.shapes.extraLarge) else Modifier.fillMaxWidth())
-                .then(if (typing != null) Modifier.imePadding() else Modifier)) {
-                OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else Modifier.bottomBarPadding()) { Column {
-                    // a text chosen, as a Slides box: Selection first (Cut, Copy, Paste, formatting), the text's own tab last in the lighter colour
-                    // Words' tabs in Words' order (the user, 24 Oct: "take a look on what the other applets have"), the PDF's own among them
-                    val tabNames = mapOf("Selection" to stringResource(R.string.words_tab_selection), "File" to stringResource(R.string.words_tab_file),
-                        "Home" to stringResource(R.string.words_tab_home), "Insert" to stringResource(R.string.words_tab_insert), "Draw" to stringResource(R.string.words_tab_draw),
-                        "Layout" to stringResource(R.string.words_tab_layout), "Pages" to stringResource(R.string.words_pages), "Review" to stringResource(R.string.words_tab_review),
-                        "Fill & Sign" to stringResource(R.string.pdf_tab_fill_sign), "Protect" to stringResource(R.string.pdf_tab_protect), "View" to stringResource(R.string.words_tab_view),
-                        OBJECT_TAB to (chosen?.kind?.let { if (it == "Drawing") stringResource(R.string.pdf_drawing) else objectKindName(it) } ?: ""))
-                    OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
-                        OBJECT_TAB.takeIf { chosen != null }),
-                        tab, w, PDF_RED, { tab = it; tool = null }, contextual = OBJECT_TAB, label = { tabNames[it] ?: it }) {
-                        // typing: ✓ puts the words on; an object chosen: ✕ lets go of it (Words')
-                        if (typing != null) Tool(R.drawable.ic_check, stringResource(R.string.common_done), w, on = true) { putTyped() }
-                        else if (chosen != null) androidx.compose.material3.IconButton(onClick = { chosen = null }, modifier = Modifier.size(36.dp)) {
-                            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_close), modifier = Modifier.size(16.dp)) }
-                    }
-                    @Composable fun ToolButton(t: PdfTool) = RibbonButton(stringResource(t.label), w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
-                    key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
-                        val c0 = chosen
-                        // Words', Tables' and Slides' File: the file's own actions
-                        if (tab == "File") {
-                            RibbonButton(stringResource(R.string.common_save), w, R.drawable.ic_save, enabled = d.dirty) { save() }
-                            RibbonButton(stringResource(R.string.words_save_copy), w, R.drawable.ic_copy, enabled = file != null) {
-                                file?.let { f -> save(to = generateSequence(1) { it + 1 }.map { File(f.parentFile, "${f.nameWithoutExtension} (copy${if (it == 1) "" else " $it"}).pdf") }.first { !it.exists() }, copy = true) } }
-                            RibbonButton(stringResource(R.string.words_autosave), w, R.drawable.ic_history, on = autoSave) {
-                                autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
-                                Toast.makeText(context, if (autoSave) R.string.words_autosave_on else R.string.words_autosave_off_msg, Toast.LENGTH_SHORT).show() }
-                            FavouriteFileButton(file, w) // a phone: the Office home's favourite (a tablet: the heart in the top bar)
-                            RibbonButton(stringResource(R.string.words_save_as), w, R.drawable.ic_save, enabled = file != null) { naming = "as" }
-                            RibbonButton(stringResource(R.string.common_rename), w, R.drawable.ic_edit, enabled = file != null) { naming = "rename" }
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_versions), w, R.drawable.ic_history, enabled = file != null) { showVersions = true }
-                            RibbonButton(stringResource(R.string.pdf_edit_in_words), w, R.drawable.ic_edit_note) { exportWords() }
-                            RibbonButton(stringResource(R.string.pdf_export_text), w, R.drawable.ic_text_fields) { exportText() }
-                            RibbonButton(stringResource(R.string.common_print), w, R.drawable.ic_print) { if (d.dirty) save { print() } else print() }
-                            file?.let { f ->
-                                RibbonDivider(w)
-                                // a change saved first, so what goes is what shows (Slides')
-                                RibbonButton(stringResource(R.string.common_share), w, R.drawable.ic_share) { if (d.dirty) save { shareDriveFile(context, f) } else shareDriveFile(context, f) }
-                                RibbonButton(stringResource(R.string.words_open_in_another_app), w, R.drawable.ic_open_with) { if (d.dirty) save { openElsewhere(context, f) } else openElsewhere(context, f) }
-                            }
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_about_file), w, R.drawable.ic_info) { about = true }
-                            RibbonButton(stringResource(R.string.words_send_log), w, R.drawable.ic_share) { WriterLog.export(context)?.let { shareDriveFile(context, it) } }
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.common_settings), w, R.drawable.ic_settings) { officeSettings = true }
-                            return@RibbonLine
-                        }
-                        // Words' Home: the words being typed, a chosen text's (all of them), else the font, size and colour the next text takes
-                        if (tab == "Home") {
-                            PdfHomeTools(w, homeTarget, homeTarget?.text?.look?.takeIf { typing == null } ?: textLook, { textLook = it }, { fontBefore = (homeTarget?.text?.look?.takeIf { typing == null } ?: textLook).font }) { at, look -> paragraphPage = at to look }
-                            return@RibbonLine
-                        }
-                        // Layout, as Words' and Tables': the pages' size and way round (all of them, as Word's without sections), the margins
-                        if (tab == "Layout") {
-                            val now = d.sizes.getOrNull(at)
-                            RibbonMenu(stringResource(R.string.words_size), w, R.drawable.ic_fit_page, preset = false, choices = PdfPaper.all.map { (name, p) ->
-                                MenuChoice(stringResource(R.string.pdf_paper_size, name, WriterUnits.text(p.width), WriterUnits.text(p.height), unitName), checked = now?.let { PdfPaper.paper(it) } == name) {
-                                    // the paper's size, each page kept the way round it was
-                                    change { d.resize { s -> if (s.width > s.height) Size(p.height, p.width) else p } }; WriterLog.i("PDF: page size $name") } })
-                            RibbonButton(stringResource(R.string.words_portrait), w, R.drawable.ic_crop_portrait, on = now != null && now.height >= now.width) {
-                                change { d.resize { s -> if (s.width > s.height) Size(s.height, s.width) else s } }; WriterLog.i("PDF: portrait") }
-                            RibbonButton(stringResource(R.string.words_landscape), w, R.drawable.ic_crop_landscape, on = now != null && now.width > now.height) {
-                                change { d.resize { s -> if (s.height > s.width) Size(s.height, s.width) else s } }; WriterLog.i("PDF: landscape") }
-                            RibbonMenu(stringResource(R.string.words_margins), w, R.drawable.ic_margin, preset = false, choices = PdfMargins.all.map { (name, v) ->
-                                MenuChoice(stringResource(R.string.pdf_margin_size, stringResource(PdfMargins.labels.getValue(name)), WriterUnits.text(v.first), WriterUnits.text(v.second), unitName), checked = PdfMargins.nameOf(margins) == name) {
-                                    margins = PdfMargins.page(name); PdfMargins.save(context, name) } })
-                            RibbonDivider(w)
-                            val page = at
-                            RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
-                            RibbonButton(stringResource(R.string.pdf_delete_page), w, R.drawable.ic_delete, enabled = d.sizes.size > 1) { change { d.delete(listOf(page)) } }
-                            RibbonButton(stringResource(R.string.pdf_rotate_left), w, R.drawable.ic_rotate_left) { change { d.rotate(listOf(page), -90) } }
-                            RibbonButton(stringResource(R.string.pdf_rotate_right), w, R.drawable.ic_rotate_right) { change { d.rotate(listOf(page), 90) } }
-                            return@RibbonLine
-                        }
-                        // View, as Words': the page list, comments, bookmarks; the zoom; one or two pages, as wide as the screen; rulers; the unit
-                        if (tab == "View") {
-                            RibbonButton(stringResource(R.string.words_navigation), w, R.drawable.ic_navigation, on = if (wide) navigation else pages) { if (wide) navigation = !navigation else pages = !pages }
-                            RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_comment, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
-                            RibbonButton(stringResource(R.string.pdf_bookmarks), w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
-                            RibbonDivider(w)
-                            Tool(R.drawable.ic_remove, stringResource(R.string.words_zoom_out), w, enabled = zoom > 1f) { zoom = (zoom - 0.25f).coerceAtLeast(1f); pan = Offset.Zero; settled = zoom }
-                            Text("${Math.round(zoom * 100)}%", color = w, style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(44.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                            Tool(R.drawable.ic_add, stringResource(R.string.words_zoom_in), w, enabled = zoom < Pdf.MAX_ZOOM) { zoom = (zoom + 0.25f).coerceAtMost(Pdf.MAX_ZOOM); pan = Offset.Zero; settled = zoom }
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_fit_width), w, R.drawable.ic_fit_page, on = fitWidth) { val keep = at; fitWidth = !fitWidth; goTo(keep) }
-                            RibbonButton(stringResource(R.string.words_two_pages), w, R.drawable.ic_view_column, on = across == 2) { val keep = at; across = 3 - across; goTo(keep) }
-                            if (wide) RibbonButton(stringResource(R.string.pdf_ruler), w, R.drawable.ic_margin, on = rulers) { rulers = !rulers }
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_unit_cm), w, on = !WriterUnits.inches) { WriterUnits.set(context, false) }
-                            RibbonButton(stringResource(R.string.words_unit_inches), w, on = WriterUnits.inches) { WriterUnits.set(context, true) }
-                            return@RibbonLine
-                        }
-                        // Words' Selection tab: what is chosen cut, copied, pasted; words pasted alone; a text's look copied and put on another
-                        if (tab == "Selection" && c0 != null) {
-                            val ct = c0.text
-                            RibbonButton(stringResource(R.string.common_cut), w, R.drawable.ic_content_cut, enabled = c0.ours) { if (copyChosen()) deleteChosen() }
-                            RibbonButton(stringResource(R.string.common_copy), w, R.drawable.ic_copy, enabled = c0.ours) { copyChosen() }
-                            RibbonButton(stringResource(R.string.common_paste), w, R.drawable.ic_content_paste, enabled = clip != null) { paste(c0.page) }
-                            RibbonButton(stringResource(R.string.words_paste_text_only), w, R.drawable.ic_content_paste) { val keep = clip; clip = null; paste(c0.page); clip = keep }
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_copy_formatting), w, R.drawable.ic_format_paint, enabled = ct != null) { ct?.let { copiedLook = it.look; Toast.makeText(context, R.string.pdf_formatting_copied, Toast.LENGTH_SHORT).show() } }
-                            // its turn, fill and border its own, as Slides' (the words' look only)
-                            RibbonButton(stringResource(R.string.words_paste_formatting), w, R.drawable.ic_format_paint, enabled = ct != null && copiedLook != null) { val l = copiedLook; if (ct != null && l != null) {
-                                rechange(t = ct.copy(look = l.copy(turn = ct.look.turn, fill = ct.look.fill, line = ct.look.line))); WriterLog.i("PDF: formatting pasted") } }
-                            return@RibbonLine
-                        }
-                        // the chosen object's own tab, named by its kind, as Words' Picture tab (the user, 26 Oct: "the same ribbon tabs and items in the same places")
-                        if (tab == OBJECT_TAB && c0 != null) {
-                            val o = c0.words; val img = o?.img
-                            val ours = c0.ours; val turns = turnable(c0)
-                            val picture = img != null && o.bytes() != null && img.box == null && img.chart == null && img.math == null && img.group == null
-                            if (c0.kind == "Signature") {
-                                // a signature's own tab, as Words' (Size, Position, Rotate | Bring to front, Send to back | Redraw, Delete)
-                                RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio) { sizing = true }
-                                RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with) { positioning = true }
-                                RibbonButton(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, enabled = turns) { rotating = true }
-                                RibbonDivider(w)
-                                RibbonButton(stringResource(R.string.words_bring_to_front), w, R.drawable.ic_flip_to_front) { restackChosen(2) }
-                                RibbonButton(stringResource(R.string.words_send_to_back), w, R.drawable.ic_flip_to_back) { restackChosen(-2) }
-                                RibbonDivider(w)
-                                RibbonButton(stringResource(R.string.words_redraw), w, R.drawable.ic_draw) { redrawing = true }
-                                RibbonButton(stringResource(R.string.common_delete), w, R.drawable.ic_delete) { deleteChosen() }
-                                return@RibbonLine
-                            }
-                            if (c0.text != null) RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit) { retype(c0) }
-                            if (c0.text != null || img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton(stringResource(R.string.words_shape_options), w, R.drawable.ic_tune) { shapeOptions = true }
-                            RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio) { sizing = true }
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with) { positioning = true }
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_bring_to_front), w, R.drawable.ic_flip_to_front) { restackChosen(2) }
-                            RibbonButton(stringResource(R.string.words_send_to_back), w, R.drawable.ic_flip_to_back) { restackChosen(-2) }
-                            RibbonButton(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, enabled = turns) { rotating = true }
-                            RibbonMenu(stringResource(R.string.words_align), w, R.drawable.ic_align_horizontal_center, preset = false, choices = listOf(
-                                MenuChoice(stringResource(R.string.words_align_left)) { alignChosen('l', null) }, MenuChoice(stringResource(R.string.words_align_centre)) { alignChosen('c', null) },
-                                MenuChoice(stringResource(R.string.words_align_right)) { alignChosen('r', null) }, MenuChoice(stringResource(R.string.words_align_top)) { alignChosen(null, 't') },
-                                MenuChoice(stringResource(R.string.words_align_middle)) { alignChosen(null, 'm') }, MenuChoice(stringResource(R.string.words_align_bottom)) { alignChosen(null, 'b') }))
-                            if (picture) {
-                                RibbonDivider(w)
-                                RibbonButton(stringResource(R.string.words_turn_left), w, R.drawable.ic_rotate_left) { transformChosen(-90, false) }
-                                RibbonButton(stringResource(R.string.words_turn_right), w, R.drawable.ic_rotate_right) { transformChosen(90, false) }
-                                RibbonButton(stringResource(R.string.words_flip), w, R.drawable.ic_flip) { transformChosen(0, true) }
-                            }
-                            RibbonDivider(w)
-                            if (picture) RibbonButton(stringResource(R.string.words_replace), w, R.drawable.ic_gallery) { replacing = true; pickImage.launch(arrayOf("image/*")) }
-                            if (picture) RibbonButton(stringResource(R.string.words_save_as), w, R.drawable.ic_save) { savePicture(o) }
-                            RibbonButton(stringResource(R.string.pdf_duplicate), w, R.drawable.ic_add_to_collection, enabled = ours) { duplicateChosen() }
-                            RibbonButton(stringResource(R.string.common_delete), w, R.drawable.ic_delete) { deleteChosen() }
-                            return@RibbonLine
-                        }
-                        if (tab == "Review") {
-                            ToolButton(PdfTool.Highlight); ToolButton(PdfTool.Underline); ToolButton(PdfTool.Strike)
-                            RibbonDivider(w)
-                            ToolButton(PdfTool.Note); ToolButton(PdfTool.TextBox); ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
-                            // Stamp: the kind chosen in a strip (✓/×, as Office's options), then a tap on the page puts it there
-                            val stampStrip = officeStrip(stringResource(R.string.pdf_stamp), ok = { st -> (st.picked as? String)?.let { stampName = it; tool = PdfTool.Stamp } }) { st ->
-                                STAMPS.forEach { n -> RibbonButton(n.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, on = st.picked == n) { st.picked = n } }
-                                val strips = LocalOfficeStrips.current
-                                RibbonButton(stringResource(R.string.pdf_picture_more), w, R.drawable.ic_gallery) { strips?.open = null; pickStamp.launch(arrayOf("image/*")) }
-                            }
-                            RibbonButton(if (tool != PdfTool.Stamp) stringResource(R.string.pdf_stamp) else if (stampName == PICTURE_STAMP) stringResource(R.string.words_picture)
-                                else stampName.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) {
-                                if (stampStrip != null) stampStrip() else tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp
-                            }
-                            // Words' colours, white among them (the user, 25 Oct: to cover what was drawn), and its highlighters; More… Words' table
-                            Swatches(w, R.drawable.ic_palette, stringResource(R.string.words_colour), (HIGHLIGHT_COLOURS + TEXT_COLOURS).distinct()) { c ->
-                                c?.let { markColour = (it.toArgb() and 0xFFFFFF) } }
-                            RibbonDivider(w)
-                            ToolButton(PdfTool.Erase)
-                            RibbonButton(stringResource(R.string.words_comments), w, R.drawable.ic_view_list, on = pane == "Comments") { pane = if (pane == "Comments") null else "Comments" }
-                            return@RibbonLine
-                        }
-                        if (tab == "Insert") {
-                            // as Words' Insert: pages, words, pictures and drawings, notes, page furniture
-                            val page = at
-                            RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
-                            RibbonButton(stringResource(R.string.pdf_insert_pdf), w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
-                            RibbonDivider(w)
-                            ToolButton(PdfTool.Text); ToolButton(PdfTool.TextBox)
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_picture), w, R.drawable.ic_gallery) { pickImage.launch(arrayOf("image/*")) }
-                            RibbonButton(stringResource(R.string.words_signature), w, R.drawable.ic_draw, on = tool == PdfTool.Sign) { if (!signatureFile.isFile) signing = true else tool = if (tool == PdfTool.Sign) null else PdfTool.Sign }
-                            RibbonButton(stringResource(R.string.pdf_stamp), w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) { tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp }
-                            ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
-                            RibbonDivider(w)
-                            ToolButton(PdfTool.Note); ToolButton(PdfTool.Date)
-                            RibbonDivider(w)
-                            RibbonButton(stringResource(R.string.words_page_numbers), w, R.drawable.ic_format_list_numbered) { change { d.headerFooter("", "{n} / {N}", 10f) } }
-                            RibbonButton(stringResource(R.string.words_header_footer), w, R.drawable.ic_text_fields) { asking = "header" }
-                            RibbonButton(stringResource(R.string.words_watermark), w, R.drawable.ic_branding_watermark) { asking = "watermark" }
-                            return@RibbonLine
-                        }
-                        if (tab == "Protect") {
-                            RibbonButton(stringResource(R.string.pdf_password), w, R.drawable.ic_lock) { asking = "password" }
-                            if (password != null) RibbonButton(stringResource(R.string.pdf_remove_password), w, R.drawable.ic_lock_open) { d.protect(null); version++
-                                Toast.makeText(context, R.string.pdf_password_off_on_save, Toast.LENGTH_LONG).show() }
-                            RibbonDivider(w)
-                            ToolButton(PdfTool.RedactText)
-                            ToolButton(PdfTool.Redact)
-                            RibbonButton(stringResource(R.string.pdf_find_redact), w, R.drawable.ic_search) { asking = "redact" }
-                            RibbonButton(stringResource(R.string.pdf_redact_marked), w, R.drawable.ic_check) {
-                                var n = 0; change { n = d.applyRedactions() }
-                                Toast.makeText(context, if (n == 0) context.getString(R.string.pdf_mark_first) else context.resources.getQuantityString(R.plurals.pdf_redacted_pages, n, n), Toast.LENGTH_LONG).show()
-                            }
-                            return@RibbonLine
-                        }
-                        if (tab == "Fill & Sign") {
-                            ToolButton(PdfTool.Text); ToolButton(PdfTool.Tick); ToolButton(PdfTool.Cross); ToolButton(PdfTool.Dot); ToolButton(PdfTool.Date)
-                            RibbonDivider(w)
-                            ToolButton(PdfTool.TextField); ToolButton(PdfTool.CheckBox)
-                            RibbonDivider(w)
-                            ToolButton(PdfTool.Sign)
-                            RibbonButton(stringResource(if (signatureFile.isFile) R.string.pdf_new_signature else R.string.pdf_draw_signature), w, R.drawable.ic_edit) { signing = true }
-                            RibbonDivider(w)
-                            listOf(9f to R.string.pdf_small, 11f to R.string.pdf_normal, 14f to R.string.pdf_large).forEach { (pt, label) -> RibbonButton(stringResource(label), w, on = fillSize == pt) { fillSize = pt } }
-                            RibbonDivider(w)
-                            ToolButton(PdfTool.Erase)
-                            return@RibbonLine
-                        }
-                        if (tab == "Draw") {
-                            ToolButton(PdfTool.Pen); ToolButton(PdfTool.Marker)
-                            // Words' text colours, white among them: a white pen covers a stroke (the user, 25 Oct)
-                            Swatches(w, R.drawable.ic_palette, stringResource(R.string.pdf_pen_colour), TEXT_COLOURS) { c ->
-                                c?.let { penColour = (it.toArgb() and 0xFFFFFF) } }
-                            RibbonDivider(w)
-                            listOf(1f to R.string.words_thin, 2f to R.string.words_medium, 4f to R.string.words_thick).forEach { (pt, label) -> RibbonButton(stringResource(label), w, on = penWidth == pt) { penWidth = pt } }
-                            RibbonDivider(w)
-                            ToolButton(PdfTool.Erase)
-                            return@RibbonLine
-                        }
-                        val page = at
-                        RibbonButton(stringResource(R.string.pdf_organize), w, R.drawable.ic_view_grid) { organize = true }
-                        RibbonDivider(w)
-                        RibbonButton(stringResource(R.string.pdf_rotate_left), w, R.drawable.ic_rotate_left) { change { d.rotate(listOf(page), -90) } }
-                        RibbonButton(stringResource(R.string.pdf_rotate_right), w, R.drawable.ic_rotate_right) { change { d.rotate(listOf(page), 90) } }
-                        RibbonButton(stringResource(R.string.pdf_delete_page), w, R.drawable.ic_delete, enabled = d.sizes.size > 1) { change { d.delete(listOf(page)) } }
-                        RibbonDivider(w)
-                        RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
-                        RibbonButton(stringResource(R.string.pdf_insert_pdf), w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
-                        RibbonButton(stringResource(R.string.pdf_bookmarks), w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
-                        RibbonButton(stringResource(R.string.pdf_recognize_text), w, R.drawable.ic_text_fields) {
-                            // every page without words of its own read (a scan, a photo), each one undo step; Find and Copy then work on it
-                            ocrJob = scope.launch {
-                                val todo = withContext(Dispatchers.IO) { d.sizes.indices.filter { !d.hasText(it) } }
-                                if (todo.isEmpty()) { Toast.makeText(context, R.string.pdf_all_have_text, Toast.LENGTH_SHORT).show(); return@launch }
-                                var words = 0
-                                for ((k, i) in todo.withIndex()) {
-                                    reading2 = k + 1 to todo.size
-                                    val got = withContext(Dispatchers.Default) { runCatching { val (bmp, sc) = d.scanOf(i); Ocr.words(context, bmp).also { ws -> d.addTextLayer(i, ws, sc) } } }
-                                    got.onFailure { WriterLog.e("PDF: recognize text", it) }.onSuccess { words += it.size }
-                                    version++
-                                }
-                                reading2 = null
-                                WriterLog.i("PDF: recognized ${todo.size} pages, $words words")
-                                Toast.makeText(context, context.resources.getQuantityString(R.plurals.pdf_ocr_done, todo.size, words, todo.size), Toast.LENGTH_LONG).show()
-                            }
-                        }
-                        RibbonButton(stringResource(R.string.pdf_reduce_size), w, R.drawable.ic_compress) {
-                            d.shrink(); version++
-                            Toast.makeText(context, context.getString(R.string.pdf_shrink_note, (file?.length() ?: 0) / 1024), Toast.LENGTH_LONG).show()
-                        }
-                        RibbonButton(stringResource(R.string.pdf_extract_page), w, R.drawable.ic_copy) {
-                            val f = file ?: return@RibbonButton
-                            scope.launch {
-                                val to = generateSequence(1) { it }.let { _ -> var n = 0; var t: File; do { n++; t = File(f.parentFile, "${f.nameWithoutExtension} (page ${page + 1}${if (n > 1) " $n" else ""}).pdf") } while (t.exists()); t }
-                                withContext(Dispatchers.IO) { runCatching { d.extract(listOf(page), to) } }
-                                    .onSuccess { Toast.makeText(context, context.getString(R.string.words_saved_as, to.name), Toast.LENGTH_LONG).show() }
-                                    .onFailure { WriterLog.e("PDF: extract", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_extract_failed), Toast.LENGTH_LONG).show() }
-                            }
-                        }
-                    } }
-                } }
-            }
-        }
+        if (!OfficeUi.top) ribbon()
     }
 }
 

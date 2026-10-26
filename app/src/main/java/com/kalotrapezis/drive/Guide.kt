@@ -64,7 +64,7 @@ internal enum class GuideAsk { AllFiles, Photos, Notifications, Alarms, Camera, 
 
 internal enum class GuidePic {
     Welcome, SettingsRow, AndroidDialog, AndroidSwitch, HomeOpen, HomePencil, HomeMove, HomeSize, HomeHide, HomeDone,
-    FilesFolder, FilesHold, FilesBar, FilesWhere, FilesMore, FilesNew, FilesTrash, Alone, SyncScan, SettingsLook, SettingsFind,
+    FilesFolder, FilesHold, FilesBar, FilesWhere, FilesMore, FilesNew, FilesTrash, Alone, SyncScan, SettingsLook, SettingsFind, Icons,
 }
 
 internal class GuideStep(@StringRes val title: Int, @StringRes val body: Int, val pic: GuidePic, val go: GuideGo = GuideGo.None, val ask: GuideAsk? = null)
@@ -111,7 +111,45 @@ internal enum class GuideChapter(@StringRes val title: Int, val icon: Int, val s
         GuideStep(R.string.guide_look_t, R.string.guide_look_b, GuidePic.SettingsLook, GuideGo.Settings),
         GuideStep(R.string.guide_find_t, R.string.guide_find_b, GuidePic.SettingsFind, GuideGo.Settings),
     )),
+    Icons(R.string.guide_ch_icons, R.drawable.ic_view_grid, listOf(GuideStep(R.string.guide_icons_t, R.string.guide_icons_b, GuidePic.Icons))),
 }
+
+/** The icon catalog (the user, 26 Oct: "a catalog with the iconography … and what each means"): Tetra's own icons, as the screens draw them. */
+private val ICONS = listOf(
+    R.drawable.ic_chevron_left to R.string.guide_icon_back,
+    R.drawable.ic_close to R.string.guide_icon_close,
+    R.drawable.ic_check to R.string.guide_icon_check,
+    R.drawable.ic_add to R.string.guide_icon_add,
+    R.drawable.ic_search to R.string.guide_icon_search,
+    R.drawable.ic_edit to R.string.guide_icon_edit,
+    R.drawable.ic_more_vert to R.string.guide_icon_more,
+    R.drawable.ic_share to R.string.guide_icon_share,
+    R.drawable.ic_copy to R.string.guide_icon_copy,
+    R.drawable.ic_move to R.string.guide_icon_move,
+    R.drawable.ic_delete to R.string.guide_icon_delete,
+    R.drawable.ic_restore to R.string.guide_icon_restore,
+    R.drawable.ic_tag to R.string.guide_icon_tag,
+    R.drawable.ic_favorite_border to R.string.guide_icon_favorite,
+    R.drawable.ic_fullscreen to R.string.guide_icon_size,
+    R.drawable.ic_visibility_off to R.string.guide_icon_hide,
+    R.drawable.ic_drag_handle to R.string.guide_icon_handle,
+    R.drawable.ic_unfold_more to R.string.guide_icon_choices,
+    R.drawable.ic_undo to R.string.guide_icon_undo,
+    R.drawable.ic_redo to R.string.guide_icon_redo,
+    R.drawable.ic_save to R.string.guide_icon_save,
+    R.drawable.ic_refresh to R.string.guide_icon_refresh,
+    R.drawable.ic_sync to R.string.guide_icon_sync,
+    R.drawable.ic_qr_code to R.string.guide_icon_qr,
+    R.drawable.ic_id_card to R.string.guide_icon_card,
+    R.drawable.ic_computer to R.string.guide_icon_computer,
+    R.drawable.ic_lock to R.string.guide_icon_lock,
+    R.drawable.ic_notifications to R.string.guide_icon_notifications,
+    R.drawable.ic_info to R.string.guide_icon_info,
+    R.drawable.ic_settings to R.string.guide_icon_settings,
+    R.drawable.ic_home to R.string.guide_icon_home,
+    R.drawable.ic_toc to R.string.guide_icon_toc,
+    R.drawable.ic_school to R.string.guide_icon_guide,
+)
 
 /** A place in the guide as one Int (chapter × 100 + step), so it survives a turn of the screen as it is. */
 internal object GuidePlace {
@@ -142,7 +180,7 @@ internal object GuidePlace {
         val ring = 4.dp.toPx(); val grow = ring + pulse * 10.dp.toPx(); val r = 14.dp.toPx()
         drawRoundRect(c.copy(alpha = 1f - pulse), Offset(-grow, -grow), Size(size.width + 2 * grow, size.height + 2 * grow), CornerRadius(r + grow), style = Stroke(2.dp.toPx()))
         drawRoundRect(c, Offset(-ring, -ring), Size(size.width + 2 * ring, size.height + 2 * ring), CornerRadius(r), style = Stroke(3.dp.toPx()))
-        drawCircle(c.copy(alpha = 0.4f), 12.dp.toPx(), center)
+        drawCircle(c.copy(alpha = 0.3f), 8.dp.toPx(), center)
     }
 }
 
@@ -190,7 +228,7 @@ internal fun GuideScreen(at: Int, go: (Int) -> Unit, tryIt: (GuideGo) -> Unit, c
                         step.ask?.let { GuideAskRow(it) }
                     }
                 }
-                GuideButtons(at, go, close, Modifier.padding(bottom = 12.dp)) {
+                GuideButtons(at, go, close, Modifier.widthIn(max = 720.dp).padding(bottom = 12.dp)) {
                     if (step.go != GuideGo.None) OutlinedButton(onClick = { tryIt(step.go) }, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) {
                         Text(stringResource(R.string.guide_try_it), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -378,7 +416,7 @@ private fun askIcon(ask: GuideAsk?) = when (ask) {
         GuidePic.HomePencil -> HomeHeader(name) { Box(Modifier.size(40.dp).mark(), contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_edit), contentDescription = null) } }
         // the part held, carried to the empty cell, and again
         GuidePic.HomeMove -> Box(Modifier.width(224.dp).height(96.dp), contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.align(Alignment.CenterEnd).size(88.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f)))
+            Box(Modifier.align(Alignment.CenterEnd).size(88.dp).border(1.5.dp, markColour().copy(alpha = 0.6f), RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f), RoundedCornerShape(16.dp)))
             val t = loop(2800)
             EditedPart(Modifier.graphicsLayer { translationX = 136.dp.toPx() * eased(t, 0.15f, 0.7f); val lift = if (t in 0.1f..0.75f) 1.06f else 1f; scaleX = lift; scaleY = lift }.mark())
         }
@@ -447,6 +485,14 @@ private fun askIcon(ask: GuideAsk?) = when (ask) {
             MiniRow(R.drawable.ic_sync, stringResource(R.string.app_sync), stringResource(R.string.settings_sync_summary))
             MiniRow(R.drawable.ic_palette, stringResource(R.string.settings_appearance), stringResource(R.string.settings_appearance_summary), Modifier.mark())
         }
+        GuidePic.Icons -> androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            ICONS.forEach { (icon, meaning) ->
+                Row(Modifier.width(300.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Icon(painterResource(icon), contentDescription = null) }
+                    Text(stringResource(meaning), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                }
+            }
+        }
         GuidePic.SettingsFind -> Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().mark()) {
             Row(Modifier.padding(horizontal = 16.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(painterResource(R.drawable.ic_search), null, Modifier.size(22.dp)); Text(stringResource(R.string.settings_search), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -508,7 +554,7 @@ private fun eased(t: Float, from: Float, to: Float) = FastOutSlowInEasing.transf
 }
 
 @Composable private fun HomeHeader(title: String, end: @Composable RowScope.() -> Unit) =
-    Row(Modifier.widthIn(max = 420.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         end()
     }

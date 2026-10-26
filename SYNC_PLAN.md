@@ -2181,6 +2181,8 @@ the same protocol, no screen, nothing new in the wire format.
 Icons for it are in place: `database` and `server` in `Icon.tsx`, beside `computer`
 and `device`.
 
+**Built 2026-10-26 (6as):** a computer is the server or a client, chosen at its first start.
+
 ### D4. Keep for a week, a month, a year (asked 2026-09-24)
 
 Keep the last week on the phone, or the last month, or the last year, and let the
@@ -2265,6 +2267,8 @@ show the **same code as text, with a copy button**, next to the QR — the QR fo
 phone, the text for the other machine, one code either way. The other side then
 needs somewhere to paste it, which is the half of §D3 that does not exist yet: the
 desktop has never been a client.
+
+**Built 2026-10-26 (6as):** the code is a typeable phrase under the QR, with Copy; a client pastes it at its first start.
 
 ### E. Settings, as an island of categories
 
@@ -2379,6 +2383,72 @@ so it goes through Files sync's own requests and rules — only for its part, so
   `sync.test.js` (the scoped request end to end; an unknown scope refused; the whole sync's address ignores a scope);
   Android `CalendarTest` (the scope's paths). **Not yet run between real devices.**
 
+### 6an. An event rm'd stays deleted; the same bytes never land as "(2)" (found and fixed 2026-10-23)
+
+**What happened.** Six birthdays moved by hand from Calendar/Personal to a new Γενέθλια while Tetra ran; the seven
+old files `rm`'d from Personal came back within seconds, from the phone (history: "received" 19:56 and 19:58). Personal
+held 334 `x (2).ics`, 330 byte for byte their original.
+
+**Why.** (1) The computer remembered a deletion by its *bytes* only (`file_deleted_here`): a file removed while the same
+bytes stayed here under another name — its identical "(2)" — was not a deletion, so the phone's copy at the old path was
+asked for again. (2) A file arriving at a path that already held exactly those bytes (two syncs asking at once: the
+Calendar's part and the whole) landed beside it as "(2)", on the computer (`sync.js receiveFile`) and on the phone
+(`SyncClient.receiveFile`, and `moveFile` when the target held the same bytes).
+
+**The rule now.**
+- A path this computer held when it last agreed with a device and holds no more was removed here
+  (`file_removed_here`, per device and path): not asked for while that device offers exactly those bytes there; an
+  edit there is still asked for; the memory goes when the device lets the path go or it is back here.
+- **Calendar events only** (the user: an .ics deleted from the disk is a deletion from that calendar): the other side
+  follows into its Trash, as an event deleted in the app does — removed here → the device is told `moveTo` Trash;
+  removed on the device (held unchanged here) → this computer's copy to its Trash. Not from a Move device, and not when
+  a device's Calendar comes empty where 20+ events were.
+- The same bytes already at the path: nothing is written, no "(2)", on both sides.
+- Two versions of one event in one calendar: the higher `SEQUENCE` is shown, then the newer `LAST-MODIFIED`/`DTSTAMP`
+  (was the newer only). The same UID in two calendars is two events (each calendar groups its own files).
+
+**Checked:** desktop `files.test.js` (an event rm'd while its "(2)" stays: not asked back, sync after sync; the device
+told to Trash it; a move by hand mirrored; the device's own rm → this computer's Trash; an edit there after a removal
+here asked for), `sync.test.js` (the same bytes PUT twice: no "(2)"; bytes back under another name are asked for, the
+removed path is not), `calendar.test.js` and Android `CalendarTest` (SEQUENCE first; the same UID in two calendars).
+The phone's receive and move checks have no unit test (they need the network). Not yet run between real devices.
+
+### 6ao. Send to computer, Send to phone (built 2026-10-23, branches `send-to-computer` / `claude/keen-grothendieck-9e0fad`)
+
+The user, 23 Oct: "could Files be in the sharing menu so you send files to the PC at once?" — over the Wi-Fi link sync
+already has, not Bluetooth (~2 Mbit/s). Not a sync: a file *sent* is a new file on the other side, nothing else.
+
+- **Phone → computer.** Tetra is in Android's share menu as "Send to computer" (`SendToComputer.kt`, SEND and
+  SEND_MULTIPLE, any type). Each file is copied into a private outbox, `files/outbox/<sha256>/<name>` (another app's
+  read permission ends with the share screen), then `PUT /send/<sha>?name=&modified=` to the paired computer with sync's
+  token and pinned certificate. The computer (`sync.js receiveSent`) writes it into Files' **From phone** (the user's
+  choice), hashed while written, kept only if it matches, never over another file ("name (2)"; the same bytes under that
+  name: nothing new, so a retry after a lost answer is harmless), and **not** recorded as the device's holding — the
+  phone's next manifest, without it, is not a delete. One notification per burst: "2 files from Xiaomi 15".
+- **Computer away.** The share says so ("…will go when it is") and the outbox waits: a JobScheduler job (4143, any
+  network, backoff from 30 s) tries until the computer has them; any whole sync and the computer's "sync now" send them
+  too, and the desktop now says "sync now" when it starts. A computer too old for `/send` (404) keeps them waiting
+  without retries; the next share or sync tries again.
+- **Computer → phone** ("Send to phone"): desktop Files (a file's sheet, the selection bar) and the tray's "Send files
+  to phone…" (any file on the computer). `sendToDevice` → `reach` → the phone's listener `PUT /send` (`SyncServer.kt`,
+  `FromComputer.receive`) into the phone's Tetra/**From computer**, the same rules, one notification "N files from
+  <computer>". Phones first, a tablet when no phone answers. The bytes go only once the paired certificate has answered
+  the handshake. Reaches the phone only while it listens (Tetra open, or `SyncListenService`).
+- Both folders are in Files, so sync then carries each to the other side as well (accepted with the choice).
+
+**Checked:** desktop `sync.test.js` (both directions: verified, bad bytes/names keep nothing, no overwrite, one burst,
+a later manifest deletes nothing; only the paired certificate gets bytes, an older phone said as such), Android
+`SendToComputerTest`. On the real pair (23 Oct, the phone the PC's hotspot): a photo (3.9 MB) and a PDF shared →
+on the PC in ~1.2 s, SHA-256 equal, "2 files from Xiaomi 15"; a PDF shared with the PC's Tetra stopped → kept in the
+outbox, job scheduled, landed 61 s after the PC came back (by the job: the phone's listener was not running after the
+install, so the start's "sync now" did not reach it); two files sent to the phone in 0.7 s, equal, "2 files from
+theologos-82xm". The user's own try (21:36–21:55): a photo shared from Photos landed with its own date; a PDF with a
+long Greek name crashed the desktop (ENAMETOOLONG on the .part, an unhandled stream error) — fixed (fitName, a short
+.part, the error ends the request) and it then landed from the outbox 8 s after the desktop restarted; the tray's "Send
+files to phone…" put two pictures on the phone; a desktop notification's click did nothing until it was held until it
+closed (Electron drops an unheld one's click on Linux); both notifications now open Files at the folder, checked by the
+user. The phone's notification was hidden by Bedtime (Do Not Disturb), not by Tetra.
+
 ### 6ap. Contacts' part, at once (built 2026-10-23, branches `claude/contacts-583397` / `contacts`)
 - **The files.** One vCard 3.0 per person in `Tetra/Contacts/` (`~/Tetra/Files/Contacts` on the PC), written by
   `Contacts.kt` and `desktop/contacts.js` alike — the same bytes for the same contact (`ContactsTest.theDesktopWritesWhatThePhoneWrites`
@@ -2450,3 +2520,55 @@ version was "both changed", one more "(n)".
 versions with one date: each replaces, none comes back; memory left disagreeing heals) — fails without either computer
 half; all desktop tests; the Android unit suite. **Not yet run between real devices.** The copies already made stay until
 Data's cleanup takes them.
+
+### 6as. A computer is the server or a client of one (built 2026-10-26, on main)
+
+**Asked (the user, 26 Oct).** "On the sync front the structure does not change at all." Android stays a client only (too
+many restrictions to be a server); a second computer joins the first as a client, with a key that can be copied; what a
+computer is gets chosen when Tetra first opens and cannot change afterwards except by a reset, with a forced backup or
+two acknowledgements of deleting the Tetra folder, the second actionable only after 10 seconds. Agreed with the user the
+same day: a client syncs everything a phone does; the key is a short phrase; the same network as phones; a backup is a
+verified copy to a chosen folder, after which everything here is deleted as in the other path.
+
+- **The role** is a row in `settings` (`role` = server | client), written once (`SyncServer.setRole` refuses the other
+  one). The first start asks (`src/Role.tsx` FirstStart, before the app). A Tetra that ran before the question was asked
+  is the server, silently (it has `notesImported`; `roleAsked` marks a start that asked, so closing before answering asks
+  again). A hidden QA copy is a server too, unless `DRIVE_ASK_ROLE` is set (for the guide's screenshots).
+- **The key** is the pairing code itself, made typeable: 16 of 32 letters and digits with no I, O, 0, 1 (80 bits), shown
+  as `ABCD-EFGH-JKLM-NPQR` under the QR with a Copy button; one use, 10 minutes, as the QR. The QR carries the same code,
+  so a phone pairs as before. The server takes it in any case, with or without dashes or spaces.
+- **Finding the server by the key** (`client.js find`): one UDP probe to every broadcast address on the beacon port
+  (43181, 6k) carrying `sha256("tetra-pair:" + code)` — never the code. A server showing that code answers with its port,
+  its certificate fingerprint and `HMAC(code, fingerprint)`. The client trusts the fingerprint only if the HMAC checks
+  out, so a stranger on the network can neither learn the phrase from the probe nor pass for the server; then `/pair`
+  goes over TLS pinned to that fingerprint, exactly as a phone's does, with `kind: 'computer'` and the client's own
+  fingerprint, addresses, port and a token (stored on the client as its hash). From then on it is a paired device: its
+  card on the server starts with everything Off (6aj) until the rules are answered there.
+- **The client syncs as a phone** (`client.js run`, the order of `SyncClient.backUp`): `/connections` (the server's
+  rules), photos up (`/have`, `PUT /blob`) and down (`/library/manifest`, `GET /blob`), on Both ways its Trash and the
+  server's declined photos (`/trashed`, `trashFromDevice`), Files (`/files/manifest`; uploads what is wanted, follows
+  `moveTo`, downloads `have`, an edit replacing via `file_updates`), Notes (`/notes`), editor tabs, then metadata
+  (`POST /metadata` with `SyncServer.metadata(0)`, `GET /metadata?since=` applied by its own `applyMetadata`). What
+  arrives goes through the server's own receive code (`receive`, `receiveFile`): the same `.part`, hash and no-overwrite
+  rules. **When:** every change that nudges devices on a server nudges the server on a client (`nudge()` in client
+  role), every 5 minutes, and when the server nudges it (`POST /sync` with the token it was given — the only request a
+  client answers; phones pair with the server, `/pair` is refused with 403).
+- **Not done on a client:** a Move (keep nothing) keeps the client's files (`shortcut:` in client.js); `/inventory`
+  (names and sizes for the server's Move preview) is not sent; scoped syncs are whole syncs.
+- **Reset** (Settings › Server or client, `reset.js`): *Back up and reset* copies the Tetra folder and the app's data to a
+  new "Tetra backup <date>" in a chosen folder, refuses a folder inside what is deleted or without the room, checks every
+  file's size, then deletes and restarts. *Delete everything and reset* asks twice; the second dialog's Reset counts down
+  10 s, and main refuses a delete less than 10 s after that dialog armed it. The wipe never takes the home folder, a
+  folder above it, or `/`. After the restart the first start's question comes back.
+
+**Checked (26 Oct):** `desktop/test/client.test.js` — the role lock; the key typed in lower case with spaces; a client
+joining by the phrase (and a wrong phrase or a forged answer finding nobody), files, photos and notes both ways, an edit
+on the server replacing the client's copy, a second sync bringing nothing twice, the server's nudge answered and `/pair`
+refused on a client; the reset's 10 s gate, its backup and its guards. All 156 desktop tests. Then two hidden instances
+from source on this PC (own data folders and ports, the installed Tetra left running): chosen server and client in the
+window, the key read off the server's Devices page and typed into the client, the rules set on the server's card and its
+nudge starting the client's sync; the laptop's file and photo reached the server, the server's reached the laptop, and an
+event written later into the server's Calendar reached the laptop by the watcher's nudge. *Back up and reset* on the server
+left a whole "Tetra backup …" and restarted at the question; *Delete everything and reset* on the client refused an early
+delete, counted down, wiped and restarted at the question. **Not run between two real computers on Wi-Fi**, and not with
+a phone paired to the same server at the same time.

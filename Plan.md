@@ -597,6 +597,18 @@ How to write here:
       with a reset of the app and a forced backup, or a double acknowledgement of full deletion of the Tetra folder, with
       the second acknowledgement having a 10-second wait before the Reset is actionable." Order (26 Oct): both at once in
       two sessions; the guide does its pairing/first-start chapter last, from the role session's screens.
+- [x] (desktop-role session, 26 Oct, Drive c468535 on main, not pushed, nothing installed) **(6) The desktop as a sync client.** Agreed with the user
+      26 Oct: first start asks Server or Client, locked after; a client syncs everything a phone does (Files, Notes, Photos,
+      people/favourites/albums); the key is a short one-use phrase (10 min) typed or copied, found on the same network as
+      phones; Settings › Reset: a verified backup to a chosen folder then everything cleared, or two acknowledgements of
+      deleting the Tetra folder, the second clickable after 10 s. Android unchanged.
+      Built (SYNC_PLAN.md 6as): `client.js` (join by phrase, sync as a phone), `reset.js`, `src/Role.tsx`; the server's
+      code is unchanged except the phrase, the beacon's answer to it and a client refusing all but "sync now". 49 strings in
+      all 24 languages; 156 desktop tests pass; run end to end with two hidden instances (server and client) on this PC.
+      Not run between two real computers. **Screens settled, for the setup guide's pairing chapter:** in the group's notes
+      folder, `role-screens/` (PNGs + README): first start's question → server's Devices (QR + key + Copy) → client types
+      the key → server's card for the new computer (rules Off until chosen) → client's Devices "Syncs with …" → Settings ›
+      Server or client (Back up and reset… / Delete everything and reset… with the 10 s countdown) → the question again.
 
 - [x] (Drive `sync-one-writer`, sync-copies session, 25 Oct) Sync's "(2)", "(3)", "(4)" of a file only the phone writes (Data's
       month file): the computer took a path it had just asked for as agreed before the upload came; a late upload (a part's and

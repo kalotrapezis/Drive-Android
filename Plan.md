@@ -23,7 +23,9 @@ How to write here:
       Slides' text effects, Tables' "…" menus, Contacts' History…) now uses IDs. Not translated on purpose: file and folder
       names, style/font/function names, text written into documents (citations, captions, "Page 1" in headers), log lines.
       Desktop: locales/en.json + el.json (1,659 keys), t(), Settings › Language (system default), 151 tests pass. Checked in
-      Greek on the tetra_shots emulator at phone and tablet size, and the desktop from source (hidden). **Left**: PDF
+      Greek on the tetra_shots emulator at phone and tablet size, and the desktop from source (hidden). 26 Oct (the user):
+      Photos is Φωτοθήκη, Local Sync Συγχρονισμός on Home, Tables' new sheets Φύλλο1 and printed headers "Σελίδα 1 από 3".
+      **Left**: PDF
       (PdfScreen.kt/PdfText.kt) waits for `claude/pdf-handles` to be merged; Maps' voice now follows the app's language
       when "Directions in" was never set (it was always Greek).
 - [x] (data-calls session, 25 Oct; branches `claude/data-calls` / Drive `data-calls`, not merged, nothing installed) Three of the

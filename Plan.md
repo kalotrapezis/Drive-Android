@@ -12,15 +12,18 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
-- [~] (setup-guide session, 26 Oct; Drive-Android `claude/setup-guide-19862a`, Drive `setup-guide`) **(5b) the graphical
-      guide**, built, in all 24 languages: Android Guide.kt — on first start (it replaced the photo screen; its photo
-      question is a Permissions step), Settings › Guide; chapters Welcome, Your computer (works alone; Local Sync › Scan a
-      code), Permissions (9, each with its state and Allow), Home (6), Files (7), Settings (2); each step a drawn copy of
-      Tetra's own piece with the spot ringed, Try it docks the step under the real screen (beside it on a tablet). Desktop
-      Guide.tsx — a panel beside the page, first time and Settings › Guide; Your devices (the server-or-client page, the
-      server = "the final device responsible for the backups and sharing of files", Add a device, the key), Files,
-      Settings. 660 Android / 155 desktop tests pass; desktop seen from source (hidden copy). **Left: the tablet check**
-      (not connected); Android's own "Allow all"/"While using the app" in 23 languages are unchecked; no native readers.
+- [x] (setup-guide session, 26 Oct; merged into main in both repos) **(5b) the graphical guide**, in all 24 languages.
+      Android Guide.kt: on first start (it replaced the photo screen; the photo question is a Permissions step) and
+      Settings › Guide; chapters Welcome, Your computer (works alone; Local Sync › Scan a code), Permissions (9, each with
+      its state and Allow; "not on this device" for calls on a SIM-less tablet), Home (6), Files (7), Settings (2), Icons
+      (the catalog, the user's ask). Each step: a drawn copy of Tetra's own piece with the spot ringed, moving where it
+      helps (a file flies when moved, a copy stays, Trash and back, a Home part carried to its cell — the user: "keep it
+      as is, but … show what happens"); Try it docks the step under the real screen (beside it on a tablet). Desktop
+      Guide.tsx: a panel beside the page, first time and Settings › Guide; Your devices (the first start's own Server /
+      Client page, Add a device, the key), Files, Settings, Icons (one pencil: Edit or Rename, depending on where).
+      660 Android / 159 desktop tests pass. Seen on the tablet 971f6b37 (Greek) except the last round (catalog, pencil,
+      fixes after the walk-through) and the first-start path (not run: it needs empty app data); desktop seen from source.
+      **Open:** Android's own "Allow all" / "While using the app" in 23 languages unchecked; no native readers.
 - [ ] **TOP OF THE LIST — the PDF editor works exactly like Words** — **with the user, when they have time, watching each step; no agent starts it alone** (the user, 26 Oct, on the tablet: "I don't like how PDF
       does things. If we need to, we build our own stuff like we did with the rest of Office. Everything works completely
       differently from Words"). Screenshots, kept local and out of git: `user-screenshots/2026-10-26-pdf-vs-words/` — 1–3

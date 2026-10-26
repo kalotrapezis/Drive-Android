@@ -621,6 +621,34 @@ How to write here:
       26 Oct, the user on the first-start page: keep the words Server/Client (Διακομιστής/Πελάτης) but explain them "as if
       to small children", sparse, step by step — done on Drive main (four short lines under Server, three under Client, a
       red "changing this later can lead to data loss"; Settings › Server or client shows the same lines).
+- [x] (desktop-role session, 26 Oct, Drive 5b1c134 on main, nothing installed, **untried on two real computers** — all Alpha) **A client PC gets the phone features too, and a server can be a NAS** (the user, 26 Oct,
+      answering what a client PC misses). No favourite PC ("over-engineering"). (1) Calls: the bubble on every computer
+      "like a switch"; Answer on one takes it there; End or Decline anywhere ends it on the phone; calling from a client
+      goes through the server. The sound on the computer where it was answered: "Bluetooth > Wi-Fi > speaker" — from the
+      phone by Bluetooth to whichever computer holds it (the server if it has Bluetooth), then over Wi-Fi to the one that
+      answered, and back the same way; End: Wi-Fi > Bluetooth > end. (2) Maps:
+      the phone's location goes to every computer where Maps is open. (3) Data: every computer gets all the counts, for
+      per-app use and losses. (4) Shared files: unchanged, they land on the server and follow each card's copy/move.
+      (5) "This is a NAS" tick on the Server card: it keeps files and backups; screen work (call bubbles, notifications,
+      reminders, timers) and the slow photo analysis fall to the next computer in line — one client holds "the crown"
+      (the first to join, by itself); until a real computer gets it, those stay off on the NAS. (6) A client's Devices
+      page shows drives, Deleted items and History.
+      (7) Maps on a computer (the user, 26 Oct: "PCs and laptops in general don't move much"): the phone's last fix is
+      kept and reused; Settings › Location says how long — Off (default: until Where I am is pressed), every half hour,
+      once a day, once a week; Where I am always asks the phone. **Later:** "active GPS on PC while in active navigation"
+      — when desktop Maps gets real turn-by-turn navigation (it has routes only).
+      Built (SYNC_PLAN.md 6at): (1)–(3), (5)–(7). Tested in desktop/test/client.test.js with a stand-in phone (a call
+      shown on the client, answered there through the server, every computer told who took it; Maps' fix; a call placed
+      from the client; the crown to the first client; the sound crossing both ways). Screens checked on two hidden
+      instances. **Not checked on real hardware:** a real call's sound relayed between two computers, and Bluetooth when
+      two computers both reach for the phone — needs the user, two computers and the phone.
+      Same day, more (the user): **the mirror** — on a client, Devices › "Show <server>'s photos here": the server's
+      photos in the gallery (a server badge on each) and as an album, only thumbnails kept; one opened comes over Wi-Fi,
+      the last 1 GB opened stays; never deleted from the client. **Beta and Alpha** — the first start opens with a card
+      saying what they mean (Tetra is Beta; Alpha = new, not tried on the equipment it is for); everything needing a
+      second computer is labelled Alpha (Client, NAS, the key for a computer, a client's Devices, the mirror, "sound
+      over Wi-Fi"); a pill beside "Tetra" top-left: Alpha (red) on a client or NAS, Beta (orange) otherwise. The user
+      has no second computer, so all of this stays Alpha until tried. Screens: role-screens/ in the notes folder.
 - [ ] **Later (the user, 26 Oct):** "a dummy setup so we can make a video for the page, and put an FAQ in the footer" — a
       demo install (fresh data folders, invented photos/files/people, a server and a client and a phone) to record the
       setup on video for Tetra's page, and an FAQ in the page's footer. Not started.

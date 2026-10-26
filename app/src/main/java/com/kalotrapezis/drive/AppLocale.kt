@@ -34,6 +34,9 @@ internal object AppLocale {
     /** A language in its own words ("Ελληνικά"). */
     fun name(tag: String): String = Locale.forLanguageTag(tag).let { l -> l.getDisplayName(l).replaceFirstChar { it.titlecase(l) } }
 
+    /** What System default gives: the device's language when Tetra has it, else English. */
+    fun systemTag(): String = android.content.res.Resources.getSystem().configuration.locales[0].language.let { if (it in tags) it else "en" }
+
     /** Before Android 13, each activity's context in the chosen language (its attachBaseContext). */
     // shortcut: before Android 13 notifications and the car's screens stay in the system's language; fine while the devices are 13+.
     fun wrap(base: Context): Context {

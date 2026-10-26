@@ -274,7 +274,7 @@ internal fun SettingsTab(
     SettingsSection(null, stringResource(R.string.settings_language_note)) {
         var language by remember { mutableStateOf(AppLocale.get(context)) }
         ChoiceRow(stringResource(R.string.settings_language), stringResource(R.string.settings_language_summary),
-            listOf("" to stringResource(R.string.settings_language_system)) + AppLocale.tags.map { it to AppLocale.name(it) }, language) { language = it; AppLocale.set(context, it) }
+            listOf("" to "${stringResource(R.string.settings_language_system)} (${AppLocale.name(AppLocale.systemTag())})") + AppLocale.tags.map { it to AppLocale.name(it) }, language) { language = it; AppLocale.set(context, it) }
     }
     // what is hidden from Home on this device, each still opened here or shown again
     val wide = LocalConfiguration.current.screenWidthDp >= 700

@@ -188,7 +188,7 @@ internal object PhoneCall {
         if (c.checkSelfPermission(android.Manifest.permission.ANSWER_PHONE_CALLS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             return org.json.JSONObject().put("error", "Allow it once on the phone: Settings › Phone › Calls on the computer.")
         val tm = c.getSystemService(android.telecom.TelecomManager::class.java)
-        val ok = runCatching { when (what) { "answer" -> { tm.acceptRingingCall(); true }; "end", "decline" -> tm.endCall(); else -> false } }
+        val ok = runCatching { when (what) { "answer" -> { tm.acceptRingingCall(); true }; "end", "decline" -> tm.endCall() || runCatching { !tm.isInCall }.getOrDefault(false); else -> false } }
             .onFailure { WriterLog.e("Contacts: $what from the computer", it) }.getOrDefault(false)
         WriterLog.i("Contacts: $what from the computer: $ok")
         return if (ok) org.json.JSONObject().put("ok", true) else org.json.JSONObject().put("error", "The phone did not $what the call.")

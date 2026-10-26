@@ -118,7 +118,7 @@ internal object PhoneCalls {
     fun act(what: String): Boolean? {
         val s = service ?: return null
         val ringing = calls.firstOrNull { it.state == Call.STATE_RINGING }
-        val call = top() ?: return false
+        val call = top() ?: return what == "end" || what == "decline" // the other side hung up first: nothing left to end is done
         when {
             what == "answer" -> answer(ringing ?: return false)
             what == "decline" -> (ringing ?: return false).reject(false, null)

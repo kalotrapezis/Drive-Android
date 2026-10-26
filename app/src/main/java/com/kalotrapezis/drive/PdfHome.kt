@@ -12,6 +12,9 @@ import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import com.mohamedrejeb.richeditor.model.RichTextState
 
 /**
@@ -116,4 +119,29 @@ internal fun PdfHomeTools(w: Color, target: PdfTextTarget?, look: PdfTextLook, s
     Tool(R.drawable.ic_format_line_spacing, stringResource(R.string.words_line_spacing), w, enabled = on) { openParagraph() }
     LINE_SPACINGS.forEach { m -> RibbonButton(plain(m), w, enabled = on) { paras { _, p -> p.copy(keep = OfficeFormats.withSpacing(p.keep, OfficeKind.Docx, m)) } } }
     RibbonButton(stringResource(R.string.common_more), w, R.drawable.ic_more_vert, enabled = on) { openParagraph() }
+}
+
+/**
+ * Layout › Paragraph (Words'): the chosen text's paragraphs' indents and the space before and after them, each − value +;
+ * off with no text chosen or typed.
+ */
+@Composable
+internal fun PdfParagraphBoxes(w: Color, target: PdfTextTarget?) {
+    val here = target?.let { t -> val at = t.chosenParas(); at.minOrNull()?.let { t.now().getOrNull(it) }?.let { p -> at to t.text.styles.look(p) } }
+    fun set(f: (ParaLook) -> ParaLook) { val t = target ?: return; val (at, was) = here ?: return; val now = f(was)
+        t.paras(t.now().mapIndexed { i, p -> if (i !in at) p else p.copy(keep = OfficeFormats.withSpacing(p.keep, OfficeKind.Docx, null,
+            now.before.takeIf { it != was.before }, now.after.takeIf { it != was.after }, now.left.takeIf { it != was.left }, null, now.right.takeIf { it != was.right })) }) }
+    val step = if (WriterUnits.name == "in") 7.2f else 0.25f * WriterUnits.pt // a tenth of an inch, a quarter centimetre
+    @Composable fun box(label: String, shown: String, down: () -> Unit, up: () -> Unit) = androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        androidx.compose.material3.Text(label, color = w, style = androidx.compose.material3.MaterialTheme.typography.labelMedium, modifier = androidx.compose.ui.Modifier.padding(start = 8.dp))
+        Tool(R.drawable.ic_remove, stringResource(R.string.words_less_of, label), w, enabled = here != null) { down() }
+        androidx.compose.material3.Text(shown, color = w, style = androidx.compose.material3.MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 1,
+            modifier = androidx.compose.ui.Modifier.widthIn(min = 44.dp))
+        Tool(R.drawable.ic_add, stringResource(R.string.words_more_of, label), w, enabled = here != null) { up() }
+    }
+    val look = here?.second ?: ParaLook()
+    box(stringResource(R.string.words_left), WriterUnits.text(look.left) + " " + WriterUnits.name, { set { it.copy(left = maxOf(0f, it.left - step)) } }, { set { it.copy(left = it.left + step) } })
+    box(stringResource(R.string.words_right), WriterUnits.text(look.right) + " " + WriterUnits.name, { set { it.copy(right = maxOf(0f, it.right - step)) } }, { set { it.copy(right = it.right + step) } })
+    box(stringResource(R.string.words_before), "${Math.round(look.before)} pt", { set { it.copy(before = maxOf(0f, it.before - 6f)) } }, { set { it.copy(before = it.before + 6f) } })
+    box(stringResource(R.string.words_after), "${Math.round(look.after)} pt", { set { it.copy(after = maxOf(0f, it.after - 6f)) } }, { set { it.copy(after = it.after + 6f) } })
 }

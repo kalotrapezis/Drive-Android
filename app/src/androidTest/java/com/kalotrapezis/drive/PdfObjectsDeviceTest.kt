@@ -88,4 +88,37 @@ class PdfObjectsDeviceTest {
         assertEquals(1, found.size)
         d.close(); dir.deleteRecursively()
     }
+
+    @Test fun designOnEveryPage() {
+        val target = InstrumentationRegistry.getInstrumentation().targetContext
+        OfficeFonts.assets = target.assets
+        val dir = java.io.File(target.cacheDir, "pdf-objects-design").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        d.insertBlank(1); d.rotate(listOf(1), 90)
+        d.putText(0, 100f, 100f, PdfText("Words on top", PdfTextLook(size = 20f), false), 300f)
+        // a yellow page, a red border along the top only, DRAFT over it
+        d.setDesign(PdfDesign(color = 0xFFF2CC, border = PdfDesign.border(Border(3f, 0xFF0000), "t"), watermark = "DRAFT"))
+        assertEquals(PdfDesign(color = 0xFFF2CC, border = PdfDesign.border(Border(3f, 0xFF0000), "t"), watermark = "DRAFT"), d.design())
+        fun px(i: Int, x: Int, y: Int) = kotlinx.coroutines.runBlocking { d.page(i, d.sizes[i].width.toInt()) }!!.getPixel(x, y)
+        // a colour drawn and read back within a shade (rounding on the way)
+        fun near(want: Int, got: Int) = assertTrue("%06X ≈ %06X".format(got and 0xFFFFFF, want), listOf(16, 8, 0).all { k -> kotlin.math.abs((want shr k and 0xFF) - (got shr k and 0xFF)) <= 3 })
+        // the colour behind (the corner is yellow), the words still black over it
+        near(0xFFF2CC, px(0, 5, 5))
+        // the border 24 pt down from the top, on the page shown turned too
+        for (i in 0..1) assertTrue("border on page ${i + 1}", (20..28).any { y -> px(i, (d.sizes[i].width / 2).toInt(), y).let { c -> android.graphics.Color.red(c) > 200 && android.graphics.Color.green(c) < 60 } })
+        val text = kotlinx.coroutines.runBlocking { d.text(0) }
+        assertTrue(text, "DRAFT" in text && "Words on top" in text)
+        // changed: one design, not two; taken off: the page as it was
+        d.setDesign(PdfDesign(color = 0xDDEBF7))
+        near(0xDDEBF7, px(0, 5, 5))
+        assertTrue("DRAFT" !in kotlinx.coroutines.runBlocking { d.text(0) })
+        d.setDesign(PdfDesign())
+        near(0xFFFFFF, px(0, 5, 5))
+        d.save(java.io.File(dir, "base.pdf")); d.close()
+        val again = PdfDoc(f)
+        assertEquals(PdfDesign(), again.design())
+        assertTrue("Words on top" in kotlinx.coroutines.runBlocking { again.text(0) })
+        again.close(); dir.deleteRecursively()
+    }
 }

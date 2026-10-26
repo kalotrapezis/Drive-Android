@@ -374,8 +374,13 @@ internal object PdfMargins {
     val labels = mapOf("Normal" to R.string.pdf_normal, "Narrow" to R.string.words_margins_narrow, "Moderate" to R.string.words_margins_moderate, "Wide" to R.string.words_margins_wide)
     fun page(name: String) = (all.firstOrNull { it.first == name } ?: all[0]).second.let { (tb, lr) -> DocPage(top = tb, bottom = tb, left = lr, right = lr) }
     fun nameOf(m: DocPage) = all.firstOrNull { (_, v) -> v.first == m.top && v.second == m.left }?.first
-    fun load(context: android.content.Context) = page(context.getSharedPreferences("office_editor", android.content.Context.MODE_PRIVATE).getString("pdf_margins", "Normal") ?: "Normal")
+    /** Kept as a preset's name, or as Page Setup's own numbers (top, bottom, left, right). */
+    fun load(context: android.content.Context): DocPage {
+        val kept = context.getSharedPreferences("office_editor", android.content.Context.MODE_PRIVATE).getString("pdf_margins", "Normal") ?: "Normal"
+        return kept.split(',').mapNotNull { it.toFloatOrNull() }.takeIf { it.size == 4 }?.let { (t, b, l, r) -> DocPage(top = t, bottom = b, left = l, right = r) } ?: page(kept)
+    }
     fun save(context: android.content.Context, name: String) = context.getSharedPreferences("office_editor", android.content.Context.MODE_PRIVATE).edit().putString("pdf_margins", name).apply()
+    fun save(context: android.content.Context, m: DocPage) = save(context, nameOf(m) ?: listOf(m.top, m.bottom, m.left, m.right).joinToString(","))
 }
 
 /** [paras] in [look]'s font (a text's one font, as a Slides box's), its colour on words with none of their own. */

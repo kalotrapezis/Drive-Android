@@ -2756,15 +2756,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     val pickSignature = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked ->
         picked ?: return@rememberLauncherForActivityResult
         runCatching {
-            // a photo of a signature on paper: its white made see-through, so it sits on the page as ink
-            val bmp = android.graphics.ImageDecoder.decodeBitmap(android.graphics.ImageDecoder.createSource(context.contentResolver, picked)) { dec, info, _ ->
-                val k = minOf(1f, 900f / maxOf(info.size.width, info.size.height)); dec.setTargetSize((info.size.width * k).toInt().coerceAtLeast(1), (info.size.height * k).toInt().coerceAtLeast(1))
-                dec.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE }.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
-            val px = IntArray(bmp.width * bmp.height).also { bmp.getPixels(it, 0, bmp.width, 0, 0, bmp.width, bmp.height) }
-            for (i in px.indices) { val c = px[i]; val l = ((c shr 16 and 0xFF) * 299 + (c shr 8 and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
-                px[i] = if (l > 170) 0 else (c and 0xFFFFFF) or (((255 - l) * 255 / 255).coerceIn(80, 255) shl 24) }
-            bmp.setPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
-            signatureFile.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            signatureFromPhoto(context, picked, signatureFile)
         }.onSuccess { insertSignature() }.onFailure { message = context.getString(R.string.words_picture_not_used) }
     }
     // Pictures in front of or behind the text (asked 2026-10-01: a cover's logos showed as tiny marks in the corner):
@@ -3140,16 +3132,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
         message = context.getString(R.string.words_citations_in_style, c.label); WriterLog.i("citation style ${c.name}")
     }
     fun putTextBox(lines: List<String>, art: Int?, effects: TextEffects = TextEffects(), warp: TextWarp? = null): String {
-        val (w, h) = (if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
-            else android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }
-                .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f }) // as big as its words
-            // Bent: room for the bend (a circle as tall as it is wide; an arch or a wave a good part of its width).
-            .let { (w0, h0) -> when (warp) { null -> w0 to h0; TextWarp.Circle -> maxOf(w0 * 0.6f, 144f).let { it to it }; else -> w0 to maxOf(h0, w0 * 0.35f) } }
-        val fx = if (kind == OfficeKind.Docx) effects else effects.copy(glow = null) // LibreOffice has no glow on letters
-        val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF,
-            font = (if (kind == OfficeKind.Docx) fx.docx() else fx.odt()).ifEmpty { null }))) }
-        val img = PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art, fx, warp), box = box), PictureWrap.Square, kind)
-        if (fx.any) WriterLog.i("WordArt effects: $fx")
+        val img = newTextBoxImage(kind, lines, art, effects, warp, PictureWrap.Square)
         pictures[img.key] = img
         val at = placePicture(img)
         state.selection = androidx.compose.ui.text.TextRange(at, at + 1)
@@ -4963,13 +4946,43 @@ private fun Modifier.pinchZoom(now: () -> Float, min: Float, max: Float, side: a
     }
 }
 
+/**
+ * A new text box ([art] null) or WordArt ([art] its colour, ARGB) as Words makes them (Insert › Text box, WordArt; the
+ * PDF's Insert › WordArt too), in [kind]'s words, wrapped as [wrap].
+ */
+internal fun newTextBoxImage(kind: OfficeKind, lines: List<String>, art: Int?, effects: TextEffects = TextEffects(), warp: TextWarp? = null, wrap: PictureWrap = PictureWrap.Square): DocImage {
+    val (w, h) = (if (art == null) 180f to (lines.size * 16f + 12f).coerceAtLeast(36f) // 2½ inches wide, as tall as its lines
+        else android.graphics.Paint().apply { textSize = PictureXml.ART_PT; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+            .let { p -> lines.maxOf { p.measureText(it) } * 1.1f + 16f to lines.size * PictureXml.ART_PT * 1.25f + 10f }) // as big as its words
+        // Bent: room for the bend (a circle as tall as it is wide; an arch or a wave a good part of its width).
+        .let { (w0, h0) -> when (warp) { null -> w0 to h0; TextWarp.Circle -> maxOf(w0 * 0.6f, 144f).let { it to it }; else -> w0 to maxOf(h0, w0 * 0.35f) } }
+    val fx = if (kind == OfficeKind.Docx) effects else effects.copy(glow = null) // LibreOffice has no glow on letters
+    val box = lines.map { DocPara(listOf(if (art == null) DocRun(it) else DocRun(it, bold = true, sizePt = PictureXml.ART_PT, color = art and 0xFFFFFF,
+        font = (if (kind == OfficeKind.Docx) fx.docx() else fx.odt()).ifEmpty { null }))) }
+    if (fx.any) WriterLog.i("WordArt effects: $fx")
+    return PictureXml.withWrap(DocImage("b${System.nanoTime()}", null, w, h, PictureXml.newTextBox(kind, w, h, lines, art, fx, warp), box = box), wrap, kind)
+}
+
+/** Insert › Signature › From a picture of it (Words' and the PDF's): a photo of a signature on paper made ink — its white see-through — into [into] as a PNG. */
+internal fun signatureFromPhoto(context: android.content.Context, picked: android.net.Uri, into: File) {
+    // a photo of a signature on paper: its white made see-through, so it sits on the page as ink
+    val bmp = android.graphics.ImageDecoder.decodeBitmap(android.graphics.ImageDecoder.createSource(context.contentResolver, picked)) { dec, info, _ ->
+        val k = minOf(1f, 900f / maxOf(info.size.width, info.size.height)); dec.setTargetSize((info.size.width * k).toInt().coerceAtLeast(1), (info.size.height * k).toInt().coerceAtLeast(1))
+        dec.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE }.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+    val px = IntArray(bmp.width * bmp.height).also { bmp.getPixels(it, 0, bmp.width, 0, 0, bmp.width, bmp.height) }
+    for (i in px.indices) { val c = px[i]; val l = ((c shr 16 and 0xFF) * 299 + (c shr 8 and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
+        px[i] = if (l > 170) 0 else (c and 0xFFFFFF) or (((255 - l) * 255 / 255).coerceIn(80, 255) shl 24) }
+    bmp.setPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+    into.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+}
+
 /** WordArt's outline: black round coloured letters, grey round black ones; its glow gold, blue round gold letters. */
 internal fun artOutline(color: Int) = if (color and 0xFFFFFF == 0) 0x7F7F7F else 0x000000
 internal fun artGlow(color: Int) = if (color and 0xFFFFFF == 0xFFC000) 0x4472C4 else 0xFFC000
 
 /** A text box's words, a paragraph a line (Insert › Text box, Picture › Edit text); with [art], WordArt's and its colour. */
 @Composable
-private fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, title: String? = null, confirm: String? = null,
+internal fun TextBoxDialog(initial: String, dismiss: () -> Unit, art: Boolean = false, glowAllowed: Boolean = true, title: String? = null, confirm: String? = null,
     /** a WordArt's colour (ARGB), effects and bend as they are, to be changed */ start: Triple<Int, TextEffects, TextWarp?>? = null,
     done: (String, Int, TextEffects, TextWarp?) -> Unit) {
     var bend by remember { mutableStateOf(start?.third) }
@@ -5166,7 +5179,7 @@ private val SPACING_SETS = listOf(Triple(R.string.words_spacing_none, 0f, 1f), T
     Triple(R.string.words_spacing_open, 10f, 1.15f), Triple(R.string.words_spacing_relaxed, 6f, 1.5f), Triple(R.string.words_spacing_double, 8f, 2f))
 
 /** Design › Page colour: Word's light theme tints, and white (a page coloured white is not the same as none in Word). */
-private val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDED, 0xFFFFFF)
+internal val PAGE_COLORS = listOf(0xFFF2CC, 0xE2EFDA, 0xDDEBF7, 0xFCE4D6, 0xEDEDED, 0xFFFFFF)
 
 /** A named tool of the ribbon (Save, Heading 1…). */
 /** A sideways-scrolling row with more beyond an edge: that edge shaded, so it shows there is more (the user, 2026-10-14). */

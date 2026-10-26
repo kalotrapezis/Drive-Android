@@ -1171,6 +1171,10 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     val dictate = rememberDictation { said -> val t = typed.annotatedString.text
         val before = t.getOrNull(typed.selection.min - 1); val after = t.getOrNull(typed.selection.max)
         typed.addTextAfterSelection((if (before != null && !before.isWhitespace()) " " else "") + said + (if (after != null && after.isLetterOrDigit()) " " else "")) }
+    var inserting by remember { mutableStateOf<String?>(null) } // Insert's, Design's and Layout's windows: shapes, wordart, chart, equation, symbol, date, page, border, boxText
+    var drawingOn by remember { mutableStateOf<Pair<Int, Bitmap?>?>(null) } // Draw › Draw on page: the page, its picture under the pen
+    var drawingBox by remember { mutableStateOf(false) } // Draw › Drawing box
+    var editingInk by remember { mutableStateOf(false) } // Picture › Edit drawing
     var paragraphPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home › Line spacing, More…: Words' Paragraph window
     // an object chosen: its own tab shown, named by its kind (Words' Image, Shape, Text box…); none chosen: the tab before
     LaunchedEffect(chosen != null) {
@@ -1405,6 +1409,34 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         change { moved = d.restackObject(c.page, c.id, to) }
         if (!moved) Toast.makeText(context, if (to > 0) R.string.pdf_in_front_already else R.string.pdf_at_back_already, Toast.LENGTH_SHORT).show()
     }
+    val design = remember(version, doc) { doc?.design() ?: PdfDesign() } // Design's watermark, page colour and border
+    val pickWatermark = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        val d = doc ?: return@rememberLauncherForActivityResult; uri ?: return@rememberLauncherForActivityResult
+        runCatching { context.contentResolver.openInputStream(uri)!!.use { it.readBytes() } }.onSuccess { b -> change { d.setDesign(design.copy(watermark = null, picture = b)) } }
+            .onFailure { Toast.makeText(context, R.string.pdf_not_a_picture, Toast.LENGTH_SHORT).show() }
+    }
+    val pickSignaturePhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching { signatureFromPhoto(context, uri, signatureFile) }.onSuccess { tool = PdfTool.Sign; Toast.makeText(context, R.string.pdf_signature_kept, Toast.LENGTH_LONG).show() }
+            .onFailure { Toast.makeText(context, R.string.words_picture_not_used, Toast.LENGTH_SHORT).show() }
+    }
+    /** A new Words object (Insert's: a shape, WordArt, chart, equation, drawing) on the page shown, its middle at [mid] or the page's; chosen after, as Words'. */
+    fun putNew(img: DocImage, page: Int = at, mid: Offset? = null) {
+        val d = doc ?: return; val s = d.sizes.getOrNull(page) ?: return
+        val w = PdfWords.of(img)
+        var id = 0
+        change { id = d.putWords(page, w, mid?.x ?: (s.width / 2), mid?.y ?: (s.height / 2)) }
+        tool = null; chosen = d.objectById(page, id)
+        WriterLog.i("PDF: ${w.kind} put in")
+    }
+    /** Words put in (Symbol, Date): where one types, else a new text at the margins' corner, chosen. */
+    fun insertWords(words: String) {
+        if (typing != null) { typed.addTextAfterSelection(words); return }
+        val d = doc ?: return; val i = at; val s = d.sizes.getOrNull(i) ?: return
+        var id = 0
+        change { id = d.putText(i, margins.left, margins.top, PdfText(words, textLook.copy(fill = null, line = null, turn = 0), false), maxOf(72f, s.width - margins.left - margins.right)) }
+        chosen = d.objectById(i, id)
+    }
     /** Picture › Save as (Words'): the picture into the phone's Pictures/Tetra. */
     fun savePicture(o: PdfWords) { val b = o.bytes() ?: return
         scope.launch { Toast.makeText(context, savePictureToPhone(context, b, o.img.extension, file?.name ?: "PDF"), Toast.LENGTH_LONG).show() } }
@@ -1554,6 +1586,53 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         signing = false
         runCatching { signatureFile.writeBytes(png) }.onSuccess { tool = PdfTool.Sign; Toast.makeText(context, R.string.pdf_signature_kept, Toast.LENGTH_LONG).show() }
     }
+    // Insert's, Design's and Layout's windows: Words' own
+    when (inserting) {
+        "shapes" -> ShapesDialog(false, { inserting = null }) { shape, fill, line -> inserting = null
+            val (w, h) = shapeSize(shape)
+            putNew(DocImage("s${System.nanoTime()}", null, w, h, PictureXml.newShape(shape, OfficeKind.Docx, fill, line, 1f, w, h), wrap = PictureWrap.InFront)) }
+        "wordart" -> TextBoxDialog("Your text here", { inserting = null }, art = true) { text, color, fx, warp -> inserting = null
+            putNew(newTextBoxImage(OfficeKind.Docx, text.lines(), color, fx, warp, PictureWrap.InFront)) }
+        "chart" -> ChartDialog(WORD_SAMPLE_CHART, false, { inserting = null }) { ch -> inserting = null
+            putNew(DocImage("c${System.nanoTime()}", null, 396f, 230f, chart = ch, wrap = PictureWrap.InFront)) }
+        "equation" -> EquationDialog(null, { inserting = null }) { m -> inserting = null
+            putNew(OfficeMath.image("n${System.nanoTime()}", m, OfficeMath.equation(m, false), 12f)) }
+        "chartEdit" -> chosen?.words?.let { o -> o.img.chart?.let { ch -> ChartDialog(ch, true, { inserting = null }) { n -> inserting = null; val (lw, lh) = o.laid
+            reput(PdfWords.of(DocImage(o.img.key, null, lw, lh, chart = n, wrap = PictureWrap.InFront))) } } }
+        "mathEdit" -> chosen?.words?.let { o -> EquationDialog(o.img.math, { inserting = null }) { m -> inserting = null
+            reput(PdfWords.of(OfficeMath.image(o.img.key, m, OfficeMath.equation(m, false), 12f))) } }
+        "symbol" -> SymbolDialog({ inserting = null }) { sym -> inserting = null; insertWords(sym) }
+        "date" -> DateDialog({ inserting = null }) { day -> inserting = null; insertWords(day) }
+        "page" -> doc?.sizes?.getOrNull(at)?.let { s -> PageSetupDialog(DocPage(s.width, s.height, margins.top, margins.bottom, margins.left, margins.right), { inserting = null }) { np ->
+            inserting = null
+            // Word's Page Setup: every page that size (as a document of one section), the margins Position and a new text go by
+            if (np.width != s.width || np.height != s.height) doc?.let { d -> change { d.resize { Size(np.width, np.height) } } }
+            margins = np; PdfMargins.save(context, np)
+            WriterLog.i("PDF: page setup ${np.width.toInt()}×${np.height.toInt()}")
+        } }
+        "border" -> PageBorderDialog(design.border, { inserting = null }) { line, sides -> inserting = null
+            doc?.let { d -> change { d.setDesign(design.copy(border = line?.let { PdfDesign.border(it, sides) })) } } }
+        "boxText" -> chosen?.words?.let { o -> val img = o.img; val art = TextWarp.art(img.raw) != null
+            TextBoxDialog(img.box.orEmpty().joinToString("\n") { it.text }, { inserting = null }, art = art, confirm = stringResource(R.string.common_done)) { text, color, fx, warp ->
+                inserting = null
+                val lines = text.lines()
+                if (art) reput(PdfWords.of(newTextBoxImage(OfficeKind.Docx, lines, color, fx, warp, PictureWrap.InFront).let { n -> Arrange.rotated(n, o.turn) ?: n }))
+                else img.raw?.let { raw -> reput(o.with(img.with(raw = PictureXml.boxText(raw, OfficeKind.Docx, lines), box = PictureXml.boxParas(img, lines)))) }
+            } }
+    }
+    // Draw › Draw on page (Words'): drawn over the page as it is, put on it as a drawing; Drawing box: drawn in a box, put in the page's middle
+    drawingOn?.let { (page, under) -> doc?.sizes?.getOrNull(page)?.let { s ->
+        DrawDialog(s.width, { drawingOn = null }, slide = Triple(s.width, s.height) { c -> under?.let { b -> c.drawBitmap(b, null, android.graphics.RectF(0f, 0f, s.width, s.height), null) } }) { png, ww, hh, place, _ ->
+            drawingOn = null
+            putNew(DocImage("d${System.nanoTime()}", null, ww, hh, bytes = png, wrap = PictureWrap.InFront), page, place?.let { (x, y) -> Offset(x + ww / 2, y + hh / 2) })
+        } } }
+    if (drawingBox) DrawDialog(minOf(450f, doc?.sizes?.getOrNull(at)?.width?.minus(margins.left + margins.right) ?: 450f), { drawingBox = false }) { png, ww, hh, _, _ ->
+        drawingBox = false; putNew(DocImage("d${System.nanoTime()}", null, ww, hh, bytes = png, wrap = PictureWrap.InFront)) }
+    if (editingInk) chosen?.words?.let { o -> o.bytes()?.let(InkPicture::strokesOf)?.let { (strokes, _) -> val (lw, lh) = o.laid
+        DrawDialog(lw, { editingInk = false }, boxAspect = lh / lw.coerceAtLeast(1f), initial = strokes) { png, _, _, _, _ ->
+            editingInk = false
+            reput(PdfWords.of(DocImage(o.img.key, null, lw, lh, bytes = png, wrap = PictureWrap.InFront)).let { n -> Arrange.rotated(n.img, o.turn)?.let(n::with) ?: n })
+        } } }
     // Home › Line spacing and More…: Words' Paragraph window, for the paragraphs Home's target has chosen
     paragraphPage?.let { (at, look) -> ParagraphDialog(look, { paragraphPage = null }) { now ->
         paragraphPage = null
@@ -1661,12 +1740,12 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
         }
         "watermark" -> {
-            var words by remember { mutableStateOf("ΠΡΟΣΧΕΔΙΟ") }
+            // Design › Watermark › Custom… (Words'): its words across every page
+            var words by remember { mutableStateOf(design.watermark ?: "") }
             androidx.compose.material3.AlertDialog(onDismissRequest = { asking = null }, title = { Text(stringResource(R.string.words_watermark)) },
-                text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.pdf_watermark_words)) }, singleLine = true) },
+                text = { androidx.compose.material3.OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.words_text_across_pages)) }, singleLine = true) },
                 confirmButton = { androidx.compose.material3.TextButton(enabled = words.isNotBlank(), onClick = { asking = null
-                    val (png, aspect) = watermarkPng(words.trim())
-                    doc?.let { d -> change { d.watermark(png, aspect) } } }) { Text(stringResource(R.string.pdf_put_in), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                    doc?.let { d -> change { d.setDesign(design.copy(watermark = words.trim(), picture = null)) } } }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
                 dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
         }
         "password" -> {
@@ -1790,11 +1869,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 // a text chosen, as a Slides box: Selection first (Cut, Copy, Paste, formatting), the text's own tab last in the lighter colour
                 // Words' tabs in Words' order (the user, 24 Oct: "take a look on what the other applets have"), the PDF's own among them
                 val tabNames = mapOf("Selection" to stringResource(R.string.words_tab_selection), "File" to stringResource(R.string.words_tab_file),
-                    "Home" to stringResource(R.string.words_tab_home), "Insert" to stringResource(R.string.words_tab_insert), "Draw" to stringResource(R.string.words_tab_draw),
+                    "Home" to stringResource(R.string.words_tab_home), "Insert" to stringResource(R.string.words_tab_insert), "Draw" to stringResource(R.string.words_tab_draw), "Design" to stringResource(R.string.words_tab_design),
                     "Layout" to stringResource(R.string.words_tab_layout), "Pages" to stringResource(R.string.words_pages), "Review" to stringResource(R.string.words_tab_review),
                     "Fill & Sign" to stringResource(R.string.pdf_tab_fill_sign), "Protect" to stringResource(R.string.pdf_tab_protect), "View" to stringResource(R.string.words_tab_view),
                     OBJECT_TAB to (chosen?.kind?.let { if (it == "Drawing") stringResource(R.string.pdf_drawing) else objectKindName(it) } ?: ""))
-                OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
+                OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Design", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
                     OBJECT_TAB.takeIf { chosen != null }),
                     tab, w, PDF_RED, { tab = it; tool = null }, contextual = OBJECT_TAB, label = { tabNames[it] ?: it }) {
                     // typing: ✓ puts the words on; an object chosen: ✕ lets go of it (Words')
@@ -1843,18 +1922,17 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     }
                     // Layout, as Words' and Tables': the pages' size and way round (all of them, as Word's without sections), the margins
                     if (tab == "Layout") {
+                        // Words' Layout: margins, orientation, the chosen text's paragraph, size; then the PDF's own pages
                         val now = d.sizes.getOrNull(at)
-                        RibbonMenu(stringResource(R.string.words_size), w, R.drawable.ic_fit_page, preset = false, choices = PdfPaper.all.map { (name, p) ->
-                            MenuChoice(stringResource(R.string.pdf_paper_size, name, WriterUnits.text(p.width), WriterUnits.text(p.height), unitName), checked = now?.let { PdfPaper.paper(it) } == name) {
-                                // the paper's size, each page kept the way round it was
-                                change { d.resize { s -> if (s.width > s.height) Size(p.height, p.width) else p } }; WriterLog.i("PDF: page size $name") } })
+                        RibbonButton(stringResource(R.string.words_margins), w, R.drawable.ic_margin) { inserting = "page" }
                         RibbonButton(stringResource(R.string.words_portrait), w, R.drawable.ic_crop_portrait, on = now != null && now.height >= now.width) {
                             change { d.resize { s -> if (s.width > s.height) Size(s.height, s.width) else s } }; WriterLog.i("PDF: portrait") }
                         RibbonButton(stringResource(R.string.words_landscape), w, R.drawable.ic_crop_landscape, on = now != null && now.width > now.height) {
                             change { d.resize { s -> if (s.height > s.width) Size(s.height, s.width) else s } }; WriterLog.i("PDF: landscape") }
-                        RibbonMenu(stringResource(R.string.words_margins), w, R.drawable.ic_margin, preset = false, choices = PdfMargins.all.map { (name, v) ->
-                            MenuChoice(stringResource(R.string.pdf_margin_size, stringResource(PdfMargins.labels.getValue(name)), WriterUnits.text(v.first), WriterUnits.text(v.second), unitName), checked = PdfMargins.nameOf(margins) == name) {
-                                margins = PdfMargins.page(name); PdfMargins.save(context, name) } })
+                        RibbonDivider(w)
+                        PdfParagraphBoxes(w, homeTarget)
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_fit_page) { inserting = "page" }
                         RibbonDivider(w)
                         val page = at
                         RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
@@ -1914,6 +1992,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             return@RibbonLine
                         }
                         if (c0.text != null) RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit) { retype(c0) }
+                        // Words' own for its kinds: a text box's or WordArt's words, a drawing drawn on again, a chart's data, an equation
+                        if (img?.box != null) RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit) { inserting = "boxText" }
+                        if (img != null && remember(c0.id) { o.bytes()?.let(InkPicture::strokesOf) != null }) RibbonButton(stringResource(R.string.words_edit_drawing), w, R.drawable.ic_draw) { editingInk = true }
+                        if (img?.chart != null) RibbonButton(stringResource(R.string.words_edit_data), w, R.drawable.ic_bar_chart) { inserting = "chartEdit" }
+                        if (img?.math != null) RibbonButton(stringResource(R.string.words_edit_equation), w, R.drawable.ic_functions) { inserting = "mathEdit" }
                         if (c0.text != null || img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton(stringResource(R.string.words_shape_options), w, R.drawable.ic_tune) { shapeOptions = true }
                         RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio) { sizing = true }
                         RibbonDivider(w)
@@ -1962,23 +2045,30 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         return@RibbonLine
                     }
                     if (tab == "Insert") {
-                        // as Words' Insert: pages, words, pictures and drawings, notes, page furniture
+                        // Words' Insert, its groups in its order (the page break, table, video, link, drop cap and line break: a PDF's pages are fixed)
                         val page = at
                         RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
-                        RibbonButton(stringResource(R.string.pdf_insert_pdf), w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
-                        RibbonDivider(w)
-                        ToolButton(PdfTool.Text); ToolButton(PdfTool.TextBox)
                         RibbonDivider(w)
                         RibbonButton(stringResource(R.string.words_picture), w, R.drawable.ic_gallery) { pickImage.launch(arrayOf("image/*")) }
-                        RibbonButton(stringResource(R.string.words_signature), w, R.drawable.ic_draw, on = tool == PdfTool.Sign) { if (!signatureFile.isFile) signing = true else tool = if (tool == PdfTool.Sign) null else PdfTool.Sign }
+                        RibbonMenu(stringResource(R.string.words_signature), w, R.drawable.ic_draw, on = tool == PdfTool.Sign, preset = false, choices = listOf(
+                            MenuChoice(stringResource(if (signatureFile.isFile) R.string.words_put_my_signature else R.string.words_draw_my_signature), icon = R.drawable.ic_draw) { if (!signatureFile.isFile) signing = true else tool = PdfTool.Sign },
+                            MenuChoice(stringResource(R.string.words_draw_new_one), icon = R.drawable.ic_edit, opens = true) { signing = true },
+                            MenuChoice(stringResource(R.string.words_from_picture_of_it), icon = R.drawable.ic_gallery, opens = true) { pickSignaturePhoto.launch(arrayOf("image/*")) }))
+                        RibbonButton(stringResource(R.string.words_shapes), w, R.drawable.ic_category) { inserting = "shapes" }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_text_box), w, R.drawable.ic_text_box, on = tool == PdfTool.TextBox) { tool = if (tool == PdfTool.TextBox) null else PdfTool.TextBox }
+                        RibbonButton(stringResource(R.string.words_wordart), w, R.drawable.ic_format_color_text) { inserting = "wordart" }
+                        RibbonButton(stringResource(R.string.words_chart), w, R.drawable.ic_bar_chart) { inserting = "chart" }
                         RibbonButton(stringResource(R.string.pdf_stamp), w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) { tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp }
-                        ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
                         RibbonDivider(w)
-                        ToolButton(PdfTool.Note); ToolButton(PdfTool.Date)
+                        RibbonButton(stringResource(R.string.words_comment), w, R.drawable.ic_comment, on = tool == PdfTool.Note) { tool = if (tool == PdfTool.Note) null else PdfTool.Note }
                         RibbonDivider(w)
-                        RibbonButton(stringResource(R.string.words_page_numbers), w, R.drawable.ic_format_list_numbered) { change { d.headerFooter("", "{n} / {N}", 10f) } }
-                        RibbonButton(stringResource(R.string.words_header_footer), w, R.drawable.ic_text_fields) { asking = "header" }
-                        RibbonButton(stringResource(R.string.words_watermark), w, R.drawable.ic_branding_watermark) { asking = "watermark" }
+                        RibbonButton(stringResource(R.string.words_header_footer), w, R.drawable.ic_page_header) { asking = "header" }
+                        RibbonButton(stringResource(R.string.words_page_numbers), w, R.drawable.ic_numbers) { change { d.headerFooter("", "{n} / {N}", 10f) } }
+                        RibbonDivider(w)
+                        RibbonButton(stringResource(R.string.words_date), w, R.drawable.ic_calendar_today) { inserting = "date" }
+                        RibbonButton(stringResource(R.string.words_symbol), w, R.drawable.ic_special_character) { inserting = "symbol" }
+                        RibbonButton(stringResource(R.string.words_equation), w, R.drawable.ic_functions) { inserting = "equation" }
                         return@RibbonLine
                     }
                     if (tab == "Protect") {
@@ -2009,14 +2099,21 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         return@RibbonLine
                     }
                     if (tab == "Draw") {
-                        ToolButton(PdfTool.Pen); ToolButton(PdfTool.Marker)
-                        // Words' text colours, white among them: a white pen covers a stroke (the user, 25 Oct)
-                        Swatches(w, R.drawable.ic_palette, stringResource(R.string.pdf_pen_colour), TEXT_COLOURS) { c ->
-                            c?.let { penColour = (it.toArgb() and 0xFFFFFF) } }
-                        RibbonDivider(w)
-                        listOf(1f to R.string.words_thin, 2f to R.string.words_medium, 4f to R.string.words_thick).forEach { (pt, label) -> RibbonButton(stringResource(label), w, on = penWidth == pt) { penWidth = pt } }
-                        RibbonDivider(w)
-                        ToolButton(PdfTool.Erase)
+                        // Words' Draw: on the page as it is (drawn over it, put on it), or in a box
+                        RibbonButton(stringResource(R.string.words_draw_on_page), w, R.drawable.ic_draw) { val page = at; scope.launch { drawingOn = page to d.page(page, 1200) } }
+                        RibbonButton(stringResource(R.string.words_drawing_box), w, R.drawable.ic_ink_pen) { drawingBox = true }
+                        return@RibbonLine
+                    }
+                    if (tab == "Design") {
+                        // Words' Design for a PDF: the watermark, the page colour and the page borders, on every page
+                        RibbonMenu(stringResource(R.string.words_watermark), w, R.drawable.ic_branding_watermark, on = design.over, choices =
+                            Watermark.PRESETS.map { t -> MenuChoice(t, checked = t == design.watermark) { change { d.setDesign(design.copy(watermark = t, picture = null)) } } } +
+                            MenuChoice(stringResource(R.string.words_custom_watermark), opens = true) { asking = "watermark" } +
+                            MenuChoice(stringResource(R.string.words_picture_watermark), checked = design.picture != null, opens = true, icon = R.drawable.ic_gallery) { pickWatermark.launch(arrayOf("image/*")) } +
+                            listOfNotNull(MenuChoice(stringResource(R.string.words_remove_watermark), opens = true, icon = R.drawable.ic_delete) { change { d.setDesign(design.copy(watermark = null, picture = null)) } }.takeIf { design.over }))
+                        Swatches(w, R.drawable.ic_format_color_fill, stringResource(R.string.words_page_colour), PAGE_COLORS.map { Color(0xFF000000 or it.toLong()) }) { c ->
+                            change { d.setDesign(design.copy(color = c?.let { it.toArgb() and 0xFFFFFF }?.takeIf { it != 0xFFFFFF })) } }
+                        RibbonButton(stringResource(R.string.words_page_borders), w, R.drawable.ic_border_outer, on = design.border != null) { inserting = "border" }
                         return@RibbonLine
                     }
                     val page = at

@@ -1623,7 +1623,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
                     Column(Modifier.weight(1f)) {
                         Text(file?.name ?: stringResource(R.string.app_pdf), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        doc?.let { Text(pluralStringResource(R.plurals.pdf_pages, it.sizes.size, it.sizes.size) + " · " + stringResource(if (editing) if (version >= 0 && it.dirty) R.string.words_not_saved else R.string.pdf_editing else R.string.pdf_view_only), style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f)) }
+                        doc?.let { Text(pluralStringResource(R.plurals.pdf_pages, it.sizes.size, it.sizes.size) + " · " + stringResource(if (editing) if (version >= 0 && it.dirty) R.string.words_not_saved else R.string.pdf_editing else R.string.pdf_view_only), style = MaterialTheme.typography.labelMedium, color = islandContentColor().copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
                     val d0 = doc
                     if (editing && d0 != null) {
@@ -1635,7 +1635,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         }
                         Tool(R.drawable.ic_check, stringResource(R.string.common_done), islandContentColor()) { putTyped(); if (d0.dirty) leaving = true else editing = false }
                     } else {
-                    if (d0?.editable == true) RibbonButton(stringResource(R.string.common_edit), islandContentColor(), R.drawable.ic_edit) { editing = true; WriterLog.i("PDF: edit") }
+                    // a phone: the pencil alone, as Tables' and Slides' (a longer word, "Επεξεργασία", left the file's name no room)
+                    if (d0?.editable == true) { if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600) Tool(R.drawable.ic_edit, stringResource(R.string.common_edit), islandContentColor()) { editing = true; WriterLog.i("PDF: edit") }
+                        else RibbonButton(stringResource(R.string.common_edit), islandContentColor(), R.drawable.ic_edit) { editing = true; WriterLog.i("PDF: edit") } }
                     if (Pdf.hasText && doc != null) IconButton(onClick = { finding = !finding; if (!finding) matches = null }) {
                         Icon(painterResource(R.drawable.ic_search), contentDescription = stringResource(R.string.office_find), tint = if (finding) PDF_RED else islandContentColor()) }
                     FavouriteHeart(file, islandContentColor()) // a tablet or bigger: the Office home's Favourites (the user, 18 Oct)

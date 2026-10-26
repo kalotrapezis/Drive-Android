@@ -3322,7 +3322,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                     Tool(R.drawable.ic_view_column, stringResource(R.string.words_two_pages), w, enabled = loaded, on = pagesAcross == 2) { pagesAcross = if (pagesAcross == 2) 1 else 2 }
                     Tool(R.drawable.ic_share, stringResource(R.string.common_share), w, enabled = file?.isFile == true) { file?.let { shareDriveFile(context, it) } }
                     if (dirty) Tool(R.drawable.ic_save, stringResource(R.string.common_save), w, enabled = loaded) { save() }
-                    RibbonButton(stringResource(R.string.common_edit), w, R.drawable.ic_edit, enabled = loaded) { viewing = false }
+                    // a phone: the pencil alone, as Tables' and Slides' (a longer word, "Επεξεργασία", left the file's name no room)
+                    if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600) Tool(R.drawable.ic_edit, stringResource(R.string.common_edit), w, enabled = loaded) { viewing = false }
+                    else RibbonButton(stringResource(R.string.common_edit), w, R.drawable.ic_edit, enabled = loaded) { viewing = false }
                 } else {
                 Tool(R.drawable.ic_search, stringResource(R.string.words_find_replace), w, enabled = loaded) { finding = true }
                 Tool(R.drawable.ic_undo, stringResource(R.string.common_undo), w, enabled = state.history.canUndo || undone.isNotEmpty()) { undo() }

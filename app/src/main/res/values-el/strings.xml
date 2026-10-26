@@ -4452,8 +4452,8 @@
     <string name="pdf_oval">Οβάλ</string>
     <string name="pdf_arrow">Βέλος</string>
     <string name="pdf_text">Κείμενο</string>
-    <string name="pdf_tick">Τικ</string>
-    <string name="pdf_cross">Χι</string>
+    <string name="pdf_tick">Τσεκ</string>
+    <string name="pdf_cross">Σταυρός</string>
     <string name="pdf_dot">Τελεία</string>
     <string name="pdf_sign">Υπογραφή</string>
     <string name="pdf_mark_area">Σήμανση περιοχής</string>

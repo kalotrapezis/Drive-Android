@@ -12,7 +12,7 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
-- [~] (translations session, 25 Oct; Drive-Android `claude/translations`, Drive `translations`; not merged, nothing
+- [x] (translations session, 25–26 Oct; Drive-Android `claude/translations`, Drive `translations`; merged, nothing
       installed on the phone or tablet) **Translations, Greek first** (the user: "start the translation work; first
       translation Greek. Make the code translation flexible so we can add all the EU countries. And have a language option
       in the settings"). Android: 4,059 strings + 87 plurals in res/values/strings.xml, all in Greek in values-el (one
@@ -25,9 +25,10 @@ How to write here:
       Desktop: locales/en.json + el.json (1,659 keys), t(), Settings › Language (system default), 151 tests pass. Checked in
       Greek on the tetra_shots emulator at phone and tablet size, and the desktop from source (hidden). 26 Oct (the user):
       Photos is Φωτοθήκη, Local Sync Συγχρονισμός on Home, Tables' new sheets Φύλλο1 and printed headers "Σελίδα 1 από 3".
-      **Left**: PDF
-      (PdfScreen.kt/PdfText.kt) waits for `claude/pdf-handles` to be merged; Maps' voice now follows the app's language
-      when "Directions in" was never set (it was always Greek).
+      PDF too (26 Oct, after `claude/pdf-handles` was merged): 151 pdf_* strings; on a phone Words' and PDF's view-only bar
+      shows Edit as the pencil alone, as Tables' and Slides' ("Επεξεργασία" left the file's name no room). Merged into main
+      in both repos (the user, 26 Oct). Maps' voice now follows the app's language when "Directions in" was never set (it
+      was always Greek).
 - [x] (data-calls session, 25 Oct; branches `claude/data-calls` / Drive `data-calls`, not merged, nothing installed) Three of the
       user's reports. **41 % on the phone, 40 % on the computer, 83 % on the tablet**: the computer's copy of the phone's October
       stayed at the 10:00 counts (120.9 GB) while every newer version arrived as a sync copy ("(2)", "(2) (3)"… 14 of them, mtime

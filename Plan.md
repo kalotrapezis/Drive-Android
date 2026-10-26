@@ -618,6 +618,12 @@ How to write here:
       folder, `role-screens/` (PNGs + README): first start's question → server's Devices (QR + key + Copy) → client types
       the key → server's card for the new computer (rules Off until chosen) → client's Devices "Syncs with …" → Settings ›
       Server or client (Back up and reset… / Delete everything and reset… with the 10 s countdown) → the question again.
+      26 Oct, the user on the first-start page: keep the words Server/Client (Διακομιστής/Πελάτης) but explain them "as if
+      to small children", sparse, step by step — done on Drive main (four short lines under Server, three under Client, a
+      red "changing this later can lead to data loss"; Settings › Server or client shows the same lines).
+- [ ] **Later (the user, 26 Oct):** "a dummy setup so we can make a video for the page, and put an FAQ in the footer" — a
+      demo install (fresh data folders, invented photos/files/people, a server and a client and a phone) to record the
+      setup on video for Tetra's page, and an FAQ in the page's footer. Not started.
 
 - [x] (Drive `sync-one-writer`, sync-copies session, 25 Oct) Sync's "(2)", "(3)", "(4)" of a file only the phone writes (Data's
       month file): the computer took a path it had just asked for as agreed before the upload came; a late upload (a part's and

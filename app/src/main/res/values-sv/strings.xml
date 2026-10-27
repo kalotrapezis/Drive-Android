@@ -1207,6 +1207,10 @@
     <string name="notes_history_note">Anteckningen som den var innan du senast ändrade den, och som du lämnade den – de tre senaste. Återställning behåller även den nuvarande.</string>
     <string name="notes_no_versions">Inga versioner än.</string>
     <string name="notes_untitled">Namnlös</string>
+    <string name="notes_export_markdown">Exportera som Markdown</string>
+    <string name="notes_export_hint">Alla anteckningar, även arkiverade och de i papperskorgen, hamnar i en ny mapp i Filer.</string>
+    <string name="notes_exported">Anteckningar exporterade: %1$d, i Filer › %2$s</string>
+    <string name="notes_note_exported">Anteckningen exporterad</string>
     <string name="notes_item_done">Klar</string>
     <string name="notes_item_not_done">Inte klar</string>
     <string name="notes_remove_item">Ta bort punkt</string>

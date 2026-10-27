@@ -1207,6 +1207,10 @@
     <string name="notes_history_note">A jegyzet az utolsó módosításod előtti és az általad hagyott állapotában – a legújabb három. A visszaállítás a jelenlegit is megtartja.</string>
     <string name="notes_no_versions">Még nincs verzió.</string>
     <string name="notes_untitled">Névtelen</string>
+    <string name="notes_export_markdown">Exportálás Markdownként</string>
+    <string name="notes_export_hint">Minden jegyzet, az archiváltak és a kukában lévők is, egy új mappába kerül a Fájlokban.</string>
+    <string name="notes_exported">Exportált jegyzetek: %1$d, Fájlok › %2$s</string>
+    <string name="notes_note_exported">Jegyzet exportálva</string>
     <string name="notes_item_done">Kész</string>
     <string name="notes_item_not_done">Nincs kész</string>
     <string name="notes_remove_item">Elem eltávolítása</string>

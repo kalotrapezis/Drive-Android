@@ -1240,6 +1240,10 @@
     <string name="notes_history_note">La note telle qu’elle était avant votre dernière modification, et telle que vous l’avez laissée — les trois plus récentes. Restaurer garde aussi la version actuelle.</string>
     <string name="notes_no_versions">Aucune version.</string>
     <string name="notes_untitled">Sans titre</string>
+    <string name="notes_export_markdown">Exporter en Markdown</string>
+    <string name="notes_export_hint">Toutes les notes, y compris archivées et dans la corbeille, vont dans un nouveau dossier de Fichiers.</string>
+    <string name="notes_exported">Notes exportées : %1$d, dans Fichiers › %2$s</string>
+    <string name="notes_note_exported">Note exportée</string>
     <string name="notes_item_done">Fait</string>
     <string name="notes_item_not_done">Pas fait</string>
     <string name="notes_remove_item">Retirer l’élément</string>

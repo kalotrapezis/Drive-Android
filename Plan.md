@@ -290,9 +290,11 @@ How to write here:
       desktop from source, all sample data invented), download buttons, the speed tables; docs/ is the Pages site.
       Releases: Android v0.6.0-beta.1 (release key), desktop desktop-v0.6.0-beta.21. LICENSE is now the GPL 3.0 or later
       (the user, 25 Oct: "Yes update the license"), which MuPDF's AGPL 3.0 can be combined with; the desktop was GPL 3.0 already.
-- [ ] Notes: Export as Markdown (the user, 25 Oct: "add export as markdown"): one note (its menu) or all of them (Notes'
-      island), on the phone and on the PC; a note's text is already Markdown, a checklist becomes `- [ ]` / `- [x]` lines,
-      the title the file's name and its first heading. Notes stay JSON inside Tetra (the user: "I don't care").
+- [x] (27 Oct) Notes: Export as Markdown (the user, 25 Oct: "add export as markdown"; 27 Oct: "… categorized by folders with
+      the tags' names"): Export as Markdown in the Labels drawer (every note into a new Files/Tetra-Notes-export-<date>-<HHMM>,
+      a folder per label, "/" nesting, archived in Archive/, trashed in Trash/) and in a note's sheet (phone/tablet) or bar (PC);
+      front matter of tags and dates, file time = the note's; NoteExport in Notes.kt = markdown/markdownFiles in notes.js,
+      same tests. Branches claude/notes-markdown and notes-markdown, not merged.
 - [x] (25 Oct) **Small icons only** is Home's default (the user: "change the default home to small icons only"): a new
       install, a reset Home and a new applet start small; a saved layout stays as it is. Built with the sync fix (SYNC_PLAN 6ar)
       as Android 0.6.0-beta.2 (release key, versionCode 13) and desktop 0.6.0-beta.23; 658 Android and 148 desktop tests pass;

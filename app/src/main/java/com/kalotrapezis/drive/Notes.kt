@@ -360,6 +360,69 @@ internal object NoteFormat {
 }
 
 /**
+ * Notes as Markdown files (the user, 27 Oct: "an export function for notes into md files, categorized by folders with
+ * the tags' names"), the same as the computer's (desktop/notes.js). Notes stay JSON inside Tetra; this is a copy out.
+ * The title names the file and is its first heading, under a front matter of the labels and dates; the text is
+ * Markdown already, and a checklist becomes `- [ ]` / `- [x]` lines. Each export is a new dated folder in Files, so
+ * nothing is written over (the user, 27 Oct); a label's "/" nests its folders, as "Home/Garden" → Home/Garden/.
+ */
+internal object NoteExport {
+    /** A file of an export: where it goes in the export's folder, its text, and its time (the note's last change). */
+    data class Out(val path: String, val text: String, val at: Long)
+
+    private fun iso(ms: Long) = java.time.Instant.ofEpochMilli(ms).truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString()
+    private fun quote(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    private val slash = Regex("[/\\\\]")
+    private val colon = Regex("\\s*:\\s*")
+    private val refused = Regex("[\u0000*?\"<>|]")
+    private val spaces = Regex("\\s+")
+    /** A name every file system takes: "/" a dash, ":" " - " (the user, 27 Oct); a leading dot would hide the file. */
+    fun safeName(s: String, untitled: String) = s.ifBlank { untitled }.replace(slash, "-").replace(colon, " - ").replace(refused, " ")
+        .replace(spaces, " ").take(80).trim().trimStart('.').ifEmpty { untitled }
+    /** A label's folders: "Home/Garden" is Garden inside Home. */
+    private fun folders(label: String, untitled: String) = label.split('/').filter { it.isNotBlank() }.joinToString("/") { safeName(it, untitled) }.ifEmpty { untitled }
+
+    /** The export's own folder, by the local time it was made; the name is English in every language. */
+    fun folder(at: java.time.LocalDateTime) = "Tetra-Notes-export-%04d-%02d-%02d-%02d%02d".format(at.year, at.monthValue, at.dayOfMonth, at.hour, at.minute)
+
+    /** One note: its file's name (without .md) and its text. */
+    fun markdown(n: Note, untitled: String): Pair<String, String> {
+        val front = buildString {
+            append("---\n")
+            if (n.labels.isNotEmpty()) append("tags: [${n.labels.joinToString(", ", transform = ::quote)}]\n")
+            if (n.createdAt > 0) append("created: ${iso(n.createdAt)}\n")
+            if (n.updatedAt > 0) append("updated: ${iso(n.updatedAt)}\n")
+            append("---\n\n")
+        }
+        val body = if (n.checklist) n.items.sortedForList().joinToString("") { "- [${if (it.checked) "x" else " "}] ${it.text}\n" }
+            else n.content.trimEnd().let { if (it.isEmpty()) "" else "$it\n" }
+        val heading = "# ${n.title.trim()}"
+        // a note that starts with its own title as a heading keeps just that one
+        val title = if (n.title.isBlank() || body.lineSequence().firstOrNull { it.isNotBlank() }?.trim() == heading) "" else "$heading\n\n"
+        return safeName(n.title, untitled) to front + title + body
+    }
+
+    /**
+     * Every note, in a folder per label (in each, if it has several), at the top without one; the archived the same way
+     * inside Archive, the trashed inside Trash. The same name twice in a folder (case aside, for the file systems that
+     * ignore it) becomes "Name (2)", the older note keeping the plain name.
+     */
+    fun files(notes: List<Note>, untitled: String): List<Out> {
+        val taken = HashSet<String>()
+        return notes.sortedBy { it.createdAt }.flatMap { n ->
+            val (name, text) = markdown(n, untitled)
+            val top = if (n.trashedAt != null) "Trash/" else if (n.archivedAt != null) "Archive/" else ""
+            n.labels.map { top + folders(it, untitled) + "/" }.distinct().ifEmpty { listOf(top) }.map { dir ->
+                var path = "$dir$name.md"
+                var i = 1
+                while (!taken.add(path.lowercase())) path = "$dir$name (${++i}).md"
+                Out(path, text, n.updatedAt)
+            }
+        }
+    }
+}
+
+/**
  * Notes cross on their own, a moment after writing pauses — as the old Notes app did, every two or three seconds
  * (asked 2026-09-26) — not only with the whole sync. Only the notes go: a few kilobytes, a second's work.
  */

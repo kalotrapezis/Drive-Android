@@ -1273,6 +1273,10 @@
     <string name="notes_history_note">Zapisek, kakršen je bil pred zadnjo spremembo, in kakršnega ste pustili – najnovejši trije. Obnovitev ohrani tudi trenutnega.</string>
     <string name="notes_no_versions">Različic še ni.</string>
     <string name="notes_untitled">Brez naslova</string>
+    <string name="notes_export_markdown">Izvozi kot Markdown</string>
+    <string name="notes_export_hint">Vsi zapiski, tudi arhivirani in v košu, gredo v novo mapo v Datotekah.</string>
+    <string name="notes_exported">Izvoženi zapiski: %1$d, v Datotekah › %2$s</string>
+    <string name="notes_note_exported">Zapisek izvožen</string>
     <string name="notes_item_done">Končano</string>
     <string name="notes_item_not_done">Ni končano</string>
     <string name="notes_remove_item">Odstrani element</string>

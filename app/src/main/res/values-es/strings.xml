@@ -1240,6 +1240,10 @@
     <string name="notes_history_note">La nota tal como estaba antes de tu último cambio y tal como la dejaste; las tres más recientes. Al restaurar también se conserva la actual.</string>
     <string name="notes_no_versions">Aún no hay versiones.</string>
     <string name="notes_untitled">Sin título</string>
+    <string name="notes_export_markdown">Exportar como Markdown</string>
+    <string name="notes_export_hint">Todas las notas, también las archivadas y las de la papelera, van a una carpeta nueva en Archivos.</string>
+    <string name="notes_exported">Notas exportadas: %1$d, en Archivos › %2$s</string>
+    <string name="notes_note_exported">Nota exportada</string>
     <string name="notes_item_done">Hecho</string>
     <string name="notes_item_not_done">Sin hacer</string>
     <string name="notes_remove_item">Quitar elemento</string>

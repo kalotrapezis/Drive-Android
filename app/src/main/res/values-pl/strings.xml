@@ -1273,6 +1273,10 @@
     <string name="notes_history_note">Notatka sprzed ostatniej zmiany i taka, jaką zostawiłeś — trzy najnowsze. Przywrócenie zachowuje też bieżącą.</string>
     <string name="notes_no_versions">Brak wersji.</string>
     <string name="notes_untitled">Bez tytułu</string>
+    <string name="notes_export_markdown">Eksportuj jako Markdown</string>
+    <string name="notes_export_hint">Wszystkie notatki, także zarchiwizowane i z kosza, trafiają do nowego folderu w Plikach.</string>
+    <string name="notes_exported">Wyeksportowane notatki: %1$d, w Plikach › %2$s</string>
+    <string name="notes_note_exported">Notatkę wyeksportowano</string>
     <string name="notes_item_done">Zrobione</string>
     <string name="notes_item_not_done">Niezrobione</string>
     <string name="notes_remove_item">Usuń pozycję</string>

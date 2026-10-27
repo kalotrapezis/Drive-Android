@@ -1207,6 +1207,10 @@
     <string name="notes_history_note">Noten, som den var, før du sidst ændrede den, og som du forlod den – de tre nyeste. Gendannelse beholder også den nuværende.</string>
     <string name="notes_no_versions">Ingen versioner endnu.</string>
     <string name="notes_untitled">Uden titel</string>
+    <string name="notes_export_markdown">Eksportér som Markdown</string>
+    <string name="notes_export_hint">Alle noter, også arkiverede og dem i papirkurven, gemmes i en ny mappe i Filer.</string>
+    <string name="notes_exported">Noter eksporteret: %1$d, i Filer › %2$s</string>
+    <string name="notes_note_exported">Note eksporteret</string>
     <string name="notes_item_done">Færdig</string>
     <string name="notes_item_not_done">Ikke færdig</string>
     <string name="notes_remove_item">Fjern punkt</string>

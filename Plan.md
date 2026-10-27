@@ -18,7 +18,12 @@ How to write here:
       path: .System/<App>/{Data,Tools,Cache,Temp}, rules in Drive's desktop/SYSTEM.md. ~/Tetra-maps → Maps/Data (bin → Maps/Tools,
       geofabrik-index.json → Maps/Cache), ~/Tetra-backups → Backups/Data, moved by rename at the first start of the new desktop.
       The map builder cleans its Temp and half-copied files however a build ends. Reset keeps .System; sync never sees it.
-      tools/maps-greece.sh and MapsTest read the new paths. Waiting: the user's review and merge.
+      tools/maps-greece.sh and MapsTest read the new paths. Then (the user: "Tetra should have a cleaner"): desktop Settings › Clean up
+      (cleaner.js): each app's .System Temp and Cache, Files history past 30 days (also pruned by itself daily), thumbnails without a
+      photo (server, after a scan), the Sept safety copies moved to Backups/Data, routing work of removed maps; Reset says .System
+      stays; the builder's Retry no longer sends `resume`. Later, not built: the same cleaner on the phone and tablet (cacheDir's
+      nanoTime temp files from Slides/Writer, *-drafts, writer-history, logs/ and drive traces, filesDir/Files history).
+      Waiting: the user's review and merge.
 - [~] (beta-release session, 27 Oct; branches `claude/admiring-pare-6a6a4a` here and `beta-release` in Drive; the site merged and pushed
       27 Oct at the user's yes, live at kalotrapezis.github.io/Drive-Android in the 24 EU languages; packages not released)
       **The next beta for Linux and Android, and the site** (the user: "Are we ready to publish the new Beta For Linux and Android …

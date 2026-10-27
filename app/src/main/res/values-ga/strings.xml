@@ -4878,4 +4878,6 @@
     <string name="phone_raise_answer_about">Ardaigh fón atá ag bualadh chuig do chluas chun é a fhreagairt.</string>
     <string name="phone_flip_silence">Iompaigh chun ciúnú</string>
     <string name="phone_flip_silence_about">Iompaigh fón atá ag bualadh bunoscionn chun é a chiúnú.</string>
+    <string name="phone_unblock">Díbhac</string>
+    <string name="phone_block">Bac</string>
 </resources>

@@ -4602,4 +4602,6 @@
     <string name="phone_raise_answer_about">Løft en ringende telefon op til øret for at besvare.</string>
     <string name="phone_flip_silence">Vend for at gøre lydløs</string>
     <string name="phone_flip_silence_about">Vend en ringende telefon med skærmen nedad for at gøre den lydløs.</string>
+    <string name="phone_unblock">Fjern blokering</string>
+    <string name="phone_block">Bloker</string>
 </resources>

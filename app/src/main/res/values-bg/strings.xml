@@ -4602,4 +4602,6 @@
     <string name="phone_raise_answer_about">Доближете звънящия телефон до ухото си, за да отговорите.</string>
     <string name="phone_flip_silence">Обръщане за заглушаване</string>
     <string name="phone_flip_silence_about">Обърнете звънящия телефон с екрана надолу, за да го заглушите.</string>
+    <string name="phone_unblock">Деблокиране</string>
+    <string name="phone_block">Блокиране</string>
 </resources>

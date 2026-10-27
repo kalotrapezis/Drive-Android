@@ -4602,4 +4602,6 @@
     <string name="phone_raise_answer_about">Vastamiseks tõsta helisev telefon kõrva äärde.</string>
     <string name="phone_flip_silence">Vaigistamiseks pööra</string>
     <string name="phone_flip_silence_about">Vaigistamiseks pööra helisev telefon ekraaniga alla.</string>
+    <string name="phone_unblock">Tühista blokeering</string>
+    <string name="phone_block">Blokeeri</string>
 </resources>

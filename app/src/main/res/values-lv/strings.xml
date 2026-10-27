@@ -4694,4 +4694,6 @@
     <string name="phone_raise_answer_about">Pielieciet zvanošu tālruni pie auss, lai atbildētu.</string>
     <string name="phone_flip_silence">Apgriezt, lai apklusinātu</string>
     <string name="phone_flip_silence_about">Apgrieziet zvanošu tālruni ar ekrānu uz leju, lai to apklusinātu.</string>
+    <string name="phone_unblock">Atbloķēt</string>
+    <string name="phone_block">Bloķēt</string>
 </resources>

@@ -4786,4 +4786,6 @@
     <string name="phone_raise_answer_about">Přiložte zvonící telefon k uchu a hovor se přijme.</string>
     <string name="phone_flip_silence">Ztišit otočením</string>
     <string name="phone_flip_silence_about">Otočte zvonící telefon displejem dolů a ztichne.</string>
+    <string name="phone_unblock">Odblokovat</string>
+    <string name="phone_block">Blokovat</string>
 </resources>

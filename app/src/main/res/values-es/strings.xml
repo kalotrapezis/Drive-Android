@@ -4694,4 +4694,6 @@
     <string name="phone_raise_answer_about">Acerca al oído un teléfono que suena para contestar.</string>
     <string name="phone_flip_silence">Girar para silenciar</string>
     <string name="phone_flip_silence_about">Pon boca abajo un teléfono que suena para silenciarlo.</string>
+    <string name="phone_unblock">Desbloquear</string>
+    <string name="phone_block">Bloquear</string>
 </resources>

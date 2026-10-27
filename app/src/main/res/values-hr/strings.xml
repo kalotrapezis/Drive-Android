@@ -4694,4 +4694,6 @@
     <string name="phone_raise_answer_about">Prinesite telefon koji zvoni uhu da biste se javili.</string>
     <string name="phone_flip_silence">Okreni za utišavanje</string>
     <string name="phone_flip_silence_about">Okrenite telefon koji zvoni zaslonom prema dolje da ga utišate.</string>
+    <string name="phone_unblock">Deblokiraj</string>
+    <string name="phone_block">Blokiraj</string>
 </resources>

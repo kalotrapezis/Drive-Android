@@ -4602,4 +4602,6 @@
     <string name="phone_raise_answer_about">Ein klingelndes Telefon ans Ohr halten, um den Anruf anzunehmen.</string>
     <string name="phone_flip_silence">Zum Stummschalten umdrehen</string>
     <string name="phone_flip_silence_about">Ein klingelndes Telefon mit dem Display nach unten legen, um es stummzuschalten.</string>
+    <string name="phone_unblock">Freigeben</string>
+    <string name="phone_block">Sperren</string>
 </resources>

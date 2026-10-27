@@ -4786,4 +4786,6 @@
     <string name="phone_raise_answer_about">Għolli t-telefon li qed idoqq lejn widintek biex twieġeb.</string>
     <string name="phone_flip_silence">Aqleb biex issikket</string>
     <string name="phone_flip_silence_about">Aqleb it-telefon li qed idoqq wiċċu ’l isfel biex issikktu.</string>
+    <string name="phone_unblock">Neħħi l-imblukkar</string>
+    <string name="phone_block">Imblokka</string>
 </resources>

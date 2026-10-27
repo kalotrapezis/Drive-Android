@@ -4602,4 +4602,6 @@
     <string name="phone_raise_answer_about">Vastaa nostamalla soiva puhelin korvalle.</string>
     <string name="phone_flip_silence">Hiljennä kääntämällä</string>
     <string name="phone_flip_silence_about">Hiljennä soiva puhelin kääntämällä se näyttö alaspäin.</string>
+    <string name="phone_unblock">Poista esto</string>
+    <string name="phone_block">Estä</string>
 </resources>

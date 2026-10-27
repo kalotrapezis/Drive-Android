@@ -4601,4 +4601,6 @@
     <string name="phone_raise_answer_about">Φέρτε το τηλέφωνο στο αυτί ενώ χτυπά για να απαντήσετε.</string>
     <string name="phone_flip_silence">Αναποδογύρισμα για σίγαση</string>
     <string name="phone_flip_silence_about">Γυρίστε το τηλέφωνο ανάποδα ενώ χτυπά για να σωπάσει.</string>
+    <string name="phone_unblock">Άρση φραγής</string>
+    <string name="phone_block">Φραγή</string>
 </resources>

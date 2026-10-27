@@ -4786,4 +4786,6 @@
     <string name="phone_raise_answer_about">Priglauskite skambantį telefoną prie ausies, kad atsilieptumėte.</string>
     <string name="phone_flip_silence">Apverskite, kad nutildytumėte</string>
     <string name="phone_flip_silence_about">Apverskite skambantį telefoną ekranu žemyn, kad jis nutiltų.</string>
+    <string name="phone_unblock">Atblokuoti</string>
+    <string name="phone_block">Blokuoti</string>
 </resources>

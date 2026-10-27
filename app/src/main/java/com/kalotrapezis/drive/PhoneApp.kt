@@ -137,6 +137,8 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     var drawer by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf<CallGroup?>(null) }
     var page by remember { mutableStateOf<PhonePage?>(null) }
+    var blockedPage by remember { mutableStateOf<CallGroup?>(null) } // a blocked number's own page, over Call blocking
+    val blockingScroll = rememberScrollState() // Call blocking back where it was after a number's page
     val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     fun call(n: String) {
         if (n.isBlank()) return
@@ -146,8 +148,8 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     // a tablet: the list on the left and the keypad always open on the right, so no empty sides; a phone as before
     val twoPane = androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >= 600
     val keypadShown = keypad.value && !twoPane
-    BackHandler(page != null || keypadShown || selected.isNotEmpty() || query.isNotEmpty()) {
-        when { page != null -> page = null; keypadShown -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> query = "" }
+    BackHandler(blockedPage != null || page != null || keypadShown || selected.isNotEmpty() || query.isNotEmpty()) {
+        when { blockedPage != null -> blockedPage = null; page != null -> page = null; keypadShown -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> query = "" }
     }
     // the list's room under the pill and above the island
     val top = PaddingValues(top = 76.dp, bottom = 96.dp)
@@ -155,9 +157,12 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
         Box(Modifier.fillMaxHeight().widthIn(max = 560.dp).fillMaxWidth()) {
             val open = page
-            if (open != null) PhonePageScreen(stringResource(open.title), back = { page = null }) {
+            val blocked = blockedPage
+            if (blocked != null) PhonePageScreen(who(blocked.number)?.name ?: blocked.number.ifBlank { stringResource(R.string.phone_hidden_number) }, back = { blockedPage = null }) {
+                BlockedNumber(blocked, who(blocked.number)) { version++ }
+            } else if (open != null) PhonePageScreen(stringResource(open.title), back = { page = null }, if (open == PhonePage.Blocking) blockingScroll else rememberScrollState()) {
                 when (open) {
-                    PhonePage.Blocking -> CallBlocking(calls, ::who, open = { details = it }) { version++ }
+                    PhonePage.Blocking -> CallBlocking(calls, ::who, open = { blockedPage = it }) { version++ }
                     PhonePage.SpeedDial -> SpeedDialSettings(contacts)
                 }
             } else {
@@ -223,58 +228,94 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.app_phone), style = MaterialTheme.typography.titleLarge)
             PhoneSettings()
-            PageButton(R.drawable.ic_block, stringResource(R.string.phone_blocking), stringResource(R.string.phone_blocking_about)) { drawer = false; page = PhonePage.Blocking }
-            PageButton(R.drawable.ic_speed_dial, stringResource(R.string.phone_speed_dial), stringResource(R.string.phone_speed_dial_hint)) { drawer = false; page = PhonePage.SpeedDial }
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) { // side by side (the user, 27 Oct)
+                PageButton(R.drawable.ic_block, stringResource(R.string.phone_blocking), stringResource(R.string.phone_blocking_about), Modifier.weight(1f)) { drawer = false; page = PhonePage.Blocking }
+                PageButton(R.drawable.ic_speed_dial, stringResource(R.string.phone_speed_dial), stringResource(R.string.phone_speed_dial_hint), Modifier.weight(1f)) { drawer = false; page = PhonePage.SpeedDial }
+            }
         }
     }
 }
 
-/** A button in the settings sheet that opens one of the Phone's pages. */
+/** A tile in the settings sheet that opens one of the Phone's pages. */
 @Composable
-private fun PageButton(icon: Int, title: String, about: String, open: () -> Unit) =
-    Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable(onClick = open).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+private fun PageButton(icon: Int, title: String, about: String, modifier: Modifier, open: () -> Unit) =
+    Column(modifier.fillMaxHeight().clip(MaterialTheme.shapes.large).background(LocalContentColor.current.copy(alpha = 0.08f)).clickable(onClick = open).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.size(40.dp).clip(CircleShape).background(PHONE_COLOR), contentAlignment = Alignment.Center) {
             Icon(painterResource(icon), contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
         }
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(about, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
-        }
-        Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null)
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Text(about, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f), maxLines = 3, overflow = TextOverflow.Ellipsis)
     }
 
 /** A page in the list's place: ‹ and its title in the pill's row, then what it holds. */
 @Composable
-private fun PhonePageScreen(title: String, back: () -> Unit, content: @Composable ColumnScope.() -> Unit) = Column(Modifier.fillMaxSize()) {
+private fun PhonePageScreen(title: String, back: () -> Unit, scroll: androidx.compose.foundation.ScrollState = rememberScrollState(), content: @Composable ColumnScope.() -> Unit) = Column(Modifier.fillMaxSize()) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
             IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
         }
         Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
-    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    Column(Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
 }
 
-/** Call blocking: the spam list to add to and take from, then the calls it (and Android's own list) blocked; a tap opens one. */
+/** Call blocking: the spam list to add to and take from, then the numbers it (and Android's own list) blocked, each once; a tap opens its page. */
 @Composable
 private fun CallBlocking(calls: List<LoggedCall>, who: (String) -> ContactInfo?, open: (CallGroup) -> Unit, changed: () -> Unit) {
     SpamSettings(changed)
     val zone = ZoneId.systemDefault()
-    val blocked = remember(calls) { PhoneLog.group(calls.filter { it.type == CallLog.Calls.BLOCKED_TYPE }, zone).take(100) }
-    val today = LocalDate.now(zone)
-    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    // one line a number, newest first; its dates and recordings on its page (the user, 27 Oct: "group by number", "a contact page for that phone number")
+    val blocked = remember(calls) { calls.filter { it.type == CallLog.Calls.BLOCKED_TYPE }.groupBy { ContactsWays.key(it.number).ifEmpty { it.number } }.values.map { CallGroup(it) }.take(100) }
     Text(stringResource(R.string.phone_blocked_calls), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
     if (blocked.isEmpty()) Text(stringResource(R.string.phone_no_blocked_calls), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
     blocked.forEach { g ->
         Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable { open(g) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             CallAvatar(who(g.number), 40.dp)
-            Column(Modifier.weight(1f)) {
-                Text((who(g.number)?.name ?: g.number.ifBlank { stringResource(R.string.phone_hidden_number) }) + if (g.calls.size > 1) " (${g.calls.size})" else "",
-                    style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(whenText(g.newest.at, zone, today, locale), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
-            }
-            CallTypeIcon(g.newest.type, 22.dp)
+            Text((who(g.number)?.name ?: g.number.ifBlank { stringResource(R.string.phone_hidden_number) }) + if (g.calls.size > 1) " (${g.calls.size})" else "",
+                Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null)
         }
+    }
+}
+
+/** A blocked number's page: who, Unblock (or Block again), every blocked call's date, and the calls recorded with it. */
+@Composable
+private fun BlockedNumber(g: CallGroup, c: ContactInfo?, changed: () -> Unit) {
+    val context = LocalContext.current
+    val zone = ZoneId.systemDefault()
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    var version by remember { mutableIntStateOf(0) }
+    val spam = remember(version) { PhoneSpam.matches(PhoneSpam.read(), g.number) }
+    val tablet = remember { PhoneRelay.noCalls(context) }
+    val recordings by produceState(emptyList<java.io.File>(), g.number) {
+        value = withContext(Dispatchers.IO) { runCatching { ContactsRecordings.of(java.io.File(phoneRoot(), "Recordings").listFiles()?.toList().orEmpty(), c?.name.orEmpty(), listOf(g.number)) }.getOrDefault(emptyList()) }
+    }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CallAvatar(c, 88.dp)
+        Text(g.number.ifBlank { stringResource(R.string.phone_hidden_number) }, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        PhoneArea.of(g.number)?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current.copy(alpha = 0.7f)) }
+        // caught by a range (69800*): that line is the one to change, in the list
+        if (spam?.number?.endsWith("*") == true) Text(stringResource(R.string.phone_spam_range, spam.number), color = CALL_RED, textAlign = TextAlign.Center)
+        else if (g.number.isNotBlank()) Button(onClick = {
+            if (spam != null) { PhoneSpam.remove(context, g.number); if (!tablet) PhoneBlocked.unblock(context, g.number) }
+            else { PhoneSpam.add(context, g.number); if (!tablet) PhoneBlocked.block(context, g.number) }
+            version++; changed()
+        }, colors = ButtonDefaults.buttonColors(containerColor = if (spam != null) PHONE_COLOR else CALL_RED, contentColor = Color.White)) {
+            Icon(painterResource(R.drawable.ic_block), contentDescription = null, modifier = Modifier.size(18.dp))
+            Text("  " + stringResource(if (spam != null) R.string.phone_unblock else R.string.phone_block), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+    Text(stringResource(R.string.phone_blocked_calls), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+    g.calls.forEach { l ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CallTypeIcon(l.type, 22.dp)
+            Text(Instant.ofEpochMilli(l.at).atZone(zone).format(DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm", locale)))
+        }
+    }
+    if (recordings.isNotEmpty()) {
+        Text(stringResource(R.string.contacts_recordings), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+        recordings.forEach { RecordingRow(it) }
     }
 }
 
@@ -388,7 +429,6 @@ private fun PhoneContacts(contacts: List<ContactInfo>, query: String, pad: Paddi
 /** The calls recorded on the computer (Plan.md § Phone › Call recording), synced here: Tetra/Phone/Recordings, newest first. */
 @Composable
 private fun Recordings(query: String, pad: PaddingValues, version: Int) {
-    val context = LocalContext.current
     val files by produceState(emptyList<java.io.File>(), version) {
         value = withContext(Dispatchers.IO) { java.io.File(phoneRoot(), "Recordings").listFiles { f -> f.isFile && f.extension.lowercase() in setOf("ogg", "opus", "m4a", "mp3", "wav") }?.sortedByDescending { it.lastModified() }.orEmpty() }
     }
@@ -397,21 +437,26 @@ private fun Recordings(query: String, pad: PaddingValues, version: Int) {
         if (shown.isEmpty()) item {
             Hint(if (query.isNotEmpty()) stringResource(R.string.phone_no_recording_match, query) else stringResource(R.string.phone_recordings_hint))
         }
-        items(shown, key = { it.path }) { f ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp).clip(MaterialTheme.shapes.large).clickable {
-                runCatching {
-                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
-                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "audio/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.onFailure { WriterLog.w("Phone: a recording did not open (${it.message})") }
-            }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Box(Modifier.size(40.dp).clip(CircleShape).background(PHONE_COLOR.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_mic), contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(f.nameWithoutExtension, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${f.length() / 1024} KB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+        items(shown, key = { it.path }) { f -> RecordingRow(f, Modifier.padding(horizontal = 8.dp)) }
+    }
+}
+
+/** A recording: its name and size; a tap plays it in the phone's own player. */
+@Composable
+private fun RecordingRow(f: java.io.File, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    Row(modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable {
+        runCatching {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
+            context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "audio/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { WriterLog.w("Phone: a recording did not open (${it.message})") }
+    }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(PHONE_COLOR.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.ic_mic), contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(f.nameWithoutExtension, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${f.length() / 1024} KB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

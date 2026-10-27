@@ -4602,4 +4602,6 @@
     <string name="phone_raise_answer_about">Emelje a csörgő telefont a füléhez a hívás fogadásához.</string>
     <string name="phone_flip_silence">Némítás megfordítással</string>
     <string name="phone_flip_silence_about">Fordítsa a csörgő telefont kijelzővel lefelé a némításhoz.</string>
+    <string name="phone_unblock">Letiltás feloldása</string>
+    <string name="phone_block">Letiltás</string>
 </resources>

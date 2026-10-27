@@ -4694,4 +4694,6 @@
     <string name="phone_raise_answer_about">Portez à l\'oreille un téléphone qui sonne pour répondre.</string>
     <string name="phone_flip_silence">Retourner pour couper la sonnerie</string>
     <string name="phone_flip_silence_about">Retournez un téléphone qui sonne, écran vers le bas, pour le faire taire.</string>
+    <string name="phone_unblock">Débloquer</string>
+    <string name="phone_block">Bloquer</string>
 </resources>

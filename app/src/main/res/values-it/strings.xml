@@ -4602,4 +4602,6 @@
     <string name="phone_raise_answer_about">Porta all\'orecchio un telefono che squilla per rispondere.</string>
     <string name="phone_flip_silence">Capovolgi per silenziare</string>
     <string name="phone_flip_silence_about">Capovolgi un telefono che squilla per silenziarlo.</string>
+    <string name="phone_unblock">Sblocca</string>
+    <string name="phone_block">Blocca</string>
 </resources>

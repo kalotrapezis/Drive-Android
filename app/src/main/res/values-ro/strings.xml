@@ -4694,4 +4694,6 @@
     <string name="phone_raise_answer_about">Duceți la ureche un telefon care sună pentru a răspunde.</string>
     <string name="phone_flip_silence">Întoarce pentru silențios</string>
     <string name="phone_flip_silence_about">Întoarceți cu ecranul în jos un telefon care sună pentru a-l reduce la tăcere.</string>
+    <string name="phone_unblock">Deblochează</string>
+    <string name="phone_block">Blochează</string>
 </resources>

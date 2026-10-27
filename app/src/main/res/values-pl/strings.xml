@@ -4786,4 +4786,6 @@
     <string name="phone_raise_answer_about">Przyłóż dzwoniący telefon do ucha, aby odebrać.</string>
     <string name="phone_flip_silence">Odwróć, aby wyciszyć</string>
     <string name="phone_flip_silence_about">Odwróć dzwoniący telefon ekranem w dół, aby go wyciszyć.</string>
+    <string name="phone_unblock">Odblokuj</string>
+    <string name="phone_block">Zablokuj</string>
 </resources>

@@ -4786,4 +4786,6 @@
     <string name="phone_raise_answer_about">Zvoneči telefon prislonite k ušesu, da sprejmete klic.</string>
     <string name="phone_flip_silence">Obrni za utišanje</string>
     <string name="phone_flip_silence_about">Zvoneči telefon obrnite z zaslonom navzdol, da ga utišate.</string>
+    <string name="phone_unblock">Odblokiraj</string>
+    <string name="phone_block">Blokiraj</string>
 </resources>

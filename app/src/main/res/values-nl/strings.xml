@@ -4602,4 +4602,6 @@
     <string name="phone_raise_answer_about">Breng een rinkelende telefoon naar je oor om op te nemen.</string>
     <string name="phone_flip_silence">Omdraaien voor stil</string>
     <string name="phone_flip_silence_about">Leg een rinkelende telefoon met het scherm naar beneden om hem stil te zetten.</string>
+    <string name="phone_unblock">Deblokkeren</string>
+    <string name="phone_block">Blokkeren</string>
 </resources>

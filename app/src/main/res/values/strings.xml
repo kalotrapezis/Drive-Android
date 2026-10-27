@@ -4603,4 +4603,6 @@
     <string name="phone_raise_answer_about">Lift a ringing phone to your ear to answer it.</string>
     <string name="phone_flip_silence">Turn over to silence</string>
     <string name="phone_flip_silence_about">Turn a ringing phone face down to silence it.</string>
+    <string name="phone_unblock">Unblock</string>
+    <string name="phone_block">Block</string>
 </resources>

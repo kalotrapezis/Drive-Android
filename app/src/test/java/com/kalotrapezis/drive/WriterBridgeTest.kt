@@ -273,7 +273,7 @@ class WriterBridgeTest {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "b.${kind.extension}").apply { writeBytes(styled) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
-                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other.extension, dir.path, f.path)
                 val again = java.io.File(dir, "b.${other.extension}").readBytes()
                 check(DocStyles.of(other, again).look(OfficeFormats.read(again, other).paras.first { it.text == "lines" }).box, "by LibreOffice")
             }
@@ -352,7 +352,7 @@ class WriterBridgeTest {
                 val f = java.io.File(dir, "d.${kind.extension}").apply { writeBytes(bytes) }
                 val out = java.io.File(dir, "out").apply { mkdirs() }
                 // as an .odt: LibreOffice's own .docx export leaves drop caps out
-                ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", out.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice("odt", out.path, f.path)
                 val again = OfficeFormats.read(java.io.File(out, "d.odt").readBytes(), OfficeKind.Odt)
                 assertEquals(kind.name, 3, DropCap.of(again.paras.first { it.text.endsWith("drop cap.") }.keep)?.lines)
             }
@@ -380,7 +380,7 @@ class WriterBridgeTest {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "l.${kind.extension}").apply { writeBytes(bytes) }
-                ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice("txt:Text", dir.path, f.path)
                 val lines = java.io.File(dir, "l.txt").readText().lines().filter { it.isNotBlank() }
                 assertEquals(kind.name, true, lines.any { it.trimStart().startsWith("1.") && it.endsWith("Second") } && lines.none { it.trimStart().startsWith("1.") && it.endsWith("Point") })
             }

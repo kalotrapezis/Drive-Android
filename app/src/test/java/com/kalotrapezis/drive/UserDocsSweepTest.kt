@@ -74,7 +74,7 @@ class UserDocsSweepTest {
                         fun pages(file: File): Int {
                             val dir = scratchDir("lo")
                             val copy = File(dir, "deck." + file.extension.lowercase()).also { file.copyTo(it) }
-                            ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, copy.path).redirectErrorStream(true).start().waitFor()
+                            soffice("pdf", dir.path, copy.path)
                             return (File(dir, "deck.pdf").takeIf { it.exists() }?.readBytes()?.let { Regex("/Type\\s*/Page[^s]").findAll(String(it, Charsets.ISO_8859_1)).count() } ?: -1)
                                 .also { dir.deleteRecursively() } // a copy of the deck and its PDF: gone at once
                         }

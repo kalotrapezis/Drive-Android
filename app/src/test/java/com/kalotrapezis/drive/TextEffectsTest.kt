@@ -73,7 +73,7 @@ class TextEffectsTest {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "a.${kind.extension}").apply { writeBytes(bytes) }
-                ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice("pdf", dir.path, f.path)
                 val text = ProcessBuilder("pdftotext", java.io.File(dir, "a.pdf").path, "-").redirectErrorStream(true).start().inputStream.bufferedReader().readText()
                 assertTrue("$kind: $text", "New words" in text && "First" !in text)
             }

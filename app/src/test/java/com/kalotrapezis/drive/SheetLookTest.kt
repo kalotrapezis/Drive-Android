@@ -18,7 +18,7 @@ class SheetLookTest {
     private fun convert(file: File, to: String): File? {
         if (!lo) return null
         val out = Files.createTempDirectory("lo").toFile()
-        ProcessBuilder("soffice", "--headless", "--convert-to", to, "--outdir", out.path, file.path).redirectErrorStream(true).start().let { it.inputStream.readBytes(); it.waitFor() }
+        soffice(to, out.path, file.path)
         return out.listFiles()!!.firstOrNull { it.name.endsWith(to.substringBefore(':')) || it.extension == to.substringBefore(':') }
             ?: out.listFiles()!!.firstOrNull()
     }

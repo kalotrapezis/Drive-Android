@@ -14,8 +14,7 @@ class SheetBookTest {
     private fun shown(file: File): Map<String, List<List<String>>>? {
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
         val out = Files.createTempDirectory("shown").toFile()
-        ProcessBuilder("soffice", "--headless", "--convert-to", "csv:Text - txt - csv (StarCalc):44,34,76,1,,0,false,true,true,false,false,-1", "--outdir", out.path, file.path)
-            .redirectErrorStream(true).start().let { it.inputStream.readBytes(); it.waitFor() }
+        soffice("csv:Text - txt - csv (StarCalc):44,34,76,1,,0,false,true,true,false,false,-1", out.path, file.path)
         return out.listFiles()!!.associate { csv -> csv.nameWithoutExtension.substringAfter(file.nameWithoutExtension + "-") to Sheets.csv(csv.readBytes()).sheet(0).let { s -> (0 until s.rows).map { r -> (0 until s.cols).map { c -> s[r, c]?.text.orEmpty() } + List(6) { "" } } } }
     }
 
@@ -81,7 +80,7 @@ class SheetBookTest {
             check(f, "made in $name")
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
             }
         }

@@ -88,7 +88,7 @@ class CitationStylesTest {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "c.docx").apply { writeBytes(bytes) }
-                ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice("txt:Text", dir.path, f.path)
                 val txt = java.io.File(dir, "c.txt").readText()
                 assertTrue("$style: $txt", first in txt && style.heading in txt)
             }

@@ -34,9 +34,7 @@ class SheetShiftTest {
     private fun shown(file: File): Map<String, List<List<String>>>? {
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
         val out = Files.createTempDirectory("shown").toFile()
-        val p = ProcessBuilder("soffice", "--headless", "--convert-to", "csv:Text - txt - csv (StarCalc):44,34,76,1,,0,false,true,true,false,false,-1", "--outdir", out.path, file.path)
-            .redirectErrorStream(true).start()
-        p.inputStream.readBytes(); p.waitFor()
+        soffice("csv:Text - txt - csv (StarCalc):44,34,76,1,,0,false,true,true,false,false,-1", out.path, file.path)
         return out.listFiles()!!.associate { csv -> csv.nameWithoutExtension.substringAfterLast('-') to Sheets.csv(csv.readBytes()).sheet(0).let { s -> (0 until s.rows).map { r -> (0 until s.cols).map { c -> s[r, c]?.text.orEmpty() } + List(10) { "" } } } }
     }
 

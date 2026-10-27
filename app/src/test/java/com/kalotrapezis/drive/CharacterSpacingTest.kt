@@ -32,7 +32,7 @@ class CharacterSpacingTest {
             if (lo) {
                 val dir = scratchDir("spacing"); val ext = if (kind == OfficeKind.Docx) "docx" else "odt"; val other = if (kind == OfficeKind.Docx) "odt" else "docx"
                 val f = File(dir, "s.$ext").apply { writeBytes(bytes) }
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, dir.path, f.path)
                 val back = OfficeFormats.read(File(dir, "s.$other").readBytes(), if (other == "docx") OfficeKind.Docx else OfficeKind.Odt)
                 check(back.paras.flatMap { it.runs }, "LibreOffice's $other of $ext")
             }
@@ -54,7 +54,7 @@ class CharacterSpacingTest {
             check(Slides.read(out), "saved, $name")
             if (lo) {
                 val dir = scratchDir("lo"); val other = if (src.extension == "odp") "pptx" else "odp"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", dir.path, out.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, dir.path, out.path)
                 check(Slides.read(dir.listFiles()!!.single { it.extension == other }), "LibreOffice's $other of $name")
             }
         }

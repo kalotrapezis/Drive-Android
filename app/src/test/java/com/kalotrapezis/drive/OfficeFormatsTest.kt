@@ -108,7 +108,7 @@ class OfficeFormatsTest {
             if (lo) {
                 val f = java.io.File(dir, "v.${kind.name.lowercase()}").apply { writeBytes(bytes) }
                 val other = if (kind == OfficeKind.Odt) "docx" else "odt"
-                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, java.io.File(dir, "out").path, f.path)
                 val conv = OfficeFormats.read(java.io.File(dir, "out/v.$other").readBytes(), if (other == "odt") OfficeKind.Odt else OfficeKind.Docx)
                 val pics = conv.paras.flatMap { p -> p.runs.mapNotNull { it.image } }
                 assertEquals("LibreOffice's $other", films.size, pics.size)
@@ -138,7 +138,7 @@ class OfficeFormatsTest {
         // LibreOffice's .odt of it keeps the packages (draw:object-ole): the same three found
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
             val dir = scratchDir("odt-objects")
-            ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "odt", "--outdir", dir.path, File("src/test/resources/media.docx").absolutePath).redirectErrorStream(true).start().waitFor()
+            soffice("odt", dir.path, File("src/test/resources/media.docx").absolutePath)
             val odt = OfficeFormats.read(File(dir, "media.odt").readBytes(), OfficeKind.Odt).paras.flatMap { p -> p.runs.mapNotNull { it.image } }
             assertEquals(listOf("clip.mp4", "tone.m4a", "beep.wav"), odt.mapNotNull { PictureXml.video(it)?.substringAfter('#') })
         }
@@ -586,7 +586,7 @@ class OfficeFormatsTest {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "n.${kind.extension}").apply { writeBytes(bytes) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
-                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other.extension, java.io.File(dir, "out").path, f.path)
                 val lo = OfficeFormats.read(java.io.File(dir, "out/n.${other.extension}").readBytes(), other)
                 assertEquals(kind.name, "lowerLetter" to "upperRoman", lo.footFormat to lo.endFormat)
             }
@@ -612,7 +612,7 @@ class OfficeFormatsTest {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "n.${kind.extension}").apply { writeBytes(bytes) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
-                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other.extension, java.io.File(dir, "out").path, f.path)
                 val lo = OfficeFormats.notesOf(OfficeFormats.read(java.io.File(dir, "out/n.${other.extension}").readBytes(), other)).single()
                 assertEquals(kind.name, true, lo.paras[0].runs.first { "bold" in it.text }.bold)
                 assertEquals(kind.name, true, lo.paras[0].runs.first { "changed" in it.text }.italic)
@@ -640,7 +640,7 @@ class OfficeFormatsTest {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "p.${kind.extension}").apply { writeBytes(OfficeFormats.write(filled, kind, bytes)) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
-                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other.extension, java.io.File(dir, "out").path, f.path)
                 val lo = OfficeFormats.read(java.io.File(dir, "out/p.${other.extension}").readBytes(), other)
                 assertEquals(kind.name, Forms.Kind.Picture, lo.paras.flatMap { it.runs }.firstNotNullOfOrNull { it.control }?.let(Forms::kind))
             }
@@ -667,7 +667,7 @@ class OfficeFormatsTest {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "h.${kind.extension}").apply { writeBytes(set) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
-                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", java.io.File(dir, "out").path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other.extension, java.io.File(dir, "out").path, f.path)
                 assertEquals(kind.name, o, HyphenOptions.read(OfficeFormats.unzip(java.io.File(dir, "out/h.${other.extension}").readBytes()), other))
             }
         }
@@ -691,7 +691,7 @@ class OfficeFormatsTest {
             val dir = scratchDir("lo")
             for ((name, b) in listOf("on" to both, "off" to bytes)) {
                 java.io.File(dir, "$name.docx").writeBytes(b)
-                ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", dir.path, java.io.File(dir, "$name.docx").path).redirectErrorStream(true).start().waitFor()
+                soffice("odt", dir.path, java.io.File(dir, "$name.docx").path)
                 val content = String(OfficeFormats.unzip(java.io.File(dir, "$name.odt").readBytes()).getValue("content.xml"))
                 assertEquals(name, name == "on", "text:track-changes=\"true\"" in content)
             }
@@ -745,11 +745,11 @@ class OfficeFormatsTest {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "c.${kind.extension}").apply { writeBytes(OfficeFormats.write(updated, kind)) }
-                ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice("pdf", dir.path, f.path)
                 val pdf = String(java.io.File(dir, "c.pdf").readBytes(), Charsets.ISO_8859_1)
                 assert(Regex("/Subtype\\s*/Link").findAll(pdf).count() >= 4) { "$kind: LibreOffice's PDF has no links" }
                 val other = if (kind == OfficeKind.Docx) "odt" else "docx"
-                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, dir.path, f.path)
                 val again = OfficeFormats.read(java.io.File(dir, "c.$other").readBytes(), if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx)
                 val entry = again.paras.first { it.text.startsWith("Method\t") }
                 assert(entry.runs.any { it.link?.startsWith("#") == true }) { "$kind → $other: ${entry.runs.map { it.link }}" }
@@ -773,7 +773,7 @@ class OfficeFormatsTest {
             if (lo) {
                 val dir = scratchDir("lo"); val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
                 val f = java.io.File(dir, "s.${kind.extension}").apply { writeBytes(bytes) }
-                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other.extension, dir.path, f.path)
                 back(java.io.File(dir, "s.${other.extension}").readBytes(), other).let { assertEquals("LibreOffice's ${other.extension} of $kind $dash", dash, it.dash); assertTrue("LibreOffice's ${other.extension} of $kind $dash", it.shadow) }
             }
         }
@@ -791,7 +791,7 @@ class OfficeFormatsTest {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "a.docx").apply { writeBytes(bytes) }
-                ProcessBuilder("soffice", "--headless", "--convert-to", "odt", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice("odt", dir.path, f.path)
                 val odt = java.util.zip.ZipFile(java.io.File(dir, "a.odt")).use { z -> listOf("content.xml", "styles.xml").joinToString("") { String(z.getInputStream(z.getEntry(it)).readBytes()) } }
                 assertEquals(kind, if (ends == 3) 2 else 1, Regex("""draw:marker-(start|end)="""").findAll(odt).count())
             }
@@ -809,7 +809,7 @@ class OfficeFormatsTest {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "h.${kind.extension}").apply { writeBytes(bytes) }
                 val other = if (kind == OfficeKind.Docx) OfficeKind.Odt else OfficeKind.Docx
-                ProcessBuilder("soffice", "--headless", "--convert-to", other.extension, "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other.extension, dir.path, f.path)
                 assertEquals("$kind → LibreOffice", "Το $word μας", OfficeFormats.read(java.io.File(dir, "h.${other.extension}").readBytes(), other).paras.first { it.text.isNotBlank() }.text)
             }
         }
@@ -831,8 +831,8 @@ class OfficeFormatsTest {
             if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
                 val dir = scratchDir("lo")
                 val f = java.io.File(dir, "s.${kind.extension}").apply { writeBytes(bytes) }
-                ProcessBuilder("soffice", "--headless", "--convert-to", "txt:Text", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
-                ProcessBuilder("soffice", "--headless", "--convert-to", "pdf", "--outdir", dir.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice("txt:Text", dir.path, f.path)
+                soffice("pdf", dir.path, f.path)
                 val pdfText = ProcessBuilder("pdftotext", java.io.File(dir, "s.pdf").path, "-").redirectErrorStream(true).start().inputStream.bufferedReader().readText()
                 assert("Inside" in pdfText && "the oval" in pdfText) { "$kind: LibreOffice's page has no words in the shape: $pdfText" }
             }

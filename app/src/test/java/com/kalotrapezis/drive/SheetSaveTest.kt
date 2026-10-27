@@ -20,9 +20,7 @@ class SheetSaveTest {
     private fun shown(file: File): Map<String, List<List<String>>>? {
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return null
         val out = Files.createTempDirectory("shown").toFile()
-        val p = ProcessBuilder("soffice", "--headless", "--convert-to", "csv:Text - txt - csv (StarCalc):44,34,76,1,,0,false,true,true,false,false,-1", "--outdir", out.path, file.path)
-            .redirectErrorStream(true).start()
-        p.inputStream.readBytes(); p.waitFor()
+        soffice("csv:Text - txt - csv (StarCalc):44,34,76,1,,0,false,true,true,false,false,-1", out.path, file.path)
         return out.listFiles()!!.associate { csv -> csv.nameWithoutExtension.substringAfterLast('-') to Sheets.csv(csv.readBytes()).sheet(0).let { s -> (0 until s.rows).map { r -> (0 until s.cols).map { c -> s[r, c]?.text.orEmpty() } } } }
     }
 
@@ -76,16 +74,16 @@ class SheetSaveTest {
         // LibreOffice's own save of it
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return
         val out = File(dir, "lo").apply { mkdirs() }
-        ProcessBuilder("soffice", "--headless", "--convert-to", "xlsx", "--outdir", out.path, inline.path).redirectErrorStream(true).start().waitFor()
+        soffice("xlsx", out.path, inline.path)
         check(Sheets.read(File(out, "inline.xlsx"), ',', '.').sheet(0)[0, 0], "LibreOffice's save")
         // LibreOffice's .ods of it: its spans read; a fill put on the cell and saved by Tetra (the spans written), read again and by LibreOffice
-        ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "ods", "--outdir", out.path, inline.path).redirectErrorStream(true).start().waitFor()
+        soffice("ods", out.path, inline.path)
         val ods = File(out, "inline.ods"); val ob = Sheets.read(ods, ',', '.'); check(ob.sheet(0)[0, 0], "LibreOffice's ods")
         SheetHistory().apply(ob, 0, SheetLook.change(ob, ob.sheet(0), listOf(Sheet.key(0, 0))) { st, _ -> st.copy(fill = 0xFF00FF00.toInt()) })
         val saved = File(dir, "saved.ods"); SheetSave.save(ob, ods, saved)
         Sheets.read(saved, ',', '.').let { b -> check(b.sheet(0)[0, 0], "ods saved by Tetra"); assertEquals(0xFF00FF00.toInt(), b.sheet(0).look(b.sheet(0)[0, 0]!!.style, b.styles)?.fill) }
         val back = File(dir, "back").apply { mkdirs() }
-        ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "xlsx", "--outdir", back.path, saved.path).redirectErrorStream(true).start().waitFor()
+        soffice("xlsx", back.path, saved.path)
         check(Sheets.read(File(back, "saved.xlsx"), ',', '.').sheet(0)[0, 0], "LibreOffice's xlsx of Tetra's ods")
     }
 
@@ -110,7 +108,7 @@ class SheetSaveTest {
             Sheets.read(apart, ',', '.').sheet(0).let { s -> assertEquals(name, listOf(g), s.merges) }
             if (lo) {
                 val out = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", out.path, merged.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, out.path, merged.path)
                 check(File(out, "merged.$other"), "LibreOffice's $other of $name")
             }
         }
@@ -136,7 +134,7 @@ class SheetSaveTest {
             check(out, "put on $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, out.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, out.path)
                 check(File(conv, "chart.$other"), "LibreOffice's $other of $name")
             }
         }
@@ -164,7 +162,7 @@ class SheetSaveTest {
             check(f, "sized $name", true)
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name", true)
             }
             step(true, 3, 3, null, false)
@@ -190,7 +188,7 @@ class SheetSaveTest {
             check(f, "linked $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
             }
             step(1, 0, null)
@@ -211,7 +209,7 @@ class SheetSaveTest {
             check(hidden, "hidden, $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, hidden.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, hidden.path)
                 check(File(conv, "hidden.$other"), "LibreOffice's $other of $name")
             }
             val shown = File(dir, "shown.${f.extension}")
@@ -249,7 +247,7 @@ class SheetSaveTest {
             Sheets.read(off, ',', '.').let { b -> assertTrue(name, !b.sheet(0).headings); assertTrue(name, b.sheet(0).grid); assertEquals(name, "Alpha", b.sheet(0)[1, 0]?.text) }
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, off.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, off.path)
                 assertTrue("LibreOffice's $other of $name", !Sheets.read(File(conv, "off.$other"), ',', '.').sheet(0).headings)
             }
             val on = File(dir, "on.${f.extension}"); step(off, on, true)
@@ -277,7 +275,7 @@ class SheetSaveTest {
         // LibreOffice's .ods of it: table:protected, the unlocked look's cell-protect none
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() != 0) return
         val out = File(file.parentFile, "lo").apply { mkdirs() }
-        ProcessBuilder("soffice", "--headless", "--convert-to", "ods", "--outdir", out.path, file.path).redirectErrorStream(true).start().waitFor()
+        soffice("ods", out.path, file.path)
         val ob = Sheets.read(File(out, "p.ods"), ',', '.'); val os = ob.sheet(0); val oh = SheetHistory(); var no = 0; oh.refused = { no++ }
         assertTrue("LibreOffice's ods", os.protected)
         oh.apply(ob, 0, mapOf(Sheet.key(1, 0) to SheetInput.cell("Gamma", os[1, 0], os[1, 0]!!.style, "General", ob.format))); assertEquals("LibreOffice's ods", 1, no)
@@ -310,7 +308,7 @@ class SheetSaveTest {
             check(out, "set in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, out.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, out.path)
                 check(File(conv, "page.$other"), "LibreOffice's $other of $name")
             }
         }
@@ -352,7 +350,7 @@ class SheetSaveTest {
             check(f, "made in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
             }
             step(0, 2, 2, null)
@@ -379,7 +377,7 @@ class SheetSaveTest {
             check(f, "made in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
             }
             step(0, SheetRange(2, 3, 2, 3), null)
@@ -409,7 +407,7 @@ class SheetSaveTest {
             assertTrue(String(p.getValue("xl/tables/table2.xml")).contains("""id="2" name="Table2"""")) }
         if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
             val conv = File(dir, "lo").apply { mkdirs() }
-            ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "ods", "--outdir", conv.path, two.path).redirectErrorStream(true).start().waitFor()
+            soffice("ods", conv.path, two.path)
             val content = String(OfficeFormats.unzip(File(conv, "two.ods").readBytes()).getValue("content.xml"))
             assertTrue("LibreOffice's database ranges", Regex("""table:database-range\b[^>]*target-range-address="[^"]*A1:[^"]*D3"""").containsMatchIn(content))
             assertEquals("Alpha", Sheets.read(File(conv, "two.ods"), ',', '.').sheet(0)[1, 0]?.text)
@@ -447,7 +445,7 @@ class SheetSaveTest {
             check(f, "made in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
             }
             step(SheetRange(1, 1, 1, 1), null)
@@ -480,7 +478,7 @@ class SheetSaveTest {
             check(f, "protected in $name", true)
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 // LibreOffice keeps the protection but not the password, either way (it can't turn one hash into the other)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name", false)
             }
@@ -505,7 +503,7 @@ class SheetSaveTest {
             // LibreOffice opens and saves the .ods with it kept; its .xlsx filter neither reads nor writes Excel's lockStructure (tried: 26.2)
             if (lo && name.endsWith("ods")) {
                 val conv = File(dir, "lo").apply { mkdirs() }
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "ods", "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice("ods", conv.path, f.path)
                 assertTrue("LibreOffice's ods of $name", Sheets.read(conv.listFiles()!!.single { it.extension == "ods" }, ',', '.').structureLocked)
             }
             assertTrue(name, runCatching { step(false, "wrong") }.isFailure)
@@ -535,7 +533,7 @@ class SheetSaveTest {
             check(f, "made in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
             }
         }
@@ -556,7 +554,7 @@ class SheetSaveTest {
             check(next, "made in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, next.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, next.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
             }
         }
@@ -587,7 +585,7 @@ class SheetSaveTest {
             check(f, "made in $name", true)
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name", false)
             }
         }
@@ -610,7 +608,7 @@ class SheetSaveTest {
             check(kept, "kept in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, kept.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, kept.path)
                 check(File(conv, "kept.$other"), "LibreOffice's $other of $name")
             }
             val gone = File(dir, "gone.${f.extension}")
@@ -638,7 +636,7 @@ class SheetSaveTest {
             check(named, "named in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, named.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, named.path)
                 check(File(conv, "named.$other"), "LibreOffice's $other of $name")
             }
             val gone = File(dir, "gone.${f.extension}")
@@ -686,7 +684,7 @@ class SheetSaveTest {
             check(saved, "saved in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, saved.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, saved.path)
                 check(File(conv, "saved.$other"), "LibreOffice's $other of $name")
             }
         }
@@ -709,7 +707,7 @@ class SheetSaveTest {
             check(f, "grouped and collapsed in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
             }
             step(0, false); Sheets.read(f, ',', '.').sheet(0).let { s -> assertTrue(name, 1 !in s.hiddenRows && 2 !in s.hiddenRows); assertEquals(name, 1, s.rowLevels[1]) }
@@ -733,7 +731,7 @@ class SheetSaveTest {
             check(out, "made in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, out.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, out.path)
                 check(File(conv, "totals.$other"), "LibreOffice's $other of $name")
             }
         }
@@ -757,7 +755,7 @@ class SheetSaveTest {
             check(f, "put in $name")
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 check(conv.listFiles()!!.single { it.extension == other }, "LibreOffice's $other of $name")
             }
         }
@@ -784,7 +782,7 @@ class SheetSaveTest {
             drawings().let { d -> assertTrue(name, d.none { it.image != null }); assertTrue(name, d.any { it.text == "Hello" }) }
             if (lo) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 Sheets.read(conv.listFiles()!!.single { it.extension == other }, ',', '.').sheet(0).drawings.let { d -> assertTrue("LibreOffice's $other of $name", d.size == 1 && d[0].text == "Hello") }
             }
         }
@@ -804,7 +802,7 @@ class SheetSaveTest {
             // LibreOffice run without a window writes no view settings into an .ods: only its .xlsx can carry a freeze
             if (lo && name.endsWith("ods")) {
                 val conv = File(dir, "lo").apply { mkdirs() }; val other = if (name.endsWith("xlsx")) "ods" else "xlsx"
-                ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", other, "--outdir", conv.path, f.path).redirectErrorStream(true).start().waitFor()
+                soffice(other, conv.path, f.path)
                 assertEquals("LibreOffice's $other of $name", 2 to 1, frozen(conv.listFiles()!!.single { it.extension == other }))
             }
             step(1, 0); assertEquals(name, 1 to 0, frozen(f))

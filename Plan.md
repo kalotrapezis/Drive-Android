@@ -12,6 +12,10 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (beta-release session, 27 Oct; branch `claude/admiring-pare-6a6a4a`) **The next beta for Linux and Android, and the site** (the user:
+      "Are we ready to publish the new Beta For Linux and Android … AppImage for most Linux distros and Android 11+"; "No more new
+      stuff, just bettering what we have for now"): ready check, AppImage + .deb, signed release APK, the site's screenshots with
+      text laid over the pictures (translatable), publish on the user's yes, install on the phone.
 - [x] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive, not merged) **Routes across
       borders on each country's own graph, through the border crossings** (the user: "When we have both the neighbouring maps, it should
       be able to cross the border"; then "Drive to the edge and then start from the other edge"; "at the border … the main road", not

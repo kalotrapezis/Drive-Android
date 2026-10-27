@@ -12,26 +12,42 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
-- [x] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive, main merged into both;
-      not merged into main) **A route crosses from one installed map into its neighbour** (the user: "When we have both the neighbouring
-      maps, it should be able to cross the border"; then: one graph of every map "would need a supercomputer", "break it into pieces",
-      "use all the cores", "1 to several hours … please be patient", "if it's some 4 GB potato, grey it out"). **One graph a pair of
-      neighbours**, `<a>_<b>-gh` in Files/Maps (ids sorted: greece_macedonia-gh). Desktop map builder: a step **borders** after install;
-      neighbours are the maps here whose Geofabrik .poly meets the new one's (kept in ~/Tetra-maps/osm with each region's .osm.pbf;
-      Greece's pbf: maps-greece.sh's); each pair streamed together (maps-tools/maps-merge.py, pyosmium zip_processors: 3.5 min, 330 MB
-      for GR+MK) and imported with every core; each pair its own .done mark (Try again goes on at the next pair); a pair needing more
-      than 60% of the computer's memory (12 × both files) is left out with a line saying so. The wizard says beforehand that the map is
-      minutes to an hour and joining it with its neighbours hours, with the memory; while building, a line per pair (24 languages).
-      Remove takes the map's pairs. Routing: `MapsFiles.graphFor` (inside MapsRouting.routes, so no caller changed) and desktop
-      `maps.graphFor`: from one map into the other on their pair graph, within one map exactly as before; two maps not joined or a third
-      country fail in words (maps_error_not_joined / maps.notJoined). `graphAt` keeps an open pair graph while it holds the map at the
-      point, so speed limits on the way open no other graph (seconds on a phone). Checked: Thessaloniki → Skopje 223 km, 187 min on the
-      phone's code path (MapsBorderTest with TETRA_MAPS) and through router.js; Thessaloniki → Athens still greece-gh, 470.6 km;
-      neighbours from the real borders: GR–MK, GR–BG, GR–AL, GR–TR, MK–BG, MK–AL, MK–RS, BG–TR, BG–RS (not Cyprus, not Italy);
-      a real builder run (North Macedonia beside Greece, scratch Files/Maps): the map 6 min, the pair 47 min, then the same route on
-      its graph; 686 Android unit / 170 desktop tests pass. **Costs:** a pair graph is about both maps' graphs (GR+MK 786 MB) on the
-      phone too; every core did not make the pair faster than 3 threads (48 min): memory-bound here (13 GB, swapping). **Open:** a route through three countries; the phone's Settings › Maps does not
-      count the pair graphs' size; nothing tried on the phone/tablet.
+- [~] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive, on main) **Routes across
+      borders on each country's own graph, through the border crossings** (the user: "When we have both the neighbouring maps, it should
+      be able to cross the border"; then "Drive to the edge and then start from the other edge"; "at the border … the main road", not
+      "through the fields"; "three or more one by one so we don't need AI level of memory"). Replaces the pair graphs merged earlier today
+      (`<a>_<b>-gh`, hours to build, 786 MB each). The desktop map builder's step **borders** (after install, seconds) writes
+      `<a>_<b>-crossings.tsv` for each neighbour (Geofabrik .poly borders that meet), and for any two maps here that have none yet, so one
+      Remake joins maps made before: maps-tools/maps-crossings.py reads both regions' .osm.pbf (kept in ~/Tetra-maps/osm, else downloaded
+      again) — the barrier=border_control points on car roads both hold, else (an open border) their main roads, up to four points a
+      crossing (a station's lanes: one point on the wrong lane turned the route round). Routing (Android MapsFiles.legs + MapsRouting.routes,
+      desktop maps.legs + main.js maps:route): within one map exactly as before; else the maps on the way (fewest borders, any number),
+      the five crossings nearest the way (three through a third country) timed on both sides, the fastest kept, each leg on its own graph,
+      joined as one route. Up to three graphs open (phone) / GraphHopper servers (desktop). Checked on the real GR, MK, BG graphs: Thessaloniki
+      → Skopje 222.9 km, 188 min by Evzonoi (as the pair graph); → Sofia 286 km by Promachonas; Athens → Plovdiv by Nymfaia; Thessaloniki →
+      Sofia forced through North Macedonia 343 min; 687 Android unit / 171 desktop tests. **Open:** the pair graph greece_macedonia-gh in
+      Files/Maps and on the phone is no longer read (the main session removes it); a route through three countries tries fewer crossings;
+      nothing tried on the phone/tablet.
+      Before (superseded): (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive, main merged into both;
+        not merged into main) **A route crosses from one installed map into its neighbour** (the user: "When we have both the neighbouring
+        maps, it should be able to cross the border"; then: one graph of every map "would need a supercomputer", "break it into pieces",
+        "use all the cores", "1 to several hours … please be patient", "if it's some 4 GB potato, grey it out"). **One graph a pair of
+        neighbours**, `<a>_<b>-gh` in Files/Maps (ids sorted: greece_macedonia-gh). Desktop map builder: a step **borders** after install;
+        neighbours are the maps here whose Geofabrik .poly meets the new one's (kept in ~/Tetra-maps/osm with each region's .osm.pbf;
+        Greece's pbf: maps-greece.sh's); each pair streamed together (maps-tools/maps-merge.py, pyosmium zip_processors: 3.5 min, 330 MB
+        for GR+MK) and imported with every core; each pair its own .done mark (Try again goes on at the next pair); a pair needing more
+        than 60% of the computer's memory (12 × both files) is left out with a line saying so. The wizard says beforehand that the map is
+        minutes to an hour and joining it with its neighbours hours, with the memory; while building, a line per pair (24 languages).
+        Remove takes the map's pairs. Routing: `MapsFiles.graphFor` (inside MapsRouting.routes, so no caller changed) and desktop
+        `maps.graphFor`: from one map into the other on their pair graph, within one map exactly as before; two maps not joined or a third
+        country fail in words (maps_error_not_joined / maps.notJoined). `graphAt` keeps an open pair graph while it holds the map at the
+        point, so speed limits on the way open no other graph (seconds on a phone). Checked: Thessaloniki → Skopje 223 km, 187 min on the
+        phone's code path (MapsBorderTest with TETRA_MAPS) and through router.js; Thessaloniki → Athens still greece-gh, 470.6 km;
+        neighbours from the real borders: GR–MK, GR–BG, GR–AL, GR–TR, MK–BG, MK–AL, MK–RS, BG–TR, BG–RS (not Cyprus, not Italy);
+        a real builder run (North Macedonia beside Greece, scratch Files/Maps): the map 6 min, the pair 47 min, then the same route on
+        its graph; 686 Android unit / 170 desktop tests pass. **Costs:** a pair graph is about both maps' graphs (GR+MK 786 MB) on the
+        phone too; every core did not make the pair faster than 3 threads (48 min): memory-bound here (13 GB, swapping). **Open:** a route through three countries; the phone's Settings › Maps does not
+        count the pair graphs' size; nothing tried on the phone/tablet.
 - [x] (directions-languages session, 27 Oct; branches `claude/reverent-lederberg-489439` here (20155551) and `directions-languages` in Drive
       (dfc246a), not merged) **Maps' directions in every language Tetra has** (the user: "Why it's only Greek? Isn't that an Android
       feature? It shouldn't be hard to be in all the languages we have."): Tetra's own words (warnings, lanes, bends, stops, tolls,

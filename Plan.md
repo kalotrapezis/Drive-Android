@@ -12,6 +12,8 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive) **A route crosses from one
+      installed map into its neighbour** (the user: "When we have both the neighbouring maps, it should be able to cross the border").
 - [~] (call-speaker session, 27 Oct; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
       phone-speaker button** (the user: "the call pop up on the PC from the phone to have a speaker option so instead of hearing the call from
       bluetooth to my PC to hear it from the phone's speaker"). Bubble: a speaker icon (while Tetra is the phone app, as Mute/Hold) sends

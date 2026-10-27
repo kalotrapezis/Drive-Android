@@ -4784,4 +4784,8 @@
     <string name="phone_flip_silence_about">Aqleb it-telefon li qed idoqq wiċċu ’l isfel biex issikktu.</string>
     <string name="phone_unblock">Neħħi l-imblukkar</string>
     <string name="phone_blocking_hint">In-numri miżjuda hawn jiġu miċħuda qabel ma jdoqqu, fuq it-telefon, it-tablet u l-kompjuter. * fl-aħħar tieħu firxa sħiħa (69800*).</string>
+    <string name="phone_blocked_notify">Notifika siekta</string>
+    <string name="phone_blocked_notify_about">Notifika siekta meta jċempel numru imblukkat.</string>
+    <string name="phone_channel_blocked">Sejħiet imblukkati</string>
+    <string name="phone_blocked_from">Sejħa imblukkata minn %1$s</string>
 </resources>

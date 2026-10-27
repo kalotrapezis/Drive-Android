@@ -4601,4 +4601,8 @@
     <string name="phone_flip_silence_about">Turn a ringing phone face down to silence it.</string>
     <string name="phone_unblock">Unblock</string>
     <string name="phone_blocking_hint">Numbers added here are declined before they ring, on the phone, the tablet and the computer alike. A * at the end takes a whole range (69800*).</string>
+    <string name="phone_blocked_notify">Notify silently</string>
+    <string name="phone_blocked_notify_about">A quiet notification when a blocked number calls.</string>
+    <string name="phone_channel_blocked">Blocked calls</string>
+    <string name="phone_blocked_from">Blocked call from %1$s</string>
 </resources>

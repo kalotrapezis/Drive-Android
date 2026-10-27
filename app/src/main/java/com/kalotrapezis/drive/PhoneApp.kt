@@ -73,6 +73,7 @@ class PhoneActivity : ComponentActivity() {
     private val keypad = mutableStateOf(false)
     private val tab = mutableStateOf(PhoneTab.Recents)
     private val missed = mutableIntStateOf(0) // asked to show the missed calls (a missed-call notification's tap)
+    private val blocked = mutableStateOf<String?>(null) // asked to show a blocked number's card (its silent notification's tap)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this)
@@ -81,7 +82,7 @@ class PhoneActivity : ComponentActivity() {
         if (ContactsPreload.all == null) ContactsPreload.warm(this)
         take(intent)
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = TetraLook.light
-        setContent { TetraTheme { PhoneApp(keypad, tab, number, missed, back = { finish() }) } }
+        setContent { TetraTheme { PhoneApp(keypad, tab, number, missed, blocked, back = { finish() }) } }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); take(intent) }
     private fun take(i: Intent) {
@@ -89,9 +90,13 @@ class PhoneActivity : ComponentActivity() {
         // the call log asked for (Android's own missed-call notification, or Tetra's): Recents › Missed
         val log = i.action == Intent.ACTION_VIEW && (i.type == CallLog.Calls.CONTENT_TYPE || i.data?.authority == CallLog.AUTHORITY)
         if (log || i.getStringExtra(TAB) == "missed") { keypad.value = false; tab.value = PhoneTab.Recents; missed.intValue++ }
+        i.getStringExtra(BLOCKED)?.let { blocked.value = it }
         when (i.getStringExtra(TAB)) { "keypad" -> keypad.value = true; "recents" -> tab.value = PhoneTab.Recents; "contacts" -> tab.value = PhoneTab.Contacts }
     }
-    companion object { const val TAB = "com.kalotrapezis.drive.phone.TAB" } // Home's slots: keypad, recents, contacts
+    companion object {
+        const val TAB = "com.kalotrapezis.drive.phone.TAB" // Home's slots: keypad, recents, contacts
+        const val BLOCKED = "com.kalotrapezis.drive.phone.BLOCKED"
+    }
 }
 
 /** Opens Tetra's Contacts on a person, or at a new contact with this number. */
@@ -104,7 +109,7 @@ internal fun phoneRoot() = java.io.File(TetraFolder.root(android.os.Environment.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<PhoneTab>, number: MutableState<String>, missed: State<Int>, back: () -> Unit) {
+private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<PhoneTab>, number: MutableState<String>, missed: State<Int>, blockedAsk: MutableState<String?>, back: () -> Unit) {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -139,6 +144,11 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     var page by remember { mutableStateOf<PhonePage?>(null) }
     var blockedPage by remember { mutableStateOf<PhoneSpam.Entry?>(null) } // a blocked number's card, over Call blocking
     val blockingScroll = rememberScrollState() // Call blocking back where it was after a number's page
+    LaunchedEffect(blockedAsk.value) {
+        val n = blockedAsk.value ?: return@LaunchedEffect
+        blockedAsk.value = null
+        PhoneSpam.matches(PhoneSpam.read(), n)?.let { page = PhonePage.Blocking; blockedPage = it }
+    }
     val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     fun call(n: String) {
         if (n.isBlank()) return
@@ -728,6 +738,16 @@ private fun SpamSettings(changed: () -> Unit) {
     }
     // the list itself is not shown (the user, 27 Oct: "its the same" as the blocked calls); a number is unblocked on its page
     var adding by remember { mutableStateOf("") }
+    if (!PhoneRelay.noCalls(context)) {
+        var notify by remember { mutableStateOf(PhonePrefs.blockedNotify(context)) }
+        Row(Modifier.fillMaxWidth().clickable { notify = !notify; PhonePrefs.setBlockedNotify(context, notify) }, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.phone_blocked_notify), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.phone_blocked_notify_about), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
+            }
+            Switch(checked = notify, onCheckedChange = { notify = it; PhonePrefs.setBlockedNotify(context, it) })
+        }
+    }
     Text(stringResource(R.string.phone_blocking_hint), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(adding, { adding = it.filter { ch -> ch.isDigit() || ch in "+* " } }, singleLine = true, placeholder = { Text(stringResource(R.string.phone_spam_placeholder)) }, modifier = Modifier.weight(1f))

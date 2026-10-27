@@ -4876,4 +4876,8 @@
     <string name="phone_flip_silence_about">Iompaigh fón atá ag bualadh bunoscionn chun é a chiúnú.</string>
     <string name="phone_unblock">Díbhac</string>
     <string name="phone_blocking_hint">Diúltaítear do na huimhreacha a chuirtear anseo sula mbuaileann siad, ar an bhfón, ar an táibléad agus ar an ríomhaire. Clúdaíonn * ag an deireadh raon iomlán (69800*).</string>
+    <string name="phone_blocked_notify">Fógra ciúin</string>
+    <string name="phone_blocked_notify_about">Fógra ciúin nuair a ghlaonn uimhir bhactha.</string>
+    <string name="phone_channel_blocked">Glaonna bactha</string>
+    <string name="phone_blocked_from">Glao bactha ó %1$s</string>
 </resources>

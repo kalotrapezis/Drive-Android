@@ -4600,4 +4600,8 @@
     <string name="phone_flip_silence_about">Vaigistamiseks pööra helisev telefon ekraaniga alla.</string>
     <string name="phone_unblock">Tühista blokeering</string>
     <string name="phone_blocking_hint">Siia lisatud numbrid lükatakse tagasi enne helisemist – telefonis, tahvelarvutis ja arvutis. * lõpus hõlmab terve vahemiku (69800*).</string>
+    <string name="phone_blocked_notify">Vaikne teavitus</string>
+    <string name="phone_blocked_notify_about">Vaikne teavitus, kui helistab blokeeritud number.</string>
+    <string name="phone_channel_blocked">Blokeeritud kõned</string>
+    <string name="phone_blocked_from">Blokeeritud kõne numbrilt %1$s</string>
 </resources>

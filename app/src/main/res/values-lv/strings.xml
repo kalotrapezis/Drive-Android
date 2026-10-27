@@ -4692,4 +4692,8 @@
     <string name="phone_flip_silence_about">Apgrieziet zvanošu tālruni ar ekrānu uz leju, lai to apklusinātu.</string>
     <string name="phone_unblock">Atbloķēt</string>
     <string name="phone_blocking_hint">Šeit pievienotie numuri tiek noraidīti pirms zvana – tālrunī, planšetdatorā un datorā. * beigās aptver visu diapazonu (69800*).</string>
+    <string name="phone_blocked_notify">Kluss paziņojums</string>
+    <string name="phone_blocked_notify_about">Kluss paziņojums, kad zvana bloķēts numurs.</string>
+    <string name="phone_channel_blocked">Bloķētie zvani</string>
+    <string name="phone_blocked_from">Bloķēts zvans no %1$s</string>
 </resources>

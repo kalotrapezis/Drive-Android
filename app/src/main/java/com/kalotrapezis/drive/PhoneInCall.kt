@@ -245,6 +245,8 @@ internal object PhonePrefs {
     fun declineHidden(c: Context) = p(c).getBoolean("decline_hidden", false)
     fun setSilenceUnknown(c: Context, on: Boolean) = p(c).edit().putBoolean("silence_unknown", on).apply()
     fun setDeclineHidden(c: Context, on: Boolean) = p(c).edit().putBoolean("decline_hidden", on).apply()
+    fun blockedNotify(c: Context) = p(c).getBoolean("blocked_notify", false)
+    fun setBlockedNotify(c: Context, on: Boolean) = p(c).edit().putBoolean("blocked_notify", on).apply()
     fun raiseAnswer(c: Context) = p(c).getBoolean("raise_answer", false)
     fun flipSilence(c: Context) = p(c).getBoolean("flip_silence", false)
     fun setRaiseAnswer(c: Context, on: Boolean) = p(c).edit().putBoolean("raise_answer", on).apply()

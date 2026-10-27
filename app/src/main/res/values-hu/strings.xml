@@ -4600,4 +4600,8 @@
     <string name="phone_flip_silence_about">Fordítsa a csörgő telefont kijelzővel lefelé a némításhoz.</string>
     <string name="phone_unblock">Letiltás feloldása</string>
     <string name="phone_blocking_hint">Az itt hozzáadott számokat a rendszer csörgés előtt elutasítja – a telefonon, a táblagépen és a számítógépen is. A végén álló * egy teljes tartományt lefed (69800*).</string>
+    <string name="phone_blocked_notify">Néma értesítés</string>
+    <string name="phone_blocked_notify_about">Néma értesítés, ha letiltott szám hív.</string>
+    <string name="phone_channel_blocked">Letiltott hívások</string>
+    <string name="phone_blocked_from">Letiltott hívás: %1$s</string>
 </resources>

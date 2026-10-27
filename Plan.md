@@ -20,7 +20,8 @@ How to write here:
       and **Turn over to silence** (PhoneGestures, while ringing, both off at first; Settings › Phone and the sheet); 24 languages.
       Merged into main 27 Oct. Then (the user): Call blocking is one list as Contacts (every number and range on the spam list,
       whether it called or not; the add field on top), a tap opens its card: Unblock (a range's line goes), its call history,
-      its recordings; the sheet's two buttons side by side. Seen on the tablet.
+      its recordings; the sheet's two buttons side by side; Notify silently (a quiet notification when a blocked number calls, a
+      tap opens its card; on the phone only). Seen on the tablet; the notification itself not seen (needs a blocked call).
       **Open:** Unblock not pressed on a device (it would unblock a real number); the gestures need a real call on the phone;
       the keypad pane's upper part is empty until a number is typed.
 - [x] (office-media session, 27 Oct; branch `claude/office-media`, not merged; its build is on the tablet 971f6b37) **Local video and audio

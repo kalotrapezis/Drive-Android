@@ -4600,4 +4600,8 @@
     <string name="phone_flip_silence_about">Ein klingelndes Telefon mit dem Display nach unten legen, um es stummzuschalten.</string>
     <string name="phone_unblock">Freigeben</string>
     <string name="phone_blocking_hint">Hier hinzugefügte Nummern werden abgewiesen, bevor sie klingeln – auf Telefon, Tablet und Computer. Ein * am Ende erfasst einen ganzen Bereich (69800*).</string>
+    <string name="phone_blocked_notify">Lautlos benachrichtigen</string>
+    <string name="phone_blocked_notify_about">Eine stille Benachrichtigung, wenn eine gesperrte Nummer anruft.</string>
+    <string name="phone_channel_blocked">Gesperrte Anrufe</string>
+    <string name="phone_blocked_from">Gesperrter Anruf von %1$s</string>
 </resources>

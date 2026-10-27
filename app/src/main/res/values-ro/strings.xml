@@ -4692,4 +4692,8 @@
     <string name="phone_flip_silence_about">Întoarceți cu ecranul în jos un telefon care sună pentru a-l reduce la tăcere.</string>
     <string name="phone_unblock">Deblochează</string>
     <string name="phone_blocking_hint">Numerele adăugate aici sunt respinse înainte să sune, pe telefon, pe tabletă și pe computer. Un * la final cuprinde un interval întreg (69800*).</string>
+    <string name="phone_blocked_notify">Notificare silențioasă</string>
+    <string name="phone_blocked_notify_about">O notificare silențioasă când sună un număr blocat.</string>
+    <string name="phone_channel_blocked">Apeluri blocate</string>
+    <string name="phone_blocked_from">Apel blocat de la %1$s</string>
 </resources>

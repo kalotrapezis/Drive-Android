@@ -4600,4 +4600,8 @@
     <string name="phone_flip_silence_about">Leg een rinkelende telefoon met het scherm naar beneden om hem stil te zetten.</string>
     <string name="phone_unblock">Deblokkeren</string>
     <string name="phone_blocking_hint">Nummers die je hier toevoegt worden geweigerd voordat ze overgaan, op de telefoon, de tablet en de computer. Een * aan het eind neemt een hele reeks (69800*).</string>
+    <string name="phone_blocked_notify">Stil melden</string>
+    <string name="phone_blocked_notify_about">Een stille melding wanneer een geblokkeerd nummer belt.</string>
+    <string name="phone_channel_blocked">Geblokkeerde oproepen</string>
+    <string name="phone_blocked_from">Geblokkeerde oproep van %1$s</string>
 </resources>

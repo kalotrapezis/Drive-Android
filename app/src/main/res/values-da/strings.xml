@@ -4600,4 +4600,8 @@
     <string name="phone_flip_silence_about">Vend en ringende telefon med skærmen nedad for at gøre den lydløs.</string>
     <string name="phone_unblock">Fjern blokering</string>
     <string name="phone_blocking_hint">Numre tilføjet her afvises, før de ringer – på telefonen, tabletten og computeren. En * til sidst tager en hel serie (69800*).</string>
+    <string name="phone_blocked_notify">Lydløs besked</string>
+    <string name="phone_blocked_notify_about">En lydløs besked, når et blokeret nummer ringer.</string>
+    <string name="phone_channel_blocked">Blokerede opkald</string>
+    <string name="phone_blocked_from">Blokeret opkald fra %1$s</string>
 </resources>

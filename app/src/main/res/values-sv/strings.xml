@@ -4600,4 +4600,8 @@
     <string name="phone_flip_silence_about">Vänd en ringande telefon med skärmen nedåt för att tysta den.</string>
     <string name="phone_unblock">Avblockera</string>
     <string name="phone_blocking_hint">Nummer som läggs till här avvisas innan de ringer, på telefonen, surfplattan och datorn. En * i slutet tar en hel nummerserie (69800*).</string>
+    <string name="phone_blocked_notify">Tyst avisering</string>
+    <string name="phone_blocked_notify_about">En tyst avisering när ett blockerat nummer ringer.</string>
+    <string name="phone_channel_blocked">Blockerade samtal</string>
+    <string name="phone_blocked_from">Blockerat samtal från %1$s</string>
 </resources>

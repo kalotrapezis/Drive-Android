@@ -4599,4 +4599,8 @@
     <string name="phone_flip_silence_about">Γυρίστε το τηλέφωνο ανάποδα ενώ χτυπά για να σωπάσει.</string>
     <string name="phone_unblock">Άρση φραγής</string>
     <string name="phone_blocking_hint">Οι αριθμοί που προσθέτετε εδώ απορρίπτονται πριν χτυπήσουν, στο τηλέφωνο, στο tablet και στον υπολογιστή. Ένα * στο τέλος πιάνει ολόκληρη σειρά (69800*).</string>
+    <string name="phone_blocked_notify">Αθόρυβη ειδοποίηση</string>
+    <string name="phone_blocked_notify_about">Μια αθόρυβη ειδοποίηση όταν καλεί ένας μπλοκαρισμένος αριθμός.</string>
+    <string name="phone_channel_blocked">Μπλοκαρισμένες κλήσεις</string>
+    <string name="phone_blocked_from">Μπλοκαρισμένη κλήση από %1$s</string>
 </resources>

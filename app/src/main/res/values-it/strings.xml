@@ -4600,4 +4600,8 @@
     <string name="phone_flip_silence_about">Capovolgi un telefono che squilla per silenziarlo.</string>
     <string name="phone_unblock">Sblocca</string>
     <string name="phone_blocking_hint">I numeri aggiunti qui vengono rifiutati prima che squillino, sul telefono, sul tablet e sul computer. Un * alla fine copre un intero intervallo (69800*).</string>
+    <string name="phone_blocked_notify">Notifica silenziosa</string>
+    <string name="phone_blocked_notify_about">Una notifica silenziosa quando chiama un numero bloccato.</string>
+    <string name="phone_channel_blocked">Chiamate bloccate</string>
+    <string name="phone_blocked_from">Chiamata bloccata da %1$s</string>
 </resources>

@@ -4784,4 +4784,8 @@
     <string name="phone_flip_silence_about">Apverskite skambantį telefoną ekranu žemyn, kad jis nutiltų.</string>
     <string name="phone_unblock">Atblokuoti</string>
     <string name="phone_blocking_hint">Čia pridėti numeriai atmetami dar prieš suskambant – telefone, planšetėje ir kompiuteryje. * pabaigoje apima visą intervalą (69800*).</string>
+    <string name="phone_blocked_notify">Tylus pranešimas</string>
+    <string name="phone_blocked_notify_about">Tylus pranešimas, kai skambina užblokuotas numeris.</string>
+    <string name="phone_channel_blocked">Užblokuoti skambučiai</string>
+    <string name="phone_blocked_from">Užblokuotas skambutis iš %1$s</string>
 </resources>

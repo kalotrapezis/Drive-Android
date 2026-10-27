@@ -4784,4 +4784,8 @@
     <string name="phone_flip_silence_about">Odwróć dzwoniący telefon ekranem w dół, aby go wyciszyć.</string>
     <string name="phone_unblock">Odblokuj</string>
     <string name="phone_blocking_hint">Numery dodane tutaj są odrzucane, zanim zadzwonią – na telefonie, tablecie i komputerze. * na końcu obejmuje cały zakres (69800*).</string>
+    <string name="phone_blocked_notify">Ciche powiadomienie</string>
+    <string name="phone_blocked_notify_about">Ciche powiadomienie, gdy dzwoni zablokowany numer.</string>
+    <string name="phone_channel_blocked">Zablokowane połączenia</string>
+    <string name="phone_blocked_from">Zablokowane połączenie od %1$s</string>
 </resources>

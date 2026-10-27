@@ -4600,4 +4600,8 @@
     <string name="phone_flip_silence_about">Обърнете звънящия телефон с екрана надолу, за да го заглушите.</string>
     <string name="phone_unblock">Деблокиране</string>
     <string name="phone_blocking_hint">Номерата, добавени тук, се отхвърлят, преди да звъннат – на телефона, таблета и компютъра. * накрая обхваща цял диапазон (69800*).</string>
+    <string name="phone_blocked_notify">Тихо известие</string>
+    <string name="phone_blocked_notify_about">Тихо известие, когато се обажда блокиран номер.</string>
+    <string name="phone_channel_blocked">Блокирани обаждания</string>
+    <string name="phone_blocked_from">Блокирано обаждане от %1$s</string>
 </resources>

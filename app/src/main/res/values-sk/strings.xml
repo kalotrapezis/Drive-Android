@@ -4784,4 +4784,8 @@
     <string name="phone_flip_silence_about">Otočte zvoniaci telefón displejom nadol a stíši sa.</string>
     <string name="phone_unblock">Odblokovať</string>
     <string name="phone_blocking_hint">Čísla pridané sem sú odmietnuté skôr, než zazvonia – v telefóne, tablete aj počítači. * na konci zahrnie celý rozsah (69800*).</string>
+    <string name="phone_blocked_notify">Tiché upozornenie</string>
+    <string name="phone_blocked_notify_about">Tiché upozornenie, keď volá zablokované číslo.</string>
+    <string name="phone_channel_blocked">Zablokované hovory</string>
+    <string name="phone_blocked_from">Zablokovaný hovor od %1$s</string>
 </resources>

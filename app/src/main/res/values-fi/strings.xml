@@ -4600,4 +4600,8 @@
     <string name="phone_flip_silence_about">Hiljennä soiva puhelin kääntämällä se näyttö alaspäin.</string>
     <string name="phone_unblock">Poista esto</string>
     <string name="phone_blocking_hint">Tähän lisätyt numerot hylätään ennen kuin ne soivat – puhelimessa, tabletissa ja tietokoneella. * lopussa kattaa koko numerosarjan (69800*).</string>
+    <string name="phone_blocked_notify">Hiljainen ilmoitus</string>
+    <string name="phone_blocked_notify_about">Hiljainen ilmoitus, kun estetty numero soittaa.</string>
+    <string name="phone_channel_blocked">Estetyt puhelut</string>
+    <string name="phone_blocked_from">Estetty puhelu numerosta %1$s</string>
 </resources>

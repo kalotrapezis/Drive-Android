@@ -4692,4 +4692,8 @@
     <string name="phone_flip_silence_about">Okrenite telefon koji zvoni zaslonom prema dolje da ga utišate.</string>
     <string name="phone_unblock">Deblokiraj</string>
     <string name="phone_blocking_hint">Brojevi dodani ovdje odbijaju se prije nego što zazvone – na telefonu, tabletu i računalu. * na kraju obuhvaća cijeli raspon (69800*).</string>
+    <string name="phone_blocked_notify">Tiha obavijest</string>
+    <string name="phone_blocked_notify_about">Tiha obavijest kad zove blokirani broj.</string>
+    <string name="phone_channel_blocked">Blokirani pozivi</string>
+    <string name="phone_blocked_from">Blokirani poziv od %1$s</string>
 </resources>

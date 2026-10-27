@@ -4692,4 +4692,8 @@
     <string name="phone_flip_silence_about">Pon boca abajo un teléfono que suena para silenciarlo.</string>
     <string name="phone_unblock">Desbloquear</string>
     <string name="phone_blocking_hint">Los números añadidos aquí se rechazan antes de sonar, en el teléfono, la tableta y el ordenador. Un * al final abarca todo un rango (69800*).</string>
+    <string name="phone_blocked_notify">Avisar en silencio</string>
+    <string name="phone_blocked_notify_about">Una notificación silenciosa cuando llama un número bloqueado.</string>
+    <string name="phone_channel_blocked">Llamadas bloqueadas</string>
+    <string name="phone_blocked_from">Llamada bloqueada de %1$s</string>
 </resources>

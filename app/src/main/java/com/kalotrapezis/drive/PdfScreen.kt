@@ -831,14 +831,14 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     fun applyRedactions(): Int {
         var n = 0
         edit("Redact") { _ -> sizes.indices.forEach { i -> page(i) { p -> if ((p as com.artifex.mupdf.fitz.PDFPage).applyRedactions(true, com.artifex.mupdf.fitz.PDFPage.REDACT_IMAGE_PIXELS)) n++ } } }
-        if (n > 0) rewrite = rewrite ?: "garbage=compact,compress"
+        if (n > 0) rewrite = rewrite ?: "garbage,compress"
         return n
     }
     val hasRedactionMarks get() = synchronized(this) { sizes.indices.any { i -> page(i) { p -> (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty().any { it.type == com.artifex.mupdf.fitz.PDFAnnotation.TYPE_REDACT } } } }
 
     /** The next save asks for [password] to open the file (AES-256), or with null opens without one. */
     fun protect(password: String?) {
-        rewrite = if (password == null) "garbage=compact,compress,decrypt" else "garbage=compact,compress,encrypt=aes-256,user-password=${password.replace(",", "")},owner-password=${password.replace(",", "")}"
+        rewrite = if (password == null) "garbage,compress,decrypt" else "garbage,compress,encrypt=aes-256,user-password=${password.replace(",", "")},owner-password=${password.replace(",", "")}"
     }
     val rewriting get() = rewrite != null
 
@@ -975,7 +975,8 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         // nothing new and nothing written since it was opened: the file as it is (MuPDF appending nothing left a broken stub)
         else if (!p.hasUnsavedChanges() && untouched && !savedOnce) file.copyTo(temp, overwrite = true)
         else if (appendable) { file.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
-        else p.save(temp.path, "garbage=compact,compress")
+        // what is unused dropped, the objects keep their numbers (compact renumbered every one on each save)
+        else p.save(temp.path, "garbage,compress")
         if (!temp.renameTo(to)) throw PdfError(R.string.pdf_save_failed_file)
         p.undoRedoPosition().let { at -> savedAt = at; redoStale = p.undoRedoSteps() > at }
         savedOnce = true

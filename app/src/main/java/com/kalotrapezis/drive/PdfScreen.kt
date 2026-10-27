@@ -394,6 +394,9 @@ internal class PdfDoc(private val file: File, password: String? = null) {
 
     /** Page [i] has words of its own (not a scan, or read already). */
     fun hasText(i: Int): Boolean = synchronized(this) { page(i) { p -> p.toStructuredText().let { t -> t.asText().isNotBlank().also { t.destroy() } } } }
+    /** Page [i]'s films and sounds (PdfMedia), and the [n]th annotation's written into [dir] to play. */
+    fun media(i: Int) = synchronized(this) { page(i) { p -> (p as? com.artifex.mupdf.fitz.PDFPage)?.let(PdfMedia::spots).orEmpty() } }
+    fun mediaFile(i: Int, n: Int, dir: File) = synchronized(this) { page(i) { p -> (p as? com.artifex.mupdf.fitz.PDFPage)?.let { PdfMedia.play(it, n, dir) } } }
 
     /**
      * The file's words as a Words document (the user, 22 Oct: "make it in to words"; "can we make a table and content table
@@ -1808,6 +1811,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                             { chosen?.let { (ci, r, t) -> retype(ci, r, t) } },
                                             { dx, dy -> chosen?.second?.let { r -> rechange(x = r.left + dx, y = r.top + dy) } }), marks, matches?.getOrNull(match)?.takeIf { it.page == i }) {
                                     if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
+                                    if (!editing) PdfMediaLayer(d, i, s) // over a form's layer: only its films' boxes take taps
                                     typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook) }
                                     pageMenu?.takeIf { it.first == i }?.let { (_, spot, pt) -> OfficeMenu(spot, { pageMenu = null }) {
                                         @Composable fun entry(label: String, icon: Int, act: () -> Unit) = OfficeMenuItem(label, icon) { pageMenu = null; WriterLog.i("PDF: menu › $label"); act() }

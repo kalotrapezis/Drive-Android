@@ -2628,7 +2628,11 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     fun close() { mark(); rehearse?.invoke(spent); ink.filterValues { it.isNotEmpty() }.takeIf { it.isNotEmpty() }?.let { m -> keepInk?.invoke(m.mapKeys { shown[it.key] }) }; close0() }
     // a group of effects lasts as long as its latest one
     fun length(g: SlideStep) = g.effects.maxOfOrNull { it.delay + it.ms } ?: 0
-    fun play(g: Int) { playing = g to System.nanoTime(); WriterLog.i("Slides: click ${g + 1}") }
+    /** [v]'s film or sound played in its frame on the slide shown now (a tap on it, or its media call). */
+    fun playFilm(v: SlideItem, wait: Int = 0) { val p = page
+        scope.launch { kotlinx.coroutines.delay(wait.toLong()); film(v.media!!)?.let { f -> if (page == p) filmPlaying = p to OfficeVideo.Spot(f, v.x, v.y, v.w, v.h, v.rotation, v.trim) } }; WriterLog.i("Slides: a video played") }
+    fun play(g: Int) { playing = g to System.nanoTime(); WriterLog.i("Slides: click ${g + 1}")
+        stepsOf(page).getOrNull(g)?.effects?.filter { it.kind == "play" }?.forEach { e -> slide(page).items.lastOrNull { it.anim == e.target && it.media != null }?.let { playFilm(it, e.delay) } } }
     // the groups that start by themselves: one after the other, at the slide's start and after a click
     LaunchedEffect(page, step, playing, from) {
         val steps = stepsOf(page)
@@ -2654,8 +2658,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
     fun follow(x: Float, y: Float, w: Float, h: Float): Boolean {
         val k = minOf(w / deck.width, h / deck.height); val px = (x - (w - deck.width * k) / 2) / k; val py = (y - (h - deck.height * k) / 2) / k
         // a video tapped: played in its frame, as PowerPoint plays one on the slide
-        slide(page).items.lastOrNull { it.media != null && px in it.x..it.x + it.w && py in it.y..it.y + it.h }?.let { v -> val p = page
-            scope.launch { film(v.media!!)?.let { f -> filmPlaying = p to OfficeVideo.Spot(f, v.x, v.y, v.w, v.h, v.rotation, v.trim) } }; WriterLog.i("Slides: a video played"); return true }
+        slide(page).items.lastOrNull { it.media != null && px in it.x..it.x + it.w && py in it.y..it.y + it.h }?.let { v -> playFilm(v); return true }
         // an object linked (a picture, a shape: asked 17 Oct, maps that zoom in), else words with a link in a box
         val obj = slide(page).items.lastOrNull { it.link != null && px in it.x..it.x + it.w && py in it.y..it.y + it.h }
         val box = if (obj != null) null else slide(page).items.filterIsInstance<SlideItem.Shape>().lastOrNull { px in it.x..it.x + it.w && py in it.y..it.y + it.h && it.text?.paras?.any { p -> p.runs.any { r -> r.link != null } } == true }
@@ -2715,6 +2718,7 @@ private fun Present(deck: Deck, start: Int, notes: Boolean, jump: (String) -> In
                                 "spin" -> emph(1f, 360f * ease)
                                 "grow" -> emph(1f + 0.5f * ease, 0f)
                                 "appear" -> if (e.exit) null else shown
+                                "play" -> shown
                                 "zoom" -> (1 - away).let { s -> floatArrayOf(s, 0f, 0f, s.coerceAtLeast(0.01f), 0f, cx, cy) }
                                 "wipe" -> {
                                     val f = if (e.exit) 1 - k else k; val (l, t, rr, b) = listOf(item.x - 4, item.y - 4, item.x + item.w + 4, item.y + item.h + 4)
@@ -3177,7 +3181,7 @@ private fun AnimationPane(list: List<SlideEffect>, slide: Slide, chosen: String?
     // the effect's name as the ribbon gives it (one read from a file that Slides has no name for: as the file has it)
     @Composable fun what(fx: SlideEffect): String {
         val name = when (fx.kind) { "appear" -> R.string.slides_appear; "fade" -> R.string.slides_fade; "fly" -> R.string.slides_fly; "wipe" -> R.string.slides_wipe; "zoom" -> R.string.slides_zoom
-            "pulse" -> R.string.slides_pulse; "spin" -> R.string.slides_spin; "grow" -> R.string.slides_grow; else -> null }?.let { stringResource(it) } ?: fx.kind.replaceFirstChar { it.uppercase() }
+            "pulse" -> R.string.slides_pulse; "spin" -> R.string.slides_spin; "grow" -> R.string.slides_grow; "play" -> R.string.slides_play; else -> null }?.let { stringResource(it) } ?: fx.kind.replaceFirstChar { it.uppercase() }
         return when { fx.emphasis -> name; fx.exit -> stringResource(R.string.slides_fx_out, name); else -> stringResource(R.string.slides_fx_in, name) }
     }
     androidx.compose.material3.AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.slides_animation_pane)) },

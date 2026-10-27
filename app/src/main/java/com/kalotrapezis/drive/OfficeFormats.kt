@@ -154,7 +154,7 @@ internal object PictureXml {
     /** [kind]'s word as shown (kind's English stays the ID, compared and logged). */
     @androidx.annotation.StringRes fun kindRes(kind: String): Int = when (kind) {
         "Signature" -> com.kalotrapezis.drive.R.string.office_kind_signature; "Table" -> com.kalotrapezis.drive.R.string.office_kind_table; "Equation" -> com.kalotrapezis.drive.R.string.office_kind_equation
-        "Video" -> com.kalotrapezis.drive.R.string.office_kind_video; "Chart" -> com.kalotrapezis.drive.R.string.office_kind_chart; "SmartArt" -> com.kalotrapezis.drive.R.string.office_kind_smartart
+        "Video" -> com.kalotrapezis.drive.R.string.office_kind_video; "Audio" -> com.kalotrapezis.drive.R.string.slides_audio; "Chart" -> com.kalotrapezis.drive.R.string.office_kind_chart; "SmartArt" -> com.kalotrapezis.drive.R.string.office_kind_smartart
         "WordArt" -> com.kalotrapezis.drive.R.string.office_kind_wordart; "Text box" -> com.kalotrapezis.drive.R.string.office_kind_text_box; "Embedded object" -> com.kalotrapezis.drive.R.string.office_kind_object
         "Shape" -> com.kalotrapezis.drive.R.string.office_kind_shape; else -> com.kalotrapezis.drive.R.string.office_kind_image
     }
@@ -164,7 +164,7 @@ internal object PictureXml {
         if (img.key.startsWith(SIGNATURE_KEY) || img.raw?.let { Regex("""<wp:docPr\b[^>]*\bname="Signature""").containsMatchIn(it) } == true) return "Signature"
         if (img.table != null) return "Table"
         if (img.math != null) return "Equation"
-        if (video(img) != null) return "Video"
+        video(img)?.let { return if (OfficeVideo.audio(it)) "Audio" else "Video" }
         val raw = img.raw ?: return "Image"
         return when {
             "drawingml/2006/chart" in raw || "<draw:object" in raw && "chart" in raw -> "Chart"
@@ -1341,6 +1341,7 @@ private const val REL_CHART = "http://schemas.openxmlformats.org/officeDocument/
 /** Tetra's own ext in a picture's cNvPr: the film of a video from the phone (Word reads past it, keeping the picture). */
 internal const val TETRA_VIDEO = "urn:kalotrapezis:tetra:video"
 private const val REL_MEDIA = "http://schemas.microsoft.com/office/2007/relationships/media"
+private const val REL_OLE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject"
 private const val REL_COMMENTS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 private const val REL_COMMENTS_EX = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
 private const val W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
@@ -1465,7 +1466,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             when (it.getAttribute("Type")) {
                 REL_HYPERLINK -> links[it.getAttribute("Id")] = it.getAttribute("Target")
                 REL_IMAGE -> if (it.getAttribute("TargetMode") != "External") images[it.getAttribute("Id")] = resolve(partDir, it.getAttribute("Target"))
-                REL_MEDIA -> films[it.getAttribute("Id")] = resolve(partDir, it.getAttribute("Target"))
+                REL_MEDIA, REL_OLE -> films[it.getAttribute("Id")] = resolve(partDir, it.getAttribute("Target"))
             }
         } }
         readStyles(); readNumbering()
@@ -1483,7 +1484,7 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
                     REL_HYPERLINK -> links[it.getAttribute("Id")] = it.getAttribute("Target")
                     REL_IMAGE -> if (it.getAttribute("TargetMode") != "External") images[it.getAttribute("Id")] = resolve(dir, it.getAttribute("Target"))
                     REL_CHART -> charts[it.getAttribute("Id")] = resolve(dir, it.getAttribute("Target"))
-                    REL_MEDIA -> films[it.getAttribute("Id")] = resolve(dir, it.getAttribute("Target"))
+                    REL_MEDIA, REL_OLE -> films[it.getAttribute("Id")] = resolve(dir, it.getAttribute("Target"))
                 }
             }
         }
@@ -1931,6 +1932,9 @@ private class DocxReader(val parts: Map<String, ByteArray>) {
             ?: (e.getElementsByTagNameNS("*", "relIds").item(0) as Element?)?.let { smartArt(it) }
         // a video from the phone (Words' Insert › Video): its film in the package, named in its picture's ext
         val film = (e.getElementsByTagNameNS(TETRA_VIDEO, "film").item(0) as Element?)?.getAttributeNS(R, "embed")?.let { films[it] }
+            // a film or a sound embedded as an object (Word's Insert › Object › Create from file): "its part#its file's name"
+            ?: (e.getElementsByTagNameNS("*", "OLEObject").item(0) as Element?)?.getAttributeNS(R, "id")?.let { films[it] }?.let { p ->
+                parts[p]?.let { OfficeVideo.ole(it, nameOnly = true) }?.first?.takeIf(OfficeVideo::media)?.let { "$p#$it" } }
         return DocImage("f${imageCount++}", part, w, h, OfficeFormats.xml(e), box = box.takeIf { group == null }, chart = chart.takeIf { group == null }, group = group, film = film)
     }
     /**

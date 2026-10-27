@@ -4595,4 +4595,9 @@
     <string name="settings_remove_map">Poista</string>
     <string name="settings_remove_map_title">Poistetaanko kartta: %1$s?</string>
     <string name="settings_remove_map_body">Sen tiedostot siirretään roskakoriin, täällä ja muilla laitteillasi. Tallennetut paikkasi säilyvät.</string>
+    <string name="maps_old">Yli 3 kuukautta vanha</string>
+    <string name="maps_old_remake">Tee se uudelleen tietokoneella: Tetra › Asetukset › Kartat.</string>
+    <string name="maps_old_channel">Vanhat kartat</string>
+    <string name="maps_old_title">Kartta %1$s on yli 3 kuukautta vanha</string>
+    <string name="maps_old_body">Tiet ja paikat muuttuvat. Tietokone tekee sen uudelleen tuoreista OpenStreetMap-tiedoista: Tetra › Asetukset › Kartat.</string>
 </resources>

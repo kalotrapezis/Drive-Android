@@ -4595,4 +4595,9 @@
     <string name="settings_remove_map">Eltávolítás</string>
     <string name="settings_remove_map_title">Eltávolítod a térképet: %1$s?</string>
     <string name="settings_remove_map_body">A fájljai a Kukába kerülnek, itt és a többi eszközödön is. A mentett helyeid megmaradnak.</string>
+    <string name="maps_old">3 hónapnál régebbi</string>
+    <string name="maps_old_remake">Készítse el újra a számítógépen: Tetra › Beállítások › Térképek.</string>
+    <string name="maps_old_channel">Régi térképek</string>
+    <string name="maps_old_title">%1$s térképe 3 hónapnál régebbi</string>
+    <string name="maps_old_body">Az utak és a helyek változnak. A számítógép friss OpenStreetMap-adatokból újra elkészíti: Tetra › Beállítások › Térképek.</string>
 </resources>

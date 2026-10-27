@@ -4687,4 +4687,9 @@
     <string name="settings_remove_map">Noņemt</string>
     <string name="settings_remove_map_title">Vai noņemt kartes: %1$s?</string>
     <string name="settings_remove_map_body">Tās faili nonāk Miskastē, šeit un jūsu citās ierīcēs. Jūsu saglabātās vietas paliek.</string>
+    <string name="maps_old">Vecāka par 3 mēnešiem</string>
+    <string name="maps_old_remake">Izveidojiet to no jauna datorā: Tetra › Iestatījumi › Kartes.</string>
+    <string name="maps_old_channel">Vecas kartes</string>
+    <string name="maps_old_title">%1$s karte ir vecāka par 3 mēnešiem</string>
+    <string name="maps_old_body">Ceļi un vietas mainās. Dators to izveido no jauna no svaigiem OpenStreetMap datiem: Tetra › Iestatījumi › Kartes.</string>
 </resources>

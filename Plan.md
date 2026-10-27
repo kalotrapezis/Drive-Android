@@ -12,6 +12,18 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [x] (map-age session, 27 Oct; branches `claude/nifty-cohen-161677` here and `map-age` in Drive, not merged) **Old maps say so; the
+      map follows the country** (the user: "a notification right next to these buttons … a system notification, and a button to call
+      for an update or a remake, because we make the maps, we don't simply update them"). A map is old 3 months after its <id>.json
+      "built" (Greece's older pack: its .pmtiles date) — MapsFiles.isOld / mapbuild.js isOld. Desktop Settings › Maps: "Over 3 months
+      old" beside the buttons, Update is now **Remake** (mapsBuild, fresh downloads); a notification once per map per time it is due
+      (setting mapsOldSaid, 30 s after start and every 6 h), its click opens Settings › Maps. Phone/tablet Settings › Maps: the same
+      note and "Remake it on the computer"; an Android notification once (MapsAge, at start and with the Calendar's quarter-hourly
+      look), a tap opens Settings › Maps. Roundabout picture clockwise on a left-driving map (ringSweep, MapsFiles.driveLeftAt at the
+      junction). Map names in Tetra's language (labelsIn: name:<lang> and its script in Protomaps' style, Greek unchanged; the road
+      under a tap too), phone and desktop. 24 languages. 674 Android unit / 165 desktop tests pass; desktop screenshots (Greek and
+      German, a hidden copy on a scratch profile). **Open:** not seen on the phone/tablet; the desktop notification's click not tried;
+      a point inside two maps' bounds takes the first map's side; Android Auto's unused maneuver() still says CCW.
 - [~] (call-speaker session, 27 Oct; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
       phone-speaker button** (the user: "the call pop up on the PC from the phone to have a speaker option so instead of hearing the call from
       bluetooth to my PC to hear it from the phone's speaker"). Bubble: a speaker icon (while Tetra is the phone app, as Mute/Hold) sends

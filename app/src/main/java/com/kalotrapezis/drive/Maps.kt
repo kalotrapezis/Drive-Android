@@ -130,6 +130,17 @@ internal object MapsFiles {
         MapPack(id, m?.optString("name")?.ifEmpty { null } ?: id.replaceFirstChar { it.uppercase() }, b, m?.optString("drive") == "left")
     }
 
+    /** Whether traffic keeps left at point [at] of route [r]: the first map whose bounds have it (none: right). */
+    fun driveLeftAt(root: File, r: Route, at: Int) = at.coerceIn(0, r.lats.lastIndex).let { i -> maps(root).firstOrNull { it.has(r.lats[i], r.lngs[i]) }?.driveLeft == true }
+
+    /** The day map [id] was made: its manifest's "built", else (Greece's older pack) its .pmtiles file's date. */
+    fun built(root: File, id: String): java.time.LocalDate =
+        runCatching { java.time.LocalDate.parse(JSONObject(File(root, "$id.json").readText()).getString("built")) }.getOrNull()
+            ?: java.time.Instant.ofEpochMilli(File(root, "$id.pmtiles").lastModified()).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+
+    /** A map made 3 months ago or more is old: roads, shops and hours change; the computer remakes it (mapbuild.js isOld). */
+    fun isOld(built: java.time.LocalDate, today: java.time.LocalDate) = !today.isBefore(built.plusMonths(3))
+
     /** A .pmtiles file's own bounds: its v3 header's west, south, east, north (×10⁷, from byte 102). */
     fun bounds(f: File): DoubleArray? = runCatching {
         java.io.RandomAccessFile(f, "r").use { r ->
@@ -218,16 +229,20 @@ internal object MapsFiles {
     /** Every file of [p] to the Trash. */
     fun delete(root: File, p: Place) = files(root, p.id).forEach { trash(root, it) }
 
-    /** What is in Tetra/Maps, for Settings › Maps: each map's id, name and "128 MB · with roads · 27 Oct 2026". */
-    fun installed(context: android.content.Context, root: File): List<Triple<String, String, String>> {
+    /** A map in Settings › Maps: [about] "128 MB · with roads · 27 Oct 2026", [old] when it is due to be remade. */
+    class Installed(val id: String, val name: String, val about: String, val old: Boolean)
+
+    /** What is in Tetra/Maps, for Settings › Maps. */
+    fun installed(context: android.content.Context, root: File): List<Installed> {
+        val today = java.time.LocalDate.now()
         val day = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.getDefault())
         return maps(root).map { m ->
             val f = File(root, "${m.id}.pmtiles"); val g = File(root, "${m.id}-gh")
             val size = f.length() + g.listFiles().orEmpty().sumOf { it.length() } +
                 listOf("places", "addresses", "streets", "lanes").sumOf { File(root, "${m.id}-$it.tsv").length() }
-            val date = java.time.Instant.ofEpochMilli(f.lastModified()).atZone(java.time.ZoneId.systemDefault()).format(day)
+            val built = built(root, m.id)
             val roads = context.getString(if (File(g, "properties").isFile) R.string.maps_with_roads else R.string.maps_no_roads)
-            Triple(m.id, m.name, "${size / 1_000_000} MB · $roads · $date")
+            Installed(m.id, m.name, "${size / 1_000_000} MB · $roads · ${built.format(day)}", isOld(built, today))
         }
     }
 
@@ -383,9 +398,9 @@ internal fun showJunction(j: Junction?, toNext: Double) = j != null && j.busy &&
 /**
  * [j] drawn [px] square for the turn card (the user, 23 Oct: "a card … with arrows or a circle, blue where I must go"): its
  * roads grey from the middle out, the way in from the bottom and the way on blue with an arrow; a roundabout a grey ring,
- * gone round anticlockwise in blue. shortcut: anticlockwise as in Greece, where traffic keeps left the ring runs the other way.
+ * gone round in blue: anticlockwise, or clockwise where traffic keeps [left] (the UK, Ireland, Cyprus, Malta…).
  */
-internal fun junctionPicture(j: Junction, px: Int): android.graphics.Bitmap {
+internal fun junctionPicture(j: Junction, px: Int, left: Boolean = false): android.graphics.Bitmap {
     val b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
     val c = android.graphics.Canvas(b)
     val mid = px / 2f; val far = px * 0.38f; val ringR = if (j.roundabout) px * 0.15f else 0f
@@ -405,15 +420,21 @@ internal fun junctionPicture(j: Junction, px: Int): android.graphics.Bitmap {
     if (j.roundabout) c.drawCircle(mid, mid, ringR, grey)
     val inDeg = shown[j.way]; val outDeg = shown[j.taken]
     arm(inDeg, blue); arm(outDeg, blue)
-    if (j.roundabout) { // from the way in round to the way out, anticlockwise (canvas angles: 0 at three o'clock, clockwise)
-        val sweep = -(((inDeg - outDeg) % 360 + 360) % 360).toFloat().let { if (it == 0f) 360f else it }
-        c.drawArc(mid - ringR, mid - ringR, mid + ringR, mid + ringR, (inDeg - 90).toFloat(), sweep, false, blue)
-    }
+    if (j.roundabout) ringSweep(inDeg, outDeg, left).let { (start, sweep) -> c.drawArc(mid - ringR, mid - ringR, mid + ringR, mid + ringR, start, sweep, false, blue) }
     // the arrowhead at the way out's end
     val (tx, ty) = at(outDeg, far + px * 0.03f); val (lx, ly) = at(outDeg - 16, far - px * 0.1f); val (rx, ry) = at(outDeg + 16, far - px * 0.1f)
     c.drawPath(android.graphics.Path().apply { moveTo(tx, ty); lineTo(lx, ly); lineTo(rx, ry); close() },
         android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = blue.color; style = android.graphics.Paint.Style.FILL })
     return b
+}
+
+/**
+ * The ring's blue arc from the way in ([inDeg]) round to the way out, as the canvas's start angle and sweep (0 at three
+ * o'clock, + clockwise): anticlockwise (negative) where traffic keeps right, clockwise where it keeps [left]; once round when the two meet.
+ */
+internal fun ringSweep(inDeg: Double, outDeg: Double, left: Boolean): Pair<Float, Float> {
+    val round = (((if (left) outDeg - inDeg else inDeg - outDeg) % 360 + 360) % 360).toFloat().let { if (it == 0f) 360f else it }
+    return (inDeg - 90).toFloat() to if (left) round else -round
 }
 
 /** A sharp bend on a route where no turn is said: [along] metres from its start, to the [right] or left. */

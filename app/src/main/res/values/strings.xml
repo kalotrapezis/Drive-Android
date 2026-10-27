@@ -4596,4 +4596,9 @@
     <string name="settings_remove_map">Remove</string>
     <string name="settings_remove_map_title">Remove the map of %1$s?</string>
     <string name="settings_remove_map_body">Its files go to the Trash, here and on your other devices. Your saved places stay.</string>
+    <string name="maps_old">Over 3 months old</string>
+    <string name="maps_old_remake">Remake it on the computer: Tetra › Settings › Maps.</string>
+    <string name="maps_old_channel">Old maps</string>
+    <string name="maps_old_title">The map of %1$s is over 3 months old</string>
+    <string name="maps_old_body">Roads and places change. The computer remakes it from fresh OpenStreetMap data: Tetra › Settings › Maps.</string>
 </resources>

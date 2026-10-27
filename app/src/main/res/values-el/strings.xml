@@ -4594,4 +4594,9 @@
     <string name="settings_remove_map">Αφαίρεση</string>
     <string name="settings_remove_map_title">Αφαίρεση του χάρτη: %1$s;</string>
     <string name="settings_remove_map_body">Τα αρχεία του πάνε στον Κάδο, εδώ και στις άλλες συσκευές σας. Τα αποθηκευμένα μέρη σας μένουν.</string>
+    <string name="maps_old">Πάνω από 3 μηνών</string>
+    <string name="maps_old_remake">Φτιάξτε τον ξανά στον υπολογιστή: Tetra › Ρυθμίσεις › Χάρτες.</string>
+    <string name="maps_old_channel">Παλιοί χάρτες</string>
+    <string name="maps_old_title">Ο χάρτης «%1$s» είναι πάνω από 3 μηνών</string>
+    <string name="maps_old_body">Δρόμοι και μέρη αλλάζουν. Ο υπολογιστής τον φτιάχνει ξανά από νέα δεδομένα του OpenStreetMap: Tetra › Ρυθμίσεις › Χάρτες.</string>
 </resources>

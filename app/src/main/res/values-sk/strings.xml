@@ -4779,4 +4779,9 @@
     <string name="settings_remove_map">Odstrániť</string>
     <string name="settings_remove_map_title">Odstrániť mapu: %1$s?</string>
     <string name="settings_remove_map_body">Jej súbory sa presunú do Koša, tu aj vo vašich ďalších zariadeniach. Vaše uložené miesta zostanú.</string>
+    <string name="maps_old">Staršia ako 3 mesiace</string>
+    <string name="maps_old_remake">Vytvorte ju znova v počítači: Tetra › Nastavenia › Mapy.</string>
+    <string name="maps_old_channel">Staré mapy</string>
+    <string name="maps_old_title">Mapa %1$s je staršia ako 3 mesiace</string>
+    <string name="maps_old_body">Cesty a miesta sa menia. Počítač ju vytvorí znova z čerstvých údajov OpenStreetMap: Tetra › Nastavenia › Mapy.</string>
 </resources>

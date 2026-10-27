@@ -4595,4 +4595,9 @@
     <string name="settings_remove_map">Fjern</string>
     <string name="settings_remove_map_title">Fjern kortet over %1$s?</string>
     <string name="settings_remove_map_body">Dets filer flyttes til papirkurven, her og på dine andre enheder. Dine gemte steder bliver.</string>
+    <string name="maps_old">Over 3 måneder gammelt</string>
+    <string name="maps_old_remake">Lav det igen på computeren: Tetra › Indstillinger › Kort.</string>
+    <string name="maps_old_channel">Gamle kort</string>
+    <string name="maps_old_title">Kortet over %1$s er over 3 måneder gammelt</string>
+    <string name="maps_old_body">Veje og steder ændrer sig. Computeren laver det igen ud fra friske OpenStreetMap-data: Tetra › Indstillinger › Kort.</string>
 </resources>

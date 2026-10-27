@@ -4687,4 +4687,9 @@
     <string name="settings_remove_map">Retirer</string>
     <string name="settings_remove_map_title">Retirer la carte de %1$s ?</string>
     <string name="settings_remove_map_body">Ses fichiers vont dans la Corbeille, ici et sur vos autres appareils. Vos lieux enregistrés restent.</string>
+    <string name="maps_old">Plus de 3 mois</string>
+    <string name="maps_old_remake">Refaites-la sur l’ordinateur : Tetra › Paramètres › Cartes.</string>
+    <string name="maps_old_channel">Cartes anciennes</string>
+    <string name="maps_old_title">La carte de %1$s a plus de 3 mois</string>
+    <string name="maps_old_body">Les routes et les lieux changent. L’ordinateur la refait à partir de données OpenStreetMap récentes : Tetra › Paramètres › Cartes.</string>
 </resources>

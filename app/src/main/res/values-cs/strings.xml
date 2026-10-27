@@ -4779,4 +4779,9 @@
     <string name="settings_remove_map">Odebrat</string>
     <string name="settings_remove_map_title">Odebrat mapu: %1$s?</string>
     <string name="settings_remove_map_body">Její soubory se přesunou do Koše, tady i na vašich dalších zařízeních. Vaše uložená místa zůstanou.</string>
+    <string name="maps_old">Starší než 3 měsíce</string>
+    <string name="maps_old_remake">Vytvořte ji znovu v počítači: Tetra › Nastavení › Mapy.</string>
+    <string name="maps_old_channel">Staré mapy</string>
+    <string name="maps_old_title">Mapa %1$s je starší než 3 měsíce</string>
+    <string name="maps_old_body">Silnice a místa se mění. Počítač ji vytvoří znovu z čerstvých dat OpenStreetMap: Tetra › Nastavení › Mapy.</string>
 </resources>

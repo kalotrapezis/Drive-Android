@@ -4687,4 +4687,9 @@
     <string name="settings_remove_map">Elimină</string>
     <string name="settings_remove_map_title">Elimini harta: %1$s?</string>
     <string name="settings_remove_map_body">Fișierele ei merg în Coșul de gunoi, aici și pe celelalte dispozitive. Locurile salvate rămân.</string>
+    <string name="maps_old">Mai veche de 3 luni</string>
+    <string name="maps_old_remake">Refaceți-o pe computer: Tetra › Setări › Hărți.</string>
+    <string name="maps_old_channel">Hărți vechi</string>
+    <string name="maps_old_title">Harta %1$s este mai veche de 3 luni</string>
+    <string name="maps_old_body">Drumurile și locurile se schimbă. Computerul o reface din date OpenStreetMap proaspete: Tetra › Setări › Hărți.</string>
 </resources>

@@ -4687,4 +4687,9 @@
     <string name="settings_remove_map">Ukloni</string>
     <string name="settings_remove_map_title">Ukloniti kartu: %1$s?</string>
     <string name="settings_remove_map_body">Njezine datoteke idu u Otpad, ovdje i na vašim drugim uređajima. Vaša spremljena mjesta ostaju.</string>
+    <string name="maps_old">Starija od 3 mjeseca</string>
+    <string name="maps_old_remake">Izradite je ponovno na računalu: Tetra › Postavke › Karte.</string>
+    <string name="maps_old_channel">Stare karte</string>
+    <string name="maps_old_title">Karta %1$s starija je od 3 mjeseca</string>
+    <string name="maps_old_body">Ceste i mjesta se mijenjaju. Računalo je izrađuje ponovno iz svježih podataka OpenStreetMapa: Tetra › Postavke › Karte.</string>
 </resources>

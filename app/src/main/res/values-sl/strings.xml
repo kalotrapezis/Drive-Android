@@ -4779,4 +4779,9 @@
     <string name="settings_remove_map">Odstrani</string>
     <string name="settings_remove_map_title">Odstranim zemljevid: %1$s?</string>
     <string name="settings_remove_map_body">Njegove datoteke gredo v Koš, tukaj in v vaših drugih napravah. Vaši shranjeni kraji ostanejo.</string>
+    <string name="maps_old">Starejši od 3 mesecev</string>
+    <string name="maps_old_remake">Izdelajte ga znova na računalniku: Tetra › Nastavitve › Zemljevidi.</string>
+    <string name="maps_old_channel">Stari zemljevidi</string>
+    <string name="maps_old_title">Zemljevid %1$s je starejši od 3 mesecev</string>
+    <string name="maps_old_body">Ceste in kraji se spreminjajo. Računalnik ga izdela znova iz svežih podatkov OpenStreetMap: Tetra › Nastavitve › Zemljevidi.</string>
 </resources>

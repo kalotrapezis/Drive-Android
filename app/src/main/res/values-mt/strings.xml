@@ -4779,4 +4779,9 @@
     <string name="settings_remove_map">Neħħi</string>
     <string name="settings_remove_map_title">Tneħħi l-mappa ta\' %1$s?</string>
     <string name="settings_remove_map_body">Il-fajls tagħha jmorru fl-Iskart, hawn u fuq l-apparati l-oħra tiegħek. Postijiet maħżuna tiegħek jibqgħu.</string>
+    <string name="maps_old">Eqdem minn 3 xhur</string>
+    <string name="maps_old_remake">Agħmilha mill-ġdid fuq il-kompjuter: Tetra › Settings › Mappi.</string>
+    <string name="maps_old_channel">Mapep qodma</string>
+    <string name="maps_old_title">Il-mappa ta’ %1$s hija eqdem minn 3 xhur</string>
+    <string name="maps_old_body">It-toroq u l-postijiet jinbidlu. Il-kompjuter jerġa’ jagħmilha minn data friska ta’ OpenStreetMap: Tetra › Settings › Mappi.</string>
 </resources>

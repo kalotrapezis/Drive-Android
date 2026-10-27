@@ -4871,4 +4871,9 @@
     <string name="settings_remove_map">Bain</string>
     <string name="settings_remove_map_title">An mbainfear léarscáil %1$s?</string>
     <string name="settings_remove_map_body">Téann a comhaid isteach sa Bhruscar, anseo agus ar do ghléasanna eile. Fanann do chuid áiteanna sábháilte.</string>
+    <string name="maps_old">Níos sine ná 3 mhí</string>
+    <string name="maps_old_remake">Déan arís é ar an ríomhaire: Tetra › Socruithe › Léarscáileanna.</string>
+    <string name="maps_old_channel">Seanléarscáileanna</string>
+    <string name="maps_old_title">Tá léarscáil %1$s níos sine ná 3 mhí</string>
+    <string name="maps_old_body">Athraíonn bóithre agus áiteanna. Déanann an ríomhaire arís í ó shonraí úra OpenStreetMap: Tetra › Socruithe › Léarscáileanna.</string>
 </resources>

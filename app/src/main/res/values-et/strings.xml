@@ -4595,4 +4595,9 @@
     <string name="settings_remove_map">Eemalda</string>
     <string name="settings_remove_map_title">Kas eemaldada kaart: %1$s?</string>
     <string name="settings_remove_map_body">Selle failid lähevad prügikasti, siin ja teie teistes seadmetes. Teie salvestatud kohad jäävad alles.</string>
+    <string name="maps_old">Üle 3 kuu vana</string>
+    <string name="maps_old_remake">Tee see arvutis uuesti: Tetra › Seaded › Kaardid.</string>
+    <string name="maps_old_channel">Vanad kaardid</string>
+    <string name="maps_old_title">Kaart %1$s on üle 3 kuu vana</string>
+    <string name="maps_old_body">Teed ja kohad muutuvad. Arvuti teeb selle värsketest OpenStreetMapi andmetest uuesti: Tetra › Seaded › Kaardid.</string>
 </resources>

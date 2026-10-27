@@ -4779,4 +4779,9 @@
     <string name="settings_remove_map">Pašalinti</string>
     <string name="settings_remove_map_title">Pašalinti žemėlapį: %1$s?</string>
     <string name="settings_remove_map_body">Jo failai keliauja į Šiukšlinę, čia ir kituose jūsų įrenginiuose. Jūsų išsaugotos vietos lieka.</string>
+    <string name="maps_old">Senesnis nei 3 mėnesių</string>
+    <string name="maps_old_remake">Sukurkite jį iš naujo kompiuteryje: Tetra › Nustatymai › Žemėlapiai.</string>
+    <string name="maps_old_channel">Seni žemėlapiai</string>
+    <string name="maps_old_title">%1$s žemėlapis senesnis nei 3 mėnesių</string>
+    <string name="maps_old_body">Keliai ir vietos keičiasi. Kompiuteris jį sukuria iš naujo iš naujų OpenStreetMap duomenų: Tetra › Nustatymai › Žemėlapiai.</string>
 </resources>

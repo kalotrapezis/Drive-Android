@@ -4595,4 +4595,9 @@
     <string name="settings_remove_map">Ta bort</string>
     <string name="settings_remove_map_title">Ta bort kartan över %1$s?</string>
     <string name="settings_remove_map_body">Dess filer hamnar i Papperskorgen, här och på dina andra enheter. Dina sparade platser blir kvar.</string>
+    <string name="maps_old">Över 3 månader gammal</string>
+    <string name="maps_old_remake">Gör om den på datorn: Tetra › Inställningar › Kartor.</string>
+    <string name="maps_old_channel">Gamla kartor</string>
+    <string name="maps_old_title">Kartan över %1$s är över 3 månader gammal</string>
+    <string name="maps_old_body">Vägar och platser ändras. Datorn gör om den från färska OpenStreetMap-data: Tetra › Inställningar › Kartor.</string>
 </resources>

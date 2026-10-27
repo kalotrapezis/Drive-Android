@@ -4687,4 +4687,9 @@
     <string name="settings_remove_map">Quitar</string>
     <string name="settings_remove_map_title">¿Quitar el mapa de %1$s?</string>
     <string name="settings_remove_map_body">Sus archivos van a la Papelera, aquí y en tus otros dispositivos. Tus lugares guardados se quedan.</string>
+    <string name="maps_old">Más de 3 meses</string>
+    <string name="maps_old_remake">Vuelve a crearlo en el ordenador: Tetra › Ajustes › Mapas.</string>
+    <string name="maps_old_channel">Mapas antiguos</string>
+    <string name="maps_old_title">El mapa de %1$s tiene más de 3 meses</string>
+    <string name="maps_old_body">Las carreteras y los lugares cambian. El ordenador lo vuelve a crear con datos nuevos de OpenStreetMap: Tetra › Ajustes › Mapas.</string>
 </resources>

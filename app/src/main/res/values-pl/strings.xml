@@ -4779,4 +4779,9 @@
     <string name="settings_remove_map">Usuń</string>
     <string name="settings_remove_map_title">Usunąć mapę: %1$s?</string>
     <string name="settings_remove_map_body">Jej pliki trafią do Kosza, tutaj i na Twoich innych urządzeniach. Zapisane miejsca zostaną.</string>
+    <string name="maps_old">Starsza niż 3 miesiące</string>
+    <string name="maps_old_remake">Utwórz ją ponownie na komputerze: Tetra › Ustawienia › Mapy.</string>
+    <string name="maps_old_channel">Stare mapy</string>
+    <string name="maps_old_title">Mapa %1$s jest starsza niż 3 miesiące</string>
+    <string name="maps_old_body">Drogi i miejsca się zmieniają. Komputer tworzy ją ponownie ze świeżych danych OpenStreetMap: Tetra › Ustawienia › Mapy.</string>
 </resources>

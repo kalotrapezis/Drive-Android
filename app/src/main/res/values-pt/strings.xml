@@ -4687,4 +4687,9 @@
     <string name="settings_remove_map">Remover</string>
     <string name="settings_remove_map_title">Remover o mapa de %1$s?</string>
     <string name="settings_remove_map_body">Os seus ficheiros vão para o Lixo, aqui e nos seus outros dispositivos. Os seus locais guardados ficam.</string>
+    <string name="maps_old">Mais de 3 meses</string>
+    <string name="maps_old_remake">Volte a criá-lo no computador: Tetra › Definições › Mapas.</string>
+    <string name="maps_old_channel">Mapas antigos</string>
+    <string name="maps_old_title">O mapa de %1$s tem mais de 3 meses</string>
+    <string name="maps_old_body">As estradas e os lugares mudam. O computador volta a criá-lo com dados novos do OpenStreetMap: Tetra › Definições › Mapas.</string>
 </resources>

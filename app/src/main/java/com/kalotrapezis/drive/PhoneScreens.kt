@@ -180,25 +180,28 @@ private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, ad
         else -> R.drawable.ic_volume_up to stringResource(R.string.phone_speaker)
     }
     val loud = route == CallAudioState.ROUTE_SPEAKER || route == CallAudioState.ROUTE_BLUETOOTH
-    Column(Modifier.fillMaxWidth().padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            RoundButton(if (muted) R.drawable.ic_mic_off else R.drawable.ic_mic, if (muted) stringResource(R.string.phone_muted) else stringResource(R.string.phone_mute), if (muted) Color.White else null, 64.dp, dark = muted) {
+    // three equal columns in both rows: a long label ("Πληκτρολόγιο", "Υπολογιστής · theologos-82xm") stays in its own (the user, 27 Oct)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            val cell = Modifier.weight(1f).padding(horizontal = 4.dp)
+            RoundButton(if (muted) R.drawable.ic_mic_off else R.drawable.ic_mic, if (muted) stringResource(R.string.phone_muted) else stringResource(R.string.phone_mute), if (muted) Color.White else null, 64.dp, dark = muted, modifier = cell) {
                 PhoneCalls.service?.setMuted(!muted)
             }
-            RoundButton(if (keys) R.drawable.ic_close else R.drawable.ic_dialpad, if (keys) stringResource(R.string.phone_hide_keys) else stringResource(R.string.phone_keypad), null, 64.dp, click = toggleKeys)
+            RoundButton(if (keys) R.drawable.ic_close else R.drawable.ic_dialpad, if (keys) stringResource(R.string.phone_hide_keys) else stringResource(R.string.phone_keypad), null, 64.dp, modifier = cell, click = toggleKeys)
             // more than earpiece and speaker (a headset, the buds, the computer): choose; else Speaker turns on and off
-            RoundButton(routeIcon, if (devices.isNotEmpty() || mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) "$routeName ▾" else routeName, if (loud) Color.White else null, 64.dp, dark = loud) {
-                if (devices.isEmpty()) PhoneCalls.service?.setAudioRoute(if (route == CallAudioState.ROUTE_SPEAKER) CallAudioState.ROUTE_WIRED_OR_EARPIECE else CallAudioState.ROUTE_SPEAKER)
+            RoundButton(routeIcon, if (devices.isNotEmpty() || mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) "$routeName ▾" else routeName, if (loud) Color.White else null, 64.dp, dark = loud, modifier = cell) {
+                if (devices.isEmpty()) PhoneCalls.route(if (route == CallAudioState.ROUTE_SPEAKER) CallAudioState.ROUTE_WIRED_OR_EARPIECE else CallAudioState.ROUTE_SPEAKER)
                 else if (android.os.Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) askNames.launch(Manifest.permission.BLUETOOTH_CONNECT)
                 else picking = true
             }
         }
-        if (!keys) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            if (canHold) RoundButton(if (held) R.drawable.ic_play else R.drawable.ic_pause, if (held) stringResource(R.string.phone_resume) else stringResource(R.string.phone_hold), if (held) Color.White else null, 64.dp, dark = held) {
+        if (!keys) Row(Modifier.fillMaxWidth()) {
+            val cell = Modifier.weight(1f).padding(horizontal = 4.dp)
+            if (canHold) RoundButton(if (held) R.drawable.ic_play else R.drawable.ic_pause, if (held) stringResource(R.string.phone_resume) else stringResource(R.string.phone_hold), if (held) Color.White else null, 64.dp, dark = held, modifier = cell) {
                 if (held) call.unhold() else call.hold()
-            } else Spacer(Modifier.size(64.dp))
-            RoundButton(R.drawable.ic_add, stringResource(R.string.phone_add_call), null, 64.dp, click = addCall)
-            RoundButton(R.drawable.ic_note_add, stringResource(R.string.phone_note), null, 64.dp) { noting = true }
+            } else Spacer(cell)
+            RoundButton(R.drawable.ic_add, stringResource(R.string.phone_add_call), null, 64.dp, modifier = cell, click = addCall)
+            RoundButton(R.drawable.ic_note_add, stringResource(R.string.phone_note), null, 64.dp, modifier = cell) { noting = true }
         }
     }
     if (picking) ModalBottomSheet(onDismissRequest = { picking = false }, containerColor = SheetColor, contentColor = islandContentColor()) {
@@ -209,12 +212,12 @@ private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, ad
                     .clickable { pick(); picking = false }.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Icon(painterResource(icon), contentDescription = null); Text(name, style = MaterialTheme.typography.bodyLarge)
                 }
-            if (mask and CallAudioState.ROUTE_EARPIECE != 0) option(R.drawable.ic_call, stringResource(R.string.phone_route_phone), route == CallAudioState.ROUTE_EARPIECE) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_EARPIECE) }
-            if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) option(R.drawable.ic_volume_up, stringResource(R.string.phone_headset), route == CallAudioState.ROUTE_WIRED_HEADSET) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_WIRED_HEADSET) }
-            option(R.drawable.ic_volume_up, stringResource(R.string.phone_speaker), route == CallAudioState.ROUTE_SPEAKER) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_SPEAKER) }
+            if (mask and CallAudioState.ROUTE_EARPIECE != 0) option(R.drawable.ic_call, stringResource(R.string.phone_route_phone), route == CallAudioState.ROUTE_EARPIECE) { PhoneCalls.route(CallAudioState.ROUTE_EARPIECE) }
+            if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) option(R.drawable.ic_volume_up, stringResource(R.string.phone_headset), route == CallAudioState.ROUTE_WIRED_HEADSET) { PhoneCalls.route(CallAudioState.ROUTE_WIRED_HEADSET) }
+            option(R.drawable.ic_volume_up, stringResource(R.string.phone_speaker), route == CallAudioState.ROUTE_SPEAKER) { PhoneCalls.route(CallAudioState.ROUTE_SPEAKER) }
             devices.forEach { d ->
                 option(R.drawable.ic_bluetooth_audio, PhoneRoutes.name(context, d), route == CallAudioState.ROUTE_BLUETOOTH && audio?.activeBluetoothDevice?.address == d.address) {
-                    PhoneCalls.service?.requestBluetoothAudio(d)
+                    PhoneCalls.route(CallAudioState.ROUTE_BLUETOOTH, d)
                 }
             }
         }
@@ -302,7 +305,7 @@ internal fun RoundButton(icon: Int, label: String, fill: Color?, size: Dp, dark:
             contentAlignment = Alignment.Center) {
             Icon(painterResource(icon), contentDescription = label, tint = if (dark) Color.Black else if (fill != null) Color.White else LocalContentColor.current, modifier = Modifier.size(size * 0.42f))
         }
-        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
 

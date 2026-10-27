@@ -89,15 +89,26 @@ How to write here:
       under a tap too), phone and desktop. 24 languages. 674 Android unit / 165 desktop tests pass; desktop screenshots (Greek and
       German, a hidden copy on a scratch profile). **Open:** not seen on the phone/tablet; the desktop notification's click not tried;
       a point inside two maps' bounds takes the first map's side; Android Auto's unused maneuver() still says CCW.
-- [~] (call-speaker session, 27 Oct; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
+- [x] (call-speaker session, 27 Oct; merged into main in both repos; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
       phone-speaker button** (the user: "the call pop up on the PC from the phone to have a speaker option so instead of hearing the call from
       bluetooth to my PC to hear it from the phone's speaker"). Bubble: a speaker icon (while Tetra is the phone app, as Mute/Hold) sends
       `speaker`/`unspeaker` the way Mute travels (sync.js callAction → SyncServer /call/action → PhoneCalls.act → setAudioRoute); the phone
       reports its route in /call/state ("route"), the bubble's sound line says "Sound on the phone's loudspeaker", recording is off there.
       Back: the Bluetooth device it was on (the computer), else Bluetooth, else the earpiece. Fixed on the way: SyncServer /call/action
-      read 8 characters ("unspeaker" is 9). Both branches have main merged in; 670 Android unit / 162 desktop tests pass. **Not tried on
-      the real phone + PC yet** (the phone was not on USB); not merged into main. Not done: the tablet's relayed call notification has
-      no Speaker action.
+      read 8 characters ("unspeaker" is 9). Not done: the tablet's relayed call notification has no Speaker action.
+      **Then (the user, 27 Oct evening): "I go to the phone and click to go to speaker or back to the phone and it did not work".** Telecom's
+      log: Tetra's six taps arrived and HyperOS refused each ("use google dialer for relay call, can not set audio route"): a call answered on
+      the computer's Bluetooth (PipeWire's org.pipewire.Telephony answers it there) is a Xiaomi "relay call", and its Telecom
+      (MiCallRelayStub.shouldLimitButton, read from the phone's own Telecom.apk) refuses CallsManager.setAudioRoute, mute, hold, unhold,
+      conference and add-call to any phone app but Google's. CallEndpointController.requestCallEndpointChange has no such check, so every
+      route change (call screen and bubble) goes through Android 14's call endpoints first (`PhoneCalls.route`), the old way if refused, and
+      writer.log says when the sound did not move. A call the PC places is not a relay call (seen, 19:15). **Open:** Mute and Hold on such a
+      call stay refused (no other door); not yet seen on a real incoming call answered on the PC (no second phone to call with).
+      Also the bubble that came back for ever (the user: "if the other side ended the call and I was fast enough to click it too it got
+      stuck on the PC open and even if i closed it would reopen for ever"): the phone sends each state on its own thread, so an "active"
+      could land after the "ended", and watch() reopened the bubble every 30 s. Now states older than the last (the phone's `at`) are
+      dropped, a bubble closed by hand stays closed until the phone says something new, End/Decline the phone did not hear still ends it.
+      687 Android unit / 173 desktop tests pass; the phone has the build (phone-install.sh, 19:10).
 - [x] (phone-country session, 27 Oct; branches `claude/awesome-goldwasser-472e81` here and `phone-country` in Drive, not merged)
       **A number without + or 00 is the phone's own country's, not Greek** (the user: "Greece is +30 or 0030. All the other
       countries have their own codes. They are standard. Use them."). Android: libphonenumber 9.0.42 (Apache-2.0, 360 KB, the

@@ -39,6 +39,7 @@ class PhoneInCallService : InCallService() {
         PhoneCalls.audio = audioState; PhoneCalls.changed(this)
         if (told) PhoneCalls.top()?.let { PhoneCalls.report(this, it) }
     }
+    override fun onAvailableCallEndpointsChanged(endpoints: List<android.telecom.CallEndpoint>) { PhoneCalls.endpoints = endpoints }
 }
 
 /** The calls Telecom gave Tetra, for the call screen (read in Compose: [tick] changes on every change). */
@@ -116,6 +117,42 @@ internal object PhoneCalls {
 
     /** The Bluetooth device the call was on when the computer's bubble moved it to the speaker: back there on "unspeaker". */
     private var beforeSpeaker: android.bluetooth.BluetoothDevice? = null
+    /** Where Telecom can send the call's sound now (Android 14's call endpoints). */
+    var endpoints: List<android.telecom.CallEndpoint> = emptyList()
+
+    /**
+     * The call's sound to [route] (a CallAudioState route; [device] for Bluetooth): through Android 14's call endpoints first.
+     * HyperOS refuses setAudioRoute from any phone app but Google's once a call was answered on a Bluetooth hands-free kit
+     * (Telecom: "use google dialer for relay call, can not set audio route" — the user's call on 27 Oct, answered on the
+     * computer, stayed there whatever was pressed on the phone); the endpoint request is Telecom's other door.
+     */
+    fun route(route: Int, device: android.bluetooth.BluetoothDevice? = null) {
+        val s = service ?: return
+        val mask = audio?.supportedRouteMask ?: 0
+        val want = if (route == CallAudioState.ROUTE_WIRED_OR_EARPIECE) (if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) CallAudioState.ROUTE_WIRED_HEADSET else CallAudioState.ROUTE_EARPIECE) else route
+        fun old() = if (device != null) s.requestBluetoothAudio(device) else s.setAudioRoute(want)
+        val ep = if (Build.VERSION.SDK_INT >= 34) endpointFor(want, device) else null
+        if (ep == null) old()
+        else s.requestCallEndpointChange(ep, s.mainExecutor, object : android.os.OutcomeReceiver<Void, android.telecom.CallEndpointException> {
+            override fun onResult(result: Void?) {}
+            override fun onError(e: android.telecom.CallEndpointException) { WriterLog.w("Phone: Telecom refused the sound to ${ep.endpointName} (${e.code}), asked the old way"); old() }
+        })
+        // the next call's log says it when HyperOS (or anything) keeps the sound where it was
+        android.os.Handler(s.mainLooper).postDelayed({
+            if (calls.isNotEmpty() && audio?.route != want) WriterLog.w("Phone: the sound did not move to ${routeName(want)} (still ${routeName(audio?.route)}${if (ep == null) ", no endpoint" else ""})")
+        }, 2000)
+    }
+
+    @androidx.annotation.RequiresApi(34)
+    private fun endpointFor(route: Int, device: android.bluetooth.BluetoothDevice?): android.telecom.CallEndpoint? {
+        val type = when (route) {
+            CallAudioState.ROUTE_SPEAKER -> android.telecom.CallEndpoint.TYPE_SPEAKER; CallAudioState.ROUTE_BLUETOOTH -> android.telecom.CallEndpoint.TYPE_BLUETOOTH
+            CallAudioState.ROUTE_WIRED_HEADSET -> android.telecom.CallEndpoint.TYPE_WIRED_HEADSET; else -> android.telecom.CallEndpoint.TYPE_EARPIECE
+        }
+        val all = endpoints.filter { it.endpointType == type }
+        val name = device?.let { d -> runCatching { d.name }.getOrNull() }
+        return all.firstOrNull { name != null && it.endpointName.toString() == name } ?: all.firstOrNull()
+    }
 
     /** The computer's bubble pressed: answer, decline, end, hold, unhold, mute, unmute, speaker, unspeaker, dtmf<digit>. Null while Tetra is not the phone app. */
     fun act(what: String): Boolean? {
@@ -130,10 +167,10 @@ internal object PhoneCalls {
             what == "unhold" -> call.unhold()
             what == "mute" || what == "unmute" -> s.setMuted(what == "mute")
             // the user, 27 Oct: the call's sound from the computer (the phone on its Bluetooth) to the phone's loudspeaker, and back
-            what == "speaker" -> { beforeSpeaker = audio?.activeBluetoothDevice; s.setAudioRoute(CallAudioState.ROUTE_SPEAKER) }
+            what == "speaker" -> { beforeSpeaker = audio?.activeBluetoothDevice; route(CallAudioState.ROUTE_SPEAKER) }
             what == "unspeaker" -> {
                 val back = beforeSpeaker?.takeIf { d -> audio?.supportedBluetoothDevices?.contains(d) == true }
-                if (back != null) s.requestBluetoothAudio(back) else s.setAudioRoute(awayFromSpeaker(audio?.supportedRouteMask ?: 0))
+                if (back != null) route(CallAudioState.ROUTE_BLUETOOTH, back) else route(awayFromSpeaker(audio?.supportedRouteMask ?: 0))
             }
             what.startsWith("dtmf") && what.length == 5 && what[4] in "0123456789*#" -> {
                 call.playDtmfTone(what[4]); android.os.Handler(s.mainLooper).postDelayed({ call.stopDtmfTone() }, 180)

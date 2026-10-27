@@ -4,17 +4,17 @@
 Free software, no account, no cloud: nothing leaves your devices.</p>
 
 <p align="center">
-  <a href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.2/Tetra-0.6.0-beta.2-arm64.apk"><img src="Assets/buttons/download-android.png" alt="Download Tetra for Android (APK)" width="440"></a>
+  <a href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.3/Tetra-0.6.0-beta.3-arm64.apk"><img src="Assets/buttons/download-android.png" alt="Download Tetra for Android (APK)" width="440"></a>
   <a href="https://github.com/kalotrapezis/Drive"><img src="Assets/buttons/get-desktop.png" alt="Tetra for the desktop" width="440"></a>
 </p>
 
 ![Tetra on a computer, a tablet and a phone](Assets/cards/tetra-devices.jpg)
 
-Photos, Files, Notes, Office, Calendar, Timer, Maps\*, Contacts, Phone, Data, Scanner, Codes and a Text editor, as
+Photos, Files, Notes, Office, Calendar, Timer, Maps, Contacts, Phone, Data, Scanner, Codes and a Text editor, as
 **applets** of one app that share one folder, `/sdcard/Tetra`. [Tetra for the desktop](https://github.com/kalotrapezis/Drive)
 has the same applets on Linux, and the two sync over your own Wi-Fi.
 
-**0.6.0 Beta 2** ([what's new](https://github.com/kalotrapezis/Drive-Android/releases/tag/v0.6.0-beta.2)). A beta: keep
+**0.6.0 Beta 3** ([what's new](https://github.com/kalotrapezis/Drive-Android/releases/tag/v0.6.0-beta.3)). A beta: keep
 your own backups. Screenshots use invented sample data.
 
 ## What Tetra does for you
@@ -22,7 +22,12 @@ your own backups. Screenshots use invented sample data.
 - **Files to and from your PC in a second.** Share anything to *Send to computer* on the phone, or *Send to phone* on
   the PC. It goes over your own Wi-Fi: no cable, no cloud. If the computer is away, it goes when it is back.
 - **Call from your computer.** Click a number in Contacts on the PC and your phone dials it; a call bubble on the
-  screen answers, holds, mutes and hangs up.
+  screen answers, holds, mutes, hangs up and moves the sound to the phone's loudspeaker.
+- **Maps of any country, offline.** Pick a country on the computer: Tetra makes its map, search and routes from
+  OpenStreetMap and sends them to your phone and tablet. Routes cross borders at the real crossings, with directions
+  in your language.
+- **In your language, with a guide.** All 24 official languages of the EU. A guide on first start, and any time in
+  Settings, shows where to tap and why, step by step.
 - **Your data plan, watched.** Tell Tetra your plan once. It notifies you at 50 %, 80 % and 100 %, or at any steps you
   choose, and forecasts the end of the month before you get there.
 - **Calendar and timers, with AI.** Built-in skills (Settings › Calendar or Timer › *Share with Claude*) let Claude,
@@ -37,13 +42,11 @@ your own backups. Screenshots use invented sample data.
 - **Hide what should stay private.** Redact PDFs and photos so the hidden part is removed from the file itself, not
   just covered. Tetra finds the eyes in a photo and covers them with black bars or stars, and finds text to hide.
 - **Office and PDF, good enough.** Word, Excel and PowerPoint open and save as themselves, compatible enough for
-  everyday work; PDF editing and page organising; and a phone layout you can actually use.
+  everyday work; PDFs are edited the way Words edits; films and sounds inside documents play; and a phone layout you
+  can actually use.
 - **More than one copy, no subscription.** Tetra shows how many places hold each file, the phone, the tablet, the
   computer or a USB drive, and what still lives in only one. Your own backups, with no cloud plan to pay for.
-- **Maps that work offline\*.** Search, places, routes by car, on foot and by bike, and voice guidance,
-  all on the device.
-
-<sub>\* Maps and finding photos by place cover Greece only for now; other countries will follow.</sub>
+<sub>\* Finding photos by place covers Greece only for now.</sub>
 
 ## The applets
 
@@ -54,11 +57,16 @@ your own backups. Screenshots use invented sample data.
 ![Calendar and Timer](Assets/cards/card-calendar.jpg)
 ![Contacts and Phone](Assets/cards/card-people.jpg)
 ![Calls on your computer: the call bubble](Assets/cards/card-bubble.jpg)
+![The Phone on a tablet, in two panes](Assets/cards/card-phone-tablet.jpg)
+![Maps of any country, made by your computer](Assets/cards/card-builder.jpg)
+![Maps across borders](Assets/cards/card-borders.jpg)
 ![Maps](Assets/cards/card-maps.jpg)
 ![Files](Assets/cards/card-files.jpg)
 ![Files both ways: Send to computer on the phone, Send to phone on the computer](Assets/cards/card-send.jpg)
 ![Data](Assets/cards/card-data.jpg)
 ![More than one copy, no subscription](Assets/cards/card-safety.jpg)
+![A guide that shows you](Assets/cards/card-guide.jpg)
+![In your language](Assets/cards/card-languages.jpg)
 
 Also inside: **Scanner** (paper to PDF, the page found live and straightened), **Codes** (QR codes, barcodes, text
 in a photo, Greek RF payment codes) and a **Text editor** with tabs. Every applet has a phone and a tablet layout; see

@@ -61,7 +61,31 @@
   .note { text-align: center; color: #7d858f; font-size: 14px; }
   .grid { display: grid; gap: 18px; margin-top: 22px; }
   .grid img, .wide-img { width: 100%; border-radius: 18px; display: block; border: 1px solid var(--line); margin-top: 22px; }
-  .cards-small { display: none; }
+  /* A card: a picture without words and its words as HTML on it, so a translation changes only text. The text column
+     ends where the devices start (--x); cqi keeps it the picture's size. On a phone the words go above the picture. */
+  .card { position: relative; margin: 22px 0 0; border-radius: 18px; overflow: hidden; border: 1px solid var(--line);
+          background: #0f1113; container-type: inline-size; }
+  .card .pic { position: relative; }
+  .card .pic > img { display: block; width: 100%; aspect-ratio: 16 / 9; }
+  .card figcaption { position: absolute; top: 0; bottom: 0; left: 5%; width: calc(var(--x, 40%) - 9%);
+                     display: flex; flex-direction: column; justify-content: center; }
+  .card figcaption .icon { width: 6cqi; height: 6cqi; border-radius: 1.4cqi; }
+  .card .pill { align-self: flex-start; margin: 1.6cqi 0 1.4cqi; padding: .35cqi 1.1cqi; border-radius: 999px; background: var(--c);
+                color: var(--on, #111); font-size: 1.3cqi; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .card h3 { margin: 0 0 1.2cqi; font-size: 3.5cqi; line-height: 1.12; }
+  .card figcaption p { margin: 0; color: var(--muted); font-size: 1.6cqi; line-height: 1.5; }
+  .card.top figcaption { bottom: auto; left: 0; width: 100%; top: 3%; align-items: center; text-align: center; }
+  .card.top figcaption p { max-width: 80%; }
+  .card .label { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; color: var(--text); font-weight: 700;
+                 font-size: max(10px, 1.6cqi); text-shadow: 0 1px 3px #000; }
+  .card .label.head { font-size: max(11px, 2.2cqi); }
+  .speed { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-top: 22px;
+           display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; align-items: center; font-size: 15px; }
+  .speed b { font-weight: 600; }
+  .speed .bar { position: relative; height: 22px; margin-right: 9.5em; }  /* room for the numbers after the longest bar */
+  .speed .bar i { position: absolute; left: 0; top: 4px; height: 14px; border-radius: 7px; background: #3a4048; width: var(--b); }
+  .speed .bar i + i { background: var(--teal); width: var(--a); }
+  .speed .bar span { position: absolute; left: calc(var(--b) + 10px); top: 0; color: var(--muted); white-space: nowrap; }
   .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; margin-top: 26px; }
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px; }
   .panel h3 { margin: 0 0 6px; font-size: 24px; } .panel p { color: var(--muted); margin: 0 0 6px; }
@@ -72,9 +96,20 @@
   .lang a[aria-current="page"] { background: var(--text); color: #111; }
   header { position: relative; }
   footer { color: #7d858f; font-size: 14px; padding: 48px 0 40px; text-align: center; }
-  @media (max-width: 700px) {  /* a phone: the tabs would not fit, so the cards instead */
-    .cards-small { display: grid; }
-    .island, [role="tabpanel"], .note { display: none !important; }
+  @media (max-width: 700px) {  /* a phone: the tabs would not fit, so every card one under the other, the words above */
+    .island { display: none; }
+    [role="tabpanel"] { display: block !important; }
+    .card { display: flex; flex-direction: column-reverse; }
+    .card figcaption, .card.top figcaption { position: static; width: auto; padding: 18px 18px 6px; align-items: flex-start; text-align: left; }
+    .card.top figcaption p { max-width: none; }
+    .card figcaption .icon { width: 44px; height: 44px; border-radius: 11px; }
+    .card .pill { font-size: 12px; padding: 3px 10px; margin: 10px 0 8px; }
+    .card h3 { font-size: 24px; margin-bottom: 6px; }
+    .card figcaption p { font-size: 15px; }
+    .card:not(.top) .pic > img { aspect-ratio: 5 / 4; object-fit: cover; object-position: right; }
+    .speed { grid-template-columns: 1fr; gap: 2px; }
+    .card .label { white-space: normal; width: 24%; text-align: center; line-height: 1.2; }
+    .card .label.head { width: 46%; }
   }
 </style>
 </head>
@@ -86,9 +121,9 @@
     <h1>Tetra</h1>
     <p class="lead">Μία ιδιωτική υπερεφαρμογή για το κινητό, το τάμπλετ και τον υπολογιστή σας. Ελεύθερο λογισμικό, χωρίς λογαριασμό, χωρίς cloud: τίποτα δεν φεύγει από τις συσκευές σας.</p>
     <div class="buttons">
-      <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.2/Tetra-0.6.0-beta.2-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Λήψη για Android</b><span>APK · 0.6.0 beta 1 · Android 11+</span></div></a>
-      <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/Tetra-0.6.0-beta.23.AppImage"><img src="img/tetra.png" alt=""><div><b>Linux AppImage</b><span>0.6.0 beta 21 · κάθε διανομή</span></div></a>
-      <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/local-drive-desktop_0.6.0-beta.23_amd64.deb"><img src="img/tetra.png" alt=""><div><b>Linux .deb</b><span>Debian, Ubuntu, Mint</span></div></a>
+      <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.3/Tetra-0.6.0-beta.3-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Λήψη για Android</b><span>APK · 0.6.0 beta 3 · Android 11+</span></div></a>
+      <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.31/Tetra-0.6.0-beta.31.AppImage"><img src="img/tetra.png" alt=""><div><b>Linux AppImage</b><span>0.6.0 beta 31 · οι περισσότερες διανομές</span></div></a>
+      <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.31/local-drive-desktop_0.6.0-beta.31_amd64.deb"><img src="img/tetra.png" alt=""><div><b>Linux .deb</b><span>Debian, Ubuntu, Mint</span></div></a>
     </div>
     <img class="hero" src="img/tetra-devices.jpg" alt="Το Tetra σε υπολογιστή, τάμπλετ και κινητό">
   </div>
@@ -99,92 +134,105 @@
     <h2>Τι κάνει το Tetra για εσάς</h2>
     <div class="tiles">
       <div class="tile" style="--c:#177BFC"><img src="img/icons/files.png" alt=""><h3>Αρχεία από και προς τον υπολογιστή σε ένα δευτερόλεπτο</h3><p>Στείλτε οτιδήποτε με το <b>Send to computer</b> από το κινητό ή με το <b>Send to phone</b> από τον υπολογιστή. Περνάει από το δικό σας Wi-Fi: χωρίς καλώδιο, χωρίς cloud. Αν ο υπολογιστής δεν είναι διαθέσιμος, φεύγει μόλις ξαναφανεί.</p></div>
-      <div class="tile" style="--c:#1A9AA8"><img src="img/icons/phone.png" alt=""><h3>Κλήσεις από τον υπολογιστή</h3><p>Πατήστε έναν αριθμό στις Επαφές του υπολογιστή και το κινητό σας τον καλεί. Ένα μικρό παράθυρο κλήσης στην οθόνη απαντά, βάζει σε αναμονή, κλείνει το μικρόφωνο και τερματίζει.</p></div>
+      <div class="tile" style="--c:#1A9AA8"><img src="img/icons/phone.png" alt=""><h3>Κλήσεις από τον υπολογιστή</h3><p>Πατήστε έναν αριθμό στις Επαφές του υπολογιστή και το κινητό σας τον καλεί. Ένα μικρό παράθυρο κλήσης στην οθόνη απαντά, βάζει σε αναμονή, κλείνει το μικρόφωνο, τερματίζει και βγάζει τον ήχο από το μεγάφωνο του κινητού.</p></div>
+      <div class="tile" style="--c:#25C4FE"><img src="img/icons/maps.png" alt=""><h3>Χάρτες κάθε χώρας, χωρίς σύνδεση</h3><p>Διαλέξτε μια χώρα στον υπολογιστή: το Tetra φτιάχνει τον χάρτη, την αναζήτηση και τις διαδρομές της από το OpenStreetMap και τα στέλνει στο κινητό και στο τάμπλετ. Οι διαδρομές περνούν τα σύνορα από τα πραγματικά σημεία διέλευσης, με οδηγίες στη γλώσσα σας.</p></div>
+      <div class="tile" style="--c:#8E99A6"><img src="img/icons/settings.png" alt=""><h3>Στη γλώσσα σας, με οδηγό</h3><p>Και οι 24 επίσημες γλώσσες της ΕΕ. Ένας οδηγός στην πρώτη εκκίνηση, και όποτε θέλετε στις Ρυθμίσεις, δείχνει πού να πατήσετε και γιατί, βήμα βήμα.</p></div>
       <div class="tile" style="--c:#9AD01E"><img src="img/icons/data.png" alt=""><h3>Το πακέτο δεδομένων σας, υπό έλεγχο</h3><p>Δηλώστε μία φορά το πακέτο σας. Το Tetra σας ειδοποιεί στο 50 %, στο 80 % και στο 100 %, ή σε όποια σημεία διαλέξετε, και προβλέπει πού θα βρίσκεστε στο τέλος του μήνα.</p></div>
       <div class="tile" style="--c:#F41879"><img src="img/icons/calendar.png" alt=""><h3>Ημερολόγιο και χρονόμετρα, με τεχνητή νοημοσύνη</h3><p>Ενσωματωμένες δεξιότητες (skills) επιτρέπουν στο Claude, στο ChatGPT ή σε όποιον βοηθό χειρίζεται τον υπολογιστή σας να περάσει ένα ωρολόγιο πρόγραμμα, να οργανώσει την εβδομάδα σας ή να ξεκινήσει ένα χρονόμετρο. Απλώς επεξεργάζονται τα αρχεία του ημερολογίου και των χρονομέτρων.</p></div>
       <div class="tile" style="--c:#FED00A"><img src="img/icons/notes.png" alt=""><h3>Σημειώσεις και λίστες, τακτοποιημένες</h3><p>Κρατήστε τις σημειώσεις και τις λίστες για ψώνια οργανωμένες με ετικέτες και συγχρονισμένες ανάμεσα σε κινητό και υπολογιστή. Κάθε σημείωση είναι ένα απλό αρχείο στον δικό σας φάκελο Tetra.</p></div>
       <div class="tile" style="--c:#95DF6B"><img src="img/icons/gallery.png" alt=""><h3>Φωτογραφίες που ξέρουν ποιος και πού</h3><p>Ετικέτες, κινούμενες φωτογραφίες (live photos) και συλλογές Πρόσωπα και Έγγραφα, με αναγνώριση προσώπων που γίνεται στη συσκευή. Βρείτε φωτογραφίες ανά τοποθεσία* και φέρτε τις φωτογραφίες σας από το Google Photos (εισαγωγή Takeout στον υπολογιστή).</p></div>
       <div class="tile" style="--c:#E3141F"><img src="img/icons/scanner.png" alt=""><h3>Σαρώστε κάθε σελίδα καθαρά</h3><p>Φίλτρα και αυτόματη περικοπή εντοπίζουν και ισιώνουν τη σελίδα: όλα τα εργαλεία για ένα τέλειο ψηφιακό αντίγραφο, για όσες σελίδες θέλετε.</p></div>
       <div class="tile" style="--c:#E3141F"><img src="img/icons/pdf.png" alt=""><h3>Κρύψτε ό,τι πρέπει να μείνει ιδιωτικό</h3><p>Απόκρυψη σε PDF και φωτογραφίες που αφαιρεί το κρυμμένο μέρος από το ίδιο το αρχείο, δεν το σκεπάζει απλώς. Το Tetra βρίσκει τα μάτια σε μια φωτογραφία και τα καλύπτει με μαύρες μπάρες ή αστεράκια, και εντοπίζει κείμενο για απόκρυψη.</p></div>
-      <div class="tile" style="--c:#FD7D12"><img src="img/icons/office.png" alt=""><h3>Office και PDF, όσο χρειάζεται</h3><p>Αρχεία Word, Excel και PowerPoint ανοίγουν και αποθηκεύονται στη δική τους μορφή, με συμβατότητα αρκετή για την καθημερινή δουλειά. Επεξεργασία PDF και οργάνωση σελίδων. Και διάταξη για κινητό που πραγματικά χρησιμοποιείται.</p></div>
-      <div class="tile" style="--c:#25C4FE"><img src="img/icons/maps.png" alt=""><h3>Χάρτες χωρίς σύνδεση*</h3><p>Αναζήτηση, μέρη, διαδρομές με αυτοκίνητο, με τα πόδια και με ποδήλατο, και φωνητική καθοδήγηση, όλα στη συσκευή. *Οι χάρτες και η αναζήτηση φωτογραφιών ανά τοποθεσία καλύπτουν προς το παρόν μόνο την Ελλάδα.</p></div>
+      <div class="tile" style="--c:#FD7D12"><img src="img/icons/office.png" alt=""><h3>Office και PDF, όσο χρειάζεται</h3><p>Αρχεία Word, Excel και PowerPoint ανοίγουν και αποθηκεύονται στη δική τους μορφή, με συμβατότητα αρκετή για την καθημερινή δουλειά. Τα PDF επεξεργάζονται όπως στα Κείμενα, και τα βίντεο και οι ήχοι μέσα στα έγγραφα παίζουν. Και διάταξη για κινητό που πραγματικά χρησιμοποιείται.</p></div>
       <div class="tile" style="--c:#2E9D4F"><img src="img/icons/drive.png" alt=""><h3>Ο εσωτερικός δίσκος, πάντα ελαφρύς</h3><p>Συνδέστε έναν εξωτερικό δίσκο με το Tetra και κρατά αυτόματα αντίγραφα όλων, ή μεταφέρει εκεί τις παλιότερες φωτογραφίες, ώστε ο δίσκος του υπολογιστή να μένει όσο πιο άδειος γίνεται.</p></div>
       <div class="tile" style="--c:#2E9D4F"><img src="img/icons/sync.png" alt=""><h3>Πάνω από ένα αντίγραφο, χωρίς συνδρομή</h3><p>Το Tetra δείχνει σε πόσα σημεία υπάρχει κάθε αρχείο, στο κινητό, στο τάμπλετ, στον υπολογιστή ή σε έναν δίσκο USB, και τι υπάρχει ακόμη μόνο σε ένα. Δικά σας αντίγραφα ασφαλείας, χωρίς πακέτο cloud να πληρώνετε.</p></div>
     </div>
+    <p class="note">*Η αναζήτηση φωτογραφιών ανά τοποθεσία καλύπτει προς το παρόν μόνο την Ελλάδα.</p>
   </div>
 </section>
 
 <section>
   <div class="wrap">
     <h2>Κάθε εφαρμογή, σε κάθε οθόνη</h2>
-    <p class="sub">Μία αρχική οθόνη, ένας φάκελος, οι ίδιες εφαρμογές σε Android και Linux. Μέσα θα βρείτε επίσης Σαρωτή, αναγνώστη κωδικών QR και Επεξεργαστή κειμένου. Η εφαρμογή είναι προς το παρόν στα αγγλικά.</p>
-    <div class="grid cards-small">
-      <img src="img/card-office.jpg" alt="Office: Word, Excel, PowerPoint και PDF" loading="lazy">
-      <img src="img/card-photos.jpg" alt="Φωτογραφίες" loading="lazy">
-      <img src="img/card-calendar.jpg" alt="Ημερολόγιο και χρονόμετρα" loading="lazy">
-      <img src="img/card-people.jpg" alt="Επαφές και κλήσεις" loading="lazy">
-      <img src="img/card-maps.jpg" alt="Χάρτες χωρίς σύνδεση (προς το παρόν μόνο η Ελλάδα)" loading="lazy">
-      <img src="img/card-notes.jpg" alt="Σημειώσεις και λίστες" loading="lazy">
-      <img src="img/card-files.jpg" alt="Αρχεία" loading="lazy">
-      <img src="img/card-data.jpg" alt="Δεδομένα, Wi-Fi και σήμα" loading="lazy">
-    </div>
+    <p class="sub">Μία αρχική οθόνη, ένας φάκελος, οι ίδιες εφαρμογές σε Android και Linux. Μέσα θα βρείτε επίσης Σαρωτή, Κωδικούς και Επεξεργαστή κειμένου.</p>
     <div class="island" role="tablist" aria-label="Εφαρμογές">
       <button role="tab" id="tab-home" aria-controls="panel-home" aria-selected="true" tabindex="0" style="--c:#8E99A6;--on:#111">Αρχική</button>
-      <button role="tab" id="tab-photos" aria-controls="panel-photos" aria-selected="false" tabindex="-1" style="--c:#95DF6B;--on:#111">Φωτογραφίες</button>
+      <button role="tab" id="tab-maps" aria-controls="panel-maps" aria-selected="false" tabindex="-1" style="--c:#25C4FE;--on:#111">Χάρτες</button>
+      <button role="tab" id="tab-photos" aria-controls="panel-photos" aria-selected="false" tabindex="-1" style="--c:#95DF6B;--on:#111">Φωτοθήκη</button>
       <button role="tab" id="tab-files" aria-controls="panel-files" aria-selected="false" tabindex="-1" style="--c:#177BFC;--on:#fff">Αρχεία</button>
       <button role="tab" id="tab-notes" aria-controls="panel-notes" aria-selected="false" tabindex="-1" style="--c:#FED00A;--on:#111">Σημειώσεις</button>
       <button role="tab" id="tab-office" aria-controls="panel-office" aria-selected="false" tabindex="-1" style="--c:#FD7D12;--on:#111">Office</button>
       <button role="tab" id="tab-calendar" aria-controls="panel-calendar" aria-selected="false" tabindex="-1" style="--c:#F41879;--on:#fff">Ημερολόγιο · Χρονόμετρο</button>
-      <button role="tab" id="tab-maps" aria-controls="panel-maps" aria-selected="false" tabindex="-1" style="--c:#25C4FE;--on:#111">Χάρτες*</button>
       <button role="tab" id="tab-contacts" aria-controls="panel-contacts" aria-selected="false" tabindex="-1" style="--c:#BE7E4D;--on:#fff">Επαφές</button>
       <button role="tab" id="tab-phone" aria-controls="panel-phone" aria-selected="false" tabindex="-1" style="--c:#1A9AA8;--on:#fff">Τηλέφωνο</button>
       <button role="tab" id="tab-backup" aria-controls="panel-backup" aria-selected="false" tabindex="-1" style="--c:#2E9D4F;--on:#fff">Αντίγραφα</button>
       <button role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1" style="--c:#9AD01E;--on:#111">Δεδομένα</button>
+      <button role="tab" id="tab-guide" aria-controls="panel-guide" aria-selected="false" tabindex="-1" style="--c:#8E99A6;--on:#111">Οδηγός · Ρυθμίσεις</button>
     </div>
     <div role="tabpanel" id="panel-home" aria-labelledby="tab-home">
-      <p>Ομάδες, συνδυασμός ή μόνο εικονίδια: σύρετε, αλλάξτε μέγεθος ή κρύψτε κάθε κομμάτι.</p>
-      <img class="wide-img" src="img/card-home.jpg" alt="Αρχική" loading="lazy">
-    </div>
-    <div role="tabpanel" id="panel-photos" aria-labelledby="tab-photos" hidden>
-      <p>Η συλλογή σας στις δικές σας συσκευές· πρόσωπα και ετικέτες αναγνωρίζονται πάνω σε αυτές.</p>
-      <img class="wide-img" src="img/card-photos.jpg" alt="Φωτογραφίες" loading="lazy">
-    </div>
-    <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" hidden>
-      <p>Διαχείριση αρχείων με εικονίδιο για κάθε είδος, και αρχεία που πηγαινοέρχονται σε ένα δευτερόλεπτο.</p>
-      <img class="wide-img" src="img/card-files.jpg" alt="Αρχεία" loading="lazy">
-      <img class="wide-img" src="img/card-send.jpg" alt="Αρχεία" loading="lazy">
-    </div>
-    <div role="tabpanel" id="panel-notes" aria-labelledby="tab-notes" hidden>
-      <p>Σημειώσεις και λίστες που συγχρονίζονται με τον υπολογιστή.</p>
-      <img class="wide-img" src="img/card-notes.jpg" alt="Σημειώσεις" loading="lazy">
-    </div>
-    <div role="tabpanel" id="panel-office" aria-labelledby="tab-office" hidden>
-      <p>Κείμενα, πίνακες, παρουσιάσεις και PDF, σε κινητό, τάμπλετ ή μεγάλη οθόνη.</p>
-      <img class="wide-img" src="img/card-office.jpg" alt="Office" loading="lazy">
-    </div>
-    <div role="tabpanel" id="panel-calendar" aria-labelledby="tab-calendar" hidden>
-      <p>Ημερολόγια και χρονόμετρα ως απλά αρχεία που συγχρονίζονται, χτυπούν σε κάθε συσκευή και μπορεί να τα χειριστεί και το Claude.</p>
-      <img class="wide-img" src="img/card-calendar.jpg" alt="Ημερολόγιο · Χρονόμετρο" loading="lazy">
+      <figure class="card top"><div class="pic"><img src="img/art/home.jpg" alt="" loading="lazy">
+        <span class="label" style="left:15.3%;top:94.5%">Ομάδες</span><span class="label" style="left:38%;top:94.5%">Συνδυασμός</span>
+        <span class="label" style="left:60.9%;top:94.5%">Μόνο εικονίδια</span><span class="label" style="left:83.7%;top:94.5%">Επεξεργασία</span></div>
+        <figcaption><h3>Η αρχική οθόνη, όπως τη θέλετε</h3><p>Ομάδες, συνδυασμός ή μόνο εικονίδια. Σύρετε ένα κομμάτι σε όποιο κελί θέλετε, κάντε το μεγάλο, μεσαίο ή μικρό, ή κρύψτε το.</p></figcaption></figure>
     </div>
     <div role="tabpanel" id="panel-maps" aria-labelledby="tab-maps" hidden>
-      <p>Χωρίς σύνδεση, με διαδρομές και καθοδήγηση σε κάθε στροφή. *Προς το παρόν μόνο η Ελλάδα.</p>
-      <img class="wide-img" src="img/card-maps.jpg" alt="Χάρτες" loading="lazy">
+      <figure class="card" style="--c:#25C4FE"><div class="pic"><img src="img/art/builder.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/maps.png" alt=""><span class="pill">Χάρτες</span><h3>Χάρτες κάθε χώρας, φτιαγμένοι από τον υπολογιστή σας</h3><p>Διαλέξτε μια χώρα ή μια περιοχή στις Ρυθμίσεις › Χάρτες. Ο υπολογιστής σας φτιάχνει τον χάρτη, την αναζήτηση και τις διαδρομές της από το OpenStreetMap, και ο συγχρονισμός τα φέρνει στο κινητό και στο τάμπλετ. Όταν ένας χάρτης γίνει τριών μηνών, το Tetra προτείνει να ξαναφτιαχτεί.</p></figcaption></figure>
+      <figure class="card" style="--c:#25C4FE"><div class="pic"><img src="img/art/borders.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/maps.png" alt=""><span class="pill">Χάρτες</span><h3>Πέρα από τα σύνορα</h3><p>Με τον χάρτη και της γειτονικής χώρας, η διαδρομή περνά από τα πραγματικά σημεία διέλευσης, στον κεντρικό δρόμο. Οδηγίες στη γλώσσα σας, σε χιλιόμετρα ή μίλια.</p></figcaption></figure>
+      <figure class="card" style="--c:#25C4FE"><div class="pic"><img src="img/art/maps.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/maps.png" alt=""><span class="pill">Χάρτες</span><h3>Χωρίς σύνδεση, με πλοήγηση</h3><p>Αναζήτηση και μέρη, διαδρομές με αυτοκίνητο, με τα πόδια ή με ποδήλατο, και φωνητική καθοδήγηση σε κάθε στροφή, όλα στη συσκευή. Χωρίς λογαριασμό, χωρίς παρακολούθηση.</p></figcaption></figure>
+    </div>
+    <div role="tabpanel" id="panel-photos" aria-labelledby="tab-photos" hidden>
+      <figure class="card" style="--c:#95DF6B"><div class="pic"><img src="img/art/photos.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/gallery.png" alt=""><span class="pill">Φωτοθήκη</span><h3>Οι φωτογραφίες σας, στις συσκευές σας</h3><p>Χρονολόγιο, συλλογές, πρόσωπα, έγγραφα που βρίσκονται για εσάς, χάρτης και επεξεργασία. Πρόσωπα και ετικέτες αναγνωρίζονται πάνω στη συσκευή.</p></figcaption></figure>
+    </div>
+    <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" hidden>
+      <figure class="card" style="--c:#177BFC"><div class="pic"><img src="img/art/files.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/files.png" alt=""><span class="pill">Αρχεία</span><h3>Αρχεία, με εικονίδιο για κάθε είδος</h3><p>Διαχείριση αρχείων για τον φάκελο Tetra: ετικέτες, αγαπημένα, χρώματα φακέλων, Κάδος, μικρογραφίες και φάκελοι συστήματος.</p></figcaption></figure>
+      <figure class="card top"><div class="pic"><img src="img/art/send.jpg" alt="" loading="lazy">
+        <span class="label" style="left:25.6%;top:24.7%;font-size:max(11px,2.2cqi)">Από το κινητό στον υπολογιστή</span>
+        <span class="label" style="left:74.4%;top:24.7%;font-size:max(11px,2.2cqi)">Από τον υπολογιστή στο κινητό</span>
+        <span class="label" style="left:10.4%;top:89.1%">1. Κοινοποίηση › Αποστολή στον υπολογιστή</span><span class="label" style="left:35.6%;top:77.8%">2. Στον υπολογιστή: Αρχεία › From phone</span>
+        <span class="label" style="left:64.4%;top:77.8%">1. Στον υπολογιστή: Αποστολή στο τηλέφωνο</span><span class="label" style="left:89.6%;top:89.1%">2. Αρχεία › From computer</span></div>
+        <figcaption><h3>Αρχεία και προς τις δύο μεριές, σε ένα δευτερόλεπτο</h3><p>Μέσα από το δικό σας Wi-Fi: χωρίς καλώδιο, χωρίς cloud, χωρίς λογαριασμό. Αν η άλλη συσκευή λείπει, το αρχείο περιμένει και φεύγει μόλις ξαναφανεί.</p></figcaption></figure>
+    </div>
+    <div role="tabpanel" id="panel-notes" aria-labelledby="tab-notes" hidden>
+      <figure class="card" style="--c:#FED00A"><div class="pic"><img src="img/art/notes.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/notes.png" alt=""><span class="pill">Σημειώσεις</span><h3>Σημειώσεις και λίστες</h3><p>Χρώματα, ετικέτες, καρφιτσώματα και ιστορικό για κάθε σημείωση. Συντομεύσεις πληκτρολογίου στο τάμπλετ. Συγχρονίζονται με τον υπολογιστή.</p></figcaption></figure>
+    </div>
+    <div role="tabpanel" id="panel-office" aria-labelledby="tab-office" hidden>
+      <figure class="card" style="--c:#FD7D12"><div class="pic"><img src="img/art/office.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/office.png" alt=""><span class="pill">Office</span><h3>Word, Excel, PowerPoint και PDF</h3><p>Αληθινές σελίδες με χάρακες, κορδέλα, γραφήματα και θέματα. Τα αρχεία ανοίγουν και αποθηκεύονται στη δική τους μορφή. Τα PDF επεξεργάζονται όπως στα Κείμενα, με σημειώσεις, υπογραφές, φόρμες και απόκρυψη· τα βίντεο και οι ήχοι μέσα στα έγγραφα παίζουν.</p></figcaption></figure>
+    </div>
+    <div role="tabpanel" id="panel-calendar" aria-labelledby="tab-calendar" hidden>
+      <figure class="card" style="--c:#F41879;--on:#fff;--x:37%"><div class="pic"><img src="img/art/calendar.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/calendar.png" alt=""><span class="pill">Ημερολόγιο · Χρονόμετρο</span><h3>Ημερολόγιο και χρονόμετρα</h3><p>Απλά αρχεία iCalendar: ημέρα, εβδομάδα, μήνας και ατζέντα, υπενθυμίσεις, γενέθλια από τις Επαφές. Τα χρονόμετρα χτυπούν σε κάθε συσκευή.</p></figcaption></figure>
     </div>
     <div role="tabpanel" id="panel-contacts" aria-labelledby="tab-contacts" hidden>
-      <p>Οι επαφές σας ως αρχεία vCard, με πρόσωπα από τις Φωτογραφίες.</p>
-      <img class="wide-img" src="img/card-people.jpg" alt="Επαφές" loading="lazy">
+      <figure class="card" style="--c:#BE7E4D;--on:#fff"><div class="pic"><img src="img/art/people.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/contacts.png" alt=""><span class="pill">Επαφές · Τηλέφωνο</span><h3>Επαφές και κλήσεις</h3><p>Οι επαφές σας ως αρχεία vCard, με πρόσωπα από τη Φωτοθήκη. Πληκτρολόγιο κλήσεων με πρόσφατες και έλεγχο για ανεπιθύμητες κλήσεις· καλέστε από τον υπολογιστή μέσω του κινητού.</p></figcaption></figure>
     </div>
     <div role="tabpanel" id="panel-phone" aria-labelledby="tab-phone" hidden>
-      <p>Δεν χρειάζεται να πιάσετε το κινητό: απαντήστε σε κάθε κλήση από τον υπολογιστή, εκεί που δουλεύετε.</p>
-      <img class="wide-img" src="img/card-bubble.jpg" alt="Τηλέφωνο" loading="lazy">
+      <figure class="card" style="--c:#1A9AA8;--on:#fff"><div class="pic"><img src="img/art/bubble.jpg" alt="" loading="lazy">
+        <span class="label" style="left:56.2%;top:69.3%">Κάποιος καλεί</span><span class="label" style="left:83.1%;top:86.1%">Σε κλήση, με ανοιχτό πληκτρολόγιο</span></div>
+        <figcaption><img class="icon" src="img/icons/phone.png" alt=""><span class="pill">Τηλέφωνο</span><h3>Κλήσεις στον υπολογιστή</h3><p>Πατήστε έναν αριθμό στις Επαφές και το κινητό σας τον καλεί. Όταν σας καλούν, ένα μικρό παράθυρο στην οθόνη σάς αφήνει να απαντήσετε, να βάλετε σε αναμονή, να κλείσετε το μικρόφωνο, να πληκτρολογήσετε ψηφία, να βγάλετε τον ήχο από το μεγάφωνο του κινητού ή να τερματίσετε, ενώ το κινητό μένει στην τσέπη σας.</p></figcaption></figure>
+      <figure class="card" style="--c:#1A9AA8;--on:#fff"><div class="pic"><img src="img/art/phone-tablet.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/phone.png" alt=""><span class="pill">Τηλέφωνο</span><h3>Στο τάμπλετ, σε δύο στήλες</h3><p>Οι πρόσφατες αριστερά, το πληκτρολόγιο πάντα ανοιχτό δεξιά. Οι αριθμοί διαβάζονται με τον κωδικό της χώρας σας, τα σταθερά δείχνουν το μέρος τους από τους χάρτες σας, και η Φραγή κλήσεων έχει τη δική της λίστα.</p></figcaption></figure>
     </div>
     <div role="tabpanel" id="panel-backup" aria-labelledby="tab-backup" hidden>
-      <p>Αντίγραφα στις δικές σας συσκευές και στους δίσκους σας, μετρημένα για εσάς.</p>
-      <img class="wide-img" src="img/card-safety.jpg" alt="Αντίγραφα" loading="lazy">
+      <figure class="card" style="--c:#2E9D4F;--on:#fff;--x:34%"><div class="pic"><img src="img/art/safety.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/sync.png" alt=""><span class="pill">Συσκευές · Δίσκοι</span><h3>Πάνω από ένα αντίγραφο, χωρίς συνδρομή</h3><p>Το Tetra δείχνει σε πόσα σημεία υπάρχει κάθε φωτογραφία, και τι υπάρχει ακόμη μόνο σε ένα. Συνδέστε έναν δίσκο USB για αυτόματα αντίγραφα, ή μεταφέρετε εκεί τις παλιές φωτογραφίες ώστε ο δίσκος SSD του υπολογιστή να μένει ελαφρύς.</p></figcaption></figure>
     </div>
     <div role="tabpanel" id="panel-data" aria-labelledby="tab-data" hidden>
-      <p>Το πακέτο σας υπό έλεγχο, με ειδοποίηση σε όποιο σημείο διαλέξετε.</p>
-      <img class="wide-img" src="img/card-data.jpg" alt="Δεδομένα" loading="lazy">
+      <figure class="card" style="--c:#9AD01E"><div class="pic"><img src="img/art/data.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/data.png" alt=""><span class="pill">Δεδομένα</span><h3>Δεδομένα, Wi-Fi και σήμα</h3><p>Πόσα καταναλώνει κάθε εφαρμογή σε δεδομένα κινητής και Wi-Fi, ειδοποιήσεις πριν τελειώσει το πακέτο, και κινητό, τάμπλετ και υπολογιστής μαζί.</p></figcaption></figure>
+    </div>
+    <div role="tabpanel" id="panel-guide" aria-labelledby="tab-guide" hidden>
+      <figure class="card" style="--c:#8E99A6"><div class="pic"><img src="img/art/guide.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/settings.png" alt=""><span class="pill">Οδηγός</span><h3>Ένας οδηγός που σας δείχνει</h3><p>Στην πρώτη εκκίνηση και στις Ρυθμίσεις › Οδηγός: πού να πατήσετε και γιατί, βήμα βήμα. Οι εικόνες κινούνται για να δείξουν τι γίνεται, και το «Δοκιμάστε το» κρατά το βήμα μπροστά σας όσο το κάνετε στην πράξη.</p></figcaption></figure>
+      <figure class="card" style="--c:#8E99A6"><div class="pic"><img src="img/art/languages.jpg" alt="" loading="lazy"></div>
+        <figcaption><img class="icon" src="img/icons/settings.png" alt=""><span class="pill">Ρυθμίσεις</span><h3>Στη γλώσσα σας</h3><p>Και οι 24 επίσημες γλώσσες της ΕΕ, στο κινητό και στον υπολογιστή. Το Tetra ακολουθεί τη γλώσσα του συστήματος, εκτός αν διαλέξετε άλλη στις Ρυθμίσεις › Εμφάνιση.</p></figcaption></figure>
     </div>
     <p class="note">Τα στιγμιότυπα χρησιμοποιούν φανταστικά δείγματα δεδομένων.</p>
   </div>
@@ -193,8 +241,20 @@
 <section>
   <div class="wrap">
     <h2>Γρήγορο, από σχεδιασμό</h2>
-    <p class="sub">Κάθε εφαρμογή μετρήθηκε σε κινητό και ξαναδουλεύτηκε μέχρι να ανοίγει αμέσως: οι Επαφές, αμέσως μετά την εκκίνηση, από 3,3 s ανοίγουν πλέον σε 0,19 s. Στον υπολογιστή, οι Φωτογραφίες ξανανοίγουν σε 71 ms αντί για 741.</p>
-    <img class="wide-img" src="img/card-speed.jpg" alt="Πριν και μετά, εφαρμογή προς εφαρμογή" loading="lazy">
+    <p class="sub">Κάθε εφαρμογή μετρήθηκε σε κινητό και ξαναδουλεύτηκε μέχρι να ανοίγει αμέσως. Ο χρόνος μέχρι να δείξει η οθόνη το περιεχόμενό της, πριν και τώρα:</p>
+    <div class="speed" role="list">
+      <b>Επαφές, αμέσως μετά την εκκίνηση</b><div class="bar" style="--b:100%;--a:5.8%"><i></i><i></i><span>3,3 s → 190 ms</span></div>
+      <b>Τηλέφωνο, αμέσως μετά την εκκίνηση</b><div class="bar" style="--b:75.8%;--a:7.6%"><i></i><i></i><span>2,5 s → 250 ms</span></div>
+      <b>Δεδομένα</b><div class="bar" style="--b:72.7%;--a:5.3%"><i></i><i></i><span>2,4 s → 175 ms</span></div>
+      <b>Εκκίνηση του Tetra</b><div class="bar" style="--b:28%;--a:6.2%"><i></i><i></i><span>924 ms → 205 ms</span></div>
+      <b>Αρχική του Office</b><div class="bar" style="--b:24.1%;--a:1.9%"><i></i><i></i><span>796 ms → 62 ms</span></div>
+      <b>Φωτοθήκη</b><div class="bar" style="--b:19.5%;--a:9.7%"><i></i><i></i><span>643 ms → 320 ms</span></div>
+      <b>Σημειώσεις</b><div class="bar" style="--b:11.5%;--a:1.7%"><i></i><i></i><span>378 ms → 55 ms</span></div>
+      <b>Ημερολόγιο</b><div class="bar" style="--b:8.5%;--a:1%"><i></i><i></i><span>280 ms → 34 ms</span></div>
+      <b>Χρονόμετρο</b><div class="bar" style="--b:7.2%;--a:1.4%"><i></i><i></i><span>236 ms → 45 ms</span></div>
+      <b>Αρχεία</b><div class="bar" style="--b:5%;--a:1.3%"><i></i><i></i><span>166 ms → 43 ms</span></div>
+    </div>
+    <p class="note">Γκρι: πριν · χρώμα: τώρα. Στον υπολογιστή, η Φωτοθήκη ξανανοίγει σε 71 ms αντί για 741.</p>
   </div>
 </section>
 
@@ -207,14 +267,14 @@
         <h3>Tetra για Android</h3>
         <p>Κινητά και τάμπλετ, Android 11 ή νεότερο.</p>
         <a href="https://github.com/kalotrapezis/Drive-Android">Κώδικας και λεπτομέρειες στο GitHub</a>
-        <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.2/Tetra-0.6.0-beta.2-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Λήψη APK</b><span>0.6.0 beta 1</span></div></a>
+        <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.3/Tetra-0.6.0-beta.3-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Λήψη APK</b><span>0.6.0 beta 3</span></div></a>
       </div>
       <div class="panel">
         <h3>Tetra για υπολογιστή</h3>
-        <p>Linux· περιμένει στην περιοχή ειδοποιήσεων το κινητό σας.</p>
+        <p>Linux: AppImage για τις περισσότερες διανομές, ή .deb για Debian, Ubuntu και Mint. Περιμένει το κινητό σας στην περιοχή ειδοποιήσεων.</p>
         <a href="https://github.com/kalotrapezis/Drive">Κώδικας και λεπτομέρειες στο GitHub</a>
-        <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/Tetra-0.6.0-beta.23.AppImage"><img src="img/tetra.png" alt=""><div><b>AppImage</b><span>0.6.0 beta 21</span></div></a>
-        <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/local-drive-desktop_0.6.0-beta.23_amd64.deb"><img src="img/tetra.png" alt=""><div><b>.deb</b><span>0.6.0 beta 21</span></div></a>
+        <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.31/Tetra-0.6.0-beta.31.AppImage"><img src="img/tetra.png" alt=""><div><b>AppImage</b><span>0.6.0 beta 31</span></div></a>
+        <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.31/local-drive-desktop_0.6.0-beta.31_amd64.deb"><img src="img/tetra.png" alt=""><div><b>.deb</b><span>0.6.0 beta 31</span></div></a>
       </div>
     </div>
   </div>

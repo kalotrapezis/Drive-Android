@@ -137,7 +137,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     var drawer by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf<CallGroup?>(null) }
     var page by remember { mutableStateOf<PhonePage?>(null) }
-    var blockedPage by remember { mutableStateOf<CallGroup?>(null) } // a blocked number's own page, over Call blocking
+    var blockedPage by remember { mutableStateOf<PhoneSpam.Entry?>(null) } // a blocked number's card, over Call blocking
     val blockingScroll = rememberScrollState() // Call blocking back where it was after a number's page
     val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     fun call(n: String) {
@@ -158,11 +158,11 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
         Box(Modifier.fillMaxHeight().widthIn(max = 560.dp).fillMaxWidth()) {
             val open = page
             val blocked = blockedPage
-            if (blocked != null) PhonePageScreen(who(blocked.number)?.name ?: blocked.number.ifBlank { stringResource(R.string.phone_hidden_number) }, back = { blockedPage = null }) {
-                BlockedNumber(blocked, who(blocked.number)) { version++ }
+            if (blocked != null) PhonePageScreen((if (blocked.number.endsWith("*")) null else who(blocked.number)?.name) ?: blocked.number, back = { blockedPage = null }) {
+                BlockedCard(blocked, calls.filter { PhoneSpam.matches(listOf(blocked), it.number) != null }, if (blocked.number.endsWith("*")) null else who(blocked.number)) { blockedPage = null; version++ }
             } else if (open != null) PhonePageScreen(stringResource(open.title), back = { page = null }, if (open == PhonePage.Blocking) blockingScroll else rememberScrollState()) {
                 when (open) {
-                    PhonePage.Blocking -> CallBlocking(calls, ::who, open = { blockedPage = it }) { version++ }
+                    PhonePage.Blocking -> CallBlocking(version, ::who, open = { blockedPage = it }) { version++ }
                     PhonePage.SpeedDial -> SpeedDialSettings(contacts)
                 }
             } else {
@@ -260,57 +260,58 @@ private fun PhonePageScreen(title: String, back: () -> Unit, scroll: androidx.co
     Column(Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
 }
 
-/** Call blocking: the spam list to add to and take from, then the numbers it (and Android's own list) blocked, each once; a tap opens its page. */
+/**
+ * Call blocking, one list as Contacts is (the user, 27 Oct: "simplify, one list, contacts like; the calls show in the history of
+ * their card"): every number and range on the spam list, A to Ω, whether it ever called or not; a tap opens its card.
+ */
 @Composable
-private fun CallBlocking(calls: List<LoggedCall>, who: (String) -> ContactInfo?, open: (CallGroup) -> Unit, changed: () -> Unit) {
+private fun CallBlocking(version: Int, who: (String) -> ContactInfo?, open: (PhoneSpam.Entry) -> Unit, changed: () -> Unit) {
     SpamSettings(changed)
-    val zone = ZoneId.systemDefault()
-    // one line a number, newest first; its dates and recordings on its page (the user, 27 Oct: "group by number", "a contact page for that phone number")
-    val blocked = remember(calls) { calls.filter { it.type == CallLog.Calls.BLOCKED_TYPE }.groupBy { ContactsWays.key(it.number).ifEmpty { it.number } }.values.map { CallGroup(it) }.take(100) }
-    Text(stringResource(R.string.phone_blocked_calls), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-    if (blocked.isEmpty()) Text(stringResource(R.string.phone_no_blocked_calls), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
-    blocked.forEach { g ->
-        Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable { open(g) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            CallAvatar(who(g.number), 40.dp)
-            Text((who(g.number)?.name ?: g.number.ifBlank { stringResource(R.string.phone_hidden_number) }) + if (g.calls.size > 1) " (${g.calls.size})" else "",
-                Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val list = remember(version) { PhoneSpam.read().sortedBy { e -> (who(e.number)?.name ?: e.number).lowercase() } }
+    list.forEach { e ->
+        val c = if (e.number.endsWith("*")) null else who(e.number)
+        Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable { open(e) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            CallAvatar(c, 40.dp)
+            Column(Modifier.weight(1f)) {
+                Text(c?.name ?: e.number, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (c != null) Text(e.number, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
+            }
             Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null)
         }
     }
 }
 
-/** A blocked number's page: who, Unblock (or Block again), every blocked call's date, and the calls recorded with it. */
+/** A blocked number's card: who, Unblock, every call with it (or within its range), and the calls recorded with it. */
 @Composable
-private fun BlockedNumber(g: CallGroup, c: ContactInfo?, changed: () -> Unit) {
+private fun BlockedCard(e: PhoneSpam.Entry, history: List<LoggedCall>, c: ContactInfo?, unblocked: () -> Unit) {
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
     val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
-    var version by remember { mutableIntStateOf(0) }
-    val spam = remember(version) { PhoneSpam.matches(PhoneSpam.read(), g.number) }
     val tablet = remember { PhoneRelay.noCalls(context) }
-    val recordings by produceState(emptyList<java.io.File>(), g.number) {
-        value = withContext(Dispatchers.IO) { runCatching { ContactsRecordings.of(java.io.File(phoneRoot(), "Recordings").listFiles()?.toList().orEmpty(), c?.name.orEmpty(), listOf(g.number)) }.getOrDefault(emptyList()) }
+    val range = e.number.endsWith("*")
+    val recordings by produceState(emptyList<java.io.File>(), e.number) {
+        if (!range) value = withContext(Dispatchers.IO) { runCatching { ContactsRecordings.of(java.io.File(phoneRoot(), "Recordings").listFiles()?.toList().orEmpty(), c?.name.orEmpty(), listOf(e.number)) }.getOrDefault(emptyList()) }
     }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         CallAvatar(c, 88.dp)
-        Text(g.number.ifBlank { stringResource(R.string.phone_hidden_number) }, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-        PhoneArea.of(g.number)?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current.copy(alpha = 0.7f)) }
-        // caught by a range (69800*): that line is the one to change, in the list
-        if (spam?.number?.endsWith("*") == true) Text(stringResource(R.string.phone_spam_range, spam.number), color = CALL_RED, textAlign = TextAlign.Center)
-        else if (g.number.isNotBlank()) Button(onClick = {
-            if (spam != null) { PhoneSpam.remove(context, g.number); if (!tablet) PhoneBlocked.unblock(context, g.number) }
-            else { PhoneSpam.add(context, g.number); if (!tablet) PhoneBlocked.block(context, g.number) }
-            version++; changed()
-        }, colors = ButtonDefaults.buttonColors(containerColor = if (spam != null) PHONE_COLOR else CALL_RED, contentColor = Color.White)) {
+        Text(e.number, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        (if (range) null else PhoneArea.of(e.number))?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current.copy(alpha = 0.7f)) }
+        // the user's own note; not "blocked before", Tetra's mark on the numbers it took from Android's list (SpamSettings)
+        if (e.note.isNotBlank() && e.note != "blocked before") Text(e.note, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f), textAlign = TextAlign.Center)
+        Button(onClick = {
+            if (range) PhoneSpam.removeLine(context, e) else { PhoneSpam.remove(context, e.number); if (!tablet) PhoneBlocked.unblock(context, e.number) }
+            unblocked()
+        }, colors = ButtonDefaults.buttonColors(containerColor = PHONE_COLOR, contentColor = Color.White)) {
             Icon(painterResource(R.drawable.ic_block), contentDescription = null, modifier = Modifier.size(18.dp))
-            Text("  " + stringResource(if (spam != null) R.string.phone_unblock else R.string.phone_block), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("  " + stringResource(R.string.phone_unblock), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
-    Text(stringResource(R.string.phone_blocked_calls), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-    g.calls.forEach { l ->
+    Text(stringResource(R.string.contacts_history), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+    if (history.isEmpty()) Text(stringResource(R.string.phone_no_calls_yet), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
+    history.take(100).forEach { l ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             CallTypeIcon(l.type, 22.dp)
-            Text(Instant.ofEpochMilli(l.at).atZone(zone).format(DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm", locale)))
+            Text(Instant.ofEpochMilli(l.at).atZone(zone).format(DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm", locale)) + if (range) " · ${l.number}" else "")
         }
     }
     if (recordings.isNotEmpty()) {
@@ -718,33 +719,18 @@ private fun NumberActions(number: String, changed: () -> Unit) {
 @Composable
 private fun SpamSettings(changed: () -> Unit) {
     val context = LocalContext.current
-    var version by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { // Android's blocked numbers join the list once, so there is one list to look after
         val p = context.getSharedPreferences("phone", Context.MODE_PRIVATE)
         if (!p.getBoolean("spam_from_blocked", false) && PhoneBlocked.can(context)) {
             withContext(Dispatchers.IO) { PhoneBlocked.all(context).forEach { (_, n) -> PhoneSpam.add(context, n, "blocked before") } }
-            p.edit().putBoolean("spam_from_blocked", true).apply(); version++
+            p.edit().putBoolean("spam_from_blocked", true).apply()
         }
     }
-    val list = remember(version) { PhoneSpam.read() }
+    // the list itself is not shown (the user, 27 Oct: "its the same" as the blocked calls); a number is unblocked on its page
     var adding by remember { mutableStateOf("") }
-    Text(stringResource(R.string.phone_spam_title), style = MaterialTheme.typography.titleSmall)
-    Text(stringResource(R.string.phone_spam_hint),
-        style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
-    list.forEach { e ->
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(e.number)
-                if (e.note.isNotBlank()) Text(e.note, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
-            }
-            TextButton(onClick = {
-                if (e.number.endsWith("*")) PhoneSpam.removeLine(context, e) else { PhoneSpam.remove(context, e.number); PhoneBlocked.unblock(context, e.number) }
-                version++; changed()
-            }) { Text(stringResource(R.string.common_remove), color = LocalContentColor.current, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        }
-    }
+    Text(stringResource(R.string.phone_blocking_hint), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(adding, { adding = it.filter { ch -> ch.isDigit() || ch in "+* " } }, singleLine = true, placeholder = { Text(stringResource(R.string.phone_spam_placeholder)) }, modifier = Modifier.weight(1f))
-        TextButton(onClick = { if (adding.any(Char::isDigit)) { PhoneSpam.add(context, adding.replace(" ", "")); adding = ""; version++; changed() } }) { Text(stringResource(R.string.common_add), color = LocalContentColor.current, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        TextButton(onClick = { if (adding.any(Char::isDigit)) { PhoneSpam.add(context, adding.replace(" ", "")); adding = ""; changed() } }) { Text(stringResource(R.string.common_add), color = LocalContentColor.current, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
 }

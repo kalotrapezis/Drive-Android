@@ -2212,8 +2212,6 @@
     <string name="phone_not_spam">Ní spam</string>
     <string name="phone_ringtone_default">Réamhshocrú</string>
     <string name="phone_ringtone">Fuaim ghlaoigh: %1$s</string>
-    <string name="phone_spam_title">Spam agus gan iarraidh</string>
-    <string name="phone_spam_hint">Diúltaítear glaonna ó iad seo sula mbuaileann siad, ar an ngutháin seo; an liosta céanna atá ar an tabléad agus ar an ríomhaire. Tógann * ag an deireadh raon iomlán (69800*).</string>
     <string name="phone_spam_placeholder">Uimhir, nó 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d roghnaithe</item>
@@ -4872,12 +4870,10 @@
     <string name="pdf_quoted">“%1$s”</string>
     <string name="phone_blocking">Bacadh glaonna</string>
     <string name="phone_blocking_about">Uimhreacha agus raonta nach dteastaíonn, agus na glaonna a bacadh</string>
-    <string name="phone_blocked_calls">Glaonna bactha</string>
-    <string name="phone_no_blocked_calls">Níor bacadh aon ghlao fós.</string>
     <string name="phone_raise_answer">Ardaigh chun freagairt</string>
     <string name="phone_raise_answer_about">Ardaigh fón atá ag bualadh chuig do chluas chun é a fhreagairt.</string>
     <string name="phone_flip_silence">Iompaigh chun ciúnú</string>
     <string name="phone_flip_silence_about">Iompaigh fón atá ag bualadh bunoscionn chun é a chiúnú.</string>
     <string name="phone_unblock">Díbhac</string>
-    <string name="phone_block">Bac</string>
+    <string name="phone_blocking_hint">Diúltaítear do na huimhreacha a chuirtear anseo sula mbuaileann siad, ar an bhfón, ar an táibléad agus ar an ríomhaire. Clúdaíonn * ag an deireadh raon iomlán (69800*).</string>
 </resources>

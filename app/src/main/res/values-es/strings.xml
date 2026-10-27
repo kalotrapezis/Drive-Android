@@ -2094,8 +2094,6 @@
     <string name="phone_not_spam">No es spam</string>
     <string name="phone_ringtone_default">Predeterminado</string>
     <string name="phone_ringtone">Tono: %1$s</string>
-    <string name="phone_spam_title">Spam y no deseadas</string>
-    <string name="phone_spam_hint">Las llamadas de estos números se rechazan antes de sonar, en este teléfono; la misma lista está en la tableta y el ordenador. Un * al final abarca todo un rango (69800*).</string>
     <string name="phone_spam_placeholder">Un número o 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d elegido</item>
@@ -4688,12 +4686,10 @@
     <string name="pdf_quoted">«%1$s»</string>
     <string name="phone_blocking">Bloqueo de llamadas</string>
     <string name="phone_blocking_about">Números y rangos no deseados, y las llamadas bloqueadas</string>
-    <string name="phone_blocked_calls">Llamadas bloqueadas</string>
-    <string name="phone_no_blocked_calls">Todavía no se ha bloqueado ninguna llamada.</string>
     <string name="phone_raise_answer">Levantar para contestar</string>
     <string name="phone_raise_answer_about">Acerca al oído un teléfono que suena para contestar.</string>
     <string name="phone_flip_silence">Girar para silenciar</string>
     <string name="phone_flip_silence_about">Pon boca abajo un teléfono que suena para silenciarlo.</string>
     <string name="phone_unblock">Desbloquear</string>
-    <string name="phone_block">Bloquear</string>
+    <string name="phone_blocking_hint">Los números añadidos aquí se rechazan antes de sonar, en el teléfono, la tableta y el ordenador. Un * al final abarca todo un rango (69800*).</string>
 </resources>

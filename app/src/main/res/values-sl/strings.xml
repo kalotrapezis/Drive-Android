@@ -2153,8 +2153,6 @@
     <string name="phone_not_spam">Ni neželeno</string>
     <string name="phone_ringtone_default">Privzeto</string>
     <string name="phone_ringtone">Melodija zvonjenja: %1$s</string>
-    <string name="phone_spam_title">Neželeni klici</string>
-    <string name="phone_spam_hint">Klici s teh številk so v tem telefonu zavrnjeni, preden zazvonijo; isti seznam je v tabličnem računalniku in računalniku. * na koncu zajame cel obseg (69800*).</string>
     <string name="phone_spam_placeholder">Številka ali 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">Izbrano: %1$d</item>
@@ -4780,12 +4778,10 @@
     <string name="pdf_quoted">„%1$s“</string>
     <string name="phone_blocking">Blokiranje klicev</string>
     <string name="phone_blocking_about">Neželene številke in obsegi ter blokirani klici</string>
-    <string name="phone_blocked_calls">Blokirani klici</string>
-    <string name="phone_no_blocked_calls">Noben klic še ni bil blokiran.</string>
     <string name="phone_raise_answer">Dvigni za sprejem</string>
     <string name="phone_raise_answer_about">Zvoneči telefon prislonite k ušesu, da sprejmete klic.</string>
     <string name="phone_flip_silence">Obrni za utišanje</string>
     <string name="phone_flip_silence_about">Zvoneči telefon obrnite z zaslonom navzdol, da ga utišate.</string>
     <string name="phone_unblock">Odblokiraj</string>
-    <string name="phone_block">Blokiraj</string>
+    <string name="phone_blocking_hint">Številke, dodane tukaj, so zavrnjene, preden pozvonijo – v telefonu, tablici in računalniku. * na koncu zajame cel obseg (69800*).</string>
 </resources>

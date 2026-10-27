@@ -2094,8 +2094,6 @@
     <string name="phone_not_spam">Nu este spam</string>
     <string name="phone_ringtone_default">Prestabilit</string>
     <string name="phone_ringtone">Ton de apel: %1$s</string>
-    <string name="phone_spam_title">Spam și nedorite</string>
-    <string name="phone_spam_hint">Apelurile de la acestea sunt respinse înainte să sune, pe acest telefon; aceeași listă este pe tabletă și pe computer. Un * la final acoperă un întreg interval (69800*).</string>
     <string name="phone_spam_placeholder">Un număr sau 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d ales</item>
@@ -4688,12 +4686,10 @@
     <string name="pdf_quoted">„%1$s”</string>
     <string name="phone_blocking">Blocarea apelurilor</string>
     <string name="phone_blocking_about">Numere și intervale nedorite, și apelurile blocate</string>
-    <string name="phone_blocked_calls">Apeluri blocate</string>
-    <string name="phone_no_blocked_calls">Încă nu a fost blocat niciun apel.</string>
     <string name="phone_raise_answer">Ridică pentru a răspunde</string>
     <string name="phone_raise_answer_about">Duceți la ureche un telefon care sună pentru a răspunde.</string>
     <string name="phone_flip_silence">Întoarce pentru silențios</string>
     <string name="phone_flip_silence_about">Întoarceți cu ecranul în jos un telefon care sună pentru a-l reduce la tăcere.</string>
     <string name="phone_unblock">Deblochează</string>
-    <string name="phone_block">Blochează</string>
+    <string name="phone_blocking_hint">Numerele adăugate aici sunt respinse înainte să sune, pe telefon, pe tabletă și pe computer. Un * la final cuprinde un interval întreg (69800*).</string>
 </resources>

@@ -2035,8 +2035,6 @@
     <string name="phone_not_spam">Ei roskapuhelu</string>
     <string name="phone_ringtone_default">Oletus</string>
     <string name="phone_ringtone">Soittoääni: %1$s</string>
-    <string name="phone_spam_title">Roskapuhelut ja ei-toivotut</string>
-    <string name="phone_spam_hint">Näiden puhelut hylätään ennen kuin ne soivat tässä puhelimessa; sama luettelo on tabletilla ja tietokoneella. * lopussa kattaa koko numerosarjan (69800*).</string>
     <string name="phone_spam_placeholder">Numero tai 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d valittu</item>
@@ -4596,12 +4594,10 @@
     <string name="pdf_quoted">”%1$s”</string>
     <string name="phone_blocking">Puhelujen esto</string>
     <string name="phone_blocking_about">Ei-toivotut numerot ja numerosarjat sekä estetyt puhelut</string>
-    <string name="phone_blocked_calls">Estetyt puhelut</string>
-    <string name="phone_no_blocked_calls">Yhtään puhelua ei ole vielä estetty.</string>
     <string name="phone_raise_answer">Vastaa nostamalla</string>
     <string name="phone_raise_answer_about">Vastaa nostamalla soiva puhelin korvalle.</string>
     <string name="phone_flip_silence">Hiljennä kääntämällä</string>
     <string name="phone_flip_silence_about">Hiljennä soiva puhelin kääntämällä se näyttö alaspäin.</string>
     <string name="phone_unblock">Poista esto</string>
-    <string name="phone_block">Estä</string>
+    <string name="phone_blocking_hint">Tähän lisätyt numerot hylätään ennen kuin ne soivat – puhelimessa, tabletissa ja tietokoneella. * lopussa kattaa koko numerosarjan (69800*).</string>
 </resources>

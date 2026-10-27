@@ -2035,8 +2035,6 @@
     <string name="phone_not_spam">Ikke spam</string>
     <string name="phone_ringtone_default">Standard</string>
     <string name="phone_ringtone">Ringetone: %1$s</string>
-    <string name="phone_spam_title">Spam og uønskede</string>
-    <string name="phone_spam_hint">Opkald fra disse afvises, før de ringer, på denne telefon; den samme liste findes på tabletten og computeren. En * til sidst tager en hel serie (69800*).</string>
     <string name="phone_spam_placeholder">Et nummer eller 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d valgt</item>
@@ -4596,12 +4594,10 @@
     <string name="pdf_quoted">»%1$s«</string>
     <string name="phone_blocking">Blokering af opkald</string>
     <string name="phone_blocking_about">Uønskede numre og serier og de blokerede opkald</string>
-    <string name="phone_blocked_calls">Blokerede opkald</string>
-    <string name="phone_no_blocked_calls">Ingen opkald er blokeret endnu.</string>
     <string name="phone_raise_answer">Løft for at besvare</string>
     <string name="phone_raise_answer_about">Løft en ringende telefon op til øret for at besvare.</string>
     <string name="phone_flip_silence">Vend for at gøre lydløs</string>
     <string name="phone_flip_silence_about">Vend en ringende telefon med skærmen nedad for at gøre den lydløs.</string>
     <string name="phone_unblock">Fjern blokering</string>
-    <string name="phone_block">Bloker</string>
+    <string name="phone_blocking_hint">Numre tilføjet her afvises, før de ringer – på telefonen, tabletten og computeren. En * til sidst tager en hel serie (69800*).</string>
 </resources>

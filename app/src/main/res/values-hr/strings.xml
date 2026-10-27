@@ -2094,8 +2094,6 @@
     <string name="phone_not_spam">Nije neželjeno</string>
     <string name="phone_ringtone_default">Zadano</string>
     <string name="phone_ringtone">Melodija zvona: %1$s</string>
-    <string name="phone_spam_title">Neželjeni pozivi</string>
-    <string name="phone_spam_hint">Pozivi s ovih brojeva odbijaju se prije nego što zazvone, na ovom telefonu; isti je popis na tabletu i računalu. Znak * na kraju obuhvaća cijeli raspon (69800*).</string>
     <string name="phone_spam_placeholder">Broj ili 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">Odabrano: %1$d</item>
@@ -4688,12 +4686,10 @@
     <string name="pdf_quoted">„%1$s”</string>
     <string name="phone_blocking">Blokiranje poziva</string>
     <string name="phone_blocking_about">Neželjeni brojevi i rasponi te blokirani pozivi</string>
-    <string name="phone_blocked_calls">Blokirani pozivi</string>
-    <string name="phone_no_blocked_calls">Još nijedan poziv nije blokiran.</string>
     <string name="phone_raise_answer">Podigni za javljanje</string>
     <string name="phone_raise_answer_about">Prinesite telefon koji zvoni uhu da biste se javili.</string>
     <string name="phone_flip_silence">Okreni za utišavanje</string>
     <string name="phone_flip_silence_about">Okrenite telefon koji zvoni zaslonom prema dolje da ga utišate.</string>
     <string name="phone_unblock">Deblokiraj</string>
-    <string name="phone_block">Blokiraj</string>
+    <string name="phone_blocking_hint">Brojevi dodani ovdje odbijaju se prije nego što zazvone – na telefonu, tabletu i računalu. * na kraju obuhvaća cijeli raspon (69800*).</string>
 </resources>

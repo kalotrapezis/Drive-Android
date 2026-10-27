@@ -2035,8 +2035,6 @@
     <string name="phone_not_spam">Geen spam</string>
     <string name="phone_ringtone_default">Standaard</string>
     <string name="phone_ringtone">Beltoon: %1$s</string>
-    <string name="phone_spam_title">Spam en ongewenst</string>
-    <string name="phone_spam_hint">Gesprekken van deze nummers worden op deze telefoon geweigerd voordat ze overgaan; dezelfde lijst staat op de tablet en de computer. Een * aan het einde vangt een hele reeks (69800*).</string>
     <string name="phone_spam_placeholder">Een nummer, of 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d gekozen</item>
@@ -4596,12 +4594,10 @@
     <string name="pdf_quoted">“%1$s”</string>
     <string name="phone_blocking">Oproepen blokkeren</string>
     <string name="phone_blocking_about">Ongewenste nummers en reeksen, en de geblokkeerde oproepen</string>
-    <string name="phone_blocked_calls">Geblokkeerde oproepen</string>
-    <string name="phone_no_blocked_calls">Nog geen oproep geblokkeerd.</string>
     <string name="phone_raise_answer">Optillen om op te nemen</string>
     <string name="phone_raise_answer_about">Breng een rinkelende telefoon naar je oor om op te nemen.</string>
     <string name="phone_flip_silence">Omdraaien voor stil</string>
     <string name="phone_flip_silence_about">Leg een rinkelende telefoon met het scherm naar beneden om hem stil te zetten.</string>
     <string name="phone_unblock">Deblokkeren</string>
-    <string name="phone_block">Blokkeren</string>
+    <string name="phone_blocking_hint">Nummers die je hier toevoegt worden geweigerd voordat ze overgaan, op de telefoon, de tablet en de computer. Een * aan het eind neemt een hele reeks (69800*).</string>
 </resources>

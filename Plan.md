@@ -18,8 +18,11 @@ How to write here:
       landscape and portrait, typing and T9 search. Then (the user): **Call blocking** and **Speed dial** are their own pages behind
       two buttons in the Phone's sheet (Call blocking: the spam list and the blocked calls, a tap opens the call); **Raise to answer**
       and **Turn over to silence** (PhoneGestures, while ringing, both off at first; Settings › Phone and the sheet); 24 languages.
-      **Open:** pages and gestures built, not yet seen on a device (no install while the other branches were unmerged); the
-      keypad pane's upper part is empty until a number is typed.
+      Merged into main 27 Oct. Then (the user): Call blocking is one list as Contacts (every number and range on the spam list,
+      whether it called or not; the add field on top), a tap opens its card: Unblock (a range's line goes), its call history,
+      its recordings; the sheet's two buttons side by side. Seen on the tablet.
+      **Open:** Unblock not pressed on a device (it would unblock a real number); the gestures need a real call on the phone;
+      the keypad pane's upper part is empty until a number is typed.
 - [x] (office-media session, 27 Oct; branch `claude/office-media`, not merged; its build is on the tablet 971f6b37) **Local video and audio
       embedded in documents play** (the user: "I know it has Video from YouTube but what about local files embedded into the
       documents?"). Already there: Slides read and played PowerPoint's p:videoFile/p:audioFile + p14:media and Impress's

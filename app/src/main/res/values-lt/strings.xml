@@ -2153,8 +2153,6 @@
     <string name="phone_not_spam">Ne šlamštas</string>
     <string name="phone_ringtone_default">Numatytasis</string>
     <string name="phone_ringtone">Skambėjimo tonas: %1$s</string>
-    <string name="phone_spam_title">Šlamštas ir nepageidaujami</string>
-    <string name="phone_spam_hint">Skambučiai iš šių numerių šiame telefone atmetami prieš suskambant; tas pats sąrašas yra planšetėje ir kompiuteryje. * pabaigoje apima visą intervalą (69800*).</string>
     <string name="phone_spam_placeholder">Numeris arba 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">Pasirinktas %1$d</item>
@@ -4780,12 +4778,10 @@
     <string name="pdf_quoted">„%1$s“</string>
     <string name="phone_blocking">Skambučių blokavimas</string>
     <string name="phone_blocking_about">Nepageidaujami numeriai ir intervalai bei užblokuoti skambučiai</string>
-    <string name="phone_blocked_calls">Užblokuoti skambučiai</string>
-    <string name="phone_no_blocked_calls">Dar neužblokuotas nė vienas skambutis.</string>
     <string name="phone_raise_answer">Pakelkite, kad atsilieptumėte</string>
     <string name="phone_raise_answer_about">Priglauskite skambantį telefoną prie ausies, kad atsilieptumėte.</string>
     <string name="phone_flip_silence">Apverskite, kad nutildytumėte</string>
     <string name="phone_flip_silence_about">Apverskite skambantį telefoną ekranu žemyn, kad jis nutiltų.</string>
     <string name="phone_unblock">Atblokuoti</string>
-    <string name="phone_block">Blokuoti</string>
+    <string name="phone_blocking_hint">Čia pridėti numeriai atmetami dar prieš suskambant – telefone, planšetėje ir kompiuteryje. * pabaigoje apima visą intervalą (69800*).</string>
 </resources>

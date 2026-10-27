@@ -2035,8 +2035,6 @@
     <string name="phone_not_spam">Kein Spam</string>
     <string name="phone_ringtone_default">Standard</string>
     <string name="phone_ringtone">Klingelton: %1$s</string>
-    <string name="phone_spam_title">Spam und Unerwünschtes</string>
-    <string name="phone_spam_hint">Anrufe von diesen werden auf diesem Telefon vor dem Klingeln abgelehnt; dieselbe Liste ist auf dem Tablet und dem Computer. Ein * am Ende erfasst einen ganzen Bereich (69800*).</string>
     <string name="phone_spam_placeholder">Eine Nummer oder 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d ausgewählt</item>
@@ -4596,12 +4594,10 @@
     <string name="pdf_quoted">„%1$s“</string>
     <string name="phone_blocking">Anrufsperre</string>
     <string name="phone_blocking_about">Unerwünschte Nummern und Bereiche und die gesperrten Anrufe</string>
-    <string name="phone_blocked_calls">Gesperrte Anrufe</string>
-    <string name="phone_no_blocked_calls">Noch kein Anruf gesperrt.</string>
     <string name="phone_raise_answer">Zum Annehmen anheben</string>
     <string name="phone_raise_answer_about">Ein klingelndes Telefon ans Ohr halten, um den Anruf anzunehmen.</string>
     <string name="phone_flip_silence">Zum Stummschalten umdrehen</string>
     <string name="phone_flip_silence_about">Ein klingelndes Telefon mit dem Display nach unten legen, um es stummzuschalten.</string>
     <string name="phone_unblock">Freigeben</string>
-    <string name="phone_block">Sperren</string>
+    <string name="phone_blocking_hint">Hier hinzugefügte Nummern werden abgewiesen, bevor sie klingeln – auf Telefon, Tablet und Computer. Ein * am Ende erfasst einen ganzen Bereich (69800*).</string>
 </resources>

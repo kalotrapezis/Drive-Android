@@ -2153,8 +2153,6 @@
     <string name="phone_not_spam">Mhux spam</string>
     <string name="phone_ringtone_default">Default</string>
     <string name="phone_ringtone">Ton tal-ċempil: %1$s</string>
-    <string name="phone_spam_title">Spam u mhux mixtieq</string>
-    <string name="phone_spam_hint">Sejħiet minn dawn jiġu miċħuda qabel jiċċempu, fuq dan it-telefon; l-istess lista tinsab fuq it-tablet u fuq il-kompjuter. Asterisk (*) fl-aħħar jieħu firxa sħiħa (69800*).</string>
     <string name="phone_spam_placeholder">Numru, jew 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">Wieħed magħżul</item>
@@ -4780,12 +4778,10 @@
     <string name="pdf_quoted">“%1$s”</string>
     <string name="phone_blocking">Imblukkar tas-sejħiet</string>
     <string name="phone_blocking_about">Numri u firxiet mhux mixtieqa, u s-sejħiet li ġew imblukkati</string>
-    <string name="phone_blocked_calls">Sejħiet imblukkati</string>
-    <string name="phone_no_blocked_calls">Għadha ma ġiet imblukkata l-ebda sejħa.</string>
     <string name="phone_raise_answer">Għolli biex twieġeb</string>
     <string name="phone_raise_answer_about">Għolli t-telefon li qed idoqq lejn widintek biex twieġeb.</string>
     <string name="phone_flip_silence">Aqleb biex issikket</string>
     <string name="phone_flip_silence_about">Aqleb it-telefon li qed idoqq wiċċu ’l isfel biex issikktu.</string>
     <string name="phone_unblock">Neħħi l-imblukkar</string>
-    <string name="phone_block">Imblokka</string>
+    <string name="phone_blocking_hint">In-numri miżjuda hawn jiġu miċħuda qabel ma jdoqqu, fuq it-telefon, it-tablet u l-kompjuter. * fl-aħħar tieħu firxa sħiħa (69800*).</string>
 </resources>

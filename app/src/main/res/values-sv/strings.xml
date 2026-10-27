@@ -2035,8 +2035,6 @@
     <string name="phone_not_spam">Inte skräp</string>
     <string name="phone_ringtone_default">Standard</string>
     <string name="phone_ringtone">Ringsignal: %1$s</string>
-    <string name="phone_spam_title">Skräp och oönskade</string>
-    <string name="phone_spam_hint">Samtal från dessa avvisas innan de ringer, på den här telefonen; samma lista finns på surfplattan och datorn. En * i slutet tar en hel serie (69800*).</string>
     <string name="phone_spam_placeholder">Ett nummer, eller 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d vald</item>
@@ -4596,12 +4594,10 @@
     <string name="pdf_quoted">”%1$s”</string>
     <string name="phone_blocking">Samtalsblockering</string>
     <string name="phone_blocking_about">Oönskade nummer och nummerserier, och de blockerade samtalen</string>
-    <string name="phone_blocked_calls">Blockerade samtal</string>
-    <string name="phone_no_blocked_calls">Inga samtal har blockerats än.</string>
     <string name="phone_raise_answer">Lyft för att svara</string>
     <string name="phone_raise_answer_about">Lyft en ringande telefon till örat för att svara.</string>
     <string name="phone_flip_silence">Vänd för att tysta</string>
     <string name="phone_flip_silence_about">Vänd en ringande telefon med skärmen nedåt för att tysta den.</string>
     <string name="phone_unblock">Avblockera</string>
-    <string name="phone_block">Blockera</string>
+    <string name="phone_blocking_hint">Nummer som läggs till här avvisas innan de ringer, på telefonen, surfplattan och datorn. En * i slutet tar en hel nummerserie (69800*).</string>
 </resources>

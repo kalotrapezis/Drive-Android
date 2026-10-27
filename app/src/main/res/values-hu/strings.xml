@@ -2035,8 +2035,6 @@
     <string name="phone_not_spam">Nem spam</string>
     <string name="phone_ringtone_default">Alapértelmezett</string>
     <string name="phone_ringtone">Csengőhang: %1$s</string>
-    <string name="phone_spam_title">Spam és nem kívánt hívások</string>
-    <string name="phone_spam_hint">Az innen érkező hívások csörgés előtt elutasításra kerülnek ezen a telefonon; ugyanez a lista van a táblagépen és a számítógépen. A végén lévő * egy egész tartományt fed le (69800*).</string>
     <string name="phone_spam_placeholder">Egy szám vagy 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d kiválasztva</item>
@@ -4596,12 +4594,10 @@
     <string name="pdf_quoted">„%1$s”</string>
     <string name="phone_blocking">Hívásletiltás</string>
     <string name="phone_blocking_about">Nem kívánt számok és tartományok, és a letiltott hívások</string>
-    <string name="phone_blocked_calls">Letiltott hívások</string>
-    <string name="phone_no_blocked_calls">Még egy hívás sem lett letiltva.</string>
     <string name="phone_raise_answer">Felvétel emeléssel</string>
     <string name="phone_raise_answer_about">Emelje a csörgő telefont a füléhez a hívás fogadásához.</string>
     <string name="phone_flip_silence">Némítás megfordítással</string>
     <string name="phone_flip_silence_about">Fordítsa a csörgő telefont kijelzővel lefelé a némításhoz.</string>
     <string name="phone_unblock">Letiltás feloldása</string>
-    <string name="phone_block">Letiltás</string>
+    <string name="phone_blocking_hint">Az itt hozzáadott számokat a rendszer csörgés előtt elutasítja – a telefonon, a táblagépen és a számítógépen is. A végén álló * egy teljes tartományt lefed (69800*).</string>
 </resources>

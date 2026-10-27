@@ -2153,8 +2153,6 @@
     <string name="phone_not_spam">Nie je spam</string>
     <string name="phone_ringtone_default">Predvolený</string>
     <string name="phone_ringtone">Tón zvonenia: %1$s</string>
-    <string name="phone_spam_title">Spam a nechcené</string>
-    <string name="phone_spam_hint">Hovory z týchto čísel sa v tomto telefóne odmietnu skôr, ako zazvonia; rovnaký zoznam je v tablete aj v počítači. * na konci zahrnie celý rozsah (69800*).</string>
     <string name="phone_spam_placeholder">Číslo alebo 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">Vybraté: %1$d</item>
@@ -4780,12 +4778,10 @@
     <string name="pdf_quoted">„%1$s“</string>
     <string name="phone_blocking">Blokovanie hovorov</string>
     <string name="phone_blocking_about">Nechcené čísla a rozsahy a zablokované hovory</string>
-    <string name="phone_blocked_calls">Zablokované hovory</string>
-    <string name="phone_no_blocked_calls">Zatiaľ nebol zablokovaný žiadny hovor.</string>
     <string name="phone_raise_answer">Prijať zdvihnutím</string>
     <string name="phone_raise_answer_about">Priložte zvoniaci telefón k uchu a hovor sa prijme.</string>
     <string name="phone_flip_silence">Stíšiť otočením</string>
     <string name="phone_flip_silence_about">Otočte zvoniaci telefón displejom nadol a stíši sa.</string>
     <string name="phone_unblock">Odblokovať</string>
-    <string name="phone_block">Blokovať</string>
+    <string name="phone_blocking_hint">Čísla pridané sem sú odmietnuté skôr, než zazvonia – v telefóne, tablete aj počítači. * na konci zahrnie celý rozsah (69800*).</string>
 </resources>

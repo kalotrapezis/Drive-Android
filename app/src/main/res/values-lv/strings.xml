@@ -2094,8 +2094,6 @@
     <string name="phone_not_spam">Nav surogātzvans</string>
     <string name="phone_ringtone_default">Noklusējums</string>
     <string name="phone_ringtone">Zvana signāls: %1$s</string>
-    <string name="phone_spam_title">Surogātzvani un nevēlami zvani</string>
-    <string name="phone_spam_hint">Zvani no šiem numuriem šajā tālrunī tiek noraidīti, pirms tie zvana; tas pats saraksts ir planšetdatorā un datorā. * beigās aptver visu diapazonu (69800*).</string>
     <string name="phone_spam_placeholder">Numurs vai 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="zero">Izvēlēti: %1$d</item>
@@ -4688,12 +4686,10 @@
     <string name="pdf_quoted">„%1$s“</string>
     <string name="phone_blocking">Zvanu bloķēšana</string>
     <string name="phone_blocking_about">Nevēlamie numuri un diapazoni, kā arī bloķētie zvani</string>
-    <string name="phone_blocked_calls">Bloķētie zvani</string>
-    <string name="phone_no_blocked_calls">Vēl nav bloķēts neviens zvans.</string>
     <string name="phone_raise_answer">Pacelt, lai atbildētu</string>
     <string name="phone_raise_answer_about">Pielieciet zvanošu tālruni pie auss, lai atbildētu.</string>
     <string name="phone_flip_silence">Apgriezt, lai apklusinātu</string>
     <string name="phone_flip_silence_about">Apgrieziet zvanošu tālruni ar ekrānu uz leju, lai to apklusinātu.</string>
     <string name="phone_unblock">Atbloķēt</string>
-    <string name="phone_block">Bloķēt</string>
+    <string name="phone_blocking_hint">Šeit pievienotie numuri tiek noraidīti pirms zvana – tālrunī, planšetdatorā un datorā. * beigās aptver visu diapazonu (69800*).</string>
 </resources>

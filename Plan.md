@@ -28,8 +28,9 @@ How to write here:
       point, so speed limits on the way open no other graph (seconds on a phone). Checked: Thessaloniki → Skopje 223 km, 187 min on the
       phone's code path (MapsBorderTest with TETRA_MAPS) and through router.js; Thessaloniki → Athens still greece-gh, 470.6 km;
       neighbours from the real borders: GR–MK, GR–BG, GR–AL, GR–TR, MK–BG, MK–AL, MK–RS, BG–TR, BG–RS (not Cyprus, not Italy);
-      685 Android unit / 169 desktop tests pass. **Costs:** a pair graph is about both maps' graphs (GR+MK 786 MB) on the phone too;
-      the import took 48 min here with 3 threads. **Open:** a route through three countries; the phone's Settings › Maps does not
+      a real builder run (North Macedonia beside Greece, scratch Files/Maps): the map 6 min, the pair 47 min, then the same route on
+      its graph; 686 Android unit / 170 desktop tests pass. **Costs:** a pair graph is about both maps' graphs (GR+MK 786 MB) on the
+      phone too; every core did not make the pair faster than 3 threads (48 min): memory-bound here (13 GB, swapping). **Open:** a route through three countries; the phone's Settings › Maps does not
       count the pair graphs' size; nothing tried on the phone/tablet.
 - [x] (directions-languages session, 27 Oct; branches `claude/reverent-lederberg-489439` here (20155551) and `directions-languages` in Drive
       (dfc246a), not merged) **Maps' directions in every language Tetra has** (the user: "Why it's only Greek? Isn't that an Android

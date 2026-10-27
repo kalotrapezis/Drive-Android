@@ -540,11 +540,20 @@ internal data class PlaceList(val id: String, val name: String, val emoji: Strin
 internal data class Poi(
     val kind: String, val lat: Double, val lng: Double, val name: String, val nameEn: String = "", val more: String = "",
     val hours: String = "", val phone: String = "", val web: String = "", val wheelchair: String = "", val note: String = "",
+    /** Its names in Tetra's other languages, "el=Νευροκόπι|de=…" (maps-places.py). */
+    val names: String = "",
 ) {
-    /** Accent-blind, Greek and English names together, and the Greek one in Latin letters (Greeklish), for search. */
-    val key = MapsSearch.fold("$name $nameEn").let { "$it ${MapsSearch.latin(MapsSearch.fold(name))}" }
+    /** Accent-blind, its own, English and other names together, and its own in Latin letters (Greeklish), for search. */
+    val key = MapsSearch.fold("$name $nameEn ${names.replace('|', ' ')}").let { "$it ${MapsSearch.latin(MapsSearch.fold(name))}" }
     /** Its name, or its kind's ("Pharmacy") when it has none. */
     fun title(c: android.content.Context) = name.ifEmpty { nameEn }.ifEmpty { MapsSearch.label(kind, c) }
+    /**
+     * Its name in the app's language, shown under its own (the user, 27 Oct: "show the normal one and the other below it"):
+     * Νευροκόπι under Гоце Делчев on a Greek phone; null where it has none or it is the same.
+     */
+    fun named(c: android.content.Context): String? = named(c.resources.configuration.locales[0].language)
+    fun named(lang: String): String? = (if (lang == "en") nameEn else names.split('|').firstOrNull { it.startsWith("$lang=") }?.substringAfter('='))
+        ?.takeIf { it.isNotBlank() && it != name }
     fun place(c: android.content.Context) = Place("", title(c), lat, lng, MapsSearch.emblem(kind))
 }
 
@@ -616,7 +625,7 @@ internal object MapsSearch {
         if (c.size < 4) return null
         val lat = c[1].toDoubleOrNull() ?: return null; val lng = c[2].toDoubleOrNull() ?: return null
         return Poi(c[0], lat, lng, c[3], c.getOrElse(4) { "" }, c.getOrElse(5) { "" }, c.getOrElse(6) { "" }, c.getOrElse(7) { "" },
-            c.getOrElse(8) { "" }, c.getOrElse(9) { "" }, c.getOrElse(10) { "" })
+            c.getOrElse(8) { "" }, c.getOrElse(9) { "" }, c.getOrElse(10) { "" }, c.getOrElse(11) { "" })
     }
 
     private var cache: Triple<String, Long, List<Poi>>? = null
@@ -946,7 +955,7 @@ internal object MapsImport {
  */
 internal object MapsShare {
     private fun line(p: Poi) = listOf(p.kind, "%.6f".format(java.util.Locale.ROOT, p.lat), "%.6f".format(java.util.Locale.ROOT, p.lng), p.name, p.nameEn, p.more,
-        p.hours, p.phone, p.web, p.wheelchair, p.note).joinToString("\t") { it.replace('\t', ' ').replace('\n', ' ') } + "\n"
+        p.hours, p.phone, p.web, p.wheelchair, p.note, p.names).joinToString("\t") { it.replace('\t', ' ').replace('\n', ' ') } + "\n"
 
     fun add(root: File, p: Poi) {
         val f = File(root, MapsSearch.ADDED)

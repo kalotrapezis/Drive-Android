@@ -4599,7 +4599,7 @@
     <string name="maps_take_ferry">szálljon fel a kompra</string>
     <string name="maps_ferry">Komp</string>
     <string name="maps_error_not_near_you">Nem vagy a térkép által ismert út közelében (vagy az itteni térképeken kívül vagy).</string>
-    <string name="maps_error_destination_not_near">Az úti cél nincs a térkép által ismert út közelében (vagy egy másik térképen van: egy útvonal egy ország térképén marad).</string>
+    <string name="maps_error_destination_not_near">Az úti cél nincs a térkép által ismert út közelében (vagy olyan térképen van, amelynek útjai nincsenek összekötve ezzel: frissítsen egy térképet a számítógépes Tetrában az összekötéshez).</string>
     <string name="maps_error_no_way">Ezzel a közlekedési móddal nincs oda út.</string>
     <string name="maps_error_no_route">Nincs útvonal.</string>
     <string name="maps_say_stop">%1$s megálló. Következő: %2$s: %3$s, amint továbbindul</string>

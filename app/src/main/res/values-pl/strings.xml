@@ -4783,7 +4783,7 @@
     <string name="maps_take_ferry">wjedź na prom</string>
     <string name="maps_ferry">Prom</string>
     <string name="maps_error_not_near_you">Nie jesteś w pobliżu drogi znanej mapie (albo jesteś poza tutejszymi mapami).</string>
-    <string name="maps_error_destination_not_near">Cel nie jest w pobliżu drogi znanej mapie (albo jest na innej mapie: trasa pozostaje na mapie jednego kraju).</string>
+    <string name="maps_error_destination_not_near">Cel nie jest w pobliżu drogi znanej mapie (albo jest na mapie, której drogi nie są połączone z tą: zaktualizuj mapę w Tetrze na komputerze, aby je połączyć).</string>
     <string name="maps_error_no_way">Tym środkiem transportu nie ma tam drogi.</string>
     <string name="maps_error_no_route">Brak trasy.</string>
     <string name="maps_say_stop">Przystanek %1$s. Następny, %2$s: %3$s, gdy ruszysz</string>

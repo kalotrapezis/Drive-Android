@@ -4599,7 +4599,7 @@
     <string name="maps_take_ferry">ta färjan</string>
     <string name="maps_ferry">Färja</string>
     <string name="maps_error_not_near_you">Du är inte nära en väg som kartan känner till (eller utanför kartorna här).</string>
-    <string name="maps_error_destination_not_near">Målet är inte nära en väg som kartan känner till (eller på en annan karta: en rutt stannar på ett lands karta).</string>
+    <string name="maps_error_destination_not_near">Målet är inte nära en väg som kartan känner till (eller på en karta vars vägar inte är sammankopplade med den här: uppdatera en karta i Tetra på datorn för att koppla ihop dem).</string>
     <string name="maps_error_no_way">Det finns ingen väg dit med det här färdsättet.</string>
     <string name="maps_error_no_route">Ingen rutt.</string>
     <string name="maps_say_stop">Stopp %1$s. Nästa, %2$s: %3$s, när du kör vidare</string>

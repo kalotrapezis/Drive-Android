@@ -4691,7 +4691,7 @@
     <string name="maps_take_ferry">prenez le ferry</string>
     <string name="maps_ferry">Ferry</string>
     <string name="maps_error_not_near_you">Vous n’êtes pas près d’une route connue de la carte (ou vous êtes hors des cartes présentes ici).</string>
-    <string name="maps_error_destination_not_near">La destination n’est pas près d’une route connue de la carte (ou elle est sur une autre carte : un itinéraire reste sur la carte d’un seul pays).</string>
+    <string name="maps_error_destination_not_near">La destination n’est pas près d’une route connue de la carte (ou elle est sur une carte dont les routes ne sont pas raccordées à celle-ci : mettez à jour une carte dans Tetra sur l’ordinateur pour les raccorder).</string>
     <string name="maps_error_no_way">Aucun chemin jusque-là avec ce moyen de transport.</string>
     <string name="maps_error_no_route">Aucun itinéraire.</string>
     <string name="maps_say_stop">Arrêt %1$s. Prochain, %2$s : %3$s, dès que vous repartez</string>

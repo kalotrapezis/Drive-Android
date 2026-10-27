@@ -4691,7 +4691,7 @@
     <string name="maps_take_ferry">luați feribotul</string>
     <string name="maps_ferry">Feribot</string>
     <string name="maps_error_not_near_you">Nu sunteți lângă un drum cunoscut de hartă (sau sunteți în afara hărților de aici).</string>
-    <string name="maps_error_destination_not_near">Destinația nu este lângă un drum cunoscut de hartă (sau este pe altă hartă: un traseu rămâne pe harta unei singure țări).</string>
+    <string name="maps_error_destination_not_near">Destinația nu este lângă un drum cunoscut de hartă (sau este pe o hartă ale cărei drumuri nu sunt unite cu aceasta: actualizați o hartă în Tetra de pe computer ca să se unească).</string>
     <string name="maps_error_no_way">Cu acest mijloc de transport nu există drum până acolo.</string>
     <string name="maps_error_no_route">Niciun traseu.</string>
     <string name="maps_say_stop">Oprirea %1$s. Următoarea, %2$s: %3$s, când porniți</string>

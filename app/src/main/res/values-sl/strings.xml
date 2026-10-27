@@ -4783,7 +4783,7 @@
     <string name="maps_take_ferry">vkrcajte se na trajekt</string>
     <string name="maps_ferry">Trajekt</string>
     <string name="maps_error_not_near_you">Niste blizu ceste, ki jo zemljevid pozna (ali pa ste zunaj tukajšnjih zemljevidov).</string>
-    <string name="maps_error_destination_not_near">Cilj ni blizu ceste, ki jo zemljevid pozna (ali pa je na drugem zemljevidu: pot ostane na zemljevidu ene države).</string>
+    <string name="maps_error_destination_not_near">Cilj ni blizu ceste, ki jo zemljevid pozna (ali pa je na zemljevidu, katerega ceste niso povezane s tem: posodobite zemljevid v Tetri na računalniku, da se povežejo).</string>
     <string name="maps_error_no_way">S tem prevoznim sredstvom tja ni poti.</string>
     <string name="maps_error_no_route">Ni poti.</string>
     <string name="maps_say_stop">Postanek %1$s. Naslednji, %2$s: %3$s, ko boste odpeljali</string>

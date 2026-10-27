@@ -4783,7 +4783,7 @@
     <string name="maps_take_ferry">ħu l-vapur</string>
     <string name="maps_ferry">Vapur</string>
     <string name="maps_error_not_near_you">M\'intix qrib triq li l-mappa taf (jew int barra mill-mapep li hawn).</string>
-    <string name="maps_error_destination_not_near">Id-destinazzjoni mhix qrib triq li l-mappa taf (jew qiegħda f\'mappa oħra: rotta tibqa\' fuq il-mappa ta\' pajjiż wieħed).</string>
+    <string name="maps_error_destination_not_near">Id-destinazzjoni mhix qrib triq li l-mappa taf (jew qiegħda f\'mappa li t-toroq tagħha mhumiex magħquda ma\' din: aġġorna mappa f\'Tetra fuq il-kompjuter biex jingħaqdu).</string>
     <string name="maps_error_no_way">M\'hemmx triq sa hemm b\'dan il-mezz.</string>
     <string name="maps_error_no_route">L-ebda rotta.</string>
     <string name="maps_say_stop">Waqfa %1$s. Li jmiss, %2$s: %3$s, meta titlaq</string>

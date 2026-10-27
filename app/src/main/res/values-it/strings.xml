@@ -4599,7 +4599,7 @@
     <string name="maps_take_ferry">prendi il traghetto</string>
     <string name="maps_ferry">Traghetto</string>
     <string name="maps_error_not_near_you">Non sei vicino a una strada che la mappa conosce (o sei fuori dalle mappe presenti qui).</string>
-    <string name="maps_error_destination_not_near">La destinazione non è vicina a una strada che la mappa conosce (o è su un\'altra mappa: un percorso resta sulla mappa di un solo paese).</string>
+    <string name="maps_error_destination_not_near">La destinazione non è vicina a una strada che la mappa conosce (o è su una mappa le cui strade non sono unite a questa: aggiorna una mappa in Tetra sul computer per unirle).</string>
     <string name="maps_error_no_way">Nessuna strada fin lì con questo mezzo.</string>
     <string name="maps_error_no_route">Nessun percorso.</string>
     <string name="maps_say_stop">Tappa %1$s. Prossima, %2$s: %3$s, appena riparti</string>

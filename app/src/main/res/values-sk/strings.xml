@@ -4783,7 +4783,7 @@
     <string name="maps_take_ferry">nastúpte na trajekt</string>
     <string name="maps_ferry">Trajekt</string>
     <string name="maps_error_not_near_you">Nie ste pri ceste, ktorú mapa pozná (alebo ste mimo tunajších máp).</string>
-    <string name="maps_error_destination_not_near">Cieľ nie je pri ceste, ktorú mapa pozná (alebo je na inej mape: trasa zostáva na mape jednej krajiny).</string>
+    <string name="maps_error_destination_not_near">Cieľ nie je pri ceste, ktorú mapa pozná (alebo je na mape, ktorej cesty nie sú prepojené s touto: aktualizujte mapu v Tetre v počítači, aby sa prepojili).</string>
     <string name="maps_error_no_way">Týmto spôsobom dopravy tam cesta nevedie.</string>
     <string name="maps_error_no_route">Žiadna trasa.</string>
     <string name="maps_say_stop">Zastávka %1$s. Ďalšia, %2$s: %3$s, keď sa pohnete</string>

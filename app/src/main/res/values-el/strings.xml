@@ -4598,7 +4598,7 @@
     <string name="maps_take_ferry">πάρτε το πλοίο</string>
     <string name="maps_ferry">Πλοίο</string>
     <string name="maps_error_not_near_you">Δεν είστε κοντά σε δρόμο του χάρτη (ή είστε έξω από τους χάρτες εδώ).</string>
-    <string name="maps_error_destination_not_near">Ο προορισμός δεν είναι κοντά σε δρόμο του χάρτη (ή είναι σε άλλον χάρτη: μια διαδρομή μένει στον χάρτη μίας χώρας).</string>
+    <string name="maps_error_destination_not_near">Ο προορισμός δεν είναι κοντά σε δρόμο του χάρτη (ή είναι σε χάρτη που οι δρόμοι του δεν έχουν ενωθεί με αυτόν: ενημερώστε έναν χάρτη στο Tetra του υπολογιστή για να ενωθούν).</string>
     <string name="maps_error_no_way">Δεν υπάρχει δρόμος ως εκεί με αυτό το μέσο.</string>
     <string name="maps_error_no_route">Δεν βρέθηκε διαδρομή.</string>
     <string name="maps_say_stop">Στάση %1$s. Επόμενη, %2$s: %3$s, μόλις ξεκινήσετε</string>

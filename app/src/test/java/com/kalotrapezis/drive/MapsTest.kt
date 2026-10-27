@@ -736,14 +736,14 @@ class MapsBorderTest {
         val root = File(System.getenv("TETRA_MAPS") ?: (System.getProperty("user.home") + "/Tetra/Files/Maps"))
         val dir = MapsFiles.graphAt(root, 40.6401, 22.9444)
         assumeTrue(dir.name == MapsFiles.ALL && File(dir, "properties").isFile && "macedonia" in File(dir, "maps.txt").readLines())
-        val there = MapsRouting.route(dir, 40.6401, 22.9444, 41.9973, 21.4280, "car", "en")
+        val there = MapsRouting.route(dir, 40.6401, 22.9444, 41.9973, 21.4280, "car", testWords("en"))
         println("Thessaloniki–Skopje: ${there.metres.toInt()} m, ${there.millis / 60000} min, ${there.steps.size} steps")
         assertTrue(there.metres in 200_000.0..300_000.0) // ~235 km by the A1 and the border at Evzonoi
         assertTrue(there.lats.any { it > 41.2 } && there.lats.first() < 40.7) // it reaches North Macedonia
-        val back = MapsRouting.route(MapsFiles.graphAt(root, 41.9973, 21.4280), 41.9973, 21.4280, 40.6401, 22.9444, "car", "en")
+        val back = MapsRouting.route(MapsFiles.graphAt(root, 41.9973, 21.4280), 41.9973, 21.4280, 40.6401, 22.9444, "car", testWords("en"))
         assertEquals(there.metres, back.metres, 20_000.0)
         // Sofia: on no map here, so no route, said in words
-        val off = runCatching { MapsRouting.route(dir, 40.6401, 22.9444, 42.6977, 23.3219, "car", "en") }
+        val off = runCatching { MapsRouting.route(dir, 40.6401, 22.9444, 42.6977, 23.3219, "car", testWords("en")) }
         println("to Sofia: ${off.exceptionOrNull()?.message}")
         assertTrue(off.isFailure)
     }

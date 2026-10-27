@@ -4600,7 +4600,7 @@
     <string name="maps_take_ferry">take the ferry</string>
     <string name="maps_ferry">Ferry</string>
     <string name="maps_error_not_near_you">You are not near a road the map knows (or outside the maps here).</string>
-    <string name="maps_error_destination_not_near">The destination is not near a road the map knows (or on another map: a route stays on one country\'s map).</string>
+    <string name="maps_error_destination_not_near">The destination is not near a road the map knows (or it is on a map whose roads are not joined with this one\'s: update a map in Tetra on the computer to join them).</string>
     <string name="maps_error_no_way">No way there by this means.</string>
     <string name="maps_error_no_route">No route.</string>
     <string name="maps_say_stop">Stop %1$s. Next, %2$s: %3$s, when you drive on</string>

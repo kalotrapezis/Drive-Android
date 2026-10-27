@@ -4599,7 +4599,7 @@
     <string name="maps_take_ferry">качете се на ферибота</string>
     <string name="maps_ferry">Ферибот</string>
     <string name="maps_error_not_near_you">Не сте близо до път, който картата познава (или сте извън картите тук).</string>
-    <string name="maps_error_destination_not_near">Дестинацията не е близо до път, който картата познава (или е на друга карта: маршрутът остава на картата на една държава).</string>
+    <string name="maps_error_destination_not_near">Дестинацията не е близо до път, който картата познава (или е на карта, чиито пътища не са свързани с тази: обновете карта в Tetra на компютъра, за да се свържат).</string>
     <string name="maps_error_no_way">С това превозно средство няма път дотам.</string>
     <string name="maps_error_no_route">Няма маршрут.</string>
     <string name="maps_say_stop">Спирка %1$s. Следваща, %2$s: %3$s, щом потеглите</string>

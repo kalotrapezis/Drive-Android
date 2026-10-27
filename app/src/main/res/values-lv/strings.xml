@@ -4691,7 +4691,7 @@
     <string name="maps_take_ferry">brauciet ar prāmi</string>
     <string name="maps_ferry">Prāmis</string>
     <string name="maps_error_not_near_you">Jūs neesat pie ceļa, ko karte zina (vai esat ārpus šeit esošajām kartēm).</string>
-    <string name="maps_error_destination_not_near">Galamērķis nav pie ceļa, ko karte zina (vai ir citā kartē: maršruts paliek vienas valsts kartē).</string>
+    <string name="maps_error_destination_not_near">Galamērķis nav pie ceļa, ko karte zina (vai ir kartē, kuras ceļi nav savienoti ar šo: atjauniniet karti datora Tetra, lai tos savienotu).</string>
     <string name="maps_error_no_way">Ar šo pārvietošanās veidu turp ceļa nav.</string>
     <string name="maps_error_no_route">Nav maršruta.</string>
     <string name="maps_say_stop">Pietura %1$s. Nākamā, %2$s: %3$s, kad dosieties tālāk</string>

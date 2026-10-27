@@ -4599,7 +4599,7 @@
     <string name="maps_ferry">Lautta</string>
     <string name="maps_error_not_near_you">Et ole lähellä tietä, jonka kartta tuntee (tai olet täällä olevien karttojen ulkopuolella).</string>
     <string name="maps_error_destination_not_near">Määränpää ei ole lähellä tietä, jonka kartta tuntee (tai se on kartalla, jonka tiet eivät ole yhdistetty tähän: päivitä kartta tietokoneen Tetrassa, niin ne yhdistyvät).</string>
-    <string name="maps_error_not_joined">%1$s ja %2$s eivät ole yhdistetty reittiohjeita varten. Kartan päivitys tietokoneen Tetrassa (Asetukset › Kartat) yhdistää sen naapureihinsa; reitti kolmannen maan kautta ei ole vielä mahdollinen: mene ensin rajan lähelle.</string>
+    <string name="maps_error_not_joined">Tetra ei vielä tunne tietä kohteesta %1$s kohteeseen %2$s: jokainen matkan maa tarvitsee karttansa, ja yhden niistä uudelleen tekeminen tietokoneen Tetrassa (Asetukset › Kartat) löytää rajanylityspaikat.</string>
     <string name="maps_error_no_way">Tällä kulkutavalla sinne ei ole reittiä.</string>
     <string name="maps_error_no_route">Ei reittiä.</string>
     <string name="maps_say_stop">Pysähdys %1$s. Seuraavaksi %2$s: %3$s, kun jatkat matkaa</string>

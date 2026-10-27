@@ -150,46 +150,89 @@ internal object MapsFiles {
         }
     }.getOrNull()
 
-    /**
-     * The roads of the map [lat],[lng] is on, else the first map's — or the two maps' joined roads open now, when they hold
-     * that map (limits along a route across a border stay on its graph: opening another one takes seconds on a phone).
-     */
+    /** The roads of the map [lat],[lng] is on, else the first map's. */
     fun graphAt(root: File, lat: Double, lng: Double): File {
         val all = maps(root)
-        val here = all.filter { it.has(lat, lng) }
-        MapsRouting.current?.takeIf { it.absoluteFile.parentFile == root.absoluteFile && here.any { m -> m.id in joined(it) } }?.let { return it }
-        return (here.firstOrNull() ?: all.firstOrNull())?.let { File(root, "${it.id}-gh") } ?: graph(root)
+        return (all.firstOrNull { it.has(lat, lng) } ?: all.firstOrNull())?.let { File(root, "${it.id}-gh") } ?: graph(root)
     }
 
-    /** The roads of two neighbouring maps joined at their border (the desktop map builder's borders step): "greece_macedonia-gh". */
-    fun pair(root: File, a: String, b: String) = File(root, listOf(a, b).sorted().joinToString("_") + "-gh")
+    /** A point where the roads cross between two maps; [n]: the crossing it is of (a station's lanes are a point each). */
+    data class Crossing(val lat: Double, val lng: Double, val name: String, val n: Int)
 
-    /** The maps a pair graph joins, else none. */
-    fun joined(g: File): List<String> = g.name.takeIf { '_' in it && it.endsWith("-gh") }?.removeSuffix("-gh")?.split('_').orEmpty()
+    /** Where the roads cross between maps [a] and [b]: the desktop map builder's <a>_<b>-crossings.tsv (ids sorted). */
+    fun crossings(root: File, a: String, b: String): List<Crossing> =
+        runCatching { File(root, listOf(a, b).sorted().joinToString("_") + "-crossings.tsv").readLines() }.getOrDefault(emptyList()).mapIndexedNotNull { i, l ->
+            val c = l.split('\t'); val lat = c[0].toDoubleOrNull(); val lng = c.getOrNull(1)?.toDoubleOrNull()
+            if (lat == null || lng == null) null else Crossing(lat, lng, c.getOrElse(2) { "" }, c.getOrNull(4)?.toIntOrNull() ?: (-1 - i))
+        }
+
+    /** One part of a route, on one map's graph [dir]. */
+    data class Leg(val dir: File, val fromLat: Double, val fromLng: Double, val toLat: Double, val toLng: Double)
+
+    /** The crossings of a border tried for a route, those nearest the way, all their points; fewer through a third country, whose searches multiply. */
+    private const val PER = 5
+    private const val PER_THROUGH = 3
 
     /**
-     * The graph a route from the map of [dir] runs on (the user, 27 Oct: "When we have both the neighbouring maps, it should
-     * be able to cross the border"): the start's and the end's maps' pair graph when they are two, else [dir] as before.
-     * Two maps not joined, or a route through a third country, fail in [w]'s words. shortcut: one border a route; three
-     * countries need a pair graph of pairs, or the route split at a border.
+     * A route from the map of [dir] in legs, each on one map's own graph (the user, 27 Oct: "Drive to the edge and then start
+     * from the other edge"; "at the border … the main road"): one leg when a map holds both ends, as before; else through
+     * the maps on the way, fewest borders, at the crossings where [seconds] (null: no way) finds it fastest. A map not
+     * joined fails in [w]'s words. Desktop maps.js legs is the same.
      */
-    fun graphFor(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, w: Words): File {
-        val root = dir.absoluteFile.parentFile ?: return dir
+    fun legs(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, w: Words,
+             seconds: (File, Double, Double, Double, Double) -> Double?): List<Leg> {
+        val root = dir.absoluteFile.parentFile ?: return listOf(Leg(dir, fromLat, fromLng, toLat, toLng))
         val all = maps(root)
         val a = all.filter { it.has(fromLat, fromLng) }; val b = all.filter { it.has(toLat, toLng) }
-        val pairs = a.flatMap { x -> b.filter { it.id != x.id }.map { y -> pair(root, x.id, y.id) } }.filter { File(it, "properties").isFile }
-        if (pairs.isNotEmpty()) return pairs.firstOrNull { it.absoluteFile == MapsRouting.current?.absoluteFile } ?: pairs.first()
-        if (a.isEmpty() || b.isEmpty() || a.any { it in b }) return dir
-        error(w.s(R.string.maps_error_not_joined, a.first().name, b.first().name))
+        fun gh(m: MapPack) = File(root, "${m.id}-gh")
+        val one = { g: File -> listOf(Leg(g, fromLat, fromLng, toLat, toLng)) }
+        if (a.isEmpty() || b.isEmpty()) return one(dir) // off the maps: GraphHopper says which end
+        // one map holds both ends; where the maps' bounds overlap at a border, the one whose roads reach both
+        val common = a.filter { it in b }
+        if (common.isNotEmpty() && a.size == 1 && b.size == 1) return one(if (gh(common[0]) == dir) dir else gh(common[0]))
+        common.firstOrNull { seconds(gh(it), fromLat, fromLng, toLat, toLng) != null }?.let { return one(gh(it)) }
+        val ends = b.filter { it !in a }
+        if (ends.isEmpty()) return one(common.firstOrNull()?.let(::gh) ?: dir) // no other map: GraphHopper says why not
+        // the maps on the way, fewest borders, through those whose crossings are known
+        val back = LinkedHashMap<MapPack, MapPack?>().apply { a.forEach { put(it, null) } }
+        val queue = ArrayDeque(a)
+        while (queue.isNotEmpty() && ends.none { it in back }) {
+            val x = queue.removeFirst()
+            for (y in all) if (y !in back && crossings(root, x.id, y.id).isNotEmpty()) { back[y] = x; queue.addLast(y) }
+        }
+        val last = ends.firstOrNull { it in back } ?: error(w.s(R.string.maps_error_not_joined, a[0].name, ends[0].name))
+        val chain = generateSequence(last) { back[it] }.toList().reversed()
+        // border by border, each crossing point's best time from the start and the point it came through
+        class At(val lat: Double, val lng: Double, val t: Double, val prev: At?)
+        fun km(lat1: Double, lng1: Double, lat2: Double, lng2: Double) = Math.hypot(lat1 - lat2, (lng1 - lng2) * Math.cos(Math.toRadians(lat1))) * 111
+        var at = listOf(At(fromLat, fromLng, 0.0, null))
+        for (i in chain.indices) {
+            val next = if (i == chain.lastIndex) listOf(Crossing(toLat, toLng, "", 0)) else {
+                val cs = crossings(root, chain[i].id, chain[i + 1].id).sortedBy { km(fromLat, fromLng, it.lat, it.lng) + km(it.lat, it.lng, toLat, toLng) }
+                val near = cs.map { it.n }.distinct().take(if (chain.size > 2) PER_THROUGH else PER)
+                cs.filter { it.n in near }
+            }
+            at = next.map { q ->
+                var best = At(q.lat, q.lng, Double.POSITIVE_INFINITY, null)
+                for (o in at) if (o.t.isFinite()) seconds(gh(chain[i]), o.lat, o.lng, q.lat, q.lng)?.let { s -> if (o.t + s < best.t) best = At(q.lat, q.lng, o.t + s, o) }
+                best
+            }
+        }
+        check(at[0].t.isFinite()) { w.s(R.string.maps_error_no_way) }
+        val out = ArrayList<Leg>()
+        var o = at[0]; var i = chain.lastIndex
+        while (true) { val p = o.prev ?: break; out.add(0, Leg(gh(chain[i]), p.lat, p.lng, o.lat, o.lng)); o = p; i-- }
+        return out
     }
 
     /** Each map's <id>-[kind].tsv that is there (places, addresses, streets, lanes). */
     fun lists(root: File, kind: String): List<File> = ids(root).map { File(root, "$it-$kind.tsv") }.filter { it.isFile }
 
-    /** Every file of map [id] to Tetra's Trash, so the removal reaches the other devices, its pair graphs too; the saved places stay. */
+    /** Every file of map [id] to Tetra's Trash, so the removal reaches the other devices, its crossings too (an older builder's pair graph); the saved places stay. */
     fun removeMap(root: File, id: String) {
         val own = Regex(Regex.escape(id) + "(\\.pmtiles|\\.json|-gh|-[a-z]+\\.tsv)")
-        root.list().orEmpty().filter { own.matches(it) || id in joined(File(root, it)) }.forEach { trash(root, File(root, it)) }
+        val pair = Regex("([a-z0-9-]+)_([a-z0-9-]+)-(gh|crossings\\.tsv)")
+        root.list().orEmpty().filter { own.matches(it) || pair.matchEntire(it)?.groupValues?.let { g -> id == g[1] || id == g[2] } == true }.forEach { trash(root, File(root, it)) }
     }
 
     /**

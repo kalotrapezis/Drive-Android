@@ -4691,7 +4691,7 @@
     <string name="maps_ferry">Trajekt</string>
     <string name="maps_error_not_near_you">Niste blizu ceste koju karta poznaje (ili ste izvan ovdašnjih karata).</string>
     <string name="maps_error_destination_not_near">Odredište nije blizu ceste koju karta poznaje (ili je na karti čije ceste nisu povezane s ovom: ažurirajte kartu u Tetri na računalu da se povežu).</string>
-    <string name="maps_error_not_joined">%1$s i %2$s nisu povezane za upute. Ažuriranje karte u Tetri na računalu (Postavke › Karte) povezuje je sa susjednima; ruta kroz treću zemlju još nije moguća: prvo idite do mjesta blizu granice.</string>
+    <string name="maps_error_not_joined">Tetra još ne zna put od %1$s do %2$s: svaka zemlja na putu treba svoju kartu, a ponovna izrada jedne od njih u Tetri na računalu (Postavke › Karte) pronalazi granične prijelaze.</string>
     <string name="maps_error_no_way">Ovim prijevozom nema puta do tamo.</string>
     <string name="maps_error_no_route">Nema rute.</string>
     <string name="maps_say_stop">Stajalište %1$s. Sljedeće, %2$s: %3$s, kad krenete</string>

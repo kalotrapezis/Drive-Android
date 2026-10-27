@@ -89,14 +89,13 @@ internal object MapsRouting {
         return PROFILES.keys.filter { it in built }.ifEmpty { listOf("car", "foot", "bike") }
     }
 
-    private var hopper: GraphHopper? = null
-    private var loaded: File? = null
-    /** The graph open now. */
-    val current: File? get() = loaded
+    /** The graphs open, the last used last: up to three, so a route across borders and the limits on its way open none again. */
+    private val hoppers = LinkedHashMap<File, GraphHopper>(4, 0.75f, true)
 
     /** The graph in [dir], opened once and kept (opening maps the files, it reads nothing much). */
     @Synchronized fun open(dir: File): GraphHopper {
-        hopper?.let { if (loaded == dir) return it; it.close() }
+        hoppers[dir]?.let { return it }
+        hoppers.entries.firstOrNull()?.takeIf { hoppers.size >= 3 }?.let { it.value.close(); hoppers.remove(it.key) }
         val names = profiles(dir)
         val json = """{"profiles":[${names.joinToString(",") { PROFILES.getValue(it) }}],"profiles_ch":[${names.joinToString(",") { "{\"profile\":\"$it\"}" }}],"profiles_lm":[]}"""
         val config = Jackson.newObjectMapper().readValue(json, GraphHopperConfig::class.java)
@@ -107,7 +106,7 @@ internal object MapsRouting {
         gh.setAllowWrites(false) // no gh.lock in a synced folder
         gh.init(config)
         check(gh.load()) { "No routing graph in ${dir.name}." }
-        hopper = gh; loaded = dir
+        hoppers[dir] = gh
         return gh
     }
 
@@ -144,12 +143,43 @@ internal object MapsRouting {
      */
     fun routes(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, w: Words,
                heading: Double = Double.NaN, main: Boolean = false): List<Route> {
-        val dir = MapsFiles.graphFor(dir, fromLat, fromLng, toLat, toLng, w)
+        val legs = MapsFiles.legs(dir, fromLat, fromLng, toLat, toLng, w) { g, aLat, aLng, bLat, bLng -> seconds(g, aLat, aLng, bLat, bLng, mode) }
+        if (legs.size == 1) return direct(legs[0].dir, fromLat, fromLng, toLat, toLng, mode, w, heading, main)
+        // across borders: each leg on its own country's roads, driven to the crossing and on from there, as one route
+        val t0 = System.nanoTime()
+        val parts = legs.mapIndexed { i, l -> direct(l.dir, l.fromLat, l.fromLng, l.toLat, l.toLng, mode, w, if (i == 0) heading else Double.NaN, main, alternatives = false).first() }
+        WriterLog.i("Maps: a route across ${legs.size - 1} border(s), through ${legs.joinToString(" → ") { it.dir.name }}, its legs in ${(System.nanoTime() - t0) / 1_000_000} ms")
+        return listOf(join(parts))
+    }
+
+    /** How long from one point to the other in seconds, GraphHopper's (no line, no turns), or null when there is no way: to choose a border crossing. */
+    fun seconds(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String): Double? {
+        val mode = if (mode == "wheelchair" && "wheelchair" !in profiles(dir)) "foot" else mode
+        val req = GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode)
+        req.hints.putObject(Parameters.Routing.INSTRUCTIONS, false).putObject(Parameters.Routing.CALC_POINTS, false)
+        val r = open(dir).route(req)
+        return if (r.hasErrors()) null else r.best.time / 1000.0
+    }
+
+    /** Routes one after the other as one: their lines joined at the shared point, the arrival said only at the end. */
+    fun join(parts: List<Route>): Route {
+        var offset = 0
+        val steps = parts.flatMapIndexed { i, r ->
+            (if (i < parts.lastIndex) r.steps.filter { it.sign != com.graphhopper.util.Instruction.FINISH } else r.steps)
+                .map { it.copy(at = it.at + offset) }.also { offset += r.lats.size - 1 }
+        }
+        fun line(of: (Route) -> DoubleArray) = parts.flatMapIndexed { i, r -> of(r).asList().drop(if (i == 0) 0 else 1) }.toDoubleArray()
+        return Route(parts[0].mode, line { it.lats }, line { it.lngs }, parts.sumOf { it.metres }, parts.sumOf { it.millis }, steps, parts.maxBy { it.metres }.roads)
+    }
+
+    /** [routes] on the one graph [dir]; without [alternatives], the fastest alone (a leg across a border). */
+    private fun direct(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, w: Words,
+                       heading: Double, main: Boolean, alternatives: Boolean = true): List<Route> {
         val gh = open(dir)
         val main = main && mode == "car"
         val tr = translation(w.lang); val locale = tr.locale
         val mode = if (mode == "wheelchair" && "wheelchair" !in profiles(dir)) "foot" else mode // a graph from before Rolling
-        val req = GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale).setAlgorithm(Parameters.Algorithms.ALT_ROUTE)
+        val req = GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale).setAlgorithm(if (alternatives) Parameters.Algorithms.ALT_ROUTE else "")
             .setPathDetails(listOf("street_name", "street_ref", "road_environment", "road_class"))
         req.hints.putObject("alternative_route.max_paths", 3)
         if (main) req.hints.putObject(MAIN_ROADS, true).putObject(Parameters.CH.DISABLE, true).putObject(Parameters.Routing.MAX_VISITED_NODES, MAX_MAIN_NODES)
@@ -168,7 +198,7 @@ internal object MapsRouting {
         if (rsp.hasErrors()) rsp = gh.route(req.setAlgorithm(""))
         if (rsp.hasErrors() && main) { // too far to search without the shortcuts: today's way
             WriterLog.i("Maps: main roads too far to search (${rsp.errors.firstOrNull()?.message}), the shortest way instead")
-            return routes(dir, fromLat, fromLng, toLat, toLng, mode, w, heading, false)
+            return direct(dir, fromLat, fromLng, toLat, toLng, mode, w, heading, false, alternatives)
         }
         val t1 = System.nanoTime() // alternatives not to be had here: the one way
         check(!rsp.hasErrors()) { words(rsp.errors.firstOrNull(), w) }

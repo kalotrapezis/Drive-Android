@@ -4691,7 +4691,7 @@
     <string name="maps_ferry">Ferry</string>
     <string name="maps_error_not_near_you">Não está perto de uma estrada que o mapa conheça (ou está fora dos mapas aqui).</string>
     <string name="maps_error_destination_not_near">O destino não está perto de uma estrada que o mapa conheça (ou está num mapa cujas estradas não estão ligadas a este: atualize um mapa no Tetra do computador para as ligar).</string>
-    <string name="maps_error_not_joined">%1$s e %2$s não estão ligados para as indicações. Atualizar um mapa no Tetra do computador (Definições › Mapas) liga-o aos vizinhos; um percurso por um terceiro país ainda não é possível: vá primeiro a um lugar perto da fronteira.</string>
+    <string name="maps_error_not_joined">O Tetra ainda não conhece um caminho de %1$s para %2$s: cada país no caminho precisa do seu mapa, e refazer um deles no Tetra do computador (Definições › Mapas) encontra as passagens de fronteira.</string>
     <string name="maps_error_no_way">Não há caminho até lá com este meio.</string>
     <string name="maps_error_no_route">Sem percurso.</string>
     <string name="maps_say_stop">Paragem %1$s. A seguir, %2$s: %3$s, quando arrancar</string>

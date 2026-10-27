@@ -4599,7 +4599,7 @@
     <string name="maps_ferry">Færge</string>
     <string name="maps_error_not_near_you">Du er ikke i nærheden af en vej, som kortet kender (eller du er uden for kortene her).</string>
     <string name="maps_error_destination_not_near">Destinationen er ikke i nærheden af en vej, som kortet kender (eller den er på et kort, hvis veje ikke er forbundet med dette: opdater et kort i Tetra på computeren for at forbinde dem).</string>
-    <string name="maps_error_not_joined">%1$s og %2$s er ikke forbundet til rutevejledning. Når et kort opdateres i Tetra på computeren (Indstillinger › Kort), forbindes det med nabokortene; en rute gennem et tredje land er ikke mulig endnu: tag først til et sted nær grænsen.</string>
+    <string name="maps_error_not_joined">Tetra kender endnu ingen vej fra %1$s til %2$s: hvert land på vejen skal have sit kort, og når et af dem laves igen i Tetra på computeren (Indstillinger › Kort), findes grænseovergangene.</string>
     <string name="maps_error_no_way">Der er ingen vej derhen med dette transportmiddel.</string>
     <string name="maps_error_no_route">Ingen rute.</string>
     <string name="maps_say_stop">Stop %1$s. Næste, %2$s: %3$s, når du kører videre</string>

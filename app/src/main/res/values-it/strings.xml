@@ -4599,7 +4599,7 @@
     <string name="maps_ferry">Traghetto</string>
     <string name="maps_error_not_near_you">Non sei vicino a una strada che la mappa conosce (o sei fuori dalle mappe presenti qui).</string>
     <string name="maps_error_destination_not_near">La destinazione non è vicina a una strada che la mappa conosce (o è su una mappa le cui strade non sono unite a questa: aggiorna una mappa in Tetra sul computer per unirle).</string>
-    <string name="maps_error_not_joined">%1$s e %2$s non sono unite per le indicazioni. Aggiornare una mappa in Tetra sul computer (Impostazioni › Mappe) la unisce alle vicine; un percorso attraverso un terzo paese non è ancora possibile: vai prima in un luogo vicino al confine.</string>
+    <string name="maps_error_not_joined">Tetra non conosce ancora una strada da %1$s a %2$s: ogni paese lungo il percorso ha bisogno della sua mappa, e ricrearne una in Tetra sul computer (Impostazioni › Mappe) trova i valichi di frontiera.</string>
     <string name="maps_error_no_way">Nessuna strada fin lì con questo mezzo.</string>
     <string name="maps_error_no_route">Nessun percorso.</string>
     <string name="maps_say_stop">Tappa %1$s. Prossima, %2$s: %3$s, appena riparti</string>

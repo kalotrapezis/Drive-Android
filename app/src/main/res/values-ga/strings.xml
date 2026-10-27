@@ -4875,7 +4875,7 @@
     <string name="maps_ferry">Bád farantóireachta</string>
     <string name="maps_error_not_near_you">Níl tú gar do bhóthar atá ar eolas ag an léarscáil (nó tá tú lasmuigh de na léarscáileanna anseo).</string>
     <string name="maps_error_destination_not_near">Níl an ceann scríbe gar do bhóthar atá ar eolas ag an léarscáil (nó tá sé ar léarscáil nach bhfuil a bóithre ceangailte leis an gceann seo: nuashonraigh léarscáil in Tetra ar an ríomhaire chun iad a cheangal).</string>
-    <string name="maps_error_not_joined">Níl %1$s agus %2$s ceangailte le haghaidh treoracha. Ceanglaíonn nuashonrú léarscáile in Tetra ar an ríomhaire (Socruithe › Léarscáileanna) í lena comharsana; níl bealach trí thríú tír indéanta fós: téigh ar dtús chuig áit gar don teorainn.</string>
+    <string name="maps_error_not_joined">Níl bealach ó %1$s go %2$s ar eolas ag Tetra fós: teastaíonn a léarscáil ó gach tír ar an mbealach, agus aimsíonn ceann acu a dhéanamh arís in Tetra ar an ríomhaire (Socruithe › Léarscáileanna) na trasnuithe teorann.</string>
     <string name="maps_error_no_way">Níl aon bhealach ann leis an modh taistil seo.</string>
     <string name="maps_error_no_route">Níl aon bhealach ann.</string>
     <string name="maps_say_stop">Stad %1$s. An chéad cheann eile, %2$s: %3$s, nuair a thiomáineann tú ar aghaidh</string>

@@ -707,51 +707,77 @@ class MapsPacksTest {
         assertTrue(File(root.parentFile, "Trash/cyprus-gh/properties").isFile) // to the Trash, so the phone and tablet follow
     }
 
-    /** Two neighbours' joined roads (greece_macedonia-gh) for a route from one into the other; a map's own roads within it. */
+    /** Across borders: each map's own roads to a crossing and on from there, the fastest crossing; a map's removal takes its crossings. */
     @Test fun acrossBorders() {
         val root = File(Files.createTempDirectory("tetra").toFile(), "Maps").apply { mkdirs() }
         pmtiles(File(root, "greece.pmtiles"), 18.97, 34.59, 29.66, 41.75)
         pmtiles(File(root, "macedonia.pmtiles"), 20.45, 40.85, 23.04, 42.37)
+        pmtiles(File(root, "serbia.pmtiles"), 18.8, 42.2, 23.0, 46.2)
         pmtiles(File(root, "cyprus.pmtiles"), 31.0, 34.0, 35.0, 36.0)
         val gr = File(root, "greece-gh"); val w = testWords("en")
-        val pair = MapsFiles.pair(root, "macedonia", "greece")
-        assertEquals("greece_macedonia-gh", pair.name); assertEquals(listOf("greece", "macedonia"), MapsFiles.joined(pair))
-        pair.mkdirs()
-        val skopje = runCatching { MapsFiles.graphFor(gr, 40.64, 22.94, 41.99, 21.43, w) } // no graph in it yet: not joined
-        assertTrue(skopje.exceptionOrNull()?.message.orEmpty().startsWith("Greece and Macedonia are not joined"))
-        File(pair, "properties").writeText("x")
-        assertEquals(pair, MapsFiles.graphFor(gr, 40.64, 22.94, 41.99, 21.43, w)) // Thessaloniki → Skopje
-        assertEquals(pair, MapsFiles.graphFor(File(root, "macedonia-gh"), 41.99, 21.43, 40.64, 22.94, w)) // and back
-        assertEquals(pair, MapsFiles.graphFor(gr, 40.64, 22.94, 41.03, 21.33, w)) // Bitola, inside Greece's bounds too
-        assertEquals(gr, MapsFiles.graphFor(gr, 40.64, 22.94, 37.98, 23.73, w)) // Athens: Greece's own, as before
-        assertEquals("greece-gh", MapsFiles.graphAt(root, 40.64, 22.94).name)
-        assertTrue(runCatching { MapsFiles.graphFor(gr, 40.64, 22.94, 35.17, 33.36, w) }.exceptionOrNull()?.message.orEmpty().contains("Cyprus"))
+        // made-up times: a straight line at a kilometre a minute, an hour more through Niki
+        val asked = ArrayList<String>()
+        val seconds = { g: File, aLat: Double, aLng: Double, bLat: Double, bLng: Double ->
+            asked += g.name; Math.hypot(aLat - bLat, (aLng - bLng) * Math.cos(Math.toRadians(aLat))) * 111 * 60 + (if (Math.abs(bLng - 21.418) < 0.01) 3600 else 0)
+        }
+        fun legs(toLat: Double, toLng: Double) = MapsFiles.legs(gr, 40.64, 22.94, toLat, toLng, w, seconds)
+        assertEquals(listOf(MapsFiles.Leg(gr, 40.64, 22.94, 37.98, 23.73)), legs(37.98, 23.73)) // Athens: as before, nothing asked
+        assertTrue(asked.isEmpty())
+        assertTrue(runCatching { legs(41.99, 21.43) }.exceptionOrNull()?.message.orEmpty().startsWith("Tetra knows no way from Greece to Macedonia"))
+        File(root, "greece_macedonia-crossings.tsv").writeText("41.133893\t22.548533\t\tmotorway_link\t1\n40.916288\t21.418277\t\ttrunk\t2\n41.127685\t22.551662\tΕύζωνοι\ttrunk\t1\n")
+        assertEquals(3, MapsFiles.crossings(root, "macedonia", "greece").size)
+        val skopje = legs(41.99, 21.43)
+        assertEquals(listOf("greece-gh", "macedonia-gh"), skopje.map { it.dir.name })
+        assertEquals(41.13, skopje[0].toLat, 0.01); assertEquals(skopje[0].toLat, skopje[1].fromLat, 0.0) // Evzonoi, not Niki
+        // Bitola, inside Greece's bounds too: Greece's roads do not reach it, so across the border
+        val bitola = MapsFiles.legs(gr, 40.64, 22.94, 41.03, 21.33, w) { g, a, b, c, d -> if (g.name == "greece-gh" && c == 41.03) null else seconds(g, a, b, c, d) }
+        assertEquals(listOf("greece-gh", "macedonia-gh"), bitola.map { it.dir.name })
+        // three countries: Thessaloniki to Belgrade through North Macedonia
+        assertTrue(runCatching { legs(44.79, 20.45) }.exceptionOrNull()?.message.orEmpty().contains("Greece to Serbia"))
+        File(root, "macedonia_serbia-crossings.tsv").writeText("42.234902\t21.703802\t\tmotorway\t1\n42.326463\t22.331514\tГолеш\ttertiary\t2\n")
+        assertEquals(listOf("greece-gh" to 41.13, "macedonia-gh" to 42.23, "serbia-gh" to 44.79), legs(44.79, 20.45).map { it.dir.name to Math.round(it.toLat * 100) / 100.0 })
+        assertTrue(runCatching { legs(35.17, 33.36) }.exceptionOrNull()?.message.orEmpty().contains("Cyprus"))
         MapsFiles.removeMap(root, "macedonia")
-        assertFalse(pair.exists())
-        assertTrue(File(root.parentFile, "Trash/greece_macedonia-gh/properties").isFile)
+        assertEquals(setOf("cyprus.pmtiles", "greece.pmtiles", "serbia.pmtiles"), root.list()!!.toSet())
+    }
+
+    /** Legs joined as one route: the line at the shared point once, the crossing's "arrive" left out, the steps' points moved on. */
+    @Test fun legsJoined() {
+        fun leg(m: Double, lat: Double) = Route("car", doubleArrayOf(lat, lat + 1), doubleArrayOf(0.0, 1.0), m, (m * 100).toLong(),
+            listOf(Step("go", 0, m, 0, "A"), Step("arrive", 4, 0.0, 1, "")))
+        val r = MapsRouting.join(listOf(leg(100.0, 0.0), leg(50.0, 1.0)))
+        assertEquals(listOf(0.0, 1.0, 2.0), r.lats.toList()); assertEquals(150.0, r.metres, 0.0); assertEquals(15_000L, r.millis)
+        assertEquals(listOf(0 to 0, 0 to 1, 4 to 2), r.steps.map { it.sign to it.at })
     }
 }
 
 /**
- * A route across a border on two neighbours' joined roads (the desktop map builder's greece_macedonia-gh), when Files/Maps
- * (or TETRA_MAPS) has them: Thessaloniki to Skopje by car, and the way back, as the phone and the car ask for it.
+ * Routes across borders on the maps' own graphs, when Files/Maps (or TETRA_MAPS) has Greece, North Macedonia and Bulgaria with
+ * their crossings (the desktop map builder's): as the phone and the car ask for them.
  */
 class MapsBorderTest {
-    @Test fun thessalonikiToSkopje() {
+    @Test fun acrossBorders() {
         val root = File(System.getenv("TETRA_MAPS") ?: (System.getProperty("user.home") + "/Tetra/Files/Maps"))
-        assumeTrue(File(MapsFiles.pair(root, "greece", "macedonia"), "properties").isFile)
-        val dir = MapsFiles.graphAt(root, 40.6401, 22.9444)
-        val there = MapsRouting.route(dir, 40.6401, 22.9444, 41.9973, 21.4280, "car", testWords("en"))
-        assertEquals("greece_macedonia-gh", MapsRouting.current?.name)
-        assertEquals(MapsRouting.current, MapsFiles.graphAt(root, 41.2, 22.6)) // the limits on the way: the same graph
-        println("Thessaloniki–Skopje: ${there.metres.toInt()} m, ${there.millis / 60000} min, ${there.steps.size} steps")
-        assertTrue(there.metres in 200_000.0..300_000.0) // ~235 km by the A1 and the border at Evzonoi
-        assertTrue(there.lats.any { it > 41.2 } && there.lats.first() < 40.7) // it reaches North Macedonia
-        val back = MapsRouting.route(MapsFiles.graphAt(root, 41.9973, 21.4280), 41.9973, 21.4280, 40.6401, 22.9444, "car", testWords("en"))
-        assertEquals(there.metres, back.metres, 20_000.0)
-        // Sofia: on no map here, so no route, said in words
-        val off = runCatching { MapsRouting.route(dir, 40.6401, 22.9444, 42.6977, 23.3219, "car", testWords("en")) }
-        println("to Sofia: ${off.exceptionOrNull()?.message}")
+        assumeTrue(MapsFiles.crossings(root, "greece", "macedonia").isNotEmpty())
+        val w = testWords("en")
+        fun go(fromLat: Double, fromLng: Double, toLat: Double, toLng: Double): Route {
+            val t0 = System.currentTimeMillis()
+            val r = MapsRouting.route(MapsFiles.graphAt(root, fromLat, fromLng), fromLat, fromLng, toLat, toLng, "car", w)
+            println("$fromLat,$fromLng → $toLat,$toLng: ${r.metres.toInt()} m, ${r.millis / 60000} min, ${r.steps.size} steps, in ${System.currentTimeMillis() - t0} ms")
+            return r
+        }
+        val skopje = go(40.6401, 22.9444, 41.9973, 21.4280) // Thessaloniki → Skopje, by Evzonoi
+        assertTrue(skopje.metres in 200_000.0..250_000.0 && skopje.millis / 60000 < 200)
+        assertTrue(skopje.lats.any { it > 41.2 } && skopje.steps.count { it.sign == 4 } == 1 && skopje.steps.size < 30) // no turning round at the border
+        val back = go(41.9973, 21.4280, 40.6401, 22.9444)
+        assertEquals(skopje.metres, back.metres, 20_000.0)
+        assertEquals(470_553.0, go(40.6401, 22.9444, 37.9838, 23.7275).metres, 2_000.0) // Athens: Greece's own roads, as before
+        if (MapsFiles.crossings(root, "bulgaria", "greece").isNotEmpty()) {
+            val sofia = go(40.6401, 22.9444, 42.6977, 23.3219) // by Promachonas
+            assertTrue(sofia.metres in 250_000.0..320_000.0)
+        }
+        val off = runCatching { go(40.6401, 22.9444, 44.79, 20.45) } // Belgrade: no map of Serbia here
+        println("to Belgrade: ${off.exceptionOrNull()?.message}")
         assertTrue(off.isFailure)
     }
 }

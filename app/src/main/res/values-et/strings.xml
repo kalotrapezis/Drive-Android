@@ -4599,7 +4599,7 @@
     <string name="maps_ferry">Praam</string>
     <string name="maps_error_not_near_you">Te ei ole kaardil oleva tee lähedal (või olete siinsetest kaartidest väljas).</string>
     <string name="maps_error_destination_not_near">Sihtkoht ei ole kaardil oleva tee lähedal (või on kaardil, mille teed pole selle omadega ühendatud: uuendage kaarti arvuti Tetras, et need ühenduksid).</string>
-    <string name="maps_error_not_joined">%1$s ja %2$s pole juhiste jaoks ühendatud. Kaardi uuendamine arvuti Tetras (Seaded › Kaardid) ühendab selle naabritega; marsruut läbi kolmanda riigi pole veel võimalik: minge kõigepealt piiri lähedale.</string>
+    <string name="maps_error_not_joined">Tetra ei tea veel teed kohast %1$s kohta %2$s: iga tee peal olev riik vajab oma kaarti ja ühe neist uuesti tegemine arvuti Tetras (Seaded › Kaardid) leiab piiripunktid.</string>
     <string name="maps_error_no_way">Selle liikumisviisiga sinna teed ei ole.</string>
     <string name="maps_error_no_route">Marsruuti ei leitud.</string>
     <string name="maps_say_stop">Peatus %1$s. Järgmine, %2$s: %3$s, kui edasi sõidate</string>

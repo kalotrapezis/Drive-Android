@@ -4599,7 +4599,7 @@
     <string name="maps_ferry">Veerboot</string>
     <string name="maps_error_not_near_you">Je bent niet in de buurt van een weg die de kaart kent (of buiten de kaarten hier).</string>
     <string name="maps_error_destination_not_near">De bestemming is niet in de buurt van een weg die de kaart kent (of ligt op een kaart waarvan de wegen niet met deze verbonden zijn: werk een kaart bij in Tetra op de computer om ze te verbinden).</string>
-    <string name="maps_error_not_joined">%1$s en %2$s zijn niet verbonden voor routebeschrijvingen. Een kaart bijwerken in Tetra op de computer (Instellingen › Kaarten) verbindt die met de buren; een route door een derde land kan nog niet: ga eerst naar een plek bij de grens.</string>
+    <string name="maps_error_not_joined">Tetra kent nog geen weg van %1$s naar %2$s: elk land onderweg heeft zijn kaart nodig, en een ervan opnieuw maken in Tetra op de computer (Instellingen › Kaarten) vindt de grensovergangen.</string>
     <string name="maps_error_no_way">Met dit vervoermiddel is er geen weg daarheen.</string>
     <string name="maps_error_no_route">Geen route.</string>
     <string name="maps_say_stop">Stop %1$s. Volgende, %2$s: %3$s, zodra je verder rijdt</string>

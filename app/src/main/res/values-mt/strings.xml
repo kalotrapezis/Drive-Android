@@ -4783,7 +4783,7 @@
     <string name="maps_ferry">Vapur</string>
     <string name="maps_error_not_near_you">M\'intix qrib triq li l-mappa taf (jew int barra mill-mapep li hawn).</string>
     <string name="maps_error_destination_not_near">Id-destinazzjoni mhix qrib triq li l-mappa taf (jew qiegħda f\'mappa li t-toroq tagħha mhumiex magħquda ma\' din: aġġorna mappa f\'Tetra fuq il-kompjuter biex jingħaqdu).</string>
-    <string name="maps_error_not_joined">%1$s u %2$s mhumiex magħquda għad-direzzjonijiet. L-aġġornament ta\' mappa f\'Tetra fuq il-kompjuter (Settings › Mapep) jgħaqqadha mal-ġirien tagħha; rotta minn pajjiż ieħor għadha mhix possibbli: mur l-ewwel f\'post qrib il-fruntiera.</string>
+    <string name="maps_error_not_joined">Tetra għadha ma tafx triq minn %1$s għal %2$s: kull pajjiż fit-triq jeħtieġ il-mappa tiegħu, u li terġa\' tagħmel waħda minnhom f\'Tetra fuq il-kompjuter (Settings › Mapep) isib il-qsim tal-fruntiera.</string>
     <string name="maps_error_no_way">M\'hemmx triq sa hemm b\'dan il-mezz.</string>
     <string name="maps_error_no_route">L-ebda rotta.</string>
     <string name="maps_say_stop">Waqfa %1$s. Li jmiss, %2$s: %3$s, meta titlaq</string>

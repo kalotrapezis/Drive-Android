@@ -4600,7 +4600,7 @@
     <string name="maps_ferry">Ferry</string>
     <string name="maps_error_not_near_you">You are not near a road the map knows (or outside the maps here).</string>
     <string name="maps_error_destination_not_near">The destination is not near a road the map knows (or it is on a map whose roads are not joined with this one\'s: update a map in Tetra on the computer to join them).</string>
-    <string name="maps_error_not_joined">%1$s and %2$s are not joined for directions. Updating a map in Tetra on the computer (Settings › Maps) joins it with its neighbours; a route through a third country is not possible yet: go to a place near the border first.</string>
+    <string name="maps_error_not_joined">Tetra knows no way from %1$s to %2$s yet: every country on the way needs its map, and making one of them again in Tetra on the computer (Settings › Maps) finds the border crossings.</string>
     <string name="maps_error_no_way">No way there by this means.</string>
     <string name="maps_error_no_route">No route.</string>
     <string name="maps_say_stop">Stop %1$s. Next, %2$s: %3$s, when you drive on</string>

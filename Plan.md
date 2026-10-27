@@ -12,10 +12,21 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
-- [~] (beta-release session, 27 Oct; branch `claude/admiring-pare-6a6a4a`) **The next beta for Linux and Android, and the site** (the user:
-      "Are we ready to publish the new Beta For Linux and Android … AppImage for most Linux distros and Android 11+"; "No more new
-      stuff, just bettering what we have for now"): ready check, AppImage + .deb, signed release APK, the site's screenshots with
-      text laid over the pictures (translatable), publish on the user's yes, install on the phone.
+- [~] (beta-release session, 27 Oct; branches `claude/admiring-pare-6a6a4a` here and `beta-release` in Drive, not merged, nothing pushed)
+      **The next beta for Linux and Android, and the site** (the user: "Are we ready to publish the new Beta For Linux and Android …
+      AppImage for most Linux distros and Android 11+"; then, mid-way: "don't build packages yet just make the page"). Ready check:
+      every finished branch is in main in both repos (Drive's old unmerged-looking branches are pre-scrub copies whose content is in
+      main); 687 Android unit (12 skipped) / 171 desktop tests pass, `npm run check` clean. **The page done**: docs/index.html and
+      el.html — each card is a picture without words (docs/img/art, made by tools/site-cards.py: the old cards with their text painted
+      over, new screenshots in device frames) with its words as HTML laid over it, so a language is a text change; new cards: map
+      builder, routes across borders, guide, 24 languages, Phone on a tablet; Maps no longer "Greece only" (photos by place still are);
+      the speed card is HTML bars. READMEs of both repos: the site's English cards rendered (Assets/cards). Screenshots: desktop from
+      source on a scratch profile with invented files and the real (public) map files; Android on the tetra_shots emulator's sample
+      data. Download links stay on the published releases (Android beta 2, desktop beta 23) until new ones exist. **Built before the
+      user's stop, not published or installed**: Android 0.6.0-beta.3 (versionCode 14, release key 9D:FF:81…D3:97), desktop
+      0.6.0-beta.31 .deb + AppImage (now on the static AppImage runtime: no libfuse2 needed; started and rendered from the AppImage,
+      bundled Java 17 and Python+osmium run; a route from inside it not finished). Open: the release APK not run on a device; the
+      Greek site text reviewed by no native reader beyond this session; publishing (merge, push, release) waits for the user.
 - [x] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive, not merged) **Routes across
       borders on each country's own graph, through the border crossings** (the user: "When we have both the neighbouring maps, it should
       be able to cross the border"; then "Drive to the edge and then start from the other edge"; "at the border … the main road", not

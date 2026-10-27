@@ -855,18 +855,18 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     fun applyRedactions(): Int {
         var n = 0
         edit("Redact") { _ -> sizes.indices.forEach { i -> page(i) { p -> if ((p as com.artifex.mupdf.fitz.PDFPage).applyRedactions(true, com.artifex.mupdf.fitz.PDFPage.REDACT_IMAGE_PIXELS)) n++ } } }
-        if (n > 0) rewrite = rewrite ?: "garbage=compact,compress"
+        if (n > 0) rewrite = rewrite ?: "garbage,compress"
         return n
     }
     val hasRedactionMarks get() = synchronized(this) { sizes.indices.any { i -> page(i) { p -> (p as? com.artifex.mupdf.fitz.PDFPage)?.annotations.orEmpty().any { it.type == com.artifex.mupdf.fitz.PDFAnnotation.TYPE_REDACT } } } }
 
     /** The next save asks for [password] to open the file (AES-256), or with null opens without one. */
     fun protect(password: String?) {
-        rewrite = if (password == null) "garbage=compact,compress,decrypt" else "garbage=compact,compress,encrypt=aes-256,user-password=${password.replace(",", "")},owner-password=${password.replace(",", "")}"
+        rewrite = if (password == null) "garbage,compress,decrypt" else "garbage,compress,encrypt=aes-256,user-password=${password.replace(",", "")},owner-password=${password.replace(",", "")}"
     }
     val rewriting get() = rewrite != null
     /** The next save writes the file whole (what was taken out does not stay in its older parts). */
-    internal fun rewriteWhole() { rewrite = rewrite ?: "garbage=compact,compress" }
+    internal fun rewriteWhole() { rewrite = rewrite ?: "garbage,compress" }
 
     // —— forms (their own fields: fill in, tick, choose) ——
 
@@ -992,7 +992,9 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         // nothing new and nothing written since it was opened: the file as it is (MuPDF appending nothing left a broken stub)
         else if (!p.hasUnsavedChanges() && untouched && !savedOnce) file.copyTo(temp, overwrite = true)
         else if (appendable) { file.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
-        else p.save(temp.path, "garbage=compact,compress")
+        // what is unused dropped, the objects keep their numbers (compact renumbered them: what was chosen, a group's first
+        // one, lost its object after every save but the first, 27 Oct)
+        else p.save(temp.path, "garbage,compress")
         if (!temp.renameTo(to)) throw PdfError(R.string.pdf_save_failed_file)
         p.undoRedoPosition().let { at -> savedAt = at; redoStale = p.undoRedoSteps() > at }
         savedOnce = true
@@ -1224,6 +1226,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     val dictate = rememberDictation { said -> val t = typed.annotatedString.text
         val before = t.getOrNull(typed.selection.min - 1); val after = t.getOrNull(typed.selection.max)
         typed.addTextAfterSelection((if (before != null && !before.isWhitespace()) " " else "") + said + (if (after != null && after.isLetterOrDigit()) " " else "")) }
+    // Review › Spelling (Words', shared): the words being typed checked as Words checks them, Words' own setting
+    val speller = remember { WriterSpelling(context) }
+    val writerPrefs = remember { context.getSharedPreferences("writer", android.content.Context.MODE_PRIVATE) }
+    var spellingOn by remember { mutableStateOf(writerPrefs.getBoolean("spelling", true)) }
+    val spell = rememberSpelling(typed, speller, spellingOn, typing != null)
     var inserting by remember { mutableStateOf<String?>(null) } // Insert's, Design's and Layout's windows: shapes, chart, equation, symbol, date, page, border, boxText
     var drawingOn by remember { mutableStateOf<Pair<Int, Bitmap?>?>(null) } // Draw › Draw on page: the page, its picture under the pen
     var drawingBox by remember { mutableStateOf(false) } // Draw › Drawing box
@@ -1281,7 +1288,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { if (t == f) keepPrevious(context, f); d.save(t, copy) } }
             r.onFailure { WriterLog.e("PDF: save", it); Toast.makeText(context, context.getString(R.string.pdf_could_not_save, pdfSays(context, it, R.string.pdf_could_not_do)), Toast.LENGTH_LONG).show() }
-                .onSuccess { version++; Toast.makeText(context, if (t != f) context.getString(R.string.pdf_saved_as_kb, t.name, t.length() / 1024) else context.getString(R.string.pdf_saved_kb, t.length() / 1024), Toast.LENGTH_SHORT).show(); then() }
+                .onSuccess { version++; chosen = chosen?.let { c -> d.objectById(c.page, c.id) } // Make smaller renumbers: what is gone let go
+                    Toast.makeText(context, if (t != f) context.getString(R.string.pdf_saved_as_kb, t.name, t.length() / 1024) else context.getString(R.string.pdf_saved_kb, t.length() / 1024), Toast.LENGTH_SHORT).show(); then() }
         }
     }
     var autoSave by remember { mutableStateOf(TextEditorStore(context).autoSave) } // File › AutoSave: Words' own setting, one for all
@@ -1442,6 +1450,27 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     /** Whether the chosen object can be turned: Tetra's own (another app's keeps its way up). */
     fun turnable(c: PdfObject) = c.text != null || c.words?.let { Arrange.rotated(it.img, 0f) != null } == true
     /** The chosen object taken off the page (one undo step). */
+    // Words' Group: the first one chosen (its page and id); the next one tapped joins it
+    var grouping by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    LaunchedEffect(chosen?.id) {
+        val (gp, gid) = grouping ?: return@LaunchedEffect; val now = chosen ?: return@LaunchedEffect; val d = doc ?: return@LaunchedEffect
+        if (now.id == gid) return@LaunchedEffect
+        grouping = null
+        val first = d.objectById(gp, gid)
+        when {
+            now.page != gp -> Toast.makeText(context, R.string.words_group_same_page, Toast.LENGTH_SHORT).show()
+            first == null || first.words == null || now.words == null -> Toast.makeText(context, R.string.words_cannot_group, Toast.LENGTH_SHORT).show()
+            else -> { var id: Int? = null; change { id = d.groupObjects(gp, first, now) }
+                id?.let { chosen = d.objectById(gp, it); Toast.makeText(context, R.string.words_grouped, Toast.LENGTH_SHORT).show() }
+                    ?: Toast.makeText(context, R.string.words_cannot_group, Toast.LENGTH_SHORT).show() }
+        }
+    }
+    fun ungroupChosen() {
+        val c = chosen ?: return; val d = doc ?: return
+        var n = 0; change { n = d.ungroupObject(c.page, c) }
+        chosen = null
+        Toast.makeText(context, if (n > 0) context.getString(R.string.words_ungrouped_into, n) else context.getString(R.string.words_cannot_ungroup), Toast.LENGTH_SHORT).show()
+    }
     /** Insert › Link's window for the chosen one, with the link it has. */
     fun askLink() { val c = chosen ?: return; val d = doc ?: return
         scope.launch { linking = withContext(Dispatchers.IO) { runCatching { d.linkAt(c.page, Offset(c.rect.centerX(), c.rect.centerY())) }.getOrNull() } ?: ("" to null) } }
@@ -2060,14 +2089,14 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             if (typing != null && imeOpen && !wide && !ribbonOverKeyboard) {
                 val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
                 val span = typed.currentSpanStyle
-                KeyboardBar(w, (span.fontWeight?.weight ?: 400) >= 600, span.fontStyle == androidx.compose.ui.text.font.FontStyle.Italic,
+                Column { SpellingBar(spell); KeyboardBar(w, (span.fontWeight?.weight ?: 400) >= 600, span.fontStyle == androidx.compose.ui.text.font.FontStyle.Italic,
                     span.textDecoration?.contains(androidx.compose.ui.text.style.TextDecoration.Underline) == true,
                     { typed.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)) },
                     { typed.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) },
                     { typed.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)) },
                     { c -> if (c == null) span.background.takeIf { it != Color.Unspecified }?.let { typed.removeSpanStyle(androidx.compose.ui.text.SpanStyle(background = it)) }
                         else typed.addSpanStyle(androidx.compose.ui.text.SpanStyle(background = c)) },
-                    { dictate?.invoke() ?: Toast.makeText(context, R.string.words_no_voice_typing, Toast.LENGTH_SHORT).show() }, { ribbonOverKeyboard = true }, { keyboard?.hide() })
+                    { dictate?.invoke() ?: Toast.makeText(context, R.string.words_no_voice_typing, Toast.LENGTH_SHORT).show() }, { ribbonOverKeyboard = true }, { keyboard?.hide() }) }
             } else
             OfficeStripFrame(w, if (wide) Modifier.padding(vertical = 4.dp) else if (OfficeUi.top) Modifier else Modifier.bottomBarPadding()) { Column {
                 // a text chosen, as a Slides box: Selection first (Cut, Copy, Paste, formatting), the text's own tab last in the lighter colour
@@ -2079,6 +2108,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     OBJECT_TAB to (chosen?.kind?.let { if (it == "Drawing") stringResource(R.string.pdf_drawing) else objectKindName(it) } ?: ""))
                 // reading aloud: the paragraph being read and Stop, above the tabs (Words')
                 if (reader.speaking) ReadAloudBar(reader, readingParas.getOrNull(reader.at), w)
+                if (typing != null) SpellingBar(spell)
                 OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Design", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
                     OBJECT_TAB.takeIf { chosen != null }),
                     tab, w, PDF_RED, { tab = it; tool = null }, contextual = OBJECT_TAB, label = { tabNames[it] ?: it }) {
@@ -2218,6 +2248,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         RibbonButton(stringResource(R.string.words_bring_to_front), w, R.drawable.ic_flip_to_front) { restackChosen(2) }
                         RibbonButton(stringResource(R.string.words_send_to_back), w, R.drawable.ic_flip_to_back) { restackChosen(-2) }
                         RibbonButton(stringResource(R.string.words_rotate), w, R.drawable.ic_rotate_right, enabled = turns) { rotating = true }
+                        // Words' Group (the next one tapped joins it) and Ungroup
+                        if (img?.group != null) RibbonButton(stringResource(R.string.words_ungroup), w, R.drawable.ic_group_objects) { ungroupChosen() }
+                        else if (img != null && c0.text == null) RibbonButton(stringResource(if (grouping?.second == c0.id) R.string.words_tap_another else R.string.words_group), w,
+                            R.drawable.ic_group_objects, on = grouping?.second == c0.id) {
+                            grouping = if (grouping?.second == c0.id) null else (c0.page to c0.id).also { Toast.makeText(context, R.string.words_tap_other_to_group, Toast.LENGTH_SHORT).show() } }
                         RibbonMenu(stringResource(R.string.words_align), w, R.drawable.ic_align_horizontal_center, preset = false, choices = listOf(
                             MenuChoice(stringResource(R.string.words_align_left)) { alignChosen('l', null) }, MenuChoice(stringResource(R.string.words_align_centre)) { alignChosen('c', null) },
                             MenuChoice(stringResource(R.string.words_align_right)) { alignChosen('r', null) }, MenuChoice(stringResource(R.string.words_align_top)) { alignChosen(null, 't') },
@@ -2236,7 +2271,14 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         return@RibbonLine
                     }
                     if (tab == "Review") {
-                        // Words' Review: Read aloud; the comments, new, the one before or after, Reply, Resolve, Delete — then the PDF's own markup
+                        // Words' Review: Spelling and the next mistake (in the words being typed); Read aloud; the comments, new, the one
+                        // before or after, Reply, Resolve, Delete — then the PDF's own markup
+                        RibbonButton(stringResource(R.string.words_spelling), w, R.drawable.ic_spellcheck, on = spellingOn) {
+                            spellingOn = !spellingOn; writerPrefs.edit().putBoolean("spelling", spellingOn).apply()
+                            Toast.makeText(context, if (spellingOn) R.string.words_spelling_on_msg else R.string.words_spelling_off_msg, Toast.LENGTH_SHORT).show()
+                        }
+                        Tool(R.drawable.ic_chevron_right, stringResource(R.string.words_next_spelling_mistake), w, enabled = spellingOn && typing != null) {
+                            if (!spell.next()) Toast.makeText(context, R.string.words_no_spelling_mistakes, Toast.LENGTH_SHORT).show() }
                         RibbonButton(stringResource(if (reader.speaking) R.string.words_stop_reading else R.string.words_read_aloud), w, R.drawable.ic_volume_up, on = reader.speaking) {
                             if (reader.speaking) reader.stop() else scope.launch {
                                 val pages = withContext(Dispatchers.IO) { d.sizes.indices.map { k -> runCatching { d.text(k) }.getOrDefault("") } }
@@ -2533,8 +2575,12 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
                             do {
-                                val ev = awaitPointerEvent(PointerEventPass.Initial)
-                                if (ev.changes.count { it.pressed } >= 2 || (zoom > 1f && tool == null && chosen == null)) {
+                                var ev = awaitPointerEvent(PointerEventPass.Initial)
+                                val two = ev.changes.count { it.pressed } >= 2
+                                // one finger, zoomed in: the page moves unless the page's own took it first (a chosen object or its
+                                // handles, the words being typed) — after them, so a chosen text no longer pins the page (27 Oct)
+                                if (!two && zoom > 1f && tool == null) ev = awaitPointerEvent(PointerEventPass.Main)
+                                if (two || (zoom > 1f && tool == null && ev.changes.none { it.isConsumed })) {
                                     val by = ev.calculateZoom(); val moved = ev.calculatePan()
                                     val c = ev.calculateCentroid(useCurrent = true).takeIf { it.isSpecified } ?: Offset(view.width / 2, view.height / 2)
                                     val (z, o) = Pdf.zoomed(zoom, pan, by, c - Offset(view.width / 2, view.height / 2), moved, view)
@@ -2620,7 +2666,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                             { positioning = true },
                                             ::moveChosen), marks, matches?.getOrNull(match)?.takeIf { it.page == i }, hide = chosen?.takeIf { it.page == i && typing == null }, preview = framePreview) {
                                     if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
-                                    typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook, typingText?.doc?.basePt ?: textLook.size) }
+                                    typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook, typingText?.doc?.basePt ?: textLook.size, spell) }
                                     pageMenu?.takeIf { it.first == i }?.let { (_, spot, pt) -> OfficeMenu(spot, { pageMenu = null }) {
                                         @Composable fun entry(label: String, icon: Int, act: () -> Unit) = OfficeMenuItem(label, icon) { pageMenu = null; WriterLog.i("PDF: menu › $label"); act() }
                                         val c = chosen

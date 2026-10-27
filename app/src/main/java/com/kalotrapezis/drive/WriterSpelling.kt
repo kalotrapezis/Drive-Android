@@ -1,7 +1,15 @@
 package com.kalotrapezis.drive
 
 import android.content.Context
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -195,5 +203,88 @@ internal class Speller(affBytes: ByteArray, dicBytes: ByteArray, lang: String) {
     companion object {
         private const val GREEK_TRY = "αοιεντσρηυπκμλωγδθφχβζξψςάέήίόύώϊϋΐΰ"
         private val ACCENTS = mapOf('α' to listOf("ά"), 'ε' to listOf("έ"), 'η' to listOf("ή"), 'ι' to listOf("ί", "ϊ", "ΐ"), 'ο' to listOf("ό"), 'υ' to listOf("ύ", "ϋ", "ΰ"), 'ω' to listOf("ώ"))
+    }
+}
+
+/**
+ * Review › Spelling as one types, for an editor's [state] (Words' page, a PDF's text): the words that look misspelled
+ * ([shown]: not the one being typed, and only as they were checked), the one the cursor is in ([here]) with its
+ * suggestions. Made by [rememberSpelling]; [ignored] words are not marked again.
+ */
+@androidx.compose.runtime.Stable
+internal class Spelling(private val state: com.mohamedrejeb.richeditor.model.RichTextState) {
+    var ignored by androidx.compose.runtime.mutableStateOf(emptySet<String>())
+    internal var misspelled by androidx.compose.runtime.mutableStateOf<List<Triple<IntRange, String, List<String>>>>(emptyList())
+    internal var typingAt by androidx.compose.runtime.mutableIntStateOf(-1) // the word being typed is not marked until one leaves it
+    /** The marked words now: still as they were checked, and not the one being typed. */
+    val shown by androidx.compose.runtime.derivedStateOf {
+        val text = state.annotatedString.text
+        misspelled.filter { (r, w) -> r.last < text.length && text.regionMatches(r.first, w, 0, w.length) && typingAt !in r.first..r.last + 1 }
+    }
+    val here by androidx.compose.runtime.derivedStateOf { state.selection.let { sel -> shown.firstOrNull { (r) -> sel.min in r.first..r.last + 1 && sel.max <= r.last + 1 } } }
+    fun replace(r: IntRange, with: String) {
+        state.selection = androidx.compose.ui.text.TextRange(r.first, r.last + 1)
+        state.removeSelectedText(); state.addTextAfterSelection(with)
+    }
+    /** The next marked word after the cursor (round to the first), selected: false when there is none. */
+    fun next(): Boolean {
+        val at = state.selection.max
+        val n = shown.firstOrNull { it.first.first >= at } ?: shown.firstOrNull() ?: return false
+        state.selection = androidx.compose.ui.text.TextRange(n.first.first, n.first.last + 1); return true
+    }
+}
+
+/** [state]'s spelling, checked while [active] and [on] (half a second after the typing stops). */
+@androidx.compose.runtime.Composable
+internal fun rememberSpelling(state: com.mohamedrejeb.richeditor.model.RichTextState, speller: WriterSpelling, on: Boolean, active: Boolean): Spelling {
+    val sp = androidx.compose.runtime.remember(state) { Spelling(state) }
+    androidx.compose.runtime.LaunchedEffect(state, active) {
+        var last = ""
+        androidx.compose.runtime.snapshotFlow { state.annotatedString.text to state.selection }.collect { (t, sel) -> sp.typingAt = if (t != last) sel.min else -1; last = t }
+    }
+    androidx.compose.runtime.LaunchedEffect(state, active, on, sp.ignored) {
+        if (!active || !on) { sp.misspelled = emptyList(); return@LaunchedEffect }
+        androidx.compose.runtime.snapshotFlow { state.annotatedString.text }.collectLatest { text ->
+            kotlinx.coroutines.delay(500)
+            val ranges = WriterSpelling.words(text)
+            val bad = speller.check(ranges.map { text.substring(it) }.toSet())
+            sp.misspelled = ranges.mapNotNull { r -> text.substring(r).let { w -> if (w in sp.ignored) null else bad[w]?.let { Triple(r, w, it) } } }
+        }
+    }
+    return sp
+}
+
+/** A red wavy line under each of [shown]'s words, in the editor's own layout [l] (its text's top left at 0,0). */
+internal fun androidx.compose.ui.graphics.drawscope.DrawScope.spellingLines(l: androidx.compose.ui.text.TextLayoutResult, shown: List<Triple<IntRange, String, List<String>>>) {
+    val text = l.layoutInput.text.text
+    val red = androidx.compose.ui.graphics.Color(0xFFE53935); val step = 3.dp.toPx(); val amp = 1.2.dp.toPx()
+    shown.forEach { (r) ->
+        if (r.last >= text.length) return@forEach
+        for (line in l.getLineForOffset(r.first)..l.getLineForOffset(r.last)) {
+            val a = maxOf(r.first, l.getLineStart(line)); val z = minOf(r.last + 1, l.getLineEnd(line, true))
+            if (z <= a) continue
+            val x1 = l.getBoundingBox(a).left; val x2 = l.getBoundingBox(z - 1).right
+            val y = l.getLineBaseline(line) + 2.5.dp.toPx()
+            val path = androidx.compose.ui.graphics.Path().apply {
+                moveTo(x1, y); var x = x1; var up = true
+                while (x < x2) { val nx = minOf(x + step, x2); lineTo(nx, if (up) y - amp else y + amp); x = nx; up = !up }
+            }
+            drawPath(path, red, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+        }
+    }
+}
+
+/** The word the cursor is in looks misspelled: its suggestions (a tap puts one in) and Ignore, on the ribbon's dark. */
+@androidx.compose.runtime.Composable
+internal fun SpellingBar(sp: Spelling) = sp.here?.let { (r, w, suggestions) ->
+    androidx.compose.foundation.layout.Row(androidx.compose.ui.Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_spellcheck), contentDescription = androidx.compose.ui.res.stringResource(R.string.words_spelling),
+            tint = androidx.compose.ui.graphics.Color(0xFFE57373), modifier = androidx.compose.ui.Modifier.size(20.dp))
+        if (suggestions.isEmpty()) androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.words_no_suggestions), color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
+            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium, modifier = androidx.compose.ui.Modifier.padding(horizontal = 10.dp))
+        suggestions.forEach { sug -> androidx.compose.material3.TextButton(onClick = { sp.replace(r, sug) }) { androidx.compose.material3.Text(sug, color = androidx.compose.ui.graphics.Color.White) } }
+        androidx.compose.material3.TextButton(onClick = { sp.ignored = sp.ignored + w }) {
+            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.words_ignore), color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f)) }
     }
 }

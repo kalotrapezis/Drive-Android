@@ -284,4 +284,47 @@ class PdfObjectsDeviceTest {
         assertEquals(a.rect.bottom, d.objectById(0, a.id)!!.rect.bottom, 0.5f)
         d.close(); dir.deleteRecursively()
     }
+
+    @Test fun groupedAndUngroupedAsWords() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-objects-group").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        val shape = d.putWords(0, PdfWords.of(DocImage("s1", null, 100f, 60f, PictureXml.newShape("ellipse", OfficeKind.Docx, 0xFF0000, 0x000000, 1f, 100f, 60f), wrap = PictureWrap.InFront)), 150f, 200f)
+        val bmp = android.graphics.Bitmap.createBitmap(40, 20, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF2E7D32.toInt()) }
+        val jpg = java.io.ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
+        val pic = d.putWords(0, PdfWords.of(DocImage("n1", null, 80f, 40f, bytes = jpg, extension = "jpg", wrap = PictureWrap.InFront)), 300f, 260f)
+        val g = d.groupObjects(0, d.objectById(0, shape)!!, d.objectById(0, pic)!!)
+        assertNotNull(g)
+        assertEquals(1, d.objects(0).size)
+        val go = d.objectById(0, g!!)!!
+        // the group's box: from the shape's corner to the picture's
+        assertEquals(100f, go.rect.left, 1f); assertEquals(170f, go.rect.top, 1f); assertEquals(340f, go.rect.right, 1f); assertEquals(280f, go.rect.bottom, 1f)
+        d.save(); d.close()
+        val again = PdfDoc(f)
+        val back = again.objects(0).single()
+        assertNotNull(back.words!!.img.group)
+        val bw = back.words!!
+        assertTrue("parts ${bw.parts.keys.filter { !it.endsWith(".xml") && !it.endsWith(".rels") }} pieces ${bw.img.group!!.map { it.img.part to (it.img.bytes?.size) }}",
+            bw.img.group!!.any { p -> bw.bytes(p.img)?.size == jpg.size })
+        assertEquals(2, again.ungroupObject(0, back))
+        val parts = again.objects(0).sortedBy { it.rect.left }
+        assertEquals(listOf("Shape", "Image"), parts.map { it.kind })
+        assertEquals(150f, parts[0].rect.centerX(), 1f); assertEquals(260f, parts[1].rect.centerY(), 1f)
+        // the picture's own bytes came through the group and back
+        assertEquals(jpg.size, parts[1].words!!.bytes()!!.size)
+        again.undo(); assertEquals(1, again.objects(0).size)
+        again.close(); dir.deleteRecursively()
+    }
+
+    @Test fun objectsKeepTheirNumbersThroughSaves() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-objects-ids").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        fun shape(x: Float) = d.putWords(0, PdfWords.of(DocImage("s$x", null, 60f, 40f, PictureXml.newShape("rect", OfficeKind.Docx, 0xFF0000, 0xFF0000, 1f, 60f, 40f), wrap = PictureWrap.InFront)), x, 300f)
+        val a = shape(100f); d.save() // the first save appends
+        val b = shape(200f); d.save() // the next ones write the file whole
+        d.note(0, Offset(300f, 100f), "x", 0xFFEB3B); d.save()
+        assertNotNull(d.objectById(0, a)); assertNotNull(d.objectById(0, b))
+        d.close(); dir.deleteRecursively()
+    }
 }

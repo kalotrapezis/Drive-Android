@@ -45,6 +45,37 @@ internal class PdfWords(val doc: OfficeDoc, val parts: Map<String, ByteArray> = 
     }
 }
 
+/** The same object with its picture's [bytes] in it (not a part of the file it came from). */
+private fun DocImage.withBytes(bytes: ByteArray?) = DocImage(key, null, widthPt, heightPt, raw, bytes, extension, wrap, table, onPage, box, chart, look, math, group, film)
+
+/**
+ * Words' Group for two Words objects on page [i] ([Arrange.group], as Words groups two floating pictures): one group
+ * where they were, the two taken off, one undo step. Its id, or null when Word cannot group them.
+ */
+internal fun PdfDoc.groupObjects(i: Int, a: PdfObject, b: PdfObject): Int? {
+    val wa = a.words ?: return null; val wb = b.words ?: return null
+    // each piece by its box before turning, round its middle; its picture's bytes carried in (not a part of its own file)
+    fun piece(o: PdfObject, w: PdfWords) = w.img.withBytes(w.bytes()) to w.laid.let { (lw, lh) -> floatArrayOf(o.rect.centerX() - lw / 2, o.rect.centerY() - lh / 2, lw, lh) }
+    val g = Arrange.group(listOf(piece(a, wa), piece(b, wb)), PictureWrap.InFront, 0, "g" + java.util.UUID.randomUUID()) ?: return null
+    val (gx, gy) = g.onPage ?: return null
+    var id = 0
+    edit("Group") { _ -> id = putWords(i, PdfWords.of(g), gx + g.widthPt / 2, gy + g.heightPt / 2); deleteObject(i, a.id); deleteObject(i, b.id) }
+    return id
+}
+
+/** Words' Ungroup for the group [o] on page [i]: each piece put where it was, the group taken off (one undo step). How many. */
+internal fun PdfDoc.ungroupObject(i: Int, o: PdfObject): Int {
+    val w = o.words ?: return 0
+    val (lw, lh) = w.laid
+    val pieces = Arrange.ungroup(w.img, o.rect.centerX() - lw / 2, o.rect.centerY() - lh / 2, PictureWrap.InFront, 0) ?: return 0
+    edit("Ungroup") { _ ->
+        pieces.forEach { p -> val (px, py) = p.onPage ?: return@forEach
+            putWords(i, PdfWords.of(p.withBytes(p.bytes ?: w.bytes(p))), px + p.widthPt / 2, py + p.heightPt / 2) }
+        deleteObject(i, o.id)
+    }
+    return pieces.size
+}
+
 /** Words' signature (Insert › Signature): [png] as a picture named so, [width] points across. */
 internal fun signatureWords(png: ByteArray, width: Float = 140f): PdfWords {
     val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }

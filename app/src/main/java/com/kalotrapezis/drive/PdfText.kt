@@ -31,6 +31,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -215,7 +217,8 @@ internal data class PdfTyping(val page: Int, val x: Float, val y: Float, val roo
  * [BASE_SP]), scaled so they stand on the page as they will be put on; [page] the page's size in points.
  */
 @Composable
-internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t: PdfTyping, state: com.mohamedrejeb.richeditor.model.RichTextState, look: PdfTextLook, basePt: Float) =
+internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t: PdfTyping, state: com.mohamedrejeb.richeditor.model.RichTextState, look: PdfTextLook, basePt: Float,
+    spell: Spelling? = null) =
     BoxWithConstraints(Modifier.matchParentSize()) {
         val k = constraints.maxWidth / page.width // pixels a page point
         val density = LocalDensity.current
@@ -225,6 +228,7 @@ internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t:
         // a new one with nothing typed yet: only the cursor (Words' click-and-type), its frame and fill with the first letter
         val shown = t.replacing != null || state.annotatedString.text.isNotEmpty()
         val focus = remember { FocusRequester() }
+        var layout by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) } // for Words' spelling lines
         LaunchedEffect(t) { focus.requestFocus() } // the keyboard at once
         // the selection blue on the white page whatever the app's theme (dark: Ctrl+A's selection hardly showed, 24 Oct)
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.text.selection.LocalTextSelectionColors provides
@@ -237,7 +241,10 @@ internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t:
                     .requiredWidth((k * t.room / s).toDp()).heightIn(min = (k * maxOf(t.minHeight, basePt * 1.2f + 2 * pad) / s).toDp())
                     // the words as they were hidden while typed again; the box's own fill
                     .background(look.fill?.takeIf { shown }?.let { Color(0xFF000000 or it.toLong()) } ?: if (t.replacing != null) Color.White else Color.Transparent)
-                    .border(1.dp, if (!shown) Color.Transparent else look.line?.let { Color(0xFF000000 or it.toLong()) } ?: Color(0x991A73E8)).padding((k * pad / s).toDp()).focusRequester(focus),
+                    .border(1.dp, if (!shown) Color.Transparent else look.line?.let { Color(0xFF000000 or it.toLong()) } ?: Color(0x991A73E8)).padding((k * pad / s).toDp()).focusRequester(focus)
+                    // Words' red wavy lines under the words that look misspelled, in the editor's own layout
+                    .drawWithContent { drawContent(); val l = layout; if (spell != null && l != null && spell.shown.isNotEmpty()) spellingLines(l, spell.shown) },
+                onTextLayout = { layout = it },
                 textStyle = TextStyle(color = Color(0xFF000000 or look.color.toLong()), fontSize = BASE_SP.sp, fontFamily = OfficeFonts.family(look.font)))
         }
         }

@@ -2600,38 +2600,9 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     // Review › Spelling (asked 2026-09-30): Tetra's own Greek and English dictionaries (WriterSpelling), as one types.
     val speller = remember { WriterSpelling(context) }
     var spelling by remember { mutableStateOf(prefs.getBoolean("spelling", true)) }
-    var ignored by remember { mutableStateOf(emptySet<String>()) }
-    /** The words that look misspelled: where, the word, its suggestions (as the text was when checked). */
-    var misspelled by remember { mutableStateOf<List<Triple<IntRange, String, List<String>>>>(emptyList()) }
-    var typingAt by remember { mutableIntStateOf(-1) } // the word being typed is not marked until one leaves it
-    LaunchedEffect(loaded) {
-        var last = ""
-        snapshotFlow { state.annotatedString.text to state.selection }.collect { (t, sel) -> typingAt = if (t != last) sel.min else -1; last = t }
-    }
-    LaunchedEffect(loaded, spelling, ignored) {
-        if (!loaded || !spelling) { misspelled = emptyList(); return@LaunchedEffect }
-        snapshotFlow { state.annotatedString.text }.collectLatest { text ->
-            delay(500)
-            val ranges = WriterSpelling.words(text)
-            val bad = speller.check(ranges.map { text.substring(it) }.toSet())
-            misspelled = ranges.mapNotNull { r -> text.substring(r).let { w -> if (w in ignored) null else bad[w]?.let { Triple(r, w, it) } } }
-        }
-    }
-    /** The marked words now: still as they were checked, and not the one being typed. */
-    val spellingShown by remember { derivedStateOf {
-        val text = state.annotatedString.text
-        misspelled.filter { (r, w) -> r.last < text.length && text.regionMatches(r.first, w, 0, w.length) && typingAt !in r.first..r.last + 1 }
-    } }
-    val hereWord by remember { derivedStateOf { state.selection.let { sel -> spellingShown.firstOrNull { (r) -> sel.min in r.first..r.last + 1 && sel.max <= r.last + 1 } } } }
-    fun replaceWord(r: IntRange, with: String) {
-        state.selection = androidx.compose.ui.text.TextRange(r.first, r.last + 1)
-        state.removeSelectedText(); state.addTextAfterSelection(with)
-    }
+    val spell = rememberSpelling(state, speller, spelling, loaded) // Words' spelling, shared with the PDF's texts (WriterSpelling.kt)
     fun nextMisspelled() {
-        val at = state.selection.max
-        val next = spellingShown.firstOrNull { it.first.first >= at } ?: spellingShown.firstOrNull()
-        if (next == null) { message = if (spelling) context.getString(R.string.words_no_spelling_mistakes) else context.getString(R.string.words_spelling_off); return }
-        state.selection = androidx.compose.ui.text.TextRange(next.first.first, next.first.last + 1)
+        if (!spell.next()) message = if (spelling) context.getString(R.string.words_no_spelling_mistakes) else context.getString(R.string.words_spelling_off)
     }
     /** The next (or previous) change, selected. */
     fun goChange(forward: Boolean, from: Int = state.selection.min) {
@@ -3533,23 +3504,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                         if (c == hereComment) Color(0x66FFB300) else Color(0x33FFB300), (BASE_SP * shownZoom / 100).sp.toPx()) }
                                 }
                                 // Spelling: a red wavy line under each word that looks misspelled.
-                                if (spellingShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
-                                    val red = Color(0xFFE53935); val step = 3.dp.toPx(); val amp = 1.2.dp.toPx()
-                                    spellingShown.forEach { (r) ->
-                                        if (r.last >= text.length) return@forEach
-                                        for (line in l.getLineForOffset(r.first)..l.getLineForOffset(r.last)) {
-                                            val a = maxOf(r.first, l.getLineStart(line)); val z = minOf(r.last + 1, l.getLineEnd(line, true))
-                                            if (z <= a) continue
-                                            val x1 = l.getBoundingBox(a).left; val x2 = l.getBoundingBox(z - 1).right
-                                            val y = l.getLineBaseline(line) + 2.5.dp.toPx()
-                                            val path = androidx.compose.ui.graphics.Path().apply {
-                                                moveTo(x1, y); var x = x1; var up = true
-                                                while (x < x2) { val nx = minOf(x + step, x2); lineTo(nx, if (up) y - amp else y + amp); x = nx; up = !up }
-                                            }
-                                            drawPath(path, red, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
-                                        }
-                                    }
-                                }
+                                if (spell.shown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) { spellingLines(l, spell.shown) }
                                 // Tracked changes: inserted letters underlined, deleted struck through (their colour is the author's,
                                 // set on the letters), a paragraph mark's change a ¶, and a bar in the margin beside each changed line.
                                 if (changesShown.isNotEmpty()) androidx.compose.foundation.Canvas(Modifier.matchParentSize().padding(margins)) {
@@ -3905,14 +3860,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
             // An equation chosen: its linear form, typed into in place (the page redraws it).
             selectedPicture?.second?.let { k -> pictures[k]?.math?.let { m -> androidx.compose.runtime.key(k) { EquationBar(m, w) { putEquation(k, it) } } } }
             // A word that looks misspelled, the cursor in it: the spell checker's suggestions, a tap puts one in.
-            hereWord?.let { (r, w, suggestions) ->
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(painterResource(R.drawable.ic_spellcheck), contentDescription = stringResource(R.string.words_spelling), tint = Color(0xFFE57373), modifier = Modifier.size(20.dp))
-                    if (suggestions.isEmpty()) Text(stringResource(R.string.words_no_suggestions), color = w.let { Color.White.copy(alpha = 0.6f) }, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 10.dp))
-                    suggestions.forEach { sug -> TextButton(onClick = { replaceWord(r, sug) }) { Text(sug, color = Color.White) } }
-                    TextButton(onClick = { ignored = ignored + w }) { Text(stringResource(R.string.words_ignore), color = Color.White.copy(alpha = 0.7f)) }
-                }
-            }
+            SpellingBar(spell)
             // The form field the cursor is in: its choices, a date, a tick (a text field fills by typing, or Fill in).
             hereControl?.let { (pr, _, r) -> FormBar(pr, controlsShown.filter { it.first == pr }.joinToString("") { it.second }, w,
                 choosePicture = { state.selection = androidx.compose.ui.text.TextRange(r.first, r.first + 1); replacePicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { newPr, text -> fillControl(pr, newPr, text) } }

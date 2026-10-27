@@ -2225,7 +2225,29 @@ private object DocxWriter {
         var docPrId = 9000
         var changeId = 90000 // a tracked change's id (Word's own are renumbered on its next save)
         var bookmarkId = 80000
-        picture = { img -> (img.raw ?: img.chart?.let { ch ->
+        /**
+         * A group's pictures that carry their own bytes (one a PDF grouped: not parts of this file yet): each one's bytes a
+         * part of the file and its r:embed to it, in the order the group has them. Words' groups' pictures are the file's own.
+         */
+        fun groupMedia(raw: String, pieces: List<GroupPart>): String {
+            val pics = pieces.filter { it.img.raw?.contains("r:embed=") == true }
+            if (pics.none { it.img.bytes != null }) return raw
+            val embeds = Regex("""r:embed="[^"]*"""").findAll(raw).toList()
+            val out = StringBuilder(); var at = 0
+            embeds.zip(pics).forEach { (m, piece) ->
+                val bytes = piece.img.bytes ?: return@forEach
+                val ext = piece.img.extension
+                val name = generateSequence(1) { it + 1 }.map { "${dir}media/tetra-$it.$ext" }.first { it !in parts }
+                parts[name] = bytes
+                if (!Regex("""Extension="$ext"""", RegexOption.IGNORE_CASE).containsMatchIn(types))
+                    types = types.replace("</Types>", """<Default Extension="$ext" ContentType="image/${if (ext == "jpg") "jpeg" else ext}"/></Types>""")
+                out.append(raw, at, m.range.first).append("""r:embed="${newRel(REL_IMAGE, name.removePrefix(dir), false)}"""")
+                at = m.range.last + 1
+            }
+            return out.append(raw.substring(at)).toString()
+        }
+        // a picture whose drawing came from another file, its bytes with it (a PDF's group taken apart): the same, alone
+        picture = { img -> (img.raw?.let { r -> img.group?.let { groupMedia(r, it) } ?: if (img.part == null && img.bytes != null) groupMedia(r, listOf(GroupPart(0f, 0f, 0f, 0f, img))) else r } ?: img.chart?.let { ch ->
                 // A new chart (Insert › Chart, or one whose data Writer changed): its own part, as Word keeps one.
                 val name = generateSequence(1) { it + 1 }.map { "${dir}charts/chart$it.xml" }.first { it !in parts }
                 parts[name] = ChartWriter.drawingml(ch, workbook = true).toByteArray()

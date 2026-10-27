@@ -58,10 +58,24 @@ write something"; "make it more invisible, like Word … boxes of elements stuck
 - Next idea (the user): PDF like Words makes a 100% exporter possible — Tetra's boxes are Words' paragraphs and
   objects, so Save as Word can write them back exactly (stacked boxes as paragraphs, free ones as text boxes).
 
+**27 Oct, the editor's list (the user: "build the PDF editor and when everything matches we build the Exporters"):**
+- Spelling: Words' own, now shared (`WriterSpelling.kt`: `rememberSpelling`, `spellingLines`, `SpellingBar`; Words uses
+  them too). The words being typed get Words' red lines and suggestions; Review › Spelling and Next mistake, Words'
+  setting. Texts not being typed are not marked.
+- Group / Ungroup: Words' `Arrange.group`/`ungroup` (`groupObjects`, `ungroupObject`); the Word writer now saves a
+  picture's own bytes inside a group (and a lone one whose drawing came from another file).
+- Zoomed in, one finger moves the page unless a chosen object or the words being typed take the touch (a chosen text
+  pinned the page). Tested the user's way: zoomed in, then typed (the user: "everyone will zoom in, especially older
+  people").
+- Fixed: saves after the first renumbered every object (`garbage=compact`): what was chosen lost its object after an
+  AutoSave. Now `garbage` (unused dropped, numbers kept); Make smaller still renumbers, and what is gone is let go.
+  **Main has the same `compact` saves** (since the save fix).
+- Known: the cursor's blue handle sits off the cursor at small zoom (the editor is drawn scaled; Android places the
+  handle unscaled); close at 200%.
+
 Left:
 - The phone 208c8192 (tools/phone-install.sh): not connected 27 Oct.
-- Group and Ungroup; Wrap's "behind the text".
-- Insert › Table; Reading mode (MuPDF's reflow); Spelling in Tetra's texts.
+- Wrap's "behind the text"; Insert › Table; Edit the PDF's own words; Reading mode; comment cards level with their words.
 - The comments pane lists the cards; Words puts each card level with its words.
 - Words' Versions page (versions shown as pages); the PDF keeps the list window.
 - A 1-in-15 Words device test (`WriterLayoutDeviceTest.contentsTab…`) failed before this branch: `EditorTab` gained

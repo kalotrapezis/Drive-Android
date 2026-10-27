@@ -1514,7 +1514,6 @@
     <string name="maps_amea_parking">Invaparkimine</string>
     <string name="maps_amea_placed">Invakoht paigutatud: %1$s</string>
     <string name="maps_no_map">Selles seadmes pole veel ühtegi kaarti</string>
-    <string name="maps_no_map_how">Kaarte tehakse arvutis: Tetra arvutis › Seaded › Kaardid › Lisa kaart, seejärel toob Sünkroonimine need siia, kausta Tetra/Maps.</string>
     <string name="maps_parked_here">Parkisin siia</string>
     <string name="maps_waiting_location">Teie asukoha ootamine…</string>
     <string name="maps_location_off">Tetra asukoht on väljas.</string>
@@ -4653,4 +4652,7 @@
     <string name="maps_old_channel">Vanad kaardid</string>
     <string name="maps_old_title">Kaart %1$s on üle 3 kuu vana</string>
     <string name="maps_old_body">Teed ja kohad muutuvad. Arvuti teeb selle värsketest OpenStreetMapi andmetest uuesti: Tetra › Seaded › Kaardid.</string>
+    <string name="maps_welcome_title">Tere tulemast Kaartidesse</string>
+    <string name="maps_welcome_intro">Tetra tuleb ilma kaardita, et igaüks saaks just selle kaardi, mida soovib, võrguühenduseta ja omaenda. Teete selle ühe korra ära, oma arvutis:</string>
+    <string name="maps_welcome_steps">1. Avage oma arvutis Tetra › Seaded › Kaardid › Lisa kaart.\n2. Valige oma riik. Selleks vajab arvuti internetti.\n3. Hoidke arvuti sisse lülitatud ja vooluvõrku ühendatud, kuni kaarti tehakse: väikese riigi puhul paar minutit, suure puhul tund või rohkem.\n4. Hoidke Tetra selles seadmes avatuna, samas Wi-Fi-võrgus kui arvuti: kaart jõuab siia ise.</string>
 </resources>

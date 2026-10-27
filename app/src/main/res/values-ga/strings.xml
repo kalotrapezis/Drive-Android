@@ -1643,7 +1643,6 @@
     <string name="maps_amea_parking">Páirceáil do dhaoine faoi mhíchumas</string>
     <string name="maps_amea_placed">Spota páirceála do dhaoine faoi mhíchumas curtha: %1$s</string>
     <string name="maps_no_map">Níl aon léarscáil ar an ngléas seo fós</string>
-    <string name="maps_no_map_how">Déantar léarscáileanna ar an ríomhaire: Tetra ar an ríomhaire › Socruithe › Léarscáileanna › Cuir léarscáil leis, agus ansin tugann Sioncrónú anseo iad isteach i Tetra/Maps.</string>
     <string name="maps_parked_here">Pháirceáil mé anseo</string>
     <string name="maps_waiting_location">Ag fanacht le do shuíomh…</string>
     <string name="maps_location_off">Tá suíomh as do Tetra.</string>
@@ -4956,4 +4955,7 @@
     <string name="maps_old_channel">Seanléarscáileanna</string>
     <string name="maps_old_title">Tá léarscáil %1$s níos sine ná 3 mhí</string>
     <string name="maps_old_body">Athraíonn bóithre agus áiteanna. Déanann an ríomhaire arís í ó shonraí úra OpenStreetMap: Tetra › Socruithe › Léarscáileanna.</string>
+    <string name="maps_welcome_title">Fáilte go Léarscáileanna</string>
+    <string name="maps_welcome_intro">Tagann Tetra gan léarscáil, ionas go bhfaigheann gach duine an léarscáil a theastaíonn uaidh, as líne agus a chuid féin. Déanann tú é uair amháin, ar do ríomhaire:</string>
+    <string name="maps_welcome_steps">1. Ar do ríomhaire, oscail Tetra › Socruithe › Léarscáileanna › Cuir léarscáil leis.\n2. Roghnaigh do thír. Teastaíonn idirlíon ón ríomhaire chuige seo.\n3. Fág an ríomhaire air agus plugáilte isteach cé go bhfuil an léarscáil á déanamh: cúpla nóiméad do thír bheag, uair an chloig nó níos mó do thír mhór.\n4. Fág Tetra oscailte ar an ngléas seo, ar an Wi-Fi céanna leis an ríomhaire: tagann an léarscáil anseo uaithi féin.</string>
 </resources>

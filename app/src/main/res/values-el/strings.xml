@@ -1513,7 +1513,6 @@
     <string name="maps_amea_parking">Θέση ΑμεΑ</string>
     <string name="maps_amea_placed">Η θέση ΑμεΑ τοποθετήθηκε: %1$s</string>
     <string name="maps_no_map">Δεν υπάρχει ακόμη χάρτης σε αυτή τη συσκευή</string>
-    <string name="maps_no_map_how">Οι χάρτες φτιάχνονται στον υπολογιστή: Tetra του υπολογιστή › Ρυθμίσεις › Χάρτες › Προσθήκη χάρτη, και ο Τοπικός συγχρονισμός τους φέρνει εδώ στο Tetra/Maps.</string>
     <string name="maps_parked_here">Πάρκαρα εδώ</string>
     <string name="maps_waiting_location">Αναμονή για την τοποθεσία σας…</string>
     <string name="maps_location_off">Η τοποθεσία είναι απενεργοποιημένη για το Tetra.</string>
@@ -4652,4 +4651,7 @@
     <string name="maps_old_channel">Παλιοί χάρτες</string>
     <string name="maps_old_title">Ο χάρτης «%1$s» είναι πάνω από 3 μηνών</string>
     <string name="maps_old_body">Δρόμοι και μέρη αλλάζουν. Ο υπολογιστής τον φτιάχνει ξανά από νέα δεδομένα του OpenStreetMap: Tetra › Ρυθμίσεις › Χάρτες.</string>
+    <string name="maps_welcome_title">Καλώς ήρθατε στους Χάρτες</string>
+    <string name="maps_welcome_intro">Το Tetra έρχεται χωρίς χάρτη, ώστε ο καθένας να έχει τον χάρτη που θέλει, χωρίς σύνδεση και δικό του. Τον φτιάχνετε μία φορά, στον υπολογιστή σας:</string>
+    <string name="maps_welcome_steps">1. Στον υπολογιστή, ανοίξτε το Tetra › Ρυθμίσεις › Χάρτες › Προσθήκη χάρτη.\n2. Διαλέξτε τη χώρα σας. Ο υπολογιστής χρειάζεται διαδίκτυο γι\' αυτό.\n3. Κρατήστε τον υπολογιστή ανοιχτό και στην πρίζα όσο φτιάχνεται ο χάρτης: λίγα λεπτά για μια μικρή χώρα, μία ώρα ή περισσότερο για μια μεγάλη.\n4. Κρατήστε ανοιχτό το Tetra σε αυτή τη συσκευή, στο ίδιο Wi-Fi με τον υπολογιστή: ο χάρτης έρχεται εδώ μόνος του.</string>
 </resources>

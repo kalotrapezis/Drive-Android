@@ -1557,7 +1557,6 @@
     <string name="maps_amea_parking">Loc ♿</string>
     <string name="maps_amea_placed">Loc ♿ plasat: %1$s</string>
     <string name="maps_no_map">Încă nu există nicio hartă pe acest dispozitiv</string>
-    <string name="maps_no_map_how">Hărțile se fac pe computer: Tetra de pe computer › Setări › Hărți › Adaugă o hartă, iar apoi Sincronizare le aduce aici, în Tetra/Maps.</string>
     <string name="maps_parked_here">Am parcat aici</string>
     <string name="maps_waiting_location">Se așteaptă locația…</string>
     <string name="maps_location_off">Locația este dezactivată pentru Tetra.</string>
@@ -4754,4 +4753,7 @@
     <string name="maps_old_channel">Hărți vechi</string>
     <string name="maps_old_title">Harta %1$s este mai veche de 3 luni</string>
     <string name="maps_old_body">Drumurile și locurile se schimbă. Computerul o reface din date OpenStreetMap proaspete: Tetra › Setări › Hărți.</string>
+    <string name="maps_welcome_title">Bun venit în Hărți</string>
+    <string name="maps_welcome_intro">Tetra vine fără hartă, ca fiecare să aibă harta pe care o vrea, offline și a lui. O faci o singură dată, pe computerul tău:</string>
+    <string name="maps_welcome_steps">1. Pe computer, deschide Tetra › Setări › Hărți › Adaugă o hartă.\n2. Alege-ți țara. Computerul are nevoie de internet pentru asta.\n3. Ține computerul pornit și conectat la priză cât timp se face harta: câteva minute pentru o țară mică, o oră sau mai mult pentru una mare.\n4. Ține Tetra deschisă pe acest dispozitiv, pe același Wi-Fi ca computerul: harta ajunge aici singură.</string>
 </resources>

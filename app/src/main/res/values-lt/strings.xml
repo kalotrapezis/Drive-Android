@@ -1600,7 +1600,6 @@
     <string name="maps_amea_parking">Neįgaliųjų stovėjimas</string>
     <string name="maps_amea_placed">Neįgaliųjų vieta pažymėta: %1$s</string>
     <string name="maps_no_map">Šiame įrenginyje dar nėra žemėlapio</string>
-    <string name="maps_no_map_how">Žemėlapiai kuriami kompiuteryje: Tetra kompiuteryje › Nustatymai › Žemėlapiai › Pridėti žemėlapį, o paskui Sinchronizavimas atneša juos čia, į Tetra/Maps.</string>
     <string name="maps_parked_here">Pastačiau čia</string>
     <string name="maps_waiting_location">Laukiama jūsų vietos…</string>
     <string name="maps_location_off">Tetra vietovė išjungta.</string>
@@ -4855,4 +4854,7 @@
     <string name="maps_old_channel">Seni žemėlapiai</string>
     <string name="maps_old_title">%1$s žemėlapis senesnis nei 3 mėnesių</string>
     <string name="maps_old_body">Keliai ir vietos keičiasi. Kompiuteris jį sukuria iš naujo iš naujų OpenStreetMap duomenų: Tetra › Nustatymai › Žemėlapiai.</string>
+    <string name="maps_welcome_title">Sveiki atvykę į Žemėlapius</string>
+    <string name="maps_welcome_intro">Tetra pateikiama be žemėlapio, kad kiekvienas gautų norimą žemėlapį, veikiantį be interneto ir tik savo. Jį sukuriate vieną kartą, savo kompiuteryje:</string>
+    <string name="maps_welcome_steps">1. Savo kompiuteryje atidarykite Tetra › Nustatymai › Žemėlapiai › Pridėti žemėlapį.\n2. Pasirinkite savo šalį. Tam kompiuteriui reikia interneto.\n3. Laikykite kompiuterį įjungtą ir prijungtą prie elektros tinklo, kol kuriamas žemėlapis: kelios minutės mažai šaliai, valanda ar ilgiau didelei.\n4. Laikykite Tetra atvirą šiame įrenginyje, tame pačiame Wi-Fi tinkle kaip ir kompiuteris: žemėlapis čia atkeliauja pats.</string>
 </resources>

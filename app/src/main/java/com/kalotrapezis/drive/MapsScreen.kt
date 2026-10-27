@@ -859,8 +859,10 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         if (mapFile.isFile) AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
         else Column(Modifier.align(Alignment.Center).padding(32.dp).widthIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(painterResource(R.drawable.ic_map), contentDescription = null, tint = MAPS_COLOR, modifier = Modifier.size(48.dp))
-            Text(stringResource(R.string.maps_no_map), style = MaterialTheme.typography.titleLarge)
-            Text(stringResource(R.string.maps_no_map_how), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Tetra comes without a map: a welcome that walks through making one on the computer (the user, 27 Oct)
+            Text(stringResource(R.string.maps_welcome_title), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.maps_welcome_intro), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.maps_welcome_steps), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         // bottom left: the speed limit as its sign, red when I am over it (by more than 3 km/h), my speed under it

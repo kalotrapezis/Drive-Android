@@ -1514,7 +1514,6 @@
     <string name="maps_amea_parking">Mozgáskorlátozott parkoló</string>
     <string name="maps_amea_placed">Mozgáskorlátozott hely elhelyezve: %1$s</string>
     <string name="maps_no_map">Ezen az eszközön még nincs térkép</string>
-    <string name="maps_no_map_how">A térképeket a számítógépen kell elkészíteni: Tetra a számítógépen › Beállítások › Térképek › Térkép hozzáadása, majd a(z) Szinkron idehozza őket a Tetra/Maps mappába.</string>
     <string name="maps_parked_here">Itt parkoltam</string>
     <string name="maps_waiting_location">Várakozás a helyzetedre…</string>
     <string name="maps_location_off">A helymeghatározás ki van kapcsolva a Tetrának.</string>
@@ -4653,4 +4652,7 @@
     <string name="maps_old_channel">Régi térképek</string>
     <string name="maps_old_title">%1$s térképe 3 hónapnál régebbi</string>
     <string name="maps_old_body">Az utak és a helyek változnak. A számítógép friss OpenStreetMap-adatokból újra elkészíti: Tetra › Beállítások › Térképek.</string>
+    <string name="maps_welcome_title">Üdvözlünk a Térképekben</string>
+    <string name="maps_welcome_intro">A Tetra térkép nélkül érkezik, hogy mindenki azt a térképet kapja, amit szeretne, offline és a sajátja. Egyszer készíted el, a számítógépeden:</string>
+    <string name="maps_welcome_steps">1. A számítógépeden nyisd meg a Tetra › Beállítások › Térképek › Térkép hozzáadása pontot.\n2. Válaszd ki az országodat. A számítógépnek ehhez internetre van szüksége.\n3. Tartsd bekapcsolva és hálózatra csatlakoztatva a számítógépet, amíg a térkép készül: pár perc egy kis országnál, egy óra vagy több egy nagynál.\n4. Tartsd nyitva a Tetra alkalmazást ezen az eszközön, a számítógéppel azonos Wi-Fi-hálózaton: a térkép magától ideér.</string>
 </resources>

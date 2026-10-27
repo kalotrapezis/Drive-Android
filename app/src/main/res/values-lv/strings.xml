@@ -1557,7 +1557,6 @@
     <string name="maps_amea_parking">♿ stāvvieta</string>
     <string name="maps_amea_placed">♿ vieta novietota: %1$s</string>
     <string name="maps_no_map">Šajā ierīcē vēl nav kartes</string>
-    <string name="maps_no_map_how">Kartes tiek izveidotas datorā: Tetra datorā › Iestatījumi › Kartes › Pievienot karti, pēc tam Sinhronizācija tās atnes šeit, mapē Tetra/Maps.</string>
     <string name="maps_parked_here">Novietoju auto šeit</string>
     <string name="maps_waiting_location">Gaida jūsu atrašanās vietu…</string>
     <string name="maps_location_off">Tetra atrašanās vieta ir izslēgta.</string>
@@ -4754,4 +4753,7 @@
     <string name="maps_old_channel">Vecas kartes</string>
     <string name="maps_old_title">%1$s karte ir vecāka par 3 mēnešiem</string>
     <string name="maps_old_body">Ceļi un vietas mainās. Dators to izveido no jauna no svaigiem OpenStreetMap datiem: Tetra › Iestatījumi › Kartes.</string>
+    <string name="maps_welcome_title">Laipni lūdzam Kartēs</string>
+    <string name="maps_welcome_intro">Tetra nāk bez kartes, lai katrs saņemtu karti, kādu vēlas, bezsaistē un savu. Jūs to izveidojat vienreiz, savā datorā:</string>
+    <string name="maps_welcome_steps">1. Savā datorā atveriet Tetra › Iestatījumi › Kartes › Pievienot karti.\n2. Izvēlieties savu valsti. Datoram tam vajadzīgs internets.\n3. Turiet datoru ieslēgtu un pieslēgtu elektrībai, kamēr karte tiek veidota: dažas minūtes mazai valstij, stunda vai ilgāk lielai.\n4. Turiet Tetra atvērtu šajā ierīcē, tajā pašā Wi-Fi tīklā, kurā ir dators: karte nonāk šeit pati.</string>
 </resources>

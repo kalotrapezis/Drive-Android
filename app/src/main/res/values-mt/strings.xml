@@ -1600,7 +1600,6 @@
     <string name="maps_amea_parking">Parkeġġ għal persuni b’diżabilità</string>
     <string name="maps_amea_placed">Post għal persuni b’diżabilità mqiegħed: %1$s</string>
     <string name="maps_no_map">Għad m\'hemm l-ebda mappa fuq dan l-apparat</string>
-    <string name="maps_no_map_how">Il-mappi jsiru fuq il-kompjuter: Tetra tal-kompjuter › Settings › Mapep › Żid mappa, u mbagħad Sinkronizza iġibhom hawn f\'Tetra/Maps.</string>
     <string name="maps_parked_here">Ipparkjajt hawn</string>
     <string name="maps_waiting_location">Qed nistenna l-pożizzjoni tiegħek…</string>
     <string name="maps_location_off">Il-pożizzjoni hi mitfija għal Tetra.</string>
@@ -4855,4 +4854,7 @@
     <string name="maps_old_channel">Mapep qodma</string>
     <string name="maps_old_title">Il-mappa ta’ %1$s hija eqdem minn 3 xhur</string>
     <string name="maps_old_body">It-toroq u l-postijiet jinbidlu. Il-kompjuter jerġa’ jagħmilha minn data friska ta’ OpenStreetMap: Tetra › Settings › Mappi.</string>
+    <string name="maps_welcome_title">Merħba fil-Mappi</string>
+    <string name="maps_welcome_intro">Tetra tiġi mingħajr mappa, biex kulħadd ikollu l-mappa li jrid, offline u tiegħu stess. Tagħmilha darba waħda, fuq il-kompjuter tiegħek:</string>
+    <string name="maps_welcome_steps">1. Fuq il-kompjuter tiegħek, iftaħ Tetra › Settings › Mapep › Żid mappa.\n2. Agħżel pajjiżek. Il-kompjuter jeħtieġ l-internet għal dan.\n3. Żomm il-kompjuter mixgħul u mqabbad mal-kurrent waqt li l-mappa tkun qed issir: ftit minuti għal pajjiż żgħir, siegħa jew aktar għal wieħed kbir.\n4. Żomm Tetra miftuħa fuq dan l-apparat, fuq l-istess Wi-Fi tal-kompjuter: il-mappa tasal hawn waħedha.</string>
 </resources>

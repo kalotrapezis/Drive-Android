@@ -1600,7 +1600,6 @@
     <string name="maps_amea_parking">Parkování pro ZTP</string>
     <string name="maps_amea_placed">Místo pro ZTP umístěno: %1$s</string>
     <string name="maps_no_map">V tomto zařízení zatím není žádná mapa</string>
-    <string name="maps_no_map_how">Mapy se vytvářejí v počítači: Tetra v počítači › Nastavení › Mapy › Přidat mapu, poté je Synchronizace přenese sem do Tetra/Maps.</string>
     <string name="maps_parked_here">Parkuji tady</string>
     <string name="maps_waiting_location">Čekání na vaši polohu…</string>
     <string name="maps_location_off">Poloha je pro Tetru vypnutá.</string>
@@ -4855,4 +4854,7 @@
     <string name="maps_old_channel">Staré mapy</string>
     <string name="maps_old_title">Mapa %1$s je starší než 3 měsíce</string>
     <string name="maps_old_body">Silnice a místa se mění. Počítač ji vytvoří znovu z čerstvých dat OpenStreetMap: Tetra › Nastavení › Mapy.</string>
+    <string name="maps_welcome_title">Vítejte v Mapách</string>
+    <string name="maps_welcome_intro">Tetra se dodává bez mapy, aby každý měl mapu, kterou chce, offline a vlastní. Vytvoříte ji jednou, na počítači:</string>
+    <string name="maps_welcome_steps">1. Na počítači otevřete Tetra › Nastavení › Mapy › Přidat mapu.\n2. Vyberte svou zemi. Počítač k tomu potřebuje internet.\n3. Nechte počítač zapnutý a zapojený do zásuvky, dokud se mapa vytváří: několik minut u malé země, hodinu i déle u velké.\n4. Nechte na tomto zařízení otevřenou aplikaci Tetra, ve stejné síti Wi-Fi jako počítač: mapa se sem dostane sama.</string>
 </resources>

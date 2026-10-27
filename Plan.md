@@ -12,7 +12,8 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
-- [~] (beta-release session, 27 Oct; branches `claude/admiring-pare-6a6a4a` here and `beta-release` in Drive, not merged, nothing pushed)
+- [~] (beta-release session, 27 Oct; branches `claude/admiring-pare-6a6a4a` here and `beta-release` in Drive; the site merged and pushed
+      27 Oct at the user's yes, live at kalotrapezis.github.io/Drive-Android in the 24 EU languages; packages not released)
       **The next beta for Linux and Android, and the site** (the user: "Are we ready to publish the new Beta For Linux and Android …
       AppImage for most Linux distros and Android 11+"; then, mid-way: "don't build packages yet just make the page"). Ready check:
       every finished branch is in main in both repos (Drive's old unmerged-looking branches are pre-scrub copies whose content is in
@@ -26,7 +27,11 @@ How to write here:
       user's stop, not published or installed**: Android 0.6.0-beta.3 (versionCode 14, release key 9D:FF:81…D3:97), desktop
       0.6.0-beta.31 .deb + AppImage (now on the static AppImage runtime: no libfuse2 needed; started and rendered from the AppImage,
       bundled Java 17 and Python+osmium run; a route from inside it not finished). Open: the release APK not run on a device; the
-      Greek site text reviewed by no native reader beyond this session; publishing (merge, push, release) waits for the user.
+      Greek site text reviewed by no native reader beyond this session. Then (the user): the 22 other EU languages (Haiku, from
+      tools/site-strings.py's phrase lists, kept in tools/site-strings/), the browser's language chosen on the English page (not the
+      country: nothing is sent anywhere), downloads grouped under the Android robot (with a QR code to the APK, to be remade at each
+      release) and the Linux penguin, and Questions (first: installing an app from outside the Play Store). Unchecked by native readers:
+      Android's install-screen and GNOME Files words in the FAQ, Maltese most of all.
 - [x] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive, not merged) **Routes across
       borders on each country's own graph, through the border crossings** (the user: "When we have both the neighbouring maps, it should
       be able to cross the border"; then "Drive to the edge and then start from the other edge"; "at the border … the main road", not

@@ -5,19 +5,22 @@
 # and the search list and addresses (greece-places.tsv, greece-addresses.tsv), the lanes (greece-lanes.tsv) and the area
 # codes' places for the Phone (greece-phone.tsv).
 # Long and heavy: ~0.5 GB + 0.35 GB of downloads, then several minutes and ~4 GB of memory for the graph.
-# Usage: tools/maps-greece.sh [out-dir]   (default ~/Tetra-maps; MAXZOOM=15 by default)
+# Usage: tools/maps-greece.sh [out-dir]   (default ~/Tetra/.System/Maps/Data; MAXZOOM=15 by default)
+# The tools (pmtiles, GraphHopper, Python's osmium) are the desktop map builder's, in ~/Tetra/.System/Maps/Tools
+# (Drive's desktop/SYSTEM.md); TOOLS=<dir> puts them elsewhere.
 set -euo pipefail
 HERE=$(dirname "$(readlink -f "$0")")
-OUT=${1:-$HOME/Tetra-maps}
+OUT=${1:-$HOME/Tetra/.System/Maps/Data}
+TOOLS=${TOOLS:-$HOME/Tetra/.System/Maps/Tools}
 MAXZOOM=${MAXZOOM:-15}
 PMTILES_VERSION=1.31.2
-mkdir -p "$OUT/bin"
+mkdir -p "$OUT" "$TOOLS"
 cd "$OUT"
 
-if [ ! -x bin/pmtiles ]; then
+if [ ! -x "$TOOLS/pmtiles" ]; then
   t=go-pmtiles_${PMTILES_VERSION}_Linux_x86_64.tar.gz
-  curl -fL -o "bin/$t" "https://github.com/protomaps/go-pmtiles/releases/download/v$PMTILES_VERSION/$t"
-  tar xzf "bin/$t" -C bin pmtiles && rm "bin/$t"
+  curl -fL -o "$TOOLS/$t" "https://github.com/protomaps/go-pmtiles/releases/download/v$PMTILES_VERSION/$t"
+  tar xzf "$TOOLS/$t" -C "$TOOLS" pmtiles && rm "$TOOLS/$t"
 fi
 
 # Greece's border (Geofabrik's .poly, which includes the sea around the islands) as GeoJSON for pmtiles extract
@@ -40,7 +43,7 @@ EOF
 if [ ! -f greece.pmtiles ]; then
   build=$(curl -fs https://build-metadata.protomaps.dev/builds.json | python3 -I -c "import json,sys; print(json.load(sys.stdin)[-1]['key'])")
   echo "Protomaps build $build, maxzoom $MAXZOOM"
-  bin/pmtiles extract "https://build.protomaps.com/$build" greece.pmtiles.part --region=greece.geojson --maxzoom="$MAXZOOM" --download-threads=4
+  "$TOOLS/pmtiles" extract "https://build.protomaps.com/$build" greece.pmtiles.part --region=greece.geojson --maxzoom="$MAXZOOM" --download-threads=4
   mv greece.pmtiles.part greece.pmtiles
   echo "$build" > greece.pmtiles.build
 fi
@@ -53,33 +56,33 @@ fi
 
 # a new graph is built beside the old one and swapped in when whole (REBUILD=1 makes a new one when one is there)
 if [ ! -f greece-gh/properties ] || [ "${REBUILD:-0}" = 1 ]; then
-  [ -f bin/graphhopper-web-10.2.jar ] || curl -fL -o bin/graphhopper-web-10.2.jar https://github.com/graphhopper/graphhopper/releases/download/10.2/graphhopper-web-10.2.jar
+  [ -f "$TOOLS/graphhopper-web-10.2.jar" ] || curl -fL -o "$TOOLS/graphhopper-web-10.2.jar" https://github.com/graphhopper/graphhopper/releases/download/10.2/graphhopper-web-10.2.jar
   rm -rf greece-gh.new
   "${JAVA:-/usr/lib/jvm/java-17-openjdk-amd64/bin/java}" -Xmx${GH_HEAP:-4g} -Ddw.graphhopper.graph.location=greece-gh.new \
-    -jar bin/graphhopper-web-10.2.jar import "$HERE/maps-graph.yml"
+    -jar "$TOOLS/graphhopper-web-10.2.jar" import "$HERE/maps-graph.yml"
   rm -f greece-gh.new/gh.lock
   rm -rf greece-gh.old; [ -d greece-gh ] && mv greece-gh greece-gh.old; mv greece-gh.new greece-gh; rm -rf greece-gh.old
 fi
 
 # the offline search list: towns and the kinds of place Search's pills find (tools/maps-places.py)
 if [ ! -f greece-addresses.tsv ] || [ greece-latest.osm.pbf -nt greece-places.tsv ]; then
-  [ -x venv/bin/python ] || { python3 -m venv venv && venv/bin/pip install -q osmium; }
-  venv/bin/python -I "$HERE/maps-places.py" greece-latest.osm.pbf greece-places.tsv greece-addresses.tsv greece-streets.tsv
+  [ -x "$TOOLS/venv/bin/python" ] || { python3 -m venv "$TOOLS/venv" && "$TOOLS/venv/bin/pip" install -q osmium; }
+  "$TOOLS/venv/bin/python" -I "$HERE/maps-places.py" greece-latest.osm.pbf greece-places.tsv greece-addresses.tsv greece-streets.tsv
 fi
 
 # the lane arrows before turns, for lane guidance (tools/maps-lanes.py)
 if [ ! -f greece-lanes.tsv ] || [ greece-latest.osm.pbf -nt greece-lanes.tsv ]; then
-  venv/bin/python -I "$HERE/maps-lanes.py" greece-latest.osm.pbf greece-lanes.tsv
+  "$TOOLS/venv/bin/python" -I "$HERE/maps-lanes.py" greece-latest.osm.pbf greece-lanes.tsv
 fi
 
 # the Phone's places of Greece's area codes (tools/maps-phone.py, libphonenumber's data); a failed fetch keeps the last table
 python3 -I "$HERE/maps-phone.py" GR greece-phone.tsv || echo "The phone table not refreshed"
 # EOPYY's own pharmacies, from EOPYY's site (tools/maps-eopyy.py); a failed fetch keeps the last list
-venv/bin/python -I "$HERE/maps-eopyy.py" greece-eopyy.tsv || echo "EOPYY's list not refreshed"
+"$TOOLS/venv/bin/python" -I "$HERE/maps-eopyy.py" greece-eopyy.tsv || echo "EOPYY's list not refreshed"
 # cities' own disabled (ΑμεΑ) parking spots from data.gov.gr (tools/maps-amea.py); a failed fetch keeps the last list
-venv/bin/python -I "$HERE/maps-amea.py" greece-amea.tsv || echo "The ΑμεΑ spots not refreshed"
+"$TOOLS/venv/bin/python" -I "$HERE/maps-amea.py" greece-amea.tsv || echo "The ΑμεΑ spots not refreshed"
 # the ΑμεΑ spots in the municipalities' decisions (Διαύγεια): the sure ones placed, the rest a list to place by hand
 python3 -I "$HERE/maps-diavgeia.py" . || echo "Διαύγεια not refreshed"
 
-bin/pmtiles show greece.pmtiles | head -20
+"$TOOLS/pmtiles" show greece.pmtiles | head -20
 ls -lh "$OUT"

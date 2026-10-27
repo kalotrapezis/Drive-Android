@@ -12,6 +12,13 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (system-folder session, 27 Oct; branches `system-folder` in Drive and `claude/system-folder` here; not merged, not pushed)
+      **One hidden ~/Tetra/.System** (the user: "gather all of these under one system folder, and make it hidden: .System"; "every
+      app/data, app/core, app/user"; "the builder … clean up after itself, every time the same way"). Desktop system.js makes every
+      path: .System/<App>/{Data,Tools,Cache,Temp}, rules in Drive's desktop/SYSTEM.md. ~/Tetra-maps → Maps/Data (bin → Maps/Tools,
+      geofabrik-index.json → Maps/Cache), ~/Tetra-backups → Backups/Data, moved by rename at the first start of the new desktop.
+      The map builder cleans its Temp and half-copied files however a build ends. Reset keeps .System; sync never sees it.
+      tools/maps-greece.sh and MapsTest read the new paths. Waiting: the user's review and merge.
 - [~] (beta-release session, 27 Oct; branches `claude/admiring-pare-6a6a4a` here and `beta-release` in Drive; the site merged and pushed
       27 Oct at the user's yes, live at kalotrapezis.github.io/Drive-Android in the 24 EU languages; packages not released)
       **The next beta for Linux and Android, and the site** (the user: "Are we ready to publish the new Beta For Linux and Android …
@@ -38,7 +45,7 @@ How to write here:
       "through the fields"; "three or more one by one so we don't need AI level of memory"). Replaces the pair graphs merged earlier today
       (`<a>_<b>-gh`, hours to build, 786 MB each). The desktop map builder's step **borders** (after install, seconds) writes
       `<a>_<b>-crossings.tsv` for each neighbour (Geofabrik .poly borders that meet), and for any two maps here that have none yet, so one
-      Remake joins maps made before: maps-tools/maps-crossings.py reads both regions' .osm.pbf (kept in ~/Tetra-maps/osm, else downloaded
+      Remake joins maps made before: maps-tools/maps-crossings.py reads both regions' .osm.pbf (kept in ~/Tetra/.System/Maps/Data/osm, else downloaded
       again) — the barrier=border_control points on car roads both hold, else (an open border) their main roads, up to four points a
       crossing (a station's lanes: one point on the wrong lane turned the route round). Routing (Android MapsFiles.legs + MapsRouting.routes,
       desktop maps.legs + main.js maps:route): within one map exactly as before; else the maps on the way (fewest borders, any number),
@@ -54,7 +61,7 @@ How to write here:
         maps, it should be able to cross the border"; then: one graph of every map "would need a supercomputer", "break it into pieces",
         "use all the cores", "1 to several hours … please be patient", "if it's some 4 GB potato, grey it out"). **One graph a pair of
         neighbours**, `<a>_<b>-gh` in Files/Maps (ids sorted: greece_macedonia-gh). Desktop map builder: a step **borders** after install;
-        neighbours are the maps here whose Geofabrik .poly meets the new one's (kept in ~/Tetra-maps/osm with each region's .osm.pbf;
+        neighbours are the maps here whose Geofabrik .poly meets the new one's (kept in ~/Tetra/.System/Maps/Data/osm with each region's .osm.pbf;
         Greece's pbf: maps-greece.sh's); each pair streamed together (maps-tools/maps-merge.py, pyosmium zip_processors: 3.5 min, 330 MB
         for GR+MK) and imported with every core; each pair its own .done mark (Try again goes on at the next pair); a pair needing more
         than 60% of the computer's memory (12 × both files) is left out with a line saying so. The wizard says beforehand that the map is
@@ -158,7 +165,7 @@ How to write here:
       Remove) and the wizard: credits with Donate (OpenStreetMap, Protomaps, MapLibre; GraphHopper, Geofabrik linked), a
       country or region of Geofabrik's list (download size, memory needed, its parts when too big), the system packages it
       lacks (openjdk-17-jre-headless, python3-pyosmium) explained with Install — pkexec's own password window — and "I don't
-      want", the steps with progress, done; pmtiles and the GraphHopper jar fetched into ~/Tetra-maps/bin. Desktop maps.js,
+      want", the steps with progress, done; pmtiles and the GraphHopper jar fetched into ~/Tetra/.System/Maps/Tools. Desktop maps.js,
       main.js: a source a map (layers interleaved), search/addresses/streets of every map, routing on the map the route
       starts in. Android: MapsFiles.ids/maps/graphAt/lists/removeMap, mapStyle over every map, the camera over them all,
       Settings › Maps lists each map with Remove. 24 languages both sides. Tests: MapsPacksTest, test/mapbuild.test.js.
@@ -454,7 +461,7 @@ How to write here:
 - [-] (the user, 20 Oct: "no map scrap it the app will get 2GB") **Maps** (§ Maps below): dropped; worktree and branch `maps` removed.
 - [~] (maps-link session, 21 Oct) **Maps restarted** (the user, 21 Oct: "I changed my mind start buidlding the map applet";
       "we may transfer this map to the desktop as well"): branch `maps`, worktree Drive-Android-worktrees/maps; step 1's
-      files downloaded to ~/Tetra-maps by tools/maps-greece.sh (§ Maps below): greece.pmtiles 485 MB (Protomaps
+      files downloaded to ~/Tetra/.System/Maps/Data by tools/maps-greece.sh (§ Maps below): greece.pmtiles 485 MB (Protomaps
       20261021, zoom 0–15, Geofabrik's Greece border) and greece-latest.osm.pbf 327 MB (md5 checked), ~3 min.
 - [x] (maps-link session, 21 Oct) Timer: its waste files cleared (the user, 21 Oct: "some kind of a garbige collector be cause
       the timer app creates a lot of duplicat files what is nessesary and what is waste … on the phone I dont know about the
@@ -540,7 +547,7 @@ How to write here:
       (tools/maps-lanes.py → greece-lanes.tsv in Tetra/Maps): a lane strip, "από τη δεξιά λωρίδα", "Συνεχίστε ευθεία" for a
       keep along the through lanes; exits warned at 3 km and "take the exit" where its lane begins. Not yet driven.
 - [x] (a9d9756, 23 Oct) Maps drive traces (files/logs/drive, 7 days, Settings › Maps › Send log), richer navigation log
-      lines, MapsGuide.guide shared by car, phone and MapsReplayTest (traces in ~/Tetra-maps/traces are replayed).
+      lines, MapsGuide.guide shared by car, phone and MapsReplayTest (traces in ~/Tetra/.System/Maps/Data/traces are replayed).
 - [x] (fd304b1, 66bdce9, 6ad773a, 23 Oct) Android Auto tried with the user on the head unit: the first route no longer
       waits 22 s for the search list (tolls from their own lines); camera by speed and what is ahead (carView), car low on
       the screen; crossing square under ⚙ / in the corner; cards at the edges, bottom card icons in one row; bigger arrow;
@@ -2398,7 +2405,7 @@ places as GeoJSON. License note: GraphHopper and AndroidSVG are Apache-2.0 besid
       the phone's light style, fonts and sprites), Search with the phone's pills (accent-blind, Greeklish, a kind in a named
       town, what is in view on Enter), a place's card (address, hours, phone, website, wheelchair, Nearby, Google Maps), saved
       places with the phone's emblems, Home slots 1–12 and lists, trips planned on the computer (A, B, C…) for the phone to drive,
-      and directions by road on the computer: GraphHopper 10.2's server (Java 17 + ~/Tetra-maps/bin/graphhopper-web-10.2.jar)
+      and directions by road on the computer: GraphHopper 10.2's server (Java 17 + ~/Tetra/.System/Maps/Tools/graphhopper-web-10.2.jar)
       on the phone's graph, memory-mapped read-only through a folder of links in the app's data, so no lock file reaches the
       synced greece-gh. Each leg's km and time (car × 1.2, as the phone), Car / Walk / Bike. Maps hidden in Files' lists.
 - [ ] Later: the desktop app builds and refreshes the files monthly by itself; a `tetra-maps` skill; desktop directions

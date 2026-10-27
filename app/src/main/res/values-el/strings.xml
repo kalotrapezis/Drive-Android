@@ -1206,6 +1206,11 @@
     <string name="notes_history_note">Η σημείωση όπως ήταν πριν από την τελευταία σας αλλαγή και όπως την αφήσατε — οι τρεις πιο πρόσφατες. Η επαναφορά κρατά και την τρέχουσα.</string>
     <string name="notes_no_versions">Δεν υπάρχουν εκδόσεις ακόμα.</string>
     <string name="notes_untitled">Χωρίς τίτλο</string>
+    <string name="notes_export_markdown">Εξαγωγή σε Markdown</string>
+    <string name="notes_export_hint">Οι αρχειοθετημένες σημειώσεις και όσες είναι στον Κάδο δεν εξάγονται.</string>
+    <string name="notes_exported">Σημειώσεις που εξήχθησαν: %1$d</string>
+    <string name="notes_note_exported">Η σημείωση εξήχθη</string>
+    <string name="notes_export_not_here">Επιλέξτε φάκελο σε αυτή τη συσκευή.</string>
     <string name="notes_item_done">Ολοκληρώθηκε</string>
     <string name="notes_item_not_done">Δεν ολοκληρώθηκε</string>
     <string name="notes_remove_item">Αφαίρεση στοιχείου</string>

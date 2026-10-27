@@ -1273,6 +1273,11 @@
     <string name="notes_history_note">Užrašas, koks buvo prieš paskutinį pakeitimą ir kokį palikote – trys naujausi. Atkūrus išlaikomas ir dabartinis.</string>
     <string name="notes_no_versions">Versijų dar nėra.</string>
     <string name="notes_untitled">Be pavadinimo</string>
+    <string name="notes_export_markdown">Eksportuoti kaip Markdown</string>
+    <string name="notes_export_hint">Archyvuoti ir šiukšlinėje esantys užrašai neeksportuojami.</string>
+    <string name="notes_exported">Eksportuoti užrašai: %1$d</string>
+    <string name="notes_note_exported">Užrašas eksportuotas</string>
+    <string name="notes_export_not_here">Pasirinkite aplanką šiame įrenginyje.</string>
     <string name="notes_item_done">Atlikta</string>
     <string name="notes_item_not_done">Neatlikta</string>
     <string name="notes_remove_item">Pašalinti elementą</string>

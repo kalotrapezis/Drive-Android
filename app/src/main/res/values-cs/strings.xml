@@ -1273,6 +1273,11 @@
     <string name="notes_history_note">Poznámka, jak byla před poslední změnou a jak jste ji opustili — nejnovější tři. Obnovení ponechá i tu současnou.</string>
     <string name="notes_no_versions">Zatím žádné verze.</string>
     <string name="notes_untitled">Bez názvu</string>
+    <string name="notes_export_markdown">Exportovat jako Markdown</string>
+    <string name="notes_export_hint">Archivované poznámky a poznámky v koši se neexportují.</string>
+    <string name="notes_exported">Exportované poznámky: %1$d</string>
+    <string name="notes_note_exported">Poznámka exportována</string>
+    <string name="notes_export_not_here">Zvolte složku v tomto zařízení.</string>
     <string name="notes_item_done">Hotovo</string>
     <string name="notes_item_not_done">Nehotovo</string>
     <string name="notes_remove_item">Odebrat položku</string>

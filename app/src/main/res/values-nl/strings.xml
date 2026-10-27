@@ -1207,6 +1207,11 @@
     <string name="notes_history_note">De notitie zoals ze was voordat je haar het laatst wijzigde, en zoals je haar achterliet — de nieuwste drie. Bij terugzetten blijft de huidige ook bewaard.</string>
     <string name="notes_no_versions">Nog geen versies.</string>
     <string name="notes_untitled">Naamloos</string>
+    <string name="notes_export_markdown">Exporteren als Markdown</string>
+    <string name="notes_export_hint">Gearchiveerde notities en notities in de prullenbak worden niet geëxporteerd.</string>
+    <string name="notes_exported">Notities geëxporteerd: %1$d</string>
+    <string name="notes_note_exported">Notitie geëxporteerd</string>
+    <string name="notes_export_not_here">Kies een map op dit apparaat.</string>
     <string name="notes_item_done">Klaar</string>
     <string name="notes_item_not_done">Niet klaar</string>
     <string name="notes_remove_item">Item verwijderen</string>

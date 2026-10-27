@@ -1240,6 +1240,11 @@
     <string name="notes_history_note">Bilješka kakva je bila prije zadnje promjene i kakvu ste je ostavili — najnovije tri. Vraćanje zadržava i trenutačnu.</string>
     <string name="notes_no_versions">Još nema verzija.</string>
     <string name="notes_untitled">Bez naslova</string>
+    <string name="notes_export_markdown">Izvezi kao Markdown</string>
+    <string name="notes_export_hint">Arhivirane bilješke i bilješke u otpadu ne izvoze se.</string>
+    <string name="notes_exported">Izvezene bilješke: %1$d</string>
+    <string name="notes_note_exported">Bilješka izvezena</string>
+    <string name="notes_export_not_here">Odaberite mapu na ovom uređaju.</string>
     <string name="notes_item_done">Gotovo</string>
     <string name="notes_item_not_done">Nije gotovo</string>
     <string name="notes_remove_item">Ukloni stavku</string>

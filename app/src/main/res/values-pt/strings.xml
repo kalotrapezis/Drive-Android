@@ -1240,6 +1240,11 @@
     <string name="notes_history_note">A nota como estava antes da última alteração e como a deixou — as três mais recentes. Restaurar mantém também a atual.</string>
     <string name="notes_no_versions">Ainda não há versões.</string>
     <string name="notes_untitled">Sem título</string>
+    <string name="notes_export_markdown">Exportar como Markdown</string>
+    <string name="notes_export_hint">As notas arquivadas e as do lixo não são exportadas.</string>
+    <string name="notes_exported">Notas exportadas: %1$d</string>
+    <string name="notes_note_exported">Nota exportada</string>
+    <string name="notes_export_not_here">Escolha uma pasta neste dispositivo.</string>
     <string name="notes_item_done">Concluído</string>
     <string name="notes_item_not_done">Não concluído</string>
     <string name="notes_remove_item">Remover item</string>

@@ -120,6 +120,17 @@ private val accents = Regex("\\p{M}")
 private fun fold(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(accents, "").lowercase()
 private fun searchText(n: Note) = fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" "))
 
+/**
+ * The folder the system's picker gave, as a path: Tetra has access to all files, so it writes there itself and each
+ * file keeps its note's time, which the picker's own way of writing cannot set.
+ * shortcut: a cloud app's folder is refused rather than written through the picker; add DocumentsContract writes if one is wanted.
+ */
+private fun treeFolder(uri: android.net.Uri): File? {
+    if (uri.authority != "com.android.externalstorage.documents") return null
+    val (volume, path) = android.provider.DocumentsContract.getTreeDocumentId(uri).split(':', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+    return File(if (volume == "primary") Environment.getExternalStorageDirectory() else File("/storage", volume), path)
+}
+
 /** `start`: true opens a new checklist, false a new note, null the list (the home card's three doors). */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -166,6 +177,18 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
         open = withContext(Dispatchers.IO) { store.create(checklist, listOfNotNull(label)) }
     }
     LaunchedEffect(start) { if (hasAccess && start != null) create(start) }
+    // Export as Markdown (the user, 27 Oct): every note but the archived and the trashed, into a folder the person picks
+    val exportAll = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val dir = uri?.let(::treeFolder)
+        if (uri != null && dir == null) message = context.getString(R.string.notes_export_not_here)
+        else if (dir != null) scope.launch {
+            message = withContext(Dispatchers.IO) { runCatching {
+                val kept = store.whole(store.list().filter { it.trashedAt == null && it.archivedAt == null }.map { it.id })
+                NoteExport.files(kept, context.getString(R.string.notes_untitled)).forEach { f -> File(dir, f.path).apply { parentFile?.mkdirs(); writeText(f.text); setLastModified(f.at) } }
+                context.getString(R.string.notes_exported, kept.size)
+            }.getOrElse { context.getString(R.string.settings_not_exported, it.message ?: it.javaClass.simpleName) } }
+        }
+    }
     LaunchedEffect(message) { if (message != null) { delay(3000); message = null } }
 
     if (!hasAccess) {
@@ -313,6 +336,10 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                     LabelRow(stringResource(R.string.notes_all), null, label == null) { label = null; drawer = false }
                     labels.forEach { (l, count) -> LabelRow(l, count, label == l) { label = l; drawer = false } }
                 }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                DriveWideAction(R.drawable.ic_file_text, stringResource(R.string.notes_export_markdown)) { drawer = false; exportAll.launch(null) }
+                Text(stringResource(R.string.notes_export_hint), style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f), modifier = Modifier.padding(horizontal = 22.dp))
             }
         }
     }
@@ -463,6 +490,26 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
         NotesSync.soon(context, 500)
         onClose(saved, said)
     }
+    // Export as Markdown: this note as it is on screen, one .md saved where the person picks
+    var exporting by remember { mutableStateOf<NoteExport.Out?>(null) }
+    val exportOne = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
+        val out = exporting ?: return@rememberLauncherForActivityResult
+        exporting = null
+        if (uri != null) scope.launch {
+            val said = withContext(Dispatchers.IO) { runCatching {
+                context.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(out.text.toByteArray()) }
+                OfficeOpen.localPath(uri, Environment.getExternalStorageDirectory())?.setLastModified(out.at) // a cloud app's file keeps its own time
+                context.getString(R.string.notes_note_exported)
+            }.getOrElse { context.getString(R.string.settings_not_exported, it.message ?: it.javaClass.simpleName) } }
+            android.widget.Toast.makeText(context, said, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    fun export() {
+        val now = initial.copy(title = title, content = body.text, items = items, labels = labels, updatedAt = if (changed) System.currentTimeMillis() else initial.updatedAt)
+        val (name, text) = NoteExport.markdown(now, context.getString(R.string.notes_untitled))
+        exporting = NoteExport.Out("$name.md", text, now.updatedAt)
+        exportOne.launch("$name.md")
+    }
     fun archive() { if (archived) { archived = false; meta { it.remove("archivedAt") } } else leave(context.getString(R.string.notes_note_archived)) { it.put("archivedAt", System.currentTimeMillis()) } }
     fun toTrash() { leave(context.getString(R.string.notes_note_trashed)) { it.put("trashedAt", System.currentTimeMillis()) } }
     fun format(f: (NoteFormat.Edit) -> NoteFormat.Edit) {
@@ -586,6 +633,7 @@ private fun NoteEditor(store: NotesStore, initial: Note, onClose: (Note?, String
                 Box(Modifier.weight(1f)) { DriveWideAction(if (archived) R.drawable.ic_unarchive else R.drawable.ic_archive, stringResource(if (archived) R.string.notes_unarchive else R.string.notes_archive)) { tools = false; archive() } }
                 Box(Modifier.weight(1f)) { DriveWideAction(R.drawable.ic_delete, stringResource(R.string.notes_trash)) { tools = false; toTrash() } }
             }
+            DriveWideAction(R.drawable.ic_file_text, stringResource(R.string.notes_export_markdown)) { tools = false; export() }
         }
     }
 

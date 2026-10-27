@@ -1306,6 +1306,11 @@
     <string name="notes_history_note">An nóta mar a bhí sé sular athraigh tú é, agus mar a d’fhág tú é — an trí is nuaí. Coinníonn athchóiriú an ceann reatha freisin.</string>
     <string name="notes_no_versions">Níl leaganacha ann fós.</string>
     <string name="notes_untitled">Gan teideal</string>
+    <string name="notes_export_markdown">Easpórtáil mar Markdown</string>
+    <string name="notes_export_hint">Ní easpórtáiltear nótaí cartlannaithe ná nótaí sa bhruscar.</string>
+    <string name="notes_exported">Nótaí easpórtáilte: %1$d</string>
+    <string name="notes_note_exported">Nóta easpórtáilte</string>
+    <string name="notes_export_not_here">Roghnaigh fillteán ar an ngléas seo.</string>
     <string name="notes_item_done">Déanta</string>
     <string name="notes_item_not_done">Gan déanamh</string>
     <string name="notes_remove_item">Bain an mír</string>

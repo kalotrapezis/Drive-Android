@@ -388,7 +388,7 @@
     <string name="settings_imported">Iompórtáladh</string>
     <string name="settings_imported_shared">%1$d áit agus %2$d breiseanna léarscáile; %3$d cheana féin anseo nó gan suíomh.</string>
     <string name="settings_not_placed">Níorbh fhéidir na cinn seo a chur ar an léarscáil — cuardaigh iad i Léarscáileanna agus Sábháil:</string>
-    <string name="settings_installed_maps_note">Déantar léarscáileanna ar an ríomhaire agus tagann siad anseo le Sioncrónú, isteach i Tetra/Maps: íoslódálann tools/maps-greece.sh léarscáil is nuaí na Gréige agus tógann sé an bealach-aimsiú di (tá cnaipe Nuashonraigh i Tetra deisce beartaithe).</string>
+    <string name="settings_installed_maps_note">Déantar léarscáil gach tíre ar an ríomhaire, in Tetra ar an ríomhaire › Socruithe › Léarscáileanna › Cuir léarscáil leis. Tugann Sioncrónú anseo í, isteach i Tetra/Maps.</string>
     <string name="settings_problems">Fadhbanna</string>
     <string name="settings_send_log_summary">Logaí Tetra agus rianta do thiomáintí le 7 lá anuas, mar chomhad zip amháin; fanann siad ar an ngléas seo go dtí go seolann tú iad</string>
     <string name="settings_contacts_note">Is comhaid iad do theagmhálacha i Tetra/Contacts, ceann in aghaidh an duine: sioncrónaíonn siad leis an ríomhaire, áit a dtaispeánann Teagmhálacha iad freisin.</string>
@@ -1638,7 +1638,7 @@
     <string name="maps_my_car">Mo charr</string>
     <string name="maps_parking_saved">Páirceáil sábháilte</string>
     <string name="maps_on_car_screen">Ar scáileán an chairr: %1$s</string>
-    <string name="maps_no_graph">Níl graf bealaí fós: cuir greece-gh i Tetra/Maps (cruthaíonn tools/maps-greece.sh de ríomhaire é).</string>
+    <string name="maps_no_graph">Níl aon bhóithre ag an léarscáil seo fós le haghaidh treoracha: nuashonraigh í in Tetra ar an ríomhaire › Socruithe › Léarscáileanna.</string>
     <string name="maps_finding">Ag aimsiú an bhealaigh…</string>
     <string name="maps_no_way_graph">Níor aimsíodh bealach: níorbh fhéidir an graf bealaí a léamh</string>
     <string name="maps_arrived">Ar shroich: %1$s</string>
@@ -1646,8 +1646,8 @@
     <string name="maps_dropped_pin">Pionna curtha</string>
     <string name="maps_amea_parking">Páirceáil do dhaoine faoi mhíchumas</string>
     <string name="maps_amea_placed">Spota páirceála do dhaoine faoi mhíchumas curtha: %1$s</string>
-    <string name="maps_no_map">Níl léarscáil na Gréige ar an ngléas seo fós</string>
-    <string name="maps_no_map_how">Tagann sí ón ríomhaire: cruthaíonn tools/maps-greece.sh greece.pmtiles (thart ar 500 MB) agus an graf bealaí greece-gh, agus tugann Sioncrónú Áitiúil go Tetra/Maps iad anseo.</string>
+    <string name="maps_no_map">Níl aon léarscáil ar an ngléas seo fós</string>
+    <string name="maps_no_map_how">Déantar léarscáileanna ar an ríomhaire: Tetra ar an ríomhaire › Socruithe › Léarscáileanna › Cuir léarscáil leis, agus ansin tugann Sioncrónú anseo iad isteach i Tetra/Maps.</string>
     <string name="maps_parked_here">Pháirceáil mé anseo</string>
     <string name="maps_waiting_location">Ag fanacht le do shuíomh…</string>
     <string name="maps_location_off">Tá suíomh as do Tetra.</string>
@@ -1742,7 +1742,7 @@
     <string name="car_map">Léarscáil</string>
     <string name="car_places">Áiteanna</string>
     <string name="car_allow_location">Oscail Tetra Maps ar an ngutháin uair amháin chun suíomh a cheadú</string>
-    <string name="car_no_map">Níl léarscáil ann fós: tagann greece.pmtiles ón ríomhaire isteach i Tetra/Maps</string>
+    <string name="car_no_map">Níl aon léarscáil fós: déan ceann in Tetra ar an ríomhaire › Socruithe › Léarscáileanna</string>
     <string name="car_end">Críochnaigh</string>
     <string name="car_routes">Bealaí</string>
     <string name="car_add_stop_button">Stad</string>
@@ -1784,10 +1784,6 @@
         <item quantity="many">%1$d toll</item>
         <item quantity="other">%1$d toll</item>
     </plurals>
-    <string name="maps_installed_map">Léarscáil na Gréige</string>
-    <string name="maps_installed_routing">Bealaí (carr, siúl, rothar)</string>
-    <string name="maps_installed_places">Áiteanna sábháilte</string>
-    <string name="maps_installed_not_yet">níl anseo fós</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Ceanáin</string>
@@ -2163,16 +2159,6 @@
     <string name="phone_channel_where_about">Fiafraíonn Léarscáileanna an ríomhaire cá bhfuil an guthán seo</string>
     <string name="phone_where_title">Fiafraíonn an ríomhaire cá bhfuil an guthán seo</string>
     <string name="phone_where_text">Tapáil chun an suíomh a sheoladh chuige</string>
-    <string name="phone_area_athens">Athens</string>
-    <string name="phone_area_thessaloniki">Thessaloniki</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Heraklion</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Syros</string>
-    <string name="phone_area_chania">Chania</string>
     <string name="phone_area_abroad">Thar lear</string>
     <string name="phone_area_landline">Líne sheasta</string>
     <string name="phone_reply_cant_talk">Ní féidir liom labhairt anois. Glaoidh mé ort ar ais.</string>
@@ -2212,8 +2198,6 @@
     <string name="phone_not_spam">Ní spam</string>
     <string name="phone_ringtone_default">Réamhshocrú</string>
     <string name="phone_ringtone">Fuaim ghlaoigh: %1$s</string>
-    <string name="phone_spam_title">Spam agus gan iarraidh</string>
-    <string name="phone_spam_hint">Diúltaítear glaonna ó iad seo sula mbuaileann siad, ar an ngutháin seo; an liosta céanna atá ar an tabléad agus ar an ríomhaire. Tógann * ag an deireadh raon iomlán (69800*).</string>
     <string name="phone_spam_placeholder">Uimhir, nó 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d roghnaithe</item>
@@ -4870,4 +4854,21 @@
     <string name="pdf_no_bookmarks">Gan leabharmharcanna sa chomhad seo.</string>
     <string name="pdf_page_lower">leathanach %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="phone_blocking">Bacadh glaonna</string>
+    <string name="phone_blocking_about">Uimhreacha agus raonta nach dteastaíonn, agus na glaonna a bacadh</string>
+    <string name="phone_raise_answer">Ardaigh chun freagairt</string>
+    <string name="phone_raise_answer_about">Ardaigh fón atá ag bualadh chuig do chluas chun é a fhreagairt.</string>
+    <string name="phone_flip_silence">Iompaigh chun ciúnú</string>
+    <string name="phone_flip_silence_about">Iompaigh fón atá ag bualadh bunoscionn chun é a chiúnú.</string>
+    <string name="phone_unblock">Díbhac</string>
+    <string name="phone_blocking_hint">Diúltaítear do na huimhreacha a chuirtear anseo sula mbuaileann siad, ar an bhfón, ar an táibléad agus ar an ríomhaire. Clúdaíonn * ag an deireadh raon iomlán (69800*).</string>
+    <string name="phone_blocked_notify">Fógra ciúin</string>
+    <string name="phone_blocked_notify_about">Fógra ciúin nuair a ghlaonn uimhir bhactha.</string>
+    <string name="phone_channel_blocked">Glaonna bactha</string>
+    <string name="phone_blocked_from">Glao bactha ó %1$s</string>
+    <string name="maps_with_roads">le bóithre</string>
+    <string name="maps_no_roads">léarscáil amháin, gan bóithre</string>
+    <string name="settings_remove_map">Bain</string>
+    <string name="settings_remove_map_title">An mbainfear léarscáil %1$s?</string>
+    <string name="settings_remove_map_body">Téann a comhaid isteach sa Bhruscar, anseo agus ar do ghléasanna eile. Fanann do chuid áiteanna sábháilte.</string>
 </resources>

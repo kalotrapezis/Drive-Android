@@ -388,7 +388,7 @@
     <string name="settings_imported">Importato</string>
     <string name="settings_imported_shared">%1$d luoghi e %2$d aggiunte alla mappa; %3$d già presenti o senza posizione.</string>
     <string name="settings_not_placed">Questi non sono stati collocati: cercali in Mappe e premi Salva:</string>
-    <string name="settings_installed_maps_note">Le mappe si creano sul computer e arrivano qui con Sincronizza, in Tetra/Maps: tools/maps-greece.sh scarica la mappa più recente della Grecia e ne crea il routing (è previsto un pulsante Aggiorna in Tetra per desktop).</string>
+    <string name="settings_installed_maps_note">La mappa di ogni paese si crea sul computer, in Tetra sul computer › Impostazioni › Mappe › Aggiungi una mappa. Sincronizza la porta qui, in Tetra/Maps.</string>
     <string name="settings_problems">Problemi</string>
     <string name="settings_send_log_summary">Il log di Tetra e le tracce dei tuoi viaggi degli ultimi 7 giorni, in un unico zip; restano su questo dispositivo finché non li invii</string>
     <string name="settings_contacts_note">I tuoi contatti sono file in Tetra/Contacts, uno per persona: si sincronizzano con il computer, dove li mostra anche Contatti.</string>
@@ -1509,7 +1509,7 @@
     <string name="maps_my_car">La mia auto</string>
     <string name="maps_parking_saved">Parcheggio salvato</string>
     <string name="maps_on_car_screen">Sullo schermo dell\'auto: %1$s</string>
-    <string name="maps_no_graph">Ancora nessun grafo di percorso: metti greece-gh in Tetra/Maps (lo crea tools/maps-greece.sh del computer).</string>
+    <string name="maps_no_graph">Questa mappa non ha ancora le strade per le indicazioni: aggiornala in Tetra sul computer › Impostazioni › Mappe.</string>
     <string name="maps_finding">Ricerca del percorso…</string>
     <string name="maps_no_way_graph">Nessun percorso trovato: impossibile leggere il grafo di percorso</string>
     <string name="maps_arrived">Arrivato: %1$s</string>
@@ -1517,8 +1517,8 @@
     <string name="maps_dropped_pin">Segnaposto</string>
     <string name="maps_amea_parking">Parcheggio disabili</string>
     <string name="maps_amea_placed">Posto disabili collocato: %1$s</string>
-    <string name="maps_no_map">La mappa della Grecia non è ancora su questo dispositivo</string>
-    <string name="maps_no_map_how">Arriva dal computer: tools/maps-greece.sh crea greece.pmtiles (circa 500 MB) e il grafo di percorso greece-gh, e Sincronizza li porta qui in Tetra/Maps.</string>
+    <string name="maps_no_map">Nessuna mappa su questo dispositivo per ora</string>
+    <string name="maps_no_map_how">Le mappe si creano sul computer: Tetra sul computer › Impostazioni › Mappe › Aggiungi una mappa, poi Sincronizza le porta qui, in Tetra/Maps.</string>
     <string name="maps_parked_here">Ho parcheggiato qui</string>
     <string name="maps_waiting_location">In attesa della posizione…</string>
     <string name="maps_location_off">La posizione è disattivata per Tetra.</string>
@@ -1613,7 +1613,7 @@
     <string name="car_map">Mappa</string>
     <string name="car_places">Luoghi</string>
     <string name="car_allow_location">Apri Tetra Mappe sul telefono una volta per consentire la posizione</string>
-    <string name="car_no_map">Ancora nessuna mappa: greece.pmtiles arriva dal computer in Tetra/Maps</string>
+    <string name="car_no_map">Nessuna mappa per ora: creane una in Tetra sul computer › Impostazioni › Mappe</string>
     <string name="car_end">Fine</string>
     <string name="car_routes">Percorsi</string>
     <string name="car_add_stop_button">Tappa</string>
@@ -1652,10 +1652,6 @@
         <item quantity="one">%1$d pedaggio</item>
         <item quantity="other">%1$d pedaggi</item>
     </plurals>
-    <string name="maps_installed_map">Mappa della Grecia</string>
-    <string name="maps_installed_routing">Percorsi (auto, a piedi, bici)</string>
-    <string name="maps_installed_places">Luoghi salvati</string>
-    <string name="maps_installed_not_yet">non ancora qui</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Preferiti</string>
@@ -1986,16 +1982,6 @@
     <string name="phone_channel_where_about">Mappe del computer chiede dove si trova questo telefono</string>
     <string name="phone_where_title">Il computer chiede dove si trova questo telefono</string>
     <string name="phone_where_text">Tocca per inviargli la posizione</string>
-    <string name="phone_area_athens">Atene</string>
-    <string name="phone_area_thessaloniki">Salonicco</string>
-    <string name="phone_area_patras">Patrasso</string>
-    <string name="phone_area_heraklion">Candia</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volo</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Giannina</string>
-    <string name="phone_area_syros">Siro</string>
-    <string name="phone_area_chania">La Canea</string>
     <string name="phone_area_abroad">Estero</string>
     <string name="phone_area_landline">Fisso</string>
     <string name="phone_reply_cant_talk">Non posso parlare ora. Ti richiamo.</string>
@@ -2035,8 +2021,6 @@
     <string name="phone_not_spam">Non è spam</string>
     <string name="phone_ringtone_default">Predefinita</string>
     <string name="phone_ringtone">Suoneria: %1$s</string>
-    <string name="phone_spam_title">Spam e indesiderati</string>
-    <string name="phone_spam_hint">Le chiamate da questi numeri vengono rifiutate prima di squillare, su questo telefono; lo stesso elenco è sul tablet e sul computer. Un * alla fine prende un intero intervallo (69800*).</string>
     <string name="phone_spam_placeholder">Un numero, o 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d selezionata</item>
@@ -4594,4 +4578,21 @@
     <string name="pdf_no_bookmarks">Nessun segnalibro in questo file.</string>
     <string name="pdf_page_lower">pagina %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="phone_blocking">Blocco chiamate</string>
+    <string name="phone_blocking_about">Numeri e intervalli indesiderati e le chiamate bloccate</string>
+    <string name="phone_raise_answer">Solleva per rispondere</string>
+    <string name="phone_raise_answer_about">Porta all\'orecchio un telefono che squilla per rispondere.</string>
+    <string name="phone_flip_silence">Capovolgi per silenziare</string>
+    <string name="phone_flip_silence_about">Capovolgi un telefono che squilla per silenziarlo.</string>
+    <string name="phone_unblock">Sblocca</string>
+    <string name="phone_blocking_hint">I numeri aggiunti qui vengono rifiutati prima che squillino, sul telefono, sul tablet e sul computer. Un * alla fine copre un intero intervallo (69800*).</string>
+    <string name="phone_blocked_notify">Notifica silenziosa</string>
+    <string name="phone_blocked_notify_about">Una notifica silenziosa quando chiama un numero bloccato.</string>
+    <string name="phone_channel_blocked">Chiamate bloccate</string>
+    <string name="phone_blocked_from">Chiamata bloccata da %1$s</string>
+    <string name="maps_with_roads">con strade</string>
+    <string name="maps_no_roads">solo mappa, senza strade</string>
+    <string name="settings_remove_map">Rimuovi</string>
+    <string name="settings_remove_map_title">Rimuovere la mappa di %1$s?</string>
+    <string name="settings_remove_map_body">I suoi file vanno nel Cestino, qui e sugli altri tuoi dispositivi. I tuoi luoghi salvati restano.</string>
 </resources>

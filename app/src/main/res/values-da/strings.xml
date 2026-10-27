@@ -388,7 +388,7 @@
     <string name="settings_imported">Importeret</string>
     <string name="settings_imported_shared">%1$d steder og %2$d korttilføjelser; %3$d fandtes allerede eller havde ingen position.</string>
     <string name="settings_not_placed">Disse kunne ikke placeres – søg efter dem i Kort, og gem:</string>
-    <string name="settings_installed_maps_note">Kort laves på computeren og kommer hertil med Synk, i Tetra/Maps: tools/maps-greece.sh downloader det nyeste kort over Grækenland og bygger ruteplanlægningen til det (en Opdater-knap i Tetra på computeren er planlagt).</string>
+    <string name="settings_installed_maps_note">Hvert lands kort laves på computeren, i Tetra på computeren › Indstillinger › Kort › Tilføj et kort. Synk bringer det hertil, ind i Tetra/Maps.</string>
     <string name="settings_problems">Problemer</string>
     <string name="settings_send_log_summary">Tetras log og sporene af dine køreture fra de sidste 7 dage som én zip; de bliver på enheden, indtil du sender dem</string>
     <string name="settings_contacts_note">Dine kontakter er filer i Tetra/Contacts, én pr. person: de synkroniseres med computeren, hvor Kontakter også viser dem.</string>
@@ -1509,7 +1509,7 @@
     <string name="maps_my_car">Min bil</string>
     <string name="maps_parking_saved">Parkering gemt</string>
     <string name="maps_on_car_screen">På bilens skærm: %1$s</string>
-    <string name="maps_no_graph">Ingen rutegraf endnu: læg greece-gh i Tetra/Maps (computerens tools/maps-greece.sh laver den).</string>
+    <string name="maps_no_graph">Dette kort har endnu ingen veje til rutevejledning: opdater det i Tetra på computeren › Indstillinger › Kort.</string>
     <string name="maps_finding">Finder vejen…</string>
     <string name="maps_no_way_graph">Ingen vej fundet: rutegrafen kunne ikke læses</string>
     <string name="maps_arrived">Ankommet: %1$s</string>
@@ -1517,8 +1517,8 @@
     <string name="maps_dropped_pin">Placeret nål</string>
     <string name="maps_amea_parking">Handicapparkering</string>
     <string name="maps_amea_placed">Handicapplads placeret: %1$s</string>
-    <string name="maps_no_map">Kortet over Grækenland er ikke på enheden endnu</string>
-    <string name="maps_no_map_how">Det kommer fra computeren: tools/maps-greece.sh laver greece.pmtiles (ca. 500 MB) og rutegrafen greece-gh, og Synk bringer dem hertil i Tetra/Maps.</string>
+    <string name="maps_no_map">Der er endnu intet kort på denne enhed</string>
+    <string name="maps_no_map_how">Kort laves på computeren: Tetra på computeren › Indstillinger › Kort › Tilføj et kort, og derefter bringer Synk dem hertil i Tetra/Maps.</string>
     <string name="maps_parked_here">Jeg parkerede her</string>
     <string name="maps_waiting_location">Venter på din placering…</string>
     <string name="maps_location_off">Placering er slået fra for Tetra.</string>
@@ -1613,7 +1613,7 @@
     <string name="car_map">Kort</string>
     <string name="car_places">Steder</string>
     <string name="car_allow_location">Åbn Tetra Kort på telefonen én gang for at tillade placering</string>
-    <string name="car_no_map">Intet kort endnu: greece.pmtiles kommer fra computeren til Tetra/Maps</string>
+    <string name="car_no_map">Intet kort endnu: lav et i Tetra på computeren › Indstillinger › Kort</string>
     <string name="car_end">Afslut</string>
     <string name="car_routes">Ruter</string>
     <string name="car_add_stop_button">Stop</string>
@@ -1652,10 +1652,6 @@
         <item quantity="one">%1$d betalingsanlæg</item>
         <item quantity="other">%1$d betalingsanlæg</item>
     </plurals>
-    <string name="maps_installed_map">Kort over Grækenland</string>
-    <string name="maps_installed_routing">Ruteplanlægning (bil, gang, cykel)</string>
-    <string name="maps_installed_places">Gemte steder</string>
-    <string name="maps_installed_not_yet">ikke her endnu</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Favoritter</string>
@@ -1986,16 +1982,6 @@
     <string name="phone_channel_where_about">Computerens Kort spørger, hvor telefonen er</string>
     <string name="phone_where_title">Computeren spørger, hvor telefonen er</string>
     <string name="phone_where_text">Tryk for at sende den placeringen</string>
-    <string name="phone_area_athens">Athen</string>
-    <string name="phone_area_thessaloniki">Thessaloniki</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Iraklion</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Syros</string>
-    <string name="phone_area_chania">Chania</string>
     <string name="phone_area_abroad">Udlandet</string>
     <string name="phone_area_landline">Fastnet</string>
     <string name="phone_reply_cant_talk">Kan ikke tale nu. Jeg ringer tilbage.</string>
@@ -2035,8 +2021,6 @@
     <string name="phone_not_spam">Ikke spam</string>
     <string name="phone_ringtone_default">Standard</string>
     <string name="phone_ringtone">Ringetone: %1$s</string>
-    <string name="phone_spam_title">Spam og uønskede</string>
-    <string name="phone_spam_hint">Opkald fra disse afvises, før de ringer, på denne telefon; den samme liste findes på tabletten og computeren. En * til sidst tager en hel serie (69800*).</string>
     <string name="phone_spam_placeholder">Et nummer eller 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d valgt</item>
@@ -4594,4 +4578,21 @@
     <string name="pdf_no_bookmarks">Ingen bogmærker i filen.</string>
     <string name="pdf_page_lower">side %1$d</string>
     <string name="pdf_quoted">»%1$s«</string>
+    <string name="phone_blocking">Blokering af opkald</string>
+    <string name="phone_blocking_about">Uønskede numre og serier og de blokerede opkald</string>
+    <string name="phone_raise_answer">Løft for at besvare</string>
+    <string name="phone_raise_answer_about">Løft en ringende telefon op til øret for at besvare.</string>
+    <string name="phone_flip_silence">Vend for at gøre lydløs</string>
+    <string name="phone_flip_silence_about">Vend en ringende telefon med skærmen nedad for at gøre den lydløs.</string>
+    <string name="phone_unblock">Fjern blokering</string>
+    <string name="phone_blocking_hint">Numre tilføjet her afvises, før de ringer – på telefonen, tabletten og computeren. En * til sidst tager en hel serie (69800*).</string>
+    <string name="phone_blocked_notify">Lydløs besked</string>
+    <string name="phone_blocked_notify_about">En lydløs besked, når et blokeret nummer ringer.</string>
+    <string name="phone_channel_blocked">Blokerede opkald</string>
+    <string name="phone_blocked_from">Blokeret opkald fra %1$s</string>
+    <string name="maps_with_roads">med veje</string>
+    <string name="maps_no_roads">kun kort, ingen veje</string>
+    <string name="settings_remove_map">Fjern</string>
+    <string name="settings_remove_map_title">Fjern kortet over %1$s?</string>
+    <string name="settings_remove_map_body">Dets filer flyttes til papirkurven, her og på dine andre enheder. Dine gemte steder bliver.</string>
 </resources>

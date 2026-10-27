@@ -39,14 +39,35 @@ class PhoneLogTest {
         assertEquals("777", PhoneT9.digits("Σςσ")) // final sigma too
     }
 
-    @Test fun `unknown Greek numbers say where they are`() {
+    @Test fun `unknown Greek numbers say what they are`() {
         assertEquals(R.string.contacts_label_mobile, PhoneArea.of("+30 697 000 0002"))
-        assertEquals(R.string.phone_area_thessaloniki, PhoneArea.of("2310 123456"))
-        assertEquals(R.string.phone_area_athens, PhoneArea.of("0030 210 1234567"))
-        assertEquals(R.string.phone_area_volos, PhoneArea.of("2421012345"))
-        assertEquals(R.string.phone_area_landline, PhoneArea.of("2231012345"))
+        assertEquals(R.string.phone_area_landline, PhoneArea.of("2310 123456"))
+        assertEquals(R.string.phone_area_landline, PhoneArea.of("0030 210 1234567"))
         assertEquals(R.string.phone_area_abroad, PhoneArea.of("+44 20 7946 0000"))
         assertEquals(null, PhoneArea.of("112"))
+    }
+
+    @Test fun `the maps' phone tables name the place, the longest prefix winning`() {
+        val gr = PhoneArea.read("#prefix\ten\tel\n3021\tAthens\tΑθήνα\n30231\tThessaloniki\tΘεσσαλονίκη\n302313\tNorth Thessaloniki\t\n")
+        val be = PhoneArea.read("#prefix\ten\tfr\tnl\n3210\tWavre\tWavre\tWaver\n")
+        val all = listOf(gr, be)
+        assertEquals("Θεσσαλονίκη", PhoneArea.place("2310 123456", "el", all))
+        assertEquals("Θεσσαλονίκη", PhoneArea.place("+30 2310 123456", "el", all))
+        assertEquals("North Thessaloniki", PhoneArea.place("0030 2313 012345", "el", all)) // longer, no Greek name: English
+        assertEquals("Athens", PhoneArea.place("210 1234567", "de", all)) // a language the table lacks: English
+        assertEquals("Waver", PhoneArea.place("+32 10 123456", "nl", all))
+        assertEquals(null, PhoneArea.place("+44 20 7946 0000", "el", all))
+        assertEquals(null, PhoneArea.place("2810 123456", "el", emptyList()))
+    }
+
+    @Test fun `a phone table is read only beside its map`() {
+        val root = kotlin.io.path.createTempDirectory("maps").toFile()
+        try {
+            java.io.File(root, "greece-phone.tsv").writeText("#prefix\ten\tel\n30231\tThessaloniki\tΘεσσαλονίκη\n")
+            java.io.File(root, "cyprus-phone.tsv").writeText("#prefix\ten\tel\n35722\tNicosia\tΛευκωσία\n")
+            java.io.File(root, "greece.pmtiles").writeText("")
+            assertEquals(listOf("en", "el"), PhoneArea.tables(root).single().langs)
+        } finally { root.deleteRecursively() }
     }
 
     @Test fun `the history for the computer is a month a file, oldest first`() {

@@ -388,7 +388,7 @@
     <string name="settings_imported">Importēts</string>
     <string name="settings_imported_shared">Vietas: %1$d, kartes papildinājumi: %2$d; %3$d jau ir šeit vai bez atrašanās vietas.</string>
     <string name="settings_not_placed">Šīs neizdevās novietot — meklējiet tās Kartēs un saglabājiet:</string>
-    <string name="settings_installed_maps_note">Kartes tiek veidotas datorā un nonāk šeit ar sinhronizāciju, mapē Tetra/Maps: tools/maps-greece.sh lejupielādē jaunāko Grieķijas karti un izveido tai maršrutēšanu (pogu Atjaunināt darbvirsmas Tetra plānots pievienot).</string>
+    <string name="settings_installed_maps_note">Katras valsts karte tiek izveidota datorā, sadaļā Tetra datorā › Iestatījumi › Kartes › Pievienot karti. Sinhronizācija to atnes šeit, mapē Tetra/Maps.</string>
     <string name="settings_problems">Problēmas</string>
     <string name="settings_send_log_summary">Tetra žurnāls un jūsu braucienu pēdas par pēdējām 7 dienām vienā zip; tie paliek šajā ierīcē, līdz tos nosūtāt</string>
     <string name="settings_contacts_note">Jūsu kontakti ir faili mapē Tetra/Contacts, pa vienam katrai personai: tie sinhronizējas ar datoru, kur tos rāda arī Kontakti.</string>
@@ -1552,7 +1552,7 @@
     <string name="maps_my_car">Mans auto</string>
     <string name="maps_parking_saved">Stāvvieta saglabāta</string>
     <string name="maps_on_car_screen">Auto ekrānā: %1$s</string>
-    <string name="maps_no_graph">Maršrutēšanas grafa vēl nav: ievietojiet greece-gh mapē Tetra/Maps (to izveido datora tools/maps-greece.sh).</string>
+    <string name="maps_no_graph">Šai kartei vēl nav ceļu norādījumiem: atjauniniet to sadaļā Tetra datorā › Iestatījumi › Kartes.</string>
     <string name="maps_finding">Meklē ceļu…</string>
     <string name="maps_no_way_graph">Ceļš nav atrasts: maršrutēšanas grafu neizdevās nolasīt</string>
     <string name="maps_arrived">Ieradāties: %1$s</string>
@@ -1560,8 +1560,8 @@
     <string name="maps_dropped_pin">Nomesta sprauste</string>
     <string name="maps_amea_parking">♿ stāvvieta</string>
     <string name="maps_amea_placed">♿ vieta novietota: %1$s</string>
-    <string name="maps_no_map">Grieķijas karte šajā ierīcē vēl nav</string>
-    <string name="maps_no_map_how">Tā nāk no datora: tools/maps-greece.sh izveido greece.pmtiles (ap 500 MB) un maršrutēšanas grafu greece-gh, un sinhronizācija tos atnes šeit uz Tetra/Maps.</string>
+    <string name="maps_no_map">Šajā ierīcē vēl nav kartes</string>
+    <string name="maps_no_map_how">Kartes tiek izveidotas datorā: Tetra datorā › Iestatījumi › Kartes › Pievienot karti, pēc tam Sinhronizācija tās atnes šeit, mapē Tetra/Maps.</string>
     <string name="maps_parked_here">Novietoju auto šeit</string>
     <string name="maps_waiting_location">Gaida jūsu atrašanās vietu…</string>
     <string name="maps_location_off">Tetra atrašanās vieta ir izslēgta.</string>
@@ -1656,7 +1656,7 @@
     <string name="car_map">Karte</string>
     <string name="car_places">Vietas</string>
     <string name="car_allow_location">Vienreiz atveriet Tetra Kartes tālrunī, lai atļautu atrašanās vietu</string>
-    <string name="car_no_map">Kartes vēl nav: greece.pmtiles nāk no datora uz Tetra/Maps</string>
+    <string name="car_no_map">Kartes vēl nav: izveidojiet to sadaļā Tetra datorā › Iestatījumi › Kartes</string>
     <string name="car_end">Beigt</string>
     <string name="car_routes">Maršruti</string>
     <string name="car_add_stop_button">Pietura</string>
@@ -1696,10 +1696,6 @@
         <item quantity="one">%1$d maksas punkts</item>
         <item quantity="other">%1$d maksas punkti</item>
     </plurals>
-    <string name="maps_installed_map">Grieķijas karte</string>
-    <string name="maps_installed_routing">Maršrutēšana (auto, kājām, velosipēds)</string>
-    <string name="maps_installed_places">Saglabātās vietas</string>
-    <string name="maps_installed_not_yet">vēl nav šeit</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Izlase</string>
@@ -2045,16 +2041,6 @@
     <string name="phone_channel_where_about">Datora Kartes jautā, kur ir šis tālrunis</string>
     <string name="phone_where_title">Dators jautā, kur ir šis tālrunis</string>
     <string name="phone_where_text">Pieskarieties, lai nosūtītu atrašanās vietu</string>
-    <string name="phone_area_athens">Atēnas</string>
-    <string name="phone_area_thessaloniki">Saloniki</string>
-    <string name="phone_area_patras">Patra</string>
-    <string name="phone_area_heraklion">Iraklija</string>
-    <string name="phone_area_larissa">Larisa</string>
-    <string name="phone_area_volos">Vola</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Janina</string>
-    <string name="phone_area_syros">Sira</string>
-    <string name="phone_area_chania">Hanja</string>
     <string name="phone_area_abroad">Ārzemes</string>
     <string name="phone_area_landline">Fiksētais tālrunis</string>
     <string name="phone_reply_cant_talk">Tagad nevaru runāt. Atzvanīšu.</string>
@@ -2094,8 +2080,6 @@
     <string name="phone_not_spam">Nav surogātzvans</string>
     <string name="phone_ringtone_default">Noklusējums</string>
     <string name="phone_ringtone">Zvana signāls: %1$s</string>
-    <string name="phone_spam_title">Surogātzvani un nevēlami zvani</string>
-    <string name="phone_spam_hint">Zvani no šiem numuriem šajā tālrunī tiek noraidīti, pirms tie zvana; tas pats saraksts ir planšetdatorā un datorā. * beigās aptver visu diapazonu (69800*).</string>
     <string name="phone_spam_placeholder">Numurs vai 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="zero">Izvēlēti: %1$d</item>
@@ -4686,4 +4670,21 @@
     <string name="pdf_no_bookmarks">Šajā failā nav grāmatzīmju.</string>
     <string name="pdf_page_lower">%1$d. lappuse</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Zvanu bloķēšana</string>
+    <string name="phone_blocking_about">Nevēlamie numuri un diapazoni, kā arī bloķētie zvani</string>
+    <string name="phone_raise_answer">Pacelt, lai atbildētu</string>
+    <string name="phone_raise_answer_about">Pielieciet zvanošu tālruni pie auss, lai atbildētu.</string>
+    <string name="phone_flip_silence">Apgriezt, lai apklusinātu</string>
+    <string name="phone_flip_silence_about">Apgrieziet zvanošu tālruni ar ekrānu uz leju, lai to apklusinātu.</string>
+    <string name="phone_unblock">Atbloķēt</string>
+    <string name="phone_blocking_hint">Šeit pievienotie numuri tiek noraidīti pirms zvana – tālrunī, planšetdatorā un datorā. * beigās aptver visu diapazonu (69800*).</string>
+    <string name="phone_blocked_notify">Kluss paziņojums</string>
+    <string name="phone_blocked_notify_about">Kluss paziņojums, kad zvana bloķēts numurs.</string>
+    <string name="phone_channel_blocked">Bloķētie zvani</string>
+    <string name="phone_blocked_from">Bloķēts zvans no %1$s</string>
+    <string name="maps_with_roads">ar ceļiem</string>
+    <string name="maps_no_roads">tikai karte, bez ceļiem</string>
+    <string name="settings_remove_map">Noņemt</string>
+    <string name="settings_remove_map_title">Vai noņemt kartes: %1$s?</string>
+    <string name="settings_remove_map_body">Tās faili nonāk Miskastē, šeit un jūsu citās ierīcēs. Jūsu saglabātās vietas paliek.</string>
 </resources>

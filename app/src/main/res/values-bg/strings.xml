@@ -388,7 +388,7 @@
     <string name="settings_imported">Импортирано</string>
     <string name="settings_imported_shared">%1$d места и %2$d добавки към картата; %3$d вече са тук или без позиция.</string>
     <string name="settings_not_placed">Тези не можаха да бъдат поставени — потърсете ги в Карти и Запишете:</string>
-    <string name="settings_installed_maps_note">Картите се правят на компютъра и идват тук със Синхронизация, в Tetra/Maps: tools/maps-greece.sh изтегля най-новата карта на Гърция и изгражда маршрутизацията за нея (планиран е бутон Обнови в Tetra за компютър).</string>
+    <string name="settings_installed_maps_note">Картата на всяка държава се създава на компютъра, в Tetra на компютъра › Настройки › Карти › Добавяне на карта. Синхронизация я донася тук, в Tetra/Maps.</string>
     <string name="settings_problems">Проблеми</string>
     <string name="settings_send_log_summary">Дневникът на Tetra и следите от пътуванията ви през последните 7 дни, в един zip; остават на това устройство, докато не ги изпратите</string>
     <string name="settings_contacts_note">Контактите ви са файлове в Tetra/Contacts, по един на човек: синхронизират се с компютъра, където Контакти също ги показва.</string>
@@ -1509,7 +1509,7 @@
     <string name="maps_my_car">Моята кола</string>
     <string name="maps_parking_saved">Паркирането е записано</string>
     <string name="maps_on_car_screen">На екрана на колата: %1$s</string>
-    <string name="maps_no_graph">Все още няма граф за маршрути: поставете greece-gh в Tetra/Maps (tools/maps-greece.sh на компютъра го създава).</string>
+    <string name="maps_no_graph">Тази карта още няма пътища за навигация: обновете я в Tetra на компютъра › Настройки › Карти.</string>
     <string name="maps_finding">Търсене на маршрут…</string>
     <string name="maps_no_way_graph">Няма намерен маршрут: графът за маршрути не можа да се прочете</string>
     <string name="maps_arrived">Пристигнахте: %1$s</string>
@@ -1517,8 +1517,8 @@
     <string name="maps_dropped_pin">Поставена карфица</string>
     <string name="maps_amea_parking">♿ паркинг</string>
     <string name="maps_amea_placed">♿ място поставено: %1$s</string>
-    <string name="maps_no_map">Картата на Гърция все още не е на това устройство</string>
-    <string name="maps_no_map_how">Идва от компютъра: tools/maps-greece.sh създава greece.pmtiles (около 500 MB) и графа за маршрути greece-gh, а Синхронизация ги донася тук в Tetra/Maps.</string>
+    <string name="maps_no_map">Все още няма карта на това устройство</string>
+    <string name="maps_no_map_how">Картите се създават на компютъра: Tetra на компютъра › Настройки › Карти › Добавяне на карта, след което Синхронизация ги донася тук, в Tetra/Maps.</string>
     <string name="maps_parked_here">Паркирах тук</string>
     <string name="maps_waiting_location">Изчакване на местоположението ви…</string>
     <string name="maps_location_off">Местоположението е изключено за Tetra.</string>
@@ -1613,7 +1613,7 @@
     <string name="car_map">Карта</string>
     <string name="car_places">Места</string>
     <string name="car_allow_location">Отворете Tetra Карти на телефона веднъж, за да разрешите местоположението</string>
-    <string name="car_no_map">Все още няма карта: greece.pmtiles идва от компютъра в Tetra/Maps</string>
+    <string name="car_no_map">Все още няма карта: създайте една в Tetra на компютъра › Настройки › Карти</string>
     <string name="car_end">Край</string>
     <string name="car_routes">Маршрути</string>
     <string name="car_add_stop_button">Спирка</string>
@@ -1652,10 +1652,6 @@
         <item quantity="one">%1$d пътна такса</item>
         <item quantity="other">%1$d пътни такси</item>
     </plurals>
-    <string name="maps_installed_map">Карта на Гърция</string>
-    <string name="maps_installed_routing">Маршрути (кола, пеша, колело)</string>
-    <string name="maps_installed_places">Запазени места</string>
-    <string name="maps_installed_not_yet">все още не е тук</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Любими</string>
@@ -1986,16 +1982,6 @@
     <string name="phone_channel_where_about">Карти на компютъра пита къде е този телефон</string>
     <string name="phone_where_title">Компютърът пита къде е този телефон</string>
     <string name="phone_where_text">Докоснете, за да изпратите местоположението</string>
-    <string name="phone_area_athens">Атина</string>
-    <string name="phone_area_thessaloniki">Солун</string>
-    <string name="phone_area_patras">Патра</string>
-    <string name="phone_area_heraklion">Ираклион</string>
-    <string name="phone_area_larissa">Лариса</string>
-    <string name="phone_area_volos">Волос</string>
-    <string name="phone_area_kavala">Кавала</string>
-    <string name="phone_area_ioannina">Янина</string>
-    <string name="phone_area_syros">Сирос</string>
-    <string name="phone_area_chania">Ханя</string>
     <string name="phone_area_abroad">Чужбина</string>
     <string name="phone_area_landline">Стационарен</string>
     <string name="phone_reply_cant_talk">Не мога да говоря сега. Ще ти се обадя.</string>
@@ -2035,8 +2021,6 @@
     <string name="phone_not_spam">Не е спам</string>
     <string name="phone_ringtone_default">По подразбиране</string>
     <string name="phone_ringtone">Мелодия: %1$s</string>
-    <string name="phone_spam_title">Спам и нежелани</string>
-    <string name="phone_spam_hint">Обажданията от тези се отхвърлят, преди да звъннат, на този телефон; същият списък е на таблета и компютъра. * в края покрива цял диапазон (69800*).</string>
     <string name="phone_spam_placeholder">Номер или 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d избрано</item>
@@ -4594,4 +4578,21 @@
     <string name="pdf_no_bookmarks">Няма отметки в този файл.</string>
     <string name="pdf_page_lower">страница %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Блокиране на обаждания</string>
+    <string name="phone_blocking_about">Нежелани номера и диапазони и блокираните обаждания</string>
+    <string name="phone_raise_answer">Вдигане за отговор</string>
+    <string name="phone_raise_answer_about">Доближете звънящия телефон до ухото си, за да отговорите.</string>
+    <string name="phone_flip_silence">Обръщане за заглушаване</string>
+    <string name="phone_flip_silence_about">Обърнете звънящия телефон с екрана надолу, за да го заглушите.</string>
+    <string name="phone_unblock">Деблокиране</string>
+    <string name="phone_blocking_hint">Номерата, добавени тук, се отхвърлят, преди да звъннат – на телефона, таблета и компютъра. * накрая обхваща цял диапазон (69800*).</string>
+    <string name="phone_blocked_notify">Тихо известие</string>
+    <string name="phone_blocked_notify_about">Тихо известие, когато се обажда блокиран номер.</string>
+    <string name="phone_channel_blocked">Блокирани обаждания</string>
+    <string name="phone_blocked_from">Блокирано обаждане от %1$s</string>
+    <string name="maps_with_roads">с пътища</string>
+    <string name="maps_no_roads">само карта, без пътища</string>
+    <string name="settings_remove_map">Премахване</string>
+    <string name="settings_remove_map_title">Да се премахне ли картата на %1$s?</string>
+    <string name="settings_remove_map_body">Файловете ѝ отиват в Кошчето, тук и на другите ви устройства. Запазените ви места остават.</string>
 </resources>

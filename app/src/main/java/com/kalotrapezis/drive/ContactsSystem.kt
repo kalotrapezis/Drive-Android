@@ -114,9 +114,10 @@ internal data class CallEntry(val number: String, val at: Long, val seconds: Lon
 internal object ContactsRecordings {
     private val AUDIO = setOf("ogg", "opus", "m4a", "mp3", "wav")
     private val STAMP = Regex("^\\d{4}-\\d{2}-\\d{2} \\d{2}\\.\\d{2} ")
-    fun of(files: List<File>, i: ContactInfo): List<File> {
-        val name = ContactsFiles.plain(i.name.replace(Regex("[/\\\\:*?\"<>|]"), "-").take(60))
-        val keys = i.phones.map { ContactsWays.key(it.value) }.filter { it.length >= 5 }.toSet()
+    fun of(files: List<File>, i: ContactInfo): List<File> = of(files, i.name, i.phones.map { it.value })
+    fun of(files: List<File>, person: String, numbers: List<String>): List<File> {
+        val name = ContactsFiles.plain(person.replace(Regex("[/\\\\:*?\"<>|]"), "-").take(60))
+        val keys = numbers.map { ContactsWays.key(it) }.filter { it.length >= 5 }.toSet()
         return files.filter { f ->
             val title = f.nameWithoutExtension.replace(STAMP, "")
             f.extension.lowercase() in AUDIO && ((name.isNotEmpty() && ContactsFiles.plain(title) == name) || ContactsWays.key(title) in keys)

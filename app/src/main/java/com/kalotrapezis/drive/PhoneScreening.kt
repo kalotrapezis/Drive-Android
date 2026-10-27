@@ -27,9 +27,25 @@ class PhoneScreening : CallScreeningService() {
             number != null && PhonePrefs.silenceUnknown(this) && PhoneCalls.contactFor(number) == null -> CallResponse.Builder().setSilenceCall(true).build()
             else -> ok
         }
+        if (spam != null && number != null && PhonePrefs.blockedNotify(this)) PhoneBlockedNote.show(this, number)
         if (response !== ok) WriterLog.i("Phone: a call ${when { spam != null -> "on the spam list declined"; number == null -> "from a hidden number declined"; else -> "from a number not in Contacts silenced" }}")
         respondToCall(details, response)
     }
+}
+
+/** A blocked number called (Call blocking › Notify silently): a quiet notification, a tap opening the number's card. */
+internal object PhoneBlockedNote {
+    private const val CHANNEL = "phone_blocked"
+    fun show(c: Context, number: String) = runCatching {
+        val nm = c.getSystemService(android.app.NotificationManager::class.java)
+        // made again each time: an existing channel takes only the name, in the language now
+        nm.createNotificationChannel(android.app.NotificationChannel(CHANNEL, c.getString(R.string.phone_channel_blocked), android.app.NotificationManager.IMPORTANCE_LOW))
+        val open = android.app.PendingIntent.getActivity(c, number.hashCode(), android.content.Intent(c, PhoneActivity::class.java).putExtra(PhoneActivity.BLOCKED, number)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK), android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
+        nm.notify(CHANNEL, number.hashCode(), androidx.core.app.NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_block)
+            .setContentTitle(c.getString(R.string.phone_blocked_from, number)).setWhen(System.currentTimeMillis()).setShowWhen(true)
+            .setSilent(true).setContentIntent(open).setAutoCancel(true).build())
+    }.onFailure { WriterLog.w("Phone: the blocked call's notice (${it.message})") }
 }
 
 /**

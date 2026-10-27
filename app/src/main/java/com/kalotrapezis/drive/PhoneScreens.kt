@@ -115,7 +115,7 @@ private fun PhoneCallScreen(done: () -> Unit) {
         val number = PhoneCalls.number(call)
         val label = contact?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(number.orEmpty()) }?.label
         if (contact != null && number != null) Text(listOfNotNull(label?.ifBlank { null }?.let { contactLabel(context, it) }, number).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        else if (number != null) PhoneArea.of(number)?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        else if (number != null) PhoneArea.label(number)?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         else if (call.details.hasProperty(Call.Details.PROPERTY_CONFERENCE)) Text(pluralStringResource(R.plurals.phone_conference_n, call.children.size, call.children.size), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(if (ended) stringResource(R.string.phone_call_ended) else PhoneCalls.stateText(context, call, now), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         if (keys) Text(typed, style = MaterialTheme.typography.headlineSmall, maxLines = 1, modifier = Modifier.padding(top = 8.dp))
@@ -374,6 +374,10 @@ internal fun PhoneSettings() {
     toggle(stringResource(R.string.phone_buzz_end), stringResource(R.string.phone_buzz_end_about), end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
     toggle(stringResource(R.string.phone_silence_unknown), stringResource(R.string.phone_silence_unknown_about), unknown) { unknown = it; PhonePrefs.setSilenceUnknown(context, it) }
     toggle(stringResource(R.string.phone_decline_hidden), stringResource(R.string.phone_decline_hidden_about), hidden) { hidden = it; PhonePrefs.setDeclineHidden(context, it) }
+    var raise by remember { mutableStateOf(PhonePrefs.raiseAnswer(context)) }
+    var flip by remember { mutableStateOf(PhonePrefs.flipSilence(context)) }
+    toggle(stringResource(R.string.phone_raise_answer), stringResource(R.string.phone_raise_answer_about), raise) { raise = it; PhonePrefs.setRaiseAnswer(context, it) }
+    toggle(stringResource(R.string.phone_flip_silence), stringResource(R.string.phone_flip_silence_about), flip) { flip = it; PhonePrefs.setFlipSilence(context, it) }
     // HyperOS keeps two of its own permissions from apps it did not install: without them a ringing call cannot open its
     // screen over the lock screen, or from the background (Xiaomi's own Security app, not Android's settings)
     if (android.os.Build.MANUFACTURER.equals("Xiaomi", true) && dialer) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

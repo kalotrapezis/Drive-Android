@@ -388,7 +388,7 @@
     <string name="settings_imported">Importuota</string>
     <string name="settings_imported_shared">Vietų: %1$d, žemėlapio papildymų: %2$d; %3$d jau yra arba be padėties.</string>
     <string name="settings_not_placed">Šių nepavyko padėti – ieškokite jų Žemėlapiuose ir įrašykite:</string>
-    <string name="settings_installed_maps_note">Žemėlapiai kuriami kompiuteryje ir atkeliauja čia per Sinchronizavimą į Tetra/Maps: tools/maps-greece.sh atsisiunčia naujausią Graikijos žemėlapį ir sukuria jam maršrutus (planuojamas mygtukas Atnaujinti kompiuterio Tetra).</string>
+    <string name="settings_installed_maps_note">Kiekvienos šalies žemėlapis sukuriamas kompiuteryje, skiltyje Tetra kompiuteryje › Nustatymai › Žemėlapiai › Pridėti žemėlapį. Sinchronizavimas jį atneša čia, į Tetra/Maps.</string>
     <string name="settings_problems">Problemos</string>
     <string name="settings_send_log_summary">Tetra žurnalas ir jūsų kelionių per paskutines 7 dienas pėdsakai viename zip faile; jie lieka šiame įrenginyje, kol juos išsiųsite</string>
     <string name="settings_contacts_note">Jūsų kontaktai yra failai aplanke Tetra/Contacts, po vieną kiekvienam žmogui: jie sinchronizuojami su kompiuteriu, kur juos irgi rodo Kontaktai.</string>
@@ -1595,7 +1595,7 @@
     <string name="maps_my_car">Mano automobilis</string>
     <string name="maps_parking_saved">Stovėjimo vieta įrašyta</string>
     <string name="maps_on_car_screen">Automobilio ekrane: %1$s</string>
-    <string name="maps_no_graph">Maršrutų grafo dar nėra: įdėkite greece-gh į Tetra/Maps (jį sukuria kompiuterio tools/maps-greece.sh).</string>
+    <string name="maps_no_graph">Šis žemėlapis dar neturi kelių nurodymams: atnaujinkite jį skiltyje Tetra kompiuteryje › Nustatymai › Žemėlapiai.</string>
     <string name="maps_finding">Ieškoma kelio…</string>
     <string name="maps_no_way_graph">Kelio nerasta: nepavyko nuskaityti maršrutų grafo</string>
     <string name="maps_arrived">Atvykote: %1$s</string>
@@ -1603,8 +1603,8 @@
     <string name="maps_dropped_pin">Padėtas smeigtukas</string>
     <string name="maps_amea_parking">Neįgaliųjų stovėjimas</string>
     <string name="maps_amea_placed">Neįgaliųjų vieta pažymėta: %1$s</string>
-    <string name="maps_no_map">Graikijos žemėlapio šiame įrenginyje dar nėra</string>
-    <string name="maps_no_map_how">Jis ateina iš kompiuterio: tools/maps-greece.sh sukuria greece.pmtiles (apie 500 MB) ir maršrutų grafą greece-gh, o Sinchronizavimas atneša juos čia į Tetra/Maps.</string>
+    <string name="maps_no_map">Šiame įrenginyje dar nėra žemėlapio</string>
+    <string name="maps_no_map_how">Žemėlapiai kuriami kompiuteryje: Tetra kompiuteryje › Nustatymai › Žemėlapiai › Pridėti žemėlapį, o paskui Sinchronizavimas atneša juos čia, į Tetra/Maps.</string>
     <string name="maps_parked_here">Pastačiau čia</string>
     <string name="maps_waiting_location">Laukiama jūsų vietos…</string>
     <string name="maps_location_off">Tetra vietovė išjungta.</string>
@@ -1699,7 +1699,7 @@
     <string name="car_map">Žemėlapis</string>
     <string name="car_places">Vietos</string>
     <string name="car_allow_location">Vieną kartą atidarykite Tetra Žemėlapius telefone, kad leistumėte vietovę</string>
-    <string name="car_no_map">Žemėlapio dar nėra: greece.pmtiles ateina iš kompiuterio į Tetra/Maps</string>
+    <string name="car_no_map">Žemėlapio dar nėra: sukurkite jį skiltyje Tetra kompiuteryje › Nustatymai › Žemėlapiai</string>
     <string name="car_end">Baigti</string>
     <string name="car_routes">Maršrutai</string>
     <string name="car_add_stop_button">Sustojimas</string>
@@ -1740,10 +1740,6 @@
         <item quantity="many">%1$d rinkliavos</item>
         <item quantity="other">%1$d rinkliavų</item>
     </plurals>
-    <string name="maps_installed_map">Graikijos žemėlapis</string>
-    <string name="maps_installed_routing">Maršrutai (automobilis, pėsčiomis, dviratis)</string>
-    <string name="maps_installed_places">Įrašytos vietos</string>
-    <string name="maps_installed_not_yet">dar nėra</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Mėgstami</string>
@@ -2104,16 +2100,6 @@
     <string name="phone_channel_where_about">Kompiuterio Žemėlapiai klausia, kur yra šis telefonas</string>
     <string name="phone_where_title">Kompiuteris klausia, kur yra šis telefonas</string>
     <string name="phone_where_text">Bakstelėkite, kad nusiųstumėte vietą</string>
-    <string name="phone_area_athens">Atėnai</string>
-    <string name="phone_area_thessaloniki">Salonikai</string>
-    <string name="phone_area_patras">Patrai</string>
-    <string name="phone_area_heraklion">Heraklionas</string>
-    <string name="phone_area_larissa">Larisa</string>
-    <string name="phone_area_volos">Volas</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Joanina</string>
-    <string name="phone_area_syros">Siros</string>
-    <string name="phone_area_chania">Chanija</string>
     <string name="phone_area_abroad">Užsienis</string>
     <string name="phone_area_landline">Fiksuotasis ryšys</string>
     <string name="phone_reply_cant_talk">Dabar negaliu kalbėti. Perskambinsiu.</string>
@@ -2153,8 +2139,6 @@
     <string name="phone_not_spam">Ne šlamštas</string>
     <string name="phone_ringtone_default">Numatytasis</string>
     <string name="phone_ringtone">Skambėjimo tonas: %1$s</string>
-    <string name="phone_spam_title">Šlamštas ir nepageidaujami</string>
-    <string name="phone_spam_hint">Skambučiai iš šių numerių šiame telefone atmetami prieš suskambant; tas pats sąrašas yra planšetėje ir kompiuteryje. * pabaigoje apima visą intervalą (69800*).</string>
     <string name="phone_spam_placeholder">Numeris arba 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">Pasirinktas %1$d</item>
@@ -4778,4 +4762,21 @@
     <string name="pdf_no_bookmarks">Šiame faile žymų nėra.</string>
     <string name="pdf_page_lower">%1$d puslapis</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Skambučių blokavimas</string>
+    <string name="phone_blocking_about">Nepageidaujami numeriai ir intervalai bei užblokuoti skambučiai</string>
+    <string name="phone_raise_answer">Pakelkite, kad atsilieptumėte</string>
+    <string name="phone_raise_answer_about">Priglauskite skambantį telefoną prie ausies, kad atsilieptumėte.</string>
+    <string name="phone_flip_silence">Apverskite, kad nutildytumėte</string>
+    <string name="phone_flip_silence_about">Apverskite skambantį telefoną ekranu žemyn, kad jis nutiltų.</string>
+    <string name="phone_unblock">Atblokuoti</string>
+    <string name="phone_blocking_hint">Čia pridėti numeriai atmetami dar prieš suskambant – telefone, planšetėje ir kompiuteryje. * pabaigoje apima visą intervalą (69800*).</string>
+    <string name="phone_blocked_notify">Tylus pranešimas</string>
+    <string name="phone_blocked_notify_about">Tylus pranešimas, kai skambina užblokuotas numeris.</string>
+    <string name="phone_channel_blocked">Užblokuoti skambučiai</string>
+    <string name="phone_blocked_from">Užblokuotas skambutis iš %1$s</string>
+    <string name="maps_with_roads">su keliais</string>
+    <string name="maps_no_roads">tik žemėlapis, be kelių</string>
+    <string name="settings_remove_map">Pašalinti</string>
+    <string name="settings_remove_map_title">Pašalinti žemėlapį: %1$s?</string>
+    <string name="settings_remove_map_body">Jo failai keliauja į Šiukšlinę, čia ir kituose jūsų įrenginiuose. Jūsų išsaugotos vietos lieka.</string>
 </resources>

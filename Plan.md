@@ -18,6 +18,46 @@ How to write here:
       `speaker`/`unspeaker` the way Mute travels (sync.js callAction → SyncServer /call/action → PhoneCalls.act → setAudioRoute); the phone
       reports its route in /call/state ("route"), the bubble's sound line says "Sound on the phone's loudspeaker", recording is off there.
       Back: the Bluetooth device it was on (the computer), else Bluetooth, else the earpiece.
+- [x] (phone-area-codes session, 27 Oct; merged into main) **The Phone names every landline's place from
+      the installed maps** (the user: "could we take that into maps to get the codes for the map the user has installed?";
+      "it has to be built side by side with map manager so with the map gets the numbers as well"): each map gets
+      `<id>-phone.tsv` (tools/maps-phone.py, libphonenumber's geocoding data, Apache-2.0: prefix with the country code →
+      the place, en first, then every language libphonenumber has); `PhoneArea.label` reads the tables beside the
+      installed maps (a table without its .pmtiles is not read), the longest prefix wins, the app's language else English;
+      Mobile / Landline / Abroad stay the fallback. The 10 city strings went (place names are data). The desktop map
+      builder writes the table in its search step: commit on Drive's `claude/map-builder` (merges with it); maps-greece.sh
+      too; Greece's table put in the computer's Files/Maps, so sync carries it before any rebuild. 669 unit tests pass;
+      tablet (Greek): 2313012345 → Θεσσαλονίκη, 2231012345 → Λαμία (the table pushed there by adb: the tablet was off
+      the computer's Wi-Fi). **Open:** the builder's phone step not run inside the app (maps-phone.py run alone for GR
+      and BE); a number without +/00 is taken as Greek; a +1 or +7 map names all of its code's areas.
+- [x] (phone-tablet-two-pane session, 27 Oct; branch `claude/phone-tablet-two-pane-5f7348`, not merged: main's checkout holds the map-manager
+      session's uncommitted work in the same files) **Phone on the tablet: two panes** (the user: "now it's just black bars everywhere"):
+      the list on the left, the keypad always open on the right (smallest width ≥ 600 dp; the phone unchanged); seen on the tablet,
+      landscape and portrait, typing and T9 search. Then (the user): **Call blocking** and **Speed dial** are their own pages behind
+      two buttons in the Phone's sheet (Call blocking: the spam list and the blocked calls, a tap opens the call); **Raise to answer**
+      and **Turn over to silence** (PhoneGestures, while ringing, both off at first; Settings › Phone and the sheet); 24 languages.
+      Merged into main 27 Oct. Then (the user): Call blocking is one list as Contacts (every number and range on the spam list,
+      whether it called or not; the add field on top), a tap opens its card: Unblock (a range's line goes), its call history,
+      its recordings; the sheet's two buttons side by side; Notify silently (a quiet notification when a blocked number calls, a
+      tap opens its card; on the phone only). Seen on the tablet; the notification itself not seen (needs a blocked call).
+      **Open:** Unblock not pressed on a device (it would unblock a real number); the gestures need a real call on the phone;
+      the keypad pane's upper part is empty until a number is typed.
+- [~] (map-manager session, 27 Oct; merged into main in both repos 27 Oct; a real build still to be tested with the user) **Map manager: maps of any country, made by the user's own computer** (the user:
+      "In the maps settings page add a map manager, responsible for downloading and updating Maps per county"; then "if we have B
+      they could sync the maps to their phone or tablet, we can make a guide for that as well. so the maintenance goes to the user
+      not me. Its an app not a service"). No ready packs online: desktop Tetra › Settings › Maps › Map manager picks a Geofabrik
+      region and builds its pack (map, routing, search, lanes) into Files/Maps as <id>.pmtiles, <id>-gh/, <id>-*.tsv, <id>.json —
+      Greece is the pack "greece" already; sync carries it; the phone's Settings › Maps lists, removes and explains; a guide.
+      Built (on the branch): desktop mapbuild.js + src/MapBuilder.tsx — Settings › Maps card (each map: size, date, Update,
+      Remove) and the wizard: credits with Donate (OpenStreetMap, Protomaps, MapLibre; GraphHopper, Geofabrik linked), a
+      country or region of Geofabrik's list (download size, memory needed, its parts when too big), the system packages it
+      lacks (openjdk-17-jre-headless, python3-pyosmium) explained with Install — pkexec's own password window — and "I don't
+      want", the steps with progress, done; pmtiles and the GraphHopper jar fetched into ~/Tetra-maps/bin. Desktop maps.js,
+      main.js: a source a map (layers interleaved), search/addresses/streets of every map, routing on the map the route
+      starts in. Android: MapsFiles.ids/maps/graphAt/lists/removeMap, mapStyle over every map, the camera over them all,
+      Settings › Maps lists each map with Remove. 24 languages both sides. Tests: MapsPacksTest, test/mapbuild.test.js.
+      **Open:** a route across a border (one map's graph a route); roundabouts drawn the Greek way on a left-driving map
+      (the manifest has "drive"); directions' words still Greek/English only; a real build not yet run (the user's password).
 - [x] (office-media session, 27 Oct; branch `claude/office-media`, not merged; its build is on the tablet 971f6b37) **Local video and audio
       embedded in documents play** (the user: "I know it has Video from YouTube but what about local files embedded into the
       documents?"). Already there: Slides read and played PowerPoint's p:videoFile/p:audioFile + p14:media and Impress's

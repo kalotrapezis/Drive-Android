@@ -388,7 +388,7 @@
     <string name="settings_imported">Imporditud</string>
     <string name="settings_imported_shared">%1$d kohta ja %2$d kaardilisandust; %3$d juba siin või asukohata.</string>
     <string name="settings_not_placed">Neid ei õnnestunud paigutada – otsige neid Kaartides ja salvestage:</string>
-    <string name="settings_installed_maps_note">Kaardid tehakse arvutis ja jõuavad siia sünkroonimisega kausta Tetra/Maps: tools/maps-greece.sh laadib alla uusima Kreeka kaardi ja koostab sellele marsruutimise (töölaua-Tetrasse on plaanis nupp Uuenda).</string>
+    <string name="settings_installed_maps_note">Iga riigi kaart tehakse arvutis, jaotises Tetra arvutis › Seaded › Kaardid › Lisa kaart. Sünkroonimine toob selle siia, kausta Tetra/Maps.</string>
     <string name="settings_problems">Probleemid</string>
     <string name="settings_send_log_summary">Tetra logi ja teie viimase 7 päeva sõitude jäljed ühe zipina; need jäävad sellesse seadmesse, kuni need saadate</string>
     <string name="settings_contacts_note">Teie kontaktid on failid kaustas Tetra/Contacts, üks inimese kohta: need sünkroonitakse arvutiga, kus Kontaktid neid samuti näitab.</string>
@@ -1509,7 +1509,7 @@
     <string name="maps_my_car">Minu auto</string>
     <string name="maps_parking_saved">Parkimiskoht salvestatud</string>
     <string name="maps_on_car_screen">Auto ekraanil: %1$s</string>
-    <string name="maps_no_graph">Marsruutimisgraafi veel pole: pange greece-gh kausta Tetra/Maps (selle teeb arvuti tools/maps-greece.sh).</string>
+    <string name="maps_no_graph">Sellel kaardil pole veel teid juhiste jaoks: värskendage seda jaotises Tetra arvutis › Seaded › Kaardid.</string>
     <string name="maps_finding">Tee otsimine…</string>
     <string name="maps_no_way_graph">Teed ei leitud: marsruutimisgraafi ei õnnestunud lugeda</string>
     <string name="maps_arrived">Kohal: %1$s</string>
@@ -1517,8 +1517,8 @@
     <string name="maps_dropped_pin">Märgitud asukoht</string>
     <string name="maps_amea_parking">Invaparkimine</string>
     <string name="maps_amea_placed">Invakoht paigutatud: %1$s</string>
-    <string name="maps_no_map">Kreeka kaarti pole veel selles seadmes</string>
-    <string name="maps_no_map_how">See tuleb arvutist: tools/maps-greece.sh teeb faili greece.pmtiles (umbes 500 MB) ja marsruutimisgraafi greece-gh ning sünkroonimine toob need siia kausta Tetra/Maps.</string>
+    <string name="maps_no_map">Selles seadmes pole veel ühtegi kaarti</string>
+    <string name="maps_no_map_how">Kaarte tehakse arvutis: Tetra arvutis › Seaded › Kaardid › Lisa kaart, seejärel toob Sünkroonimine need siia, kausta Tetra/Maps.</string>
     <string name="maps_parked_here">Parkisin siia</string>
     <string name="maps_waiting_location">Teie asukoha ootamine…</string>
     <string name="maps_location_off">Tetra asukoht on väljas.</string>
@@ -1613,7 +1613,7 @@
     <string name="car_map">Kaart</string>
     <string name="car_places">Kohad</string>
     <string name="car_allow_location">Asukoha lubamiseks avage telefonis üks kord Tetra Kaardid</string>
-    <string name="car_no_map">Kaarti veel pole: greece.pmtiles tuleb arvutist kausta Tetra/Maps</string>
+    <string name="car_no_map">Kaarti veel pole: tehke see jaotises Tetra arvutis › Seaded › Kaardid</string>
     <string name="car_end">Lõpeta</string>
     <string name="car_routes">Marsruudid</string>
     <string name="car_add_stop_button">Peatus</string>
@@ -1652,10 +1652,6 @@
         <item quantity="one">%1$d teemaks</item>
         <item quantity="other">%1$d teemaksu</item>
     </plurals>
-    <string name="maps_installed_map">Kreeka kaart</string>
-    <string name="maps_installed_routing">Marsruutimine (auto, jalgsi, jalgratas)</string>
-    <string name="maps_installed_places">Salvestatud kohad</string>
-    <string name="maps_installed_not_yet">pole veel siin</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Lemmikud</string>
@@ -1986,16 +1982,6 @@
     <string name="phone_channel_where_about">Arvuti Kaardid küsivad, kus see telefon on</string>
     <string name="phone_where_title">Arvuti küsib, kus see telefon on</string>
     <string name="phone_where_text">Puudutage, et saata asukoht</string>
-    <string name="phone_area_athens">Ateena</string>
-    <string name="phone_area_thessaloniki">Thessaloníki</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Iráklio</string>
-    <string name="phone_area_larissa">Lárisa</string>
-    <string name="phone_area_volos">Vólos</string>
-    <string name="phone_area_kavala">Kavála</string>
-    <string name="phone_area_ioannina">Ioánnina</string>
-    <string name="phone_area_syros">Síros</string>
-    <string name="phone_area_chania">Chaniá</string>
     <string name="phone_area_abroad">Välismaa</string>
     <string name="phone_area_landline">Lauatelefon</string>
     <string name="phone_reply_cant_talk">Ei saa praegu rääkida. Helistan tagasi.</string>
@@ -2035,8 +2021,6 @@
     <string name="phone_not_spam">Pole rämps</string>
     <string name="phone_ringtone_default">Vaikimisi</string>
     <string name="phone_ringtone">Helin: %1$s</string>
-    <string name="phone_spam_title">Rämps ja soovimatud</string>
-    <string name="phone_spam_hint">Nende kõned lükatakse selles telefonis tagasi enne helisemist; sama loend on tahvelarvutis ja arvutis. * lõpus hõlmab terve vahemiku (69800*).</string>
     <string name="phone_spam_placeholder">Number või 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d valitud</item>
@@ -4594,4 +4578,21 @@
     <string name="pdf_no_bookmarks">Selles failis pole järjehoidjaid.</string>
     <string name="pdf_page_lower">lehekülg %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Kõnede blokeerimine</string>
+    <string name="phone_blocking_about">Soovimatud numbrid ja vahemikud ning blokeeritud kõned</string>
+    <string name="phone_raise_answer">Vastamiseks tõsta</string>
+    <string name="phone_raise_answer_about">Vastamiseks tõsta helisev telefon kõrva äärde.</string>
+    <string name="phone_flip_silence">Vaigistamiseks pööra</string>
+    <string name="phone_flip_silence_about">Vaigistamiseks pööra helisev telefon ekraaniga alla.</string>
+    <string name="phone_unblock">Tühista blokeering</string>
+    <string name="phone_blocking_hint">Siia lisatud numbrid lükatakse tagasi enne helisemist – telefonis, tahvelarvutis ja arvutis. * lõpus hõlmab terve vahemiku (69800*).</string>
+    <string name="phone_blocked_notify">Vaikne teavitus</string>
+    <string name="phone_blocked_notify_about">Vaikne teavitus, kui helistab blokeeritud number.</string>
+    <string name="phone_channel_blocked">Blokeeritud kõned</string>
+    <string name="phone_blocked_from">Blokeeritud kõne numbrilt %1$s</string>
+    <string name="maps_with_roads">teedega</string>
+    <string name="maps_no_roads">ainult kaart, ilma teedeta</string>
+    <string name="settings_remove_map">Eemalda</string>
+    <string name="settings_remove_map_title">Kas eemaldada kaart: %1$s?</string>
+    <string name="settings_remove_map_body">Selle failid lähevad prügikasti, siin ja teie teistes seadmetes. Teie salvestatud kohad jäävad alles.</string>
 </resources>

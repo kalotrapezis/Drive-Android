@@ -59,6 +59,9 @@ internal enum class PhoneTab(val icon: Int, @androidx.annotation.StringRes val l
     Contacts(R.drawable.ic_contacts, R.string.app_contacts, R.string.phone_search_contacts), Recordings(R.drawable.ic_mic, R.string.contacts_recordings, R.string.phone_search_recordings)
 }
 
+/** The Phone's own pages, opened from its settings sheet (the user, 27 Oct: "its own page, not filling up the bottom modal"). */
+private enum class PhonePage(@androidx.annotation.StringRes val title: Int) { Blocking(R.string.phone_blocking), SpeedDial(R.string.phone_speed_dial) }
+
 /**
  * The Phone applet (Plan.md § Phone), Tetra's way (the user, 24 Oct: "an island for recents, favourites, contacts,
  * recordings, everything centred"): the list under a floating search pill, the island in the middle at the bottom, the
@@ -70,6 +73,7 @@ class PhoneActivity : ComponentActivity() {
     private val keypad = mutableStateOf(false)
     private val tab = mutableStateOf(PhoneTab.Recents)
     private val missed = mutableIntStateOf(0) // asked to show the missed calls (a missed-call notification's tap)
+    private val blocked = mutableStateOf<String?>(null) // asked to show a blocked number's card (its silent notification's tap)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WriterLog.init(this)
@@ -78,7 +82,7 @@ class PhoneActivity : ComponentActivity() {
         if (ContactsPreload.all == null) ContactsPreload.warm(this)
         take(intent)
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = TetraLook.light
-        setContent { TetraTheme { PhoneApp(keypad, tab, number, missed, back = { finish() }) } }
+        setContent { TetraTheme { PhoneApp(keypad, tab, number, missed, blocked, back = { finish() }) } }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); take(intent) }
     private fun take(i: Intent) {
@@ -86,9 +90,13 @@ class PhoneActivity : ComponentActivity() {
         // the call log asked for (Android's own missed-call notification, or Tetra's): Recents › Missed
         val log = i.action == Intent.ACTION_VIEW && (i.type == CallLog.Calls.CONTENT_TYPE || i.data?.authority == CallLog.AUTHORITY)
         if (log || i.getStringExtra(TAB) == "missed") { keypad.value = false; tab.value = PhoneTab.Recents; missed.intValue++ }
+        i.getStringExtra(BLOCKED)?.let { blocked.value = it }
         when (i.getStringExtra(TAB)) { "keypad" -> keypad.value = true; "recents" -> tab.value = PhoneTab.Recents; "contacts" -> tab.value = PhoneTab.Contacts }
     }
-    companion object { const val TAB = "com.kalotrapezis.drive.phone.TAB" } // Home's slots: keypad, recents, contacts
+    companion object {
+        const val TAB = "com.kalotrapezis.drive.phone.TAB" // Home's slots: keypad, recents, contacts
+        const val BLOCKED = "com.kalotrapezis.drive.phone.BLOCKED"
+    }
 }
 
 /** Opens Tetra's Contacts on a person, or at a new contact with this number. */
@@ -101,7 +109,7 @@ internal fun phoneRoot() = java.io.File(TetraFolder.root(android.os.Environment.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<PhoneTab>, number: MutableState<String>, missed: State<Int>, back: () -> Unit) {
+private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<PhoneTab>, number: MutableState<String>, missed: State<Int>, blockedAsk: MutableState<String?>, back: () -> Unit) {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -133,65 +141,92 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     LaunchedEffect(tab, dialer, calls.size) { if (tab == PhoneTab.Recents && dialer && !tablet) withContext(Dispatchers.IO) { PhoneLog.seen(context) } }
     var drawer by remember { mutableStateOf(false) }
     var details by remember { mutableStateOf<CallGroup?>(null) }
+    var page by remember { mutableStateOf<PhonePage?>(null) }
+    var blockedPage by remember { mutableStateOf<PhoneSpam.Entry?>(null) } // a blocked number's card, over Call blocking
+    val blockingScroll = rememberScrollState() // Call blocking back where it was after a number's page
+    LaunchedEffect(blockedAsk.value) {
+        val n = blockedAsk.value ?: return@LaunchedEffect
+        blockedAsk.value = null
+        PhoneSpam.matches(PhoneSpam.read(), n)?.let { page = PhonePage.Blocking; blockedPage = it }
+    }
     val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     fun call(n: String) {
         if (n.isBlank()) return
         if (tablet) scope.launch { val said = withContext(Dispatchers.IO) { PhoneRelay.place(context, n, who(n)?.name.orEmpty()) }; android.widget.Toast.makeText(context, said, android.widget.Toast.LENGTH_SHORT).show() }
         else if (!placePhoneCall(context, n)) askCall.launch(Manifest.permission.CALL_PHONE)
     }
-    BackHandler(keypad.value || selected.isNotEmpty() || query.isNotEmpty()) {
-        when { keypad.value -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> query = "" }
+    // a tablet: the list on the left and the keypad always open on the right, so no empty sides; a phone as before
+    val twoPane = androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >= 600
+    val keypadShown = keypad.value && !twoPane
+    BackHandler(blockedPage != null || page != null || keypadShown || selected.isNotEmpty() || query.isNotEmpty()) {
+        when { blockedPage != null -> blockedPage = null; page != null -> page = null; keypadShown -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> query = "" }
     }
     // the list's room under the pill and above the island
     val top = PaddingValues(top = 76.dp, bottom = 96.dp)
-    Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), contentAlignment = Alignment.TopCenter) {
+    Row(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
         Box(Modifier.fillMaxHeight().widthIn(max = 560.dp).fillMaxWidth()) {
-            if (keypad.value) Keypad(number, contacts, call = ::call)
-            else when (tab) {
-                PhoneTab.Recents -> Recents(calls, ::who, { PhoneSpam.matches(spam, it) != null }, dialer, missed.value, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
-                    askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
+            val open = page
+            val blocked = blockedPage
+            if (blocked != null) PhonePageScreen((if (blocked.number.endsWith("*")) null else who(blocked.number)?.name) ?: blocked.number, back = { blockedPage = null }) {
+                BlockedCard(blocked, calls.filter { PhoneSpam.matches(listOf(blocked), it.number) != null }, if (blocked.number.endsWith("*")) null else who(blocked.number)) { blockedPage = null; version++ }
+            } else if (open != null) PhonePageScreen(stringResource(open.title), back = { page = null }, if (open == PhonePage.Blocking) blockingScroll else rememberScrollState()) {
+                when (open) {
+                    PhonePage.Blocking -> CallBlocking(version, ::who, open = { blockedPage = it }) { version++ }
+                    PhonePage.SpeedDial -> SpeedDialSettings(contacts)
                 }
-                PhoneTab.Favourites -> Favourites(contacts.filter { it.favourite && (query.isBlank() || it.name.contains(query, true)) }.sortedBy { ContactsFiles.sortKey(it, false) }, top, call = ::call)
-                PhoneTab.Contacts -> PhoneContacts(contacts, query, top, call = ::call)
-                PhoneTab.Recordings -> Recordings(query, top, version)
-            }
-            // the pill at the top: ‹ and search, or the chosen calls' count and Delete
-            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                    IconButton(onClick = { when { keypad.value -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> back() } }) {
-                        Icon(painterResource(if (selected.isNotEmpty()) R.drawable.ic_close else R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back))
+            } else {
+                if (keypadShown) Keypad(number, contacts, call = ::call)
+                else when (tab) {
+                    PhoneTab.Recents -> Recents(calls, ::who, { PhoneSpam.matches(spam, it) != null }, dialer, missed.value, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
+                        askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
                     }
+                    PhoneTab.Favourites -> Favourites(contacts.filter { it.favourite && (query.isBlank() || it.name.contains(query, true)) }.sortedBy { ContactsFiles.sortKey(it, false) }, top, call = ::call)
+                    PhoneTab.Contacts -> PhoneContacts(contacts, query, top, call = ::call)
+                    PhoneTab.Recordings -> Recordings(query, top, version)
                 }
-                if (!keypad.value) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.weight(1f)) {
-                    if (selected.isNotEmpty()) Row(Modifier.padding(start = 18.dp, end = 4.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
-                        selected.sumOf { it.calls.size }.let { n -> Text(pluralStringResource(R.plurals.phone_n_chosen, n, n), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                        IconButton(onClick = { PhoneLog.delete(context, selected.flatMap { g -> g.calls.map { it.id } }); selected = emptySet() }) {
-                            Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.common_delete))
-                        }
-                    } else Row(Modifier.padding(start = 16.dp, end = 4.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(painterResource(R.drawable.ic_search), contentDescription = null, Modifier.size(22.dp))
-                        Box(Modifier.weight(1f)) {
-                            if (query.isEmpty()) Text(stringResource(tab.search), color = islandContentColor().copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            BasicTextField(query, { query = it }, singleLine = true, textStyle = TextStyle(color = islandContentColor(), fontSize = 16.sp),
-                                cursorBrush = SolidColor(islandContentColor()), modifier = Modifier.fillMaxWidth())
-                        }
-                        if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_clear)) }
-                    }
-                }
-            }
-            // the island in the middle, the keypad's round button beside it
-            if (!keypad.value) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
-                    PhoneTab.entries.forEach { t -> IslandNavigationItem(stringResource(t.label), tab == t, t.icon) { tab = t; selected = emptySet() } }
-                }
-                IslandVisibility(!drawer) {
+                // the pill at the top: ‹ and search, or the chosen calls' count and Delete
+                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                        IconButton(onClick = { keypad.value = true }, modifier = Modifier.size(56.dp)) { Icon(painterResource(R.drawable.ic_dialpad), contentDescription = stringResource(R.string.phone_keypad)) }
+                        IconButton(onClick = { when { keypadShown -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> back() } }) {
+                            Icon(painterResource(if (selected.isNotEmpty()) R.drawable.ic_close else R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back))
+                        }
+                    }
+                    if (!keypadShown) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.weight(1f)) {
+                        if (selected.isNotEmpty()) Row(Modifier.padding(start = 18.dp, end = 4.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                            selected.sumOf { it.calls.size }.let { n -> Text(pluralStringResource(R.plurals.phone_n_chosen, n, n), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            IconButton(onClick = { PhoneLog.delete(context, selected.flatMap { g -> g.calls.map { it.id } }); selected = emptySet() }) {
+                                Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.common_delete))
+                            }
+                        } else Row(Modifier.padding(start = 16.dp, end = 4.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(painterResource(R.drawable.ic_search), contentDescription = null, Modifier.size(22.dp))
+                            Box(Modifier.weight(1f)) {
+                                if (query.isEmpty()) Text(stringResource(tab.search), color = islandContentColor().copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                BasicTextField(query, { query = it }, singleLine = true, textStyle = TextStyle(color = islandContentColor(), fontSize = 16.sp),
+                                    cursorBrush = SolidColor(islandContentColor()), modifier = Modifier.fillMaxWidth())
+                            }
+                            if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_clear)) }
+                        }
+                    }
+                }
+                // the island in the middle, the keypad's round button beside it
+                if (!keypadShown) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
+                        PhoneTab.entries.forEach { t -> IslandNavigationItem(stringResource(t.label), tab == t, t.icon) { tab = t; selected = emptySet() } }
+                    }
+                    if (!twoPane) IslandVisibility(!drawer) {
+                        Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+                            IconButton(onClick = { keypad.value = true }, modifier = Modifier.size(56.dp)) { Icon(painterResource(R.drawable.ic_dialpad), contentDescription = stringResource(R.string.phone_keypad)) }
+                        }
                     }
                 }
             }
         }
+    }
+    if (twoPane) Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.weight(1f).fillMaxHeight().padding(12.dp)) {
+        Keypad(number, contacts, call = ::call)
+    }
     }
     details?.let { g ->
         ModalBottomSheet(onDismissRequest = { details = null }, containerColor = SheetColor, contentColor = islandContentColor()) {
@@ -203,9 +238,95 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.app_phone), style = MaterialTheme.typography.titleLarge)
             PhoneSettings()
-            SpeedDialSettings(contacts)
-            SpamSettings { version++ }
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) { // side by side (the user, 27 Oct)
+                PageButton(R.drawable.ic_block, stringResource(R.string.phone_blocking), stringResource(R.string.phone_blocking_about), Modifier.weight(1f)) { drawer = false; page = PhonePage.Blocking }
+                PageButton(R.drawable.ic_speed_dial, stringResource(R.string.phone_speed_dial), stringResource(R.string.phone_speed_dial_hint), Modifier.weight(1f)) { drawer = false; page = PhonePage.SpeedDial }
+            }
         }
+    }
+}
+
+/** A tile in the settings sheet that opens one of the Phone's pages. */
+@Composable
+private fun PageButton(icon: Int, title: String, about: String, modifier: Modifier, open: () -> Unit) =
+    Column(modifier.fillMaxHeight().clip(MaterialTheme.shapes.large).background(LocalContentColor.current.copy(alpha = 0.08f)).clickable(onClick = open).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(PHONE_COLOR), contentAlignment = Alignment.Center) {
+            Icon(painterResource(icon), contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Text(about, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f), maxLines = 3, overflow = TextOverflow.Ellipsis)
+    }
+
+/** A page in the list's place: ‹ and its title in the pill's row, then what it holds. */
+@Composable
+private fun PhonePageScreen(title: String, back: () -> Unit, scroll: androidx.compose.foundation.ScrollState = rememberScrollState(), content: @Composable ColumnScope.() -> Unit) = Column(Modifier.fillMaxSize()) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
+            IconButton(onClick = back) { Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back)) }
+        }
+        Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+    Column(Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+}
+
+/**
+ * Call blocking, one list as Contacts is (the user, 27 Oct: "simplify, one list, contacts like; the calls show in the history of
+ * their card"): every number and range on the spam list, A to Ω, whether it ever called or not; a tap opens its card.
+ */
+@Composable
+private fun CallBlocking(version: Int, who: (String) -> ContactInfo?, open: (PhoneSpam.Entry) -> Unit, changed: () -> Unit) {
+    SpamSettings(changed)
+    val list = remember(version) { PhoneSpam.read().sortedBy { e -> (who(e.number)?.name ?: e.number).lowercase() } }
+    list.forEach { e ->
+        val c = if (e.number.endsWith("*")) null else who(e.number)
+        Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable { open(e) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            CallAvatar(c, 40.dp)
+            Column(Modifier.weight(1f)) {
+                Text(c?.name ?: e.number, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (c != null) Text(e.number, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
+            }
+            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null)
+        }
+    }
+}
+
+/** A blocked number's card: who, Unblock, every call with it (or within its range), and the calls recorded with it. */
+@Composable
+private fun BlockedCard(e: PhoneSpam.Entry, history: List<LoggedCall>, c: ContactInfo?, unblocked: () -> Unit) {
+    val context = LocalContext.current
+    val zone = ZoneId.systemDefault()
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val tablet = remember { PhoneRelay.noCalls(context) }
+    val range = e.number.endsWith("*")
+    val recordings by produceState(emptyList<java.io.File>(), e.number) {
+        if (!range) value = withContext(Dispatchers.IO) { runCatching { ContactsRecordings.of(java.io.File(phoneRoot(), "Recordings").listFiles()?.toList().orEmpty(), c?.name.orEmpty(), listOf(e.number)) }.getOrDefault(emptyList()) }
+    }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CallAvatar(c, 88.dp)
+        Text(e.number, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        (if (range) null else PhoneArea.label(e.number))?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current.copy(alpha = 0.7f)) }
+        // the user's own note; not "blocked before", Tetra's mark on the numbers it took from Android's list (SpamSettings)
+        if (e.note.isNotBlank() && e.note != "blocked before") Text(e.note, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f), textAlign = TextAlign.Center)
+        Button(onClick = {
+            if (range) PhoneSpam.removeLine(context, e) else { PhoneSpam.remove(context, e.number); if (!tablet) PhoneBlocked.unblock(context, e.number) }
+            unblocked()
+        }, colors = ButtonDefaults.buttonColors(containerColor = PHONE_COLOR, contentColor = Color.White)) {
+            Icon(painterResource(R.drawable.ic_block), contentDescription = null, modifier = Modifier.size(18.dp))
+            Text("  " + stringResource(R.string.phone_unblock), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+    Text(stringResource(R.string.contacts_history), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+    if (history.isEmpty()) Text(stringResource(R.string.phone_no_calls_yet), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
+    history.take(100).forEach { l ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CallTypeIcon(l.type, 22.dp)
+            Text(Instant.ofEpochMilli(l.at).atZone(zone).format(DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm", locale)) + if (range) " · ${l.number}" else "")
+        }
+    }
+    if (recordings.isNotEmpty()) {
+        Text(stringResource(R.string.contacts_recordings), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+        recordings.forEach { RecordingRow(it) }
     }
 }
 
@@ -271,7 +392,7 @@ private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, isSp
                             maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             CallTypeIcon(g.newest.type, 20.dp)
-                            val where = c?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(g.number) }?.label?.ifBlank { null }?.let { contactLabel(context, it) } ?: PhoneArea.of(g.number)?.let { stringResource(it) }
+                            val where = c?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(g.number) }?.label?.ifBlank { null }?.let { contactLabel(context, it) } ?: PhoneArea.label(g.number)
                             if (g.number.isNotBlank() && isSpam(g.number)) Text(stringResource(R.string.phone_spam) + " ·", style = MaterialTheme.typography.bodySmall, color = CALL_RED, fontWeight = FontWeight.Bold)
                             Text(listOfNotNull(where, whenText(g.newest.at, zone, today, androidx.compose.ui.platform.LocalConfiguration.current.locales[0])).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -319,7 +440,6 @@ private fun PhoneContacts(contacts: List<ContactInfo>, query: String, pad: Paddi
 /** The calls recorded on the computer (Plan.md § Phone › Call recording), synced here: Tetra/Phone/Recordings, newest first. */
 @Composable
 private fun Recordings(query: String, pad: PaddingValues, version: Int) {
-    val context = LocalContext.current
     val files by produceState(emptyList<java.io.File>(), version) {
         value = withContext(Dispatchers.IO) { java.io.File(phoneRoot(), "Recordings").listFiles { f -> f.isFile && f.extension.lowercase() in setOf("ogg", "opus", "m4a", "mp3", "wav") }?.sortedByDescending { it.lastModified() }.orEmpty() }
     }
@@ -328,21 +448,26 @@ private fun Recordings(query: String, pad: PaddingValues, version: Int) {
         if (shown.isEmpty()) item {
             Hint(if (query.isNotEmpty()) stringResource(R.string.phone_no_recording_match, query) else stringResource(R.string.phone_recordings_hint))
         }
-        items(shown, key = { it.path }) { f ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp).clip(MaterialTheme.shapes.large).clickable {
-                runCatching {
-                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
-                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "audio/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.onFailure { WriterLog.w("Phone: a recording did not open (${it.message})") }
-            }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Box(Modifier.size(40.dp).clip(CircleShape).background(PHONE_COLOR.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_mic), contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(f.nameWithoutExtension, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${f.length() / 1024} KB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+        items(shown, key = { it.path }) { f -> RecordingRow(f, Modifier.padding(horizontal = 8.dp)) }
+    }
+}
+
+/** A recording: its name and size; a tap plays it in the phone's own player. */
+@Composable
+private fun RecordingRow(f: java.io.File, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    Row(modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable {
+        runCatching {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", f)
+            context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "audio/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { WriterLog.w("Phone: a recording did not open (${it.message})") }
+    }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(PHONE_COLOR.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.ic_mic), contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(f.nameWithoutExtension, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${f.length() / 1024} KB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -398,7 +523,7 @@ private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, ca
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 CallAvatar(c, 88.dp)
                 Text(c?.name ?: g.number.ifBlank { stringResource(R.string.phone_hidden_number) }, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 10.dp), textAlign = TextAlign.Center)
-                if (g.number.isNotBlank()) Text(listOfNotNull(c?.let { g.number }, PhoneArea.of(g.number)?.let { stringResource(it) }).joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = islandContentColor().copy(alpha = 0.7f))
+                if (g.number.isNotBlank()) Text(listOfNotNull(c?.let { g.number }, PhoneArea.label(g.number)).joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = islandContentColor().copy(alpha = 0.7f))
                 if (g.number.isNotBlank()) Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     RoundButton(R.drawable.ic_call, stringResource(R.string.contacts_call), CALL_GREEN, 56.dp) { call(g.number) }
                     RoundButton(R.drawable.ic_chat, stringResource(R.string.contacts_message), null, 56.dp) {
@@ -480,7 +605,7 @@ private fun Keypad(number: MutableState<String>, contacts: List<ContactInfo>, ca
                 context.getSystemService(android.content.ClipboardManager::class.java).primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
                     ?.filter { it.isDigit() || it in "+*#" }?.takeIf { it.isNotEmpty() }?.let { number.value = it }
             }) {})
-        Text(PhoneArea.of(typed)?.takeIf { found.isEmpty() }?.let { stringResource(it) } ?: " ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(PhoneArea.label(typed)?.takeIf { found.isEmpty() } ?: " ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         DialKeys(press = { ch -> number.value += ch; PhoneCodes.typed(context, number.value)?.let { number.value = "" } }, hold = { ch ->
             when (ch) {
@@ -546,7 +671,7 @@ private fun SpeedDialSettings(contacts: List<ContactInfo>) {
     var assigning by remember { mutableStateOf<Char?>(null) }
     @Suppress("UNUSED_EXPRESSION") version
     Text(stringResource(R.string.phone_speed_dial), style = MaterialTheme.typography.titleSmall)
-    Text(stringResource(R.string.phone_speed_dial_hint), style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+    Text(stringResource(R.string.phone_speed_dial_hint), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
     ('2'..'9').forEach { k ->
         val s = PhoneSpeed.get(context, k)
         Row(Modifier.fillMaxWidth().clickable { assigning = k }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -604,33 +729,28 @@ private fun NumberActions(number: String, changed: () -> Unit) {
 @Composable
 private fun SpamSettings(changed: () -> Unit) {
     val context = LocalContext.current
-    var version by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { // Android's blocked numbers join the list once, so there is one list to look after
         val p = context.getSharedPreferences("phone", Context.MODE_PRIVATE)
         if (!p.getBoolean("spam_from_blocked", false) && PhoneBlocked.can(context)) {
             withContext(Dispatchers.IO) { PhoneBlocked.all(context).forEach { (_, n) -> PhoneSpam.add(context, n, "blocked before") } }
-            p.edit().putBoolean("spam_from_blocked", true).apply(); version++
+            p.edit().putBoolean("spam_from_blocked", true).apply()
         }
     }
-    val list = remember(version) { PhoneSpam.read() }
+    // the list itself is not shown (the user, 27 Oct: "its the same" as the blocked calls); a number is unblocked on its page
     var adding by remember { mutableStateOf("") }
-    Text(stringResource(R.string.phone_spam_title), style = MaterialTheme.typography.titleSmall)
-    Text(stringResource(R.string.phone_spam_hint),
-        style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
-    list.forEach { e ->
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    if (!PhoneRelay.noCalls(context)) {
+        var notify by remember { mutableStateOf(PhonePrefs.blockedNotify(context)) }
+        Row(Modifier.fillMaxWidth().clickable { notify = !notify; PhonePrefs.setBlockedNotify(context, notify) }, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(e.number)
-                if (e.note.isNotBlank()) Text(e.note, style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f))
+                Text(stringResource(R.string.phone_blocked_notify), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.phone_blocked_notify_about), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
             }
-            TextButton(onClick = {
-                if (e.number.endsWith("*")) PhoneSpam.removeLine(context, e) else { PhoneSpam.remove(context, e.number); PhoneBlocked.unblock(context, e.number) }
-                version++; changed()
-            }) { Text(stringResource(R.string.common_remove), color = islandContentColor(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Switch(checked = notify, onCheckedChange = { notify = it; PhonePrefs.setBlockedNotify(context, it) })
         }
     }
+    Text(stringResource(R.string.phone_blocking_hint), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f))
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(adding, { adding = it.filter { ch -> ch.isDigit() || ch in "+* " } }, singleLine = true, placeholder = { Text(stringResource(R.string.phone_spam_placeholder)) }, modifier = Modifier.weight(1f))
-        TextButton(onClick = { if (adding.any(Char::isDigit)) { PhoneSpam.add(context, adding.replace(" ", "")); adding = ""; version++; changed() } }) { Text(stringResource(R.string.common_add), color = islandContentColor(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        TextButton(onClick = { if (adding.any(Char::isDigit)) { PhoneSpam.add(context, adding.replace(" ", "")); adding = ""; changed() } }) { Text(stringResource(R.string.common_add), color = LocalContentColor.current, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
 }

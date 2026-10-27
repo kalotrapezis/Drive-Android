@@ -388,7 +388,7 @@
     <string name="settings_imported">Uvoženo</string>
     <string name="settings_imported_shared">Krajev: %1$d, dodatkov na zemljevidu: %2$d; %3$d jih že obstaja ali so brez lokacije.</string>
     <string name="settings_not_placed">Teh ni bilo mogoče umestiti – poiščite jih v Zemljevidih in Shranite:</string>
-    <string name="settings_installed_maps_note">Zemljevidi se izdelajo v računalniku in pridejo sem s Sinhronizacijo, v Tetra/Maps: tools/maps-greece.sh prenese najnovejši zemljevid Grčije in zanj zgradi usmerjanje (gumb Posodobi v namizni Tetri je načrtovan).</string>
+    <string name="settings_installed_maps_note">Zemljevid vsake države nastane v računalniku, v Tetra v računalniku › Nastavitve › Zemljevidi › Dodaj zemljevid. Sinhronizacija ga prenese sem, v Tetra/Maps.</string>
     <string name="settings_problems">Težave</string>
     <string name="settings_send_log_summary">Dnevnik Tetre in sledi vaših voženj v zadnjih 7 dneh, kot en zip; ostanejo v tej napravi, dokler jih ne pošljete</string>
     <string name="settings_contacts_note">Vaši stiki so datoteke v Tetra/Contacts, ena na osebo: sinhronizirajo se z računalnikom, kjer jih prikazujejo tudi Stiki.</string>
@@ -1595,7 +1595,7 @@
     <string name="maps_my_car">Moj avto</string>
     <string name="maps_parking_saved">Parkirno mesto shranjeno</string>
     <string name="maps_on_car_screen">Na zaslonu avta: %1$s</string>
-    <string name="maps_no_graph">Grafa za usmerjanje še ni: postavite greece-gh v Tetra/Maps (izdela ga tools/maps-greece.sh v računalniku).</string>
+    <string name="maps_no_graph">Ta zemljevid še nima cest za navodila: posodobite ga v Tetra v računalniku › Nastavitve › Zemljevidi.</string>
     <string name="maps_finding">Iskanje poti…</string>
     <string name="maps_no_way_graph">Pot ni najdena: grafa za usmerjanje ni bilo mogoče prebrati</string>
     <string name="maps_arrived">Prispeli: %1$s</string>
@@ -1603,8 +1603,8 @@
     <string name="maps_dropped_pin">Postavljena žebljica</string>
     <string name="maps_amea_parking">Parkirišče za invalide</string>
     <string name="maps_amea_placed">Invalidsko mesto postavljeno: %1$s</string>
-    <string name="maps_no_map">Zemljevida Grčije še ni v tej napravi</string>
-    <string name="maps_no_map_how">Pride iz računalnika: tools/maps-greece.sh izdela greece.pmtiles (približno 500 MB) in graf za usmerjanje greece-gh, Sinhronizacija pa ju prinese sem v Tetra/Maps.</string>
+    <string name="maps_no_map">V tej napravi še ni zemljevida</string>
+    <string name="maps_no_map_how">Zemljevidi nastanejo v računalniku: Tetra v računalniku › Nastavitve › Zemljevidi › Dodaj zemljevid, nato jih Sinhronizacija prenese sem, v Tetra/Maps.</string>
     <string name="maps_parked_here">Tu sem parkiral</string>
     <string name="maps_waiting_location">Čakanje na vašo lokacijo…</string>
     <string name="maps_location_off">Lokacija je za Tetro izklopljena.</string>
@@ -1699,7 +1699,7 @@
     <string name="car_map">Zemljevid</string>
     <string name="car_places">Kraji</string>
     <string name="car_allow_location">Enkrat odprite Tetra Zemljevide v telefonu, da dovolite lokacijo</string>
-    <string name="car_no_map">Zemljevida še ni: greece.pmtiles pride iz računalnika v Tetra/Maps</string>
+    <string name="car_no_map">Zemljevida še ni: ustvarite ga v Tetra v računalniku › Nastavitve › Zemljevidi</string>
     <string name="car_end">Konec</string>
     <string name="car_routes">Poti</string>
     <string name="car_add_stop_button">Postanek</string>
@@ -1740,10 +1740,6 @@
         <item quantity="few">%1$d cestnine</item>
         <item quantity="other">%1$d cestnin</item>
     </plurals>
-    <string name="maps_installed_map">Zemljevid Grčije</string>
-    <string name="maps_installed_routing">Usmerjanje (avto, peš, kolo)</string>
-    <string name="maps_installed_places">Shranjeni kraji</string>
-    <string name="maps_installed_not_yet">še ni tukaj</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Priljubljeno</string>
@@ -2104,16 +2100,6 @@
     <string name="phone_channel_where_about">Zemljevidi v računalniku sprašujejo, kje je ta telefon</string>
     <string name="phone_where_title">Računalnik sprašuje, kje je ta telefon</string>
     <string name="phone_where_text">Tapnite, da mu pošljete lokacijo</string>
-    <string name="phone_area_athens">Atene</string>
-    <string name="phone_area_thessaloniki">Solun</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Iraklion</string>
-    <string name="phone_area_larissa">Larisa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Joanina</string>
-    <string name="phone_area_syros">Siros</string>
-    <string name="phone_area_chania">Hanija</string>
     <string name="phone_area_abroad">Tujina</string>
     <string name="phone_area_landline">Stacionarni telefon</string>
     <string name="phone_reply_cant_talk">Zdaj ne morem govoriti. Pokličem nazaj.</string>
@@ -2153,8 +2139,6 @@
     <string name="phone_not_spam">Ni neželeno</string>
     <string name="phone_ringtone_default">Privzeto</string>
     <string name="phone_ringtone">Melodija zvonjenja: %1$s</string>
-    <string name="phone_spam_title">Neželeni klici</string>
-    <string name="phone_spam_hint">Klici s teh številk so v tem telefonu zavrnjeni, preden zazvonijo; isti seznam je v tabličnem računalniku in računalniku. * na koncu zajame cel obseg (69800*).</string>
     <string name="phone_spam_placeholder">Številka ali 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">Izbrano: %1$d</item>
@@ -4778,4 +4762,21 @@
     <string name="pdf_no_bookmarks">V tej datoteki ni zaznamkov.</string>
     <string name="pdf_page_lower">stran %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Blokiranje klicev</string>
+    <string name="phone_blocking_about">Neželene številke in obsegi ter blokirani klici</string>
+    <string name="phone_raise_answer">Dvigni za sprejem</string>
+    <string name="phone_raise_answer_about">Zvoneči telefon prislonite k ušesu, da sprejmete klic.</string>
+    <string name="phone_flip_silence">Obrni za utišanje</string>
+    <string name="phone_flip_silence_about">Zvoneči telefon obrnite z zaslonom navzdol, da ga utišate.</string>
+    <string name="phone_unblock">Odblokiraj</string>
+    <string name="phone_blocking_hint">Številke, dodane tukaj, so zavrnjene, preden pozvonijo – v telefonu, tablici in računalniku. * na koncu zajame cel obseg (69800*).</string>
+    <string name="phone_blocked_notify">Tiho obvestilo</string>
+    <string name="phone_blocked_notify_about">Tiho obvestilo, ko kliče blokirana številka.</string>
+    <string name="phone_channel_blocked">Blokirani klici</string>
+    <string name="phone_blocked_from">Blokiran klic od %1$s</string>
+    <string name="maps_with_roads">s cestami</string>
+    <string name="maps_no_roads">samo zemljevid, brez cest</string>
+    <string name="settings_remove_map">Odstrani</string>
+    <string name="settings_remove_map_title">Odstranim zemljevid: %1$s?</string>
+    <string name="settings_remove_map_body">Njegove datoteke gredo v Koš, tukaj in v vaših drugih napravah. Vaši shranjeni kraji ostanejo.</string>
 </resources>

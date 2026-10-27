@@ -388,7 +388,7 @@
     <string name="settings_imported">Geïmporteerd</string>
     <string name="settings_imported_shared">%1$d plaatsen en %2$d kaarttoevoegingen; %3$d al aanwezig of zonder positie.</string>
     <string name="settings_not_placed">Deze konden niet worden geplaatst — zoek ze in Kaarten en kies Opslaan:</string>
-    <string name="settings_installed_maps_note">Kaarten worden op de computer gemaakt en komen via Sync hier, in Tetra/Maps: tools/maps-greece.sh downloadt de nieuwste kaart van Griekenland en bouwt de routering ervoor (een knop Bijwerken in Tetra voor desktop is gepland).</string>
+    <string name="settings_installed_maps_note">De kaart van elk land wordt op de computer gemaakt, in Tetra op de computer › Instellingen › Kaarten › Kaart toevoegen. Sync brengt hem hierheen, naar Tetra/Maps.</string>
     <string name="settings_problems">Problemen</string>
     <string name="settings_send_log_summary">Het log van Tetra en de sporen van je ritten van de afgelopen 7 dagen, als één zip; ze blijven op dit apparaat tot je ze verzendt</string>
     <string name="settings_contacts_note">Je contacten zijn bestanden in Tetra/Contacts, één per persoon: ze synchroniseren met de computer, waar Contacten ze ook toont.</string>
@@ -1509,7 +1509,7 @@
     <string name="maps_my_car">Mijn auto</string>
     <string name="maps_parking_saved">Parkeerplek opgeslagen</string>
     <string name="maps_on_car_screen">Op het scherm van de auto: %1$s</string>
-    <string name="maps_no_graph">Nog geen routeringsgraaf: zet greece-gh in Tetra/Maps (tools/maps-greece.sh op de computer maakt hem).</string>
+    <string name="maps_no_graph">Deze kaart heeft nog geen wegen voor routebeschrijvingen: werk hem bij in Tetra op de computer › Instellingen › Kaarten.</string>
     <string name="maps_finding">Route zoeken…</string>
     <string name="maps_no_way_graph">Geen route gevonden: de routeringsgraaf kan niet worden gelezen</string>
     <string name="maps_arrived">Aangekomen: %1$s</string>
@@ -1517,8 +1517,8 @@
     <string name="maps_dropped_pin">Geplaatste speld</string>
     <string name="maps_amea_parking">Invalidenparkeren</string>
     <string name="maps_amea_placed">Invalidenplek geplaatst: %1$s</string>
-    <string name="maps_no_map">De kaart van Griekenland staat nog niet op dit apparaat</string>
-    <string name="maps_no_map_how">Hij komt van de computer: tools/maps-greece.sh maakt greece.pmtiles (ongeveer 500 MB) en de routeringsgraaf greece-gh, en Sync brengt ze hier naar Tetra/Maps.</string>
+    <string name="maps_no_map">Nog geen kaart op dit apparaat</string>
+    <string name="maps_no_map_how">Kaarten worden op de computer gemaakt: Tetra op de computer › Instellingen › Kaarten › Kaart toevoegen, daarna brengt Sync ze hierheen, naar Tetra/Maps.</string>
     <string name="maps_parked_here">Ik heb hier geparkeerd</string>
     <string name="maps_waiting_location">Wachten op je locatie…</string>
     <string name="maps_location_off">Locatie staat uit voor Tetra.</string>
@@ -1613,7 +1613,7 @@
     <string name="car_map">Kaart</string>
     <string name="car_places">Plaatsen</string>
     <string name="car_allow_location">Open Tetra Kaarten één keer op de telefoon om locatie toe te staan</string>
-    <string name="car_no_map">Nog geen kaart: greece.pmtiles komt van de computer naar Tetra/Maps</string>
+    <string name="car_no_map">Nog geen kaart: maak er een in Tetra op de computer › Instellingen › Kaarten</string>
     <string name="car_end">Stoppen</string>
     <string name="car_routes">Routes</string>
     <string name="car_add_stop_button">Stop</string>
@@ -1652,10 +1652,6 @@
         <item quantity="one">%1$d tolpost</item>
         <item quantity="other">%1$d tolposten</item>
     </plurals>
-    <string name="maps_installed_map">Kaart van Griekenland</string>
-    <string name="maps_installed_routing">Routering (auto, lopen, fiets)</string>
-    <string name="maps_installed_places">Opgeslagen plaatsen</string>
-    <string name="maps_installed_not_yet">nog niet hier</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Favorieten</string>
@@ -1986,16 +1982,6 @@
     <string name="phone_channel_where_about">Kaarten op de computer vraagt waar deze telefoon is</string>
     <string name="phone_where_title">De computer vraagt waar deze telefoon is</string>
     <string name="phone_where_text">Tik om de locatie te sturen</string>
-    <string name="phone_area_athens">Athene</string>
-    <string name="phone_area_thessaloniki">Thessaloniki</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Heraklion</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Syros</string>
-    <string name="phone_area_chania">Chania</string>
     <string name="phone_area_abroad">Buitenland</string>
     <string name="phone_area_landline">Vaste lijn</string>
     <string name="phone_reply_cant_talk">Kan nu niet praten. Ik bel je terug.</string>
@@ -2035,8 +2021,6 @@
     <string name="phone_not_spam">Geen spam</string>
     <string name="phone_ringtone_default">Standaard</string>
     <string name="phone_ringtone">Beltoon: %1$s</string>
-    <string name="phone_spam_title">Spam en ongewenst</string>
-    <string name="phone_spam_hint">Gesprekken van deze nummers worden op deze telefoon geweigerd voordat ze overgaan; dezelfde lijst staat op de tablet en de computer. Een * aan het einde vangt een hele reeks (69800*).</string>
     <string name="phone_spam_placeholder">Een nummer, of 69800*</string>
     <plurals name="phone_n_chosen">
         <item quantity="one">%1$d gekozen</item>
@@ -4594,4 +4578,21 @@
     <string name="pdf_no_bookmarks">Geen bladwijzers in dit bestand.</string>
     <string name="pdf_page_lower">pagina %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="phone_blocking">Oproepen blokkeren</string>
+    <string name="phone_blocking_about">Ongewenste nummers en reeksen, en de geblokkeerde oproepen</string>
+    <string name="phone_raise_answer">Optillen om op te nemen</string>
+    <string name="phone_raise_answer_about">Breng een rinkelende telefoon naar je oor om op te nemen.</string>
+    <string name="phone_flip_silence">Omdraaien voor stil</string>
+    <string name="phone_flip_silence_about">Leg een rinkelende telefoon met het scherm naar beneden om hem stil te zetten.</string>
+    <string name="phone_unblock">Deblokkeren</string>
+    <string name="phone_blocking_hint">Nummers die je hier toevoegt worden geweigerd voordat ze overgaan, op de telefoon, de tablet en de computer. Een * aan het eind neemt een hele reeks (69800*).</string>
+    <string name="phone_blocked_notify">Stil melden</string>
+    <string name="phone_blocked_notify_about">Een stille melding wanneer een geblokkeerd nummer belt.</string>
+    <string name="phone_channel_blocked">Geblokkeerde oproepen</string>
+    <string name="phone_blocked_from">Geblokkeerde oproep van %1$s</string>
+    <string name="maps_with_roads">met wegen</string>
+    <string name="maps_no_roads">alleen kaart, geen wegen</string>
+    <string name="settings_remove_map">Verwijderen</string>
+    <string name="settings_remove_map_title">De kaart van %1$s verwijderen?</string>
+    <string name="settings_remove_map_body">De bestanden gaan naar de Prullenbak, hier en op je andere apparaten. Je opgeslagen plaatsen blijven staan.</string>
 </resources>

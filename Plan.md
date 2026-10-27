@@ -12,6 +12,14 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [x] (phone-tablet-two-pane session, 27 Oct; branch `claude/phone-tablet-two-pane-5f7348`, not merged: main's checkout holds the map-manager
+      session's uncommitted work in the same files) **Phone on the tablet: two panes** (the user: "now it's just black bars everywhere"):
+      the list on the left, the keypad always open on the right (smallest width ≥ 600 dp; the phone unchanged); seen on the tablet,
+      landscape and portrait, typing and T9 search. Then (the user): **Call blocking** and **Speed dial** are their own pages behind
+      two buttons in the Phone's sheet (Call blocking: the spam list and the blocked calls, a tap opens the call); **Raise to answer**
+      and **Turn over to silence** (PhoneGestures, while ringing, both off at first; Settings › Phone and the sheet); 24 languages.
+      **Open:** pages and gestures built, not yet seen on a device (no install while the other branches were unmerged); the
+      keypad pane's upper part is empty until a number is typed.
 - [x] (office-media session, 27 Oct; branch `claude/office-media`, not merged; its build is on the tablet 971f6b37) **Local video and audio
       embedded in documents play** (the user: "I know it has Video from YouTube but what about local files embedded into the
       documents?"). Already there: Slides read and played PowerPoint's p:videoFile/p:audioFile + p14:media and Impress's

@@ -1977,7 +1977,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
     var playing by remember { mutableStateOf<Pair<String, String>?>(null) } // Picture › Play: the video playing in its frame while editing (its key, its film)
     /** A video's film to play: a web address or a copy on the phone as it is, else its part taken out of the file. */
     suspend fun filmOf(m: String): String? = if (m.startsWith("http") || File(m).isFile) m
-        else withContext(Dispatchers.IO) { packageParts[m]?.let { b -> File(context.cacheDir, "film-${m.substringAfterLast('/')}").apply { writeBytes(b) }.path } }
+        else withContext(Dispatchers.IO) { packageParts[m.substringBefore('#')]?.let { OfficeVideo.cached(m, it, context.cacheDir) } }
     fun play(key: String, m: String) = scope.launch {
         filmOf(m)?.let { playing = key to it; WriterLog.i("a video played") } ?: run { message = context.getString(R.string.words_film_not_found) }
     }
@@ -3720,7 +3720,7 @@ internal fun WriterScreen(back: () -> Unit, open: String?) {
                                                     n.save(); n.scale(k, k); shape.drawAt(n, 0f, 0f, img.widthPt, img.heightPt); n.restore()
                                                 } }
                                             } else Image(picturePainter(img, packageParts), contentDescription = PictureXml.kind(img), contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
-                                            if (PictureXml.video(img) != null) androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c -> OfficeVideo.mark(c.nativeCanvas, 0f, 0f, this.size.width, this.size.height) } }
+                                            if (PictureXml.video(img)?.let(OfficeVideo::audio) == false) androidx.compose.foundation.Canvas(Modifier.matchParentSize()) { drawIntoCanvas { c -> OfficeVideo.mark(c.nativeCanvas, 0f, 0f, this.size.width, this.size.height) } }
                                             playing?.takeIf { it.first == img.key }?.let { (_, f) -> VideoFrame(f, Modifier.matchParentSize()) { playing = null } }
                                             // Not a picture (a chart, a shape Writer cannot draw): a grey box that says what it is, kept in the file as it was.
                                             if (pictureBytes(img) == null && img.table == null && img.chart == null && img.math == null && img.group == null && img.box == null && ShapePicture.of(img) == null) Text(PictureXml.kind(img), color = Color(0xFF5F6368), style = MaterialTheme.typography.labelMedium, maxLines = 1)
@@ -4977,7 +4977,10 @@ internal fun picturePainter(img: DocImage, parts: Map<String, ByteArray>): Paint
         val bytes = img.bytes ?: img.part?.let { parts[it] }
         value = bytes?.let { withContext(Dispatchers.IO) { runCatching { OfficePages.croppedPicture(img, it, 1400)?.asImageBitmap() }.getOrNull() } }
     }
-    return bitmap?.let { BitmapPainter(it) } ?: ColorPainter(Color(0xFFE3E3E3))
+    // a film's or a sound's icon Android cannot draw (Word's are EMF): a dark frame, a speaker
+    val film = PictureXml.video(img)
+    val stand = remember(film) { film?.takeIf(OfficeVideo::audio)?.let { OfficeVideo.speaker().let { b -> BitmapPainter(BitmapFactory.decodeByteArray(b, 0, b.size).asImageBitmap()) } } }
+    return bitmap?.let { BitmapPainter(it) } ?: stand ?: ColorPainter(Color(if (film != null) 0xFF202124 else 0xFFE3E3E3))
 }
 
 /** A picture's bytes as a bitmap no wider or taller than [max] pixels (a phone photo is far bigger than the page needs). */
@@ -5114,7 +5117,7 @@ internal fun Modifier.dropPictures(enabled: Boolean, onDrop: (android.net.Uri) -
 /** [PictureXml.kind]'s word (an English name, as an ID) as shown. */
 @Composable internal fun objectKindName(kind: String) = when (kind) {
     "Signature" -> stringResource(R.string.words_signature); "Table" -> stringResource(R.string.words_table); "Equation" -> stringResource(R.string.words_equation)
-    "Video" -> stringResource(R.string.words_video); "Chart" -> stringResource(R.string.words_chart); "SmartArt" -> "SmartArt"; "WordArt" -> "WordArt"
+    "Video" -> stringResource(R.string.words_video); "Audio" -> stringResource(R.string.slides_audio); "Chart" -> stringResource(R.string.words_chart); "SmartArt" -> "SmartArt"; "WordArt" -> "WordArt"
     "Text box" -> stringResource(R.string.words_text_box); "Embedded object" -> stringResource(R.string.words_embedded_object); "Shape" -> stringResource(R.string.words_shape)
     "Image" -> stringResource(R.string.words_tab_image); else -> kind
 }

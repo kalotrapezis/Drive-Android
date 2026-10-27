@@ -265,8 +265,9 @@ internal object SlidesOdp {
                                 if (t != null || shape != null) out += SlideItem.Shape(b[0], b[1], b[2], b[3], rot, shape, t, gradient = gradient(), id = path)
                             }
                             // a video (Impress's plugin): its picture the frame's image, its film a part of the file or a web address
-                            "plugin" -> e.kids().firstOrNull { it.localName == "image" }?.a(XLINK, "href")?.removePrefix("./").let { p ->
-                                out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { p?.let { part(it) } }.also { it.media = inner.a(XLINK, "href")?.removePrefix("./") } }
+                            // (a sound with no picture: a speaker, as PowerPoint's)
+                            "plugin" -> e.kids().firstOrNull { it.localName == "image" }?.a(XLINK, "href")?.removePrefix("./").let { p -> val m = inner.a(XLINK, "href")?.removePrefix("./")
+                                out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { p?.let { part(it) } ?: m?.takeIf(OfficeVideo::audio)?.let { OfficeVideo.speaker() } }.also { it.media = m } }
                             "image" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot, g("clip")?.let { Slides.clip(it, part(p)) },
                                 flipH = g("mirror")?.contains("horizontal") == true, flipV = g("mirror")?.contains("vertical") == true) { part(p) }.also {
                                 // its transparency, outline and shadow as LibreOffice keeps them (no rounded pictures there)
@@ -274,6 +275,10 @@ internal object SlidesOdp {
                                     hex(g("stroke-color"))?.and(0xFFFFFF)?.takeIf { g("stroke") == "solid" }, pt(g("stroke-width"))?.takeIf { g("stroke") == "solid" } ?: 0f,
                                     g("shadow") == "visible").takeIf { l -> l != PictureLook() } } }
                             "table" -> out += table(inner, b)
+                            // a film or sound embedded as an object (LibreOffice keeps PowerPoint's package as it was): its picture, played from it
+                            "object-ole" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { o -> part(o)?.let { OfficeVideo.ole(it, nameOnly = true) }?.first?.takeIf(OfficeVideo::media)?.let { name ->
+                                val p = e.kids().firstOrNull { it.localName == "image" }?.a(XLINK, "href")?.removePrefix("./")
+                                out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { p?.let { part(it) } }.also { it.media = "$o#$name" } } }
                             "object" -> {
                                 val c = inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }
                                 val chart = c?.let(OfficeCharts::readOdf)
@@ -369,7 +374,7 @@ internal object SlidesOdp {
             val main = root?.getElementsByTagNameNS(ANIM, "seq")?.let { l -> (0 until l.length).map { l.item(it) as Element } }?.firstOrNull { it.a(PRES, "node-type") == "main-sequence" }
             val steps = main?.kids().orEmpty().mapNotNull { click ->
                 val effects = click.getElementsByTagNameNS(ANIM, "par").let { l -> (0 until l.length).map { l.item(it) as Element } }
-                    .filter { it.a(PRES, "preset-class") in setOf("entrance", "exit", "emphasis") }.mapNotNull { fx ->
+                    .filter { it.a(PRES, "preset-class") in setOf("entrance", "exit", "emphasis", "media-call") }.mapNotNull { fx ->
                         val kids = fx.kids()
                         val target = kids.firstNotNullOfOrNull { it.a(SMIL, "targetElement") }?.let(named::get) ?: return@mapNotNull null
                         // played there and back (autoReverse): twice its length
@@ -377,7 +382,7 @@ internal object SlidesOdp {
                         val id = fx.a(PRES, "preset-id").orEmpty()
                         // when it starts within its click: its par's begin (LibreOffice groups effects by it)
                         val at = secs((fx.parentNode as? Element)?.a(SMIL, "begin"))?.let { (it * 1000).toInt() } ?: 0
-                        val kind = if (fx.a(PRES, "preset-class") == "emphasis") (if ("spin" in id) "spin" else if ("grow" in id) "grow" else "pulse")
+                        val kind = if (fx.a(PRES, "preset-class") == "media-call") "play" else if (fx.a(PRES, "preset-class") == "emphasis") (if ("spin" in id) "spin" else if ("grow" in id) "grow" else "pulse")
                             else if ("appear" in id) "appear" else if ("fly" in id) "fly" else if ("wipe" in id) "wipe" else if ("zoom" in id) "zoom" else "fade"
                         val start = when (fx.a(PRES, "node-type")) { "with-previous" -> 'w'; "after-previous" -> 'a'; else -> 'c' }
                         SlideEffect(target, kind, OdpEffects.side(fx.a(PRES, "preset-sub-type")), at, ms, exit = fx.a(PRES, "preset-class") == "exit", start = start)

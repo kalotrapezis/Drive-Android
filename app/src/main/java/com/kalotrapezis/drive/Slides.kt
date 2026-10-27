@@ -126,8 +126,8 @@ internal data class SlideTransition(val kind: String, val dir: String?, val ms: 
 internal data class SlideEffect(val target: String, val kind: String, val from: Char, val delay: Int, val ms: Int, val exit: Boolean = false,
     /** when it starts — 'c' on a click, 'w' with the one before, 'a' after it (PowerPoint's Start) */ val start: Char = 'c',
     /** while editing: how long it waits from then (PowerPoint's Delay) */ val wait: Int = 0) {
-    /** An emphasis (pulse, spin, grow): on something already there, neither bringing it nor taking it away. */
-    val emphasis get() = kind in EMPHASES
+    /** An emphasis (pulse, spin, grow), or a film or sound played ("play": PowerPoint's media call): on something already there, neither bringing it nor taking it away. */
+    val emphasis get() = kind in EMPHASES || kind == "play"
     companion object { val EMPHASES = setOf("pulse", "spin", "grow") }
 }
 /** One click's effects ([auto]: they start by themselves, with the slide or after the step before). */
@@ -420,11 +420,12 @@ internal object Slides {
                 val auto = conds.any { it.attr("evt") == "onBegin" } || (conds.isNotEmpty() && conds.none { it.attr("delay") == "indefinite" })
                 val effects = gc.kid("childTnLst")?.kids("par").orEmpty().flatMap { inner ->
                     val ic = inner.kid("cTn"); val at = delay(ic)
-                    ic?.below("cTn").orEmpty().filter { it.attr("presetClass") in setOf("entr", "exit", "emph") }.mapNotNull { e ->
+                    ic?.below("cTn").orEmpty().filter { it.attr("presetClass") in setOf("entr", "exit", "emph", "mediacall") }.mapNotNull { e ->
                         val target = e.below("spTgt").firstOrNull()?.attr("spid") ?: return@mapNotNull null
                         // a behaviour played there and back (autoRev) lasts twice its length
                         val ms = e.below("cTn").mapNotNull { c -> c.attr("dur")?.toIntOrNull()?.let { if (c.attr("autoRev") == "1") it * 2 else it } }.filter { it > 1 }.maxOrNull() ?: 500
-                        val kind = if (e.attr("presetClass") == "emph") when (e.attr("presetID")) { "8" -> "spin"; "6" -> "grow"; else -> "pulse" }
+                        // a film or sound played (Video › Start: In Click Sequence, Automatically); its length the film's
+                        val kind = if (e.attr("presetClass") == "mediacall") "play" else if (e.attr("presetClass") == "emph") when (e.attr("presetID")) { "8" -> "spin"; "6" -> "grow"; else -> "pulse" }
                             else when (e.attr("presetID")) { "1" -> "appear"; "2" -> "fly"; "22" -> "wipe"; "23", "53" -> "zoom"; else -> "fade" }
                         val from = when (e.attr("presetSubtype")) { "1" -> 'u'; "2" -> 'r'; "4" -> 'd'; "8" -> 'l'; else -> 'd' }
                         val start = when (e.attr("nodeType")) { "withEffect" -> 'w'; "afterEffect" -> 'a'; else -> 'c' }
@@ -533,6 +534,11 @@ internal object Slides {
                     "graphicFrame" -> {
                         e.below("chart").firstOrNull()?.rid("id")?.let(rels::get)?.let(part)?.let(OfficeCharts::readDrawingml)?.let { out += SlideItem.Chart(box[0], box[1], box[2], box[3], it) }
                         e.below("tbl").firstOrNull()?.let { out += table(it, box) }
+                        // a film or sound embedded as an object (Insert › Object › Create from file): its icon, played from its package ("part#name")
+                        e.below("oleObj").firstNotNullOfOrNull { it.rid("id") }?.let(rels::get)?.let { p ->
+                            part(p)?.let { OfficeVideo.ole(it, nameOnly = true) }?.first?.takeIf(OfficeVideo::media)?.let { name ->
+                                val icon = e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)
+                                out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot) { icon?.let(part) }.also { it.media = "$p#$name" } } }
                     }
                     "grpSp" -> {
                         val ch = xfrm?.kid("chOff"); val che = xfrm?.kid("chExt")
@@ -814,7 +820,8 @@ internal object Slides {
                         var sample = 1; while (o.outWidth / (sample * 2) >= item.w * 3) sample *= 2
                         android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
                     } }.getOrNull()?.let { cropped(it, item.crop) }?.also { pictures.put(item, it) }
-                    bmp?.let { framed(c, it, item, paint) }
+                    // a film's or sound's icon Android cannot draw (an embedded object's EMF): a dark frame, a speaker
+                    bmp?.let { framed(c, it, item, paint) } ?: item.media?.let(OfficeVideo::stand)?.run { setBounds(item.x.toInt(), item.y.toInt(), (item.x + item.w).toInt(), (item.y + item.h).toInt()); draw(c) }
                 }
                 is SlideItem.Chart -> ChartDrawable(item.chart).apply { setBounds(item.x.toInt(), item.y.toInt(), (item.x + item.w).toInt(), (item.y + item.h).toInt()) }.draw(c)
                 is SlideItem.Table -> table(c, item, paint)

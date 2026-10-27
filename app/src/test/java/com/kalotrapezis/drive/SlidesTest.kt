@@ -1032,6 +1032,35 @@ class SlidesTest {
         }
     }
 
+    /** A deck's own film and sound, as PowerPoint and LibreOffice keep them: found with their pictures, played on their slide's start
+     *  (Start: Automatically) and click (In Click Sequence), and kept — the parts and the media calls — when saved. */
+    @Test fun `a deck's films and sounds found and played on their clicks`() {
+        for (name in listOf("media.pptx", "media.odp")) {
+            val src = File("src/test/resources/$name"); val deck = Slides.read(src)
+            val film = deck.slides[1].items.single { it.media != null }; val sound = deck.slides[3].items.single { it.media != null }
+            assertTrue("$name: ${film.media}", film.media!!.endsWith(".mp4")); assertTrue("$name: ${sound.media}", OfficeVideo.audio(sound.media!!))
+            assertTrue(name, (film as SlideItem.Picture).bytes() != null && (sound as SlideItem.Picture).bytes() != null)
+            java.util.zip.ZipFile(src).use { z -> assertEquals(name, 8990, z.getInputStream(z.getEntry(film.media)).readBytes().size) }
+            // slide 1's beep embedded as an object (PowerPoint's Insert › Object; LibreOffice keeps its package): played from the package
+            val beep = deck.slides[0].items.single { it.media != null }.media!!
+            assertTrue("$name: $beep", beep.endsWith("#beep.wav"))
+            java.util.zip.ZipFile(src).use { z -> assertEquals(name, 844, OfficeVideo.ole(z.getInputStream(z.getEntry(beep.substringBefore('#'))).readBytes())!!.second!!.size) }
+            for (d in listOf(deck, Slides.read(File("build/office-roundtrip").apply { mkdirs() }.resolve("media-$name").also { out ->
+                    // saved with slide 2's and 4's animations written again (as when they are changed)
+                    val e = SlidesEdit.start(deck).let { e -> e.copy(anims = mapOf(1 to SlidesEdit.flat(deck.slides[1].steps), 3 to SlidesEdit.flat(deck.slides[3].steps))) }
+                    if (name.endsWith("odp")) SlidesOdpEdit.save(src, deck, e, out) else SlidesEdit.save(src, deck, e, out)
+                    java.util.zip.ZipFile(src).use { a -> java.util.zip.ZipFile(out).use { b -> for (m in listOf(film.media!!, sound.media!!))
+                        assertTrue("$name: $m kept", a.getInputStream(a.getEntry(m)).readBytes().contentEquals(b.getInputStream(b.getEntry(m)).readBytes())) } }
+                }))) {
+                val auto = d.slides[1].steps.single(); val click = d.slides[3].steps.single()
+                assertTrue(name, auto.auto); assertFalse(name, click.auto)
+                assertEquals(name, listOf("play" to d.slides[1].items.single { it.media != null }.anim), auto.effects.map { it.kind to it.target })
+                assertEquals(name, listOf("play" to d.slides[3].items.single { it.media != null }.anim), click.effects.map { it.kind to it.target })
+                assertEquals(name, 2000, auto.effects.single().ms)
+            }
+        }
+    }
+
     /** Video › Trim: a film's start and end kept as PowerPoint's p14:trim (on one just put on, and on one already in the file), read back, and taken off. */
     @Test fun `a film trimmed`() {
         val dir = scratchDir("trim")

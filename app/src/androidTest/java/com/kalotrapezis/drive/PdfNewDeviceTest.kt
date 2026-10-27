@@ -1,5 +1,6 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -64,5 +65,47 @@ class PdfNewDeviceTest {
         assertEquals(Size(792f, 612f), d.sizes[0])
         assertEquals("Letter landscape", PdfPaper.name(d.sizes[0]))
         d.close(); dir.deleteRecursively()
+    }
+
+    @Test fun everySaveKeepsWhatTheOnesBeforeDid() {
+        // 27 Oct: a second save (AutoSave's), or a second day's, dropped what the first one had written
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-saves-test").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        d.note(0, androidx.compose.ui.geometry.Offset(100f, 100f), "first", 0xFFEB3B); d.save()
+        d.note(0, androidx.compose.ui.geometry.Offset(200f, 100f), "second", 0xFFEB3B); d.save()
+        d.save(java.io.File(dir, "copy.pdf"), copy = true)
+        d.note(0, androidx.compose.ui.geometry.Offset(300f, 100f), "third", 0xFFEB3B); d.save()
+        d.close()
+        val day2 = PdfDoc(f)
+        assertEquals(listOf("first", "second", "third"), day2.comments().map { it.words })
+        day2.note(0, androidx.compose.ui.geometry.Offset(400f, 100f), "fourth", 0xFFEB3B); day2.save(); day2.close()
+        val day3 = PdfDoc(f)
+        assertEquals(listOf("first", "second", "third", "fourth"), day3.comments().map { it.words })
+        day3.close()
+        val copy = PdfDoc(java.io.File(dir, "copy.pdf"))
+        assertEquals(listOf("first", "second"), copy.comments().map { it.words })
+        copy.close(); dir.deleteRecursively()
+    }
+
+    @Test fun undoGoesBackToTheLastSave() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-undo-save").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        fun notes() = d.comments().size
+        d.note(0, Offset(100f, 100f), "first", 0xFFEB3B)
+        d.save()
+        // what the save wrote stays (MuPDF's undo would say it can, and change nothing)
+        assertTrue(!d.canUndo)
+        d.note(0, Offset(200f, 100f), "second", 0xFFEB3B); d.note(0, Offset(300f, 100f), "third", 0xFFEB3B)
+        d.undo(); assertEquals(2, notes())
+        d.redo(); assertEquals(3, notes())
+        d.undo(); d.save()
+        // undone before the save: not to be redone after it
+        assertTrue(!d.canRedo && !d.canUndo)
+        d.close()
+        val again = PdfDoc(f)
+        assertEquals(2, again.comments().size)
+        again.close(); dir.deleteRecursively()
     }
 }

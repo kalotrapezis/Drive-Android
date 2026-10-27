@@ -20,6 +20,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
@@ -406,6 +407,16 @@ internal class PdfDoc(private val file: File, password: String? = null) {
 
     /** Page [i] has words of its own (not a scan, or read already). */
     fun hasText(i: Int): Boolean = synchronized(this) { page(i) { p -> p.toStructuredText().let { t -> t.asText().isNotBlank().also { t.destroy() } } } }
+    /** Page [i]'s films and sounds (PdfMedia), and the [n]th annotation's written into [dir] to play. */
+    fun media(i: Int) = synchronized(this) { page(i) { p -> (p as? com.artifex.mupdf.fitz.PDFPage)?.let(PdfMedia::spots).orEmpty() } }
+    /** Page [i]'s [n]th annotation (a film, a sound) moved [dx], [dy] points (right, down): one undo step. */
+    fun moveMedia(i: Int, n: Int, dx: Float, dy: Float) = annotate(i, "Move") { p, _, _ ->
+        val o = p.annotations.orEmpty().getOrNull(n)?.`object` ?: return@annotate false
+        val r = o.get("Rect"); val v = (0 until 4).map { r.get(it).asFloat() }
+        // shortcut: on a page turned by its Rotate it goes the page's own way, not the screen's
+        o.put("Rect", pdf!!.newArray().apply { push(v[0] + dx); push(v[1] - dy); push(v[2] + dx); push(v[3] - dy) }); true
+    }
+    fun mediaFile(i: Int, n: Int, dir: File) = synchronized(this) { page(i) { p -> (p as? com.artifex.mupdf.fitz.PDFPage)?.let { PdfMedia.play(it, n, dir) } } }
 
     /**
      * The file's words as a Words document (the user, 22 Oct: "make it in to words"; "can we make a table and content table
@@ -1199,6 +1210,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     // —— editing (Plan.md § PDF): opened view only, Edit as Words' ——
     var editing by remember { mutableStateOf(JustMade.take(open)) } // a file just made with New: editing at once
     var tab by remember { mutableStateOf("Home") }
+    val media = remember { PdfMediaState() } // a film or sound chosen (its Video tab) and the one playing
     var tool by remember { mutableStateOf<PdfTool?>(null) }
     var markColour by remember { mutableStateOf(0xFFEB3B) } // Review's colour (highlight, shapes, notes)
     var penColour by remember { mutableStateOf(0xE53935) } // Draw's
@@ -1241,9 +1253,15 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var paragraphPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home › Line spacing, More…: Words' Paragraph window
     // an object chosen: its own tab shown, named by its kind (Words' Image, Shape, Text box…); none chosen: the tab before
     LaunchedEffect(chosen != null) {
-        if (chosen != null) { if (tab != "Selection" && tab != OBJECT_TAB) { tabBefore = tab; tab = OBJECT_TAB } }
+        if (chosen != null) { media.chosen = null; if (tab != "Selection" && tab != OBJECT_TAB) { tabBefore = tab; tab = OBJECT_TAB } }
         else if (tab == "Selection" || tab == OBJECT_TAB) tab = tabBefore
     }
+    // a film or sound chosen: its Video (or Audio) tab, as Words' when one is tapped
+    LaunchedEffect(media.chosen != null) {
+        if (media.chosen != null) { chosen = null; if (tab != "Video") { tabBefore = tab; tab = "Video" } }
+        else if (tab == "Video") tab = tabBefore
+    }
+    LaunchedEffect(editing) { media.chosen = null }
     var pageMenu by remember { mutableStateOf<Triple<Int, Offset, Offset>?>(null) } // a right-click's menu: its page, where (px on the page), where (page points)
     var filling by remember { mutableStateOf<Triple<Int, Offset, PdfField>?>(null) } // a form's text or choice field tapped
     var fillSize by remember { mutableStateOf(11f) }
@@ -1297,15 +1315,16 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     var about by remember { mutableStateOf(false) } // File › About this file
     var officeSettings by remember { mutableStateOf(false) }
     // Pages › Insert PDF (Combine): another PDF's pages after the one shown
-    val pickPdf = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+    // Insert PDF: one or several, each after the one before, in the order chosen
+    val pickPdf = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val d = doc ?: return@rememberLauncherForActivityResult
-        if (uri == null) return@rememberLauncherForActivityResult
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
         val at0 = at
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching {
                 val tmp = File(context.cacheDir, "pdf-insert.pdf")
-                context.contentResolver.openInputStream(uri)!!.use { i -> tmp.outputStream().use { i.copyTo(it) } }
-                d.insertFile(at0 + 1, tmp).also { tmp.delete() }
+                uris.fold(0) { n, uri -> context.contentResolver.openInputStream(uri)!!.use { i -> tmp.outputStream().use { i.copyTo(it) } }
+                    n + d.insertFile(at0 + 1 + n, tmp) }.also { tmp.delete() }
             } }
             r.onSuccess { n -> version++; Toast.makeText(context, context.resources.getQuantityString(R.plurals.pdf_pages_put_in, n, n, at0 + 1), Toast.LENGTH_SHORT).show() }
                 .onFailure { WriterLog.e("PDF: insert", it); Toast.makeText(context, pdfSays(context, it, R.string.pdf_insert_failed), Toast.LENGTH_LONG).show() }
@@ -2105,13 +2124,14 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     "Home" to stringResource(R.string.words_tab_home), "Insert" to stringResource(R.string.words_tab_insert), "Draw" to stringResource(R.string.words_tab_draw), "Design" to stringResource(R.string.words_tab_design),
                     "Layout" to stringResource(R.string.words_tab_layout), "Pages" to stringResource(R.string.words_pages), "Review" to stringResource(R.string.words_tab_review),
                     "Fill & Sign" to stringResource(R.string.pdf_tab_fill_sign), "Protect" to stringResource(R.string.pdf_tab_protect), "View" to stringResource(R.string.words_tab_view),
-                    OBJECT_TAB to (chosen?.kind?.let { if (it == "Drawing") stringResource(R.string.pdf_drawing) else objectKindName(it) } ?: ""))
+                    OBJECT_TAB to (chosen?.kind?.let { if (it == "Drawing") stringResource(R.string.pdf_drawing) else objectKindName(it) } ?: ""),
+                    "Video" to stringResource(if (media.chosen?.second?.name?.let(OfficeVideo::audio) == true) R.string.slides_audio else R.string.words_video))
                 // reading aloud: the paragraph being read and Stop, above the tabs (Words')
                 if (reader.speaking) ReadAloudBar(reader, readingParas.getOrNull(reader.at), w)
                 if (typing != null) SpellingBar(spell)
                 OfficeTabRow(listOfNotNull("Selection".takeIf { chosen != null }, "File", "Home", "Insert", "Draw", "Design", "Layout", "Pages", "Review", "Fill & Sign", "Protect", "View",
-                    OBJECT_TAB.takeIf { chosen != null }),
-                    tab, w, PDF_RED, { tab = it; tool = null }, contextual = OBJECT_TAB, label = { tabNames[it] ?: it }) {
+                    OBJECT_TAB.takeIf { chosen != null }, "Video".takeIf { media.chosen != null }),
+                    tab, w, PDF_RED, { tab = it; tool = null }, contextual = if (media.chosen != null) "Video" else OBJECT_TAB, label = { tabNames[it] ?: it }) {
                     // typing: ✓ puts the words on; an object chosen: ✕ lets go of it (Words')
                     if (ribbonOverKeyboard) Tool(R.drawable.ic_more_horiz, stringResource(R.string.words_back_to_keyboard_bar), w, on = true) { ribbonOverKeyboard = false }
                     else if (typing != null) Tool(R.drawable.ic_check, stringResource(R.string.common_done), w, on = true) { putTyped() }
@@ -2125,6 +2145,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                     val c0 = chosen
                     // Words', Tables' and Slides' File: the file's own actions
+                    // Words' Video tab: Play (a film or sound the PDF carries)
+                    if (tab == "Video") { media.chosen?.let { (pi, sp) -> RibbonButton(stringResource(R.string.words_play), w, R.drawable.ic_play) { scope.launch { media.play(d, pi, sp, context.cacheDir) } } }
+                        return@RibbonLine }
                     if (tab == "File") {
                         RibbonButton(stringResource(R.string.common_save), w, R.drawable.ic_save, enabled = d.dirty) { save() }
                         RibbonButton(stringResource(R.string.words_save_copy), w, R.drawable.ic_copy, enabled = file != null) {
@@ -2656,6 +2679,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                                 if (!ch.pressed) { if (ch.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) tappedLink(i, down.position / (size.width / s.width)); break }
                                             }
                                         } }
+                                        // a tap anywhere lets go of a chosen film (one on a film chooses it again, after this); a drag does not
+                                        .pointerInput(editing) { if (editing) awaitEachGesture { val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                            waitForUpOrCancellation(PointerEventPass.Initial)?.takeIf { (it.position - down.position).getDistance() < viewConfiguration.touchSlop }?.let { media.chosen = null } } }
                                         // an object on this page as Words' (the user, 26 Oct): pressed and dragged it moves at once, a tap chooses it,
                                         // a long press opens Position, a tap on a chosen text types in it
                                         .pdfObjectGestures(s, editing && typing == null && (tool == null || tool == PdfTool.Text || tool == PdfTool.TextBox),
@@ -2666,6 +2692,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                             { positioning = true },
                                             ::moveChosen), marks, matches?.getOrNull(match)?.takeIf { it.page == i }, hide = chosen?.takeIf { it.page == i && typing == null }, preview = framePreview) {
                                     if (editing || d.hasForm) PdfDrawLayer(s, tool, if (tool == PdfTool.Pen) penColour else if (tool == PdfTool.Marker) 0xFFEB3B else markColour) { pts -> onPage(i, pts) }
+                                    if (tool == null && typing == null) PdfMediaLayer(d, i, s, editing, media, version) { sp, dx, dy -> change { d.moveMedia(i, sp.index, dx, dy) } } // over a form's layer: only its films' boxes take taps
                                     typing?.takeIf { it.page == i }?.let { tp -> PdfTypingField(s, tp, typed, textLook, typingText?.doc?.basePt ?: textLook.size, spell) }
                                     pageMenu?.takeIf { it.first == i }?.let { (_, spot, pt) -> OfficeMenu(spot, { pageMenu = null }) {
                                         @Composable fun entry(label: String, icon: Int, act: () -> Unit) = OfficeMenuItem(label, icon) { pageMenu = null; WriterLog.i("PDF: menu › $label"); act() }

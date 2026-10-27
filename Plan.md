@@ -12,6 +12,28 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [x] (office-media session, 27 Oct; branch `claude/office-media`, not merged; its build is on the tablet 971f6b37) **Local video and audio
+      embedded in documents play** (the user: "I know it has Video from YouTube but what about local files embedded into the
+      documents?"). Already there: Slides read and played PowerPoint's p:videoFile/p:audioFile + p14:media and Impress's
+      draw:plugin; Words its own films and Online Video; Tables none (Excel has no media). New: **Words** reads a film or sound
+      embedded as an object (Word's Insert › Object › Create from file: an OLE package, `OfficeVideo.ole` reads its Ole10Native
+      stream, mini stream too) — Word's EMF icon drawn as a dark frame with the play mark, a sound as the speaker, kind "Audio";
+      a tap plays it in place. **Slides** plays a film or sound by its slide's timing (PowerPoint's mediacall, LibreOffice's
+      media-call: Start Automatically / In Click Sequence), read, played in the show, written back when animations are changed;
+      an Impress sound with no picture gets the speaker. **PDF** (PdfMedia.kt + a 2-line hook in PdfScreen, view mode only):
+      Screen renditions, RichMedia assets, Movie files and Sound samples (made a WAV), with the play mark, a tap plays in
+      place. **Fix** in `VideoFrame`: a second film tapped while a frame was open showed the first one / stayed silent; the
+      same player now gets the new file. Fixtures: test/resources/media.py → media.pptx, media.docx, media.odp and
+      androidTest/assets/media.pdf. Unit 662/0/12; PdfMediaDeviceTest on the tablet; tablet: the deck's film started by
+      itself and its sound on the click, the .docx's film and both sounds, the PDF's film and sound all played (audio focus
+      taken each time). Files kept: the media parts byte-identical after saving (tests). Merged into main 27 Oct (b2541542).
+      Then (the user: "Words is correct do the same on PDF"; "I move the video and the page moves with it"; "Fix … oversights";
+      "when I am inserting a PDF can I choose more than one?"): PDF Edit as Words — a tap chooses a film (framed), its Video
+      (Audio) tab has Play, a tap elsewhere lets go, dragging moves it (one undo step, `PdfDoc.moveMedia`); a film or sound with
+      no picture of its own drawn (dark frame, speaker); Slides reads PowerPoint's embedded-object films and sounds (p:oleObj
+      Package) and LibreOffice's copy (draw:object-ole), Words LibreOffice's .odt copy of Word's; Insert PDF takes several, in
+      the order chosen. Tablet: all seen. **Open:** a PDF film is moved but not resized; on a turned page it moves the page's way;
+      `claude/pdf-like-words` needs these PdfScreen touches carried over (notes: office-media.md).
 - [x] (setup-guide session, 26 Oct; merged into main in both repos) **(5b) the graphical guide**, in all 24 languages.
       Android Guide.kt: on first start (it replaced the photo screen; the photo question is a Permissions step) and
       Settings › Guide; chapters Welcome, Your computer (works alone; Local Sync › Scan a code), Permissions (9, each with
@@ -24,7 +46,7 @@ How to write here:
       660 Android / 159 desktop tests pass. Seen on the tablet 971f6b37 (Greek) except the last round (catalog, pencil,
       fixes after the walk-through) and the first-start path (not run: it needs empty app data); desktop seen from source.
       **Open:** Android's own "Allow all" / "While using the app" in 23 languages unchecked; no native readers.
-- [x] (pdf-like-words session, 26–27 Oct; branch `claude/pdf-like-words`, 8 commits, not merged, nothing installed) The PDF
+- [x] (pdf-like-words session, 26–27 Oct; branch `claude/pdf-like-words`, merged into main 27 Oct with office-media) The PDF
       editor built like Words, tab by tab (the user: "take it on you"): what is on a page is a Words object, a PDF text is
       Words' paragraphs on Words' engine, Words' Home, top bar, Find and Replace, Insert, Draw, Design (new), Layout,
       Review (Words' comment cards), Selection and object tabs, the phone's keyboard bar, the ribbon at the top on a

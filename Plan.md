@@ -12,8 +12,21 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
-- [~] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive) **A route crosses from one
-      installed map into its neighbour** (the user: "When we have both the neighbouring maps, it should be able to cross the border").
+- [x] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here (has directions-languages merged in) and `maps-borders`
+      in Drive; not merged into main) **A route crosses from one installed map into its neighbour** (the user: "When we have both the
+      neighbouring maps, it should be able to cross the border"). One more graph, `all-gh/` in Files/Maps: the roads of every map at once,
+      its `maps.txt` naming them. The desktop map builder's new step **borders** (after the area codes; 24 languages) makes it whenever
+      another map is there: each region's .osm.pbf is now kept in ~/Tetra-maps/osm (Greece's: maps-greece.sh's greece-latest.osm.pbf;
+      a missing one downloaded again), pyosmium's MergeInputReader joins them (maps-tools/maps-merge.py: 13 s, 4.7 GB for Greece + North
+      Macedonia), GraphHopper imports the one file. `MapsFiles.graphAt` / main.js maps:route use all-gh whenever it lists the map at the
+      start — for every route and speed limit, not only a border's (opening a second graph takes seconds on a phone; within one country
+      the routes are the same roads). The maps' own graphs stay as they were. Removing the last but one map trashes all-gh. The wizard's
+      memory/disk warning counts the combined graph. The "destination not near a road" error now says the maps aren't joined (24 languages).
+      Checked: Thessaloniki → Skopje 223 km, 187 min on the phone's code path (MapsBorderTest, TETRA_MAPS=scratch) and 188 min through
+      router.js; to Sofia (no map) fails in words; 679 Android unit / 165 desktop tests pass. **Costs:** Greece + North Macedonia's all-gh
+      is 786 MB beside greece-gh's 744 MB — the phone carries both (the per-map graphs could go later); the import took 48 min here
+      (the computer swapping); the kept .osm.pbf files stay on the computer's disk. **Open:** a removed map's roads stay in all-gh until
+      the next build (with two or more maps left); a map not of Geofabrik's list is left out of all-gh; nothing tried on the phone/tablet.
 - [x] (directions-languages session, 27 Oct; branches `claude/reverent-lederberg-489439` here (20155551) and `directions-languages` in Drive
       (dfc246a), not merged) **Maps' directions in every language Tetra has** (the user: "Why it's only Greek? Isn't that an Android
       feature? It shouldn't be hard to be in all the languages we have."): Tetra's own words (warnings, lanes, bends, stops, tolls,

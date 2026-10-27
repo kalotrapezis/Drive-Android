@@ -360,10 +360,6 @@
     <string name="settings_directions">Упътвания</string>
     <string name="settings_directions_note">Гласът е синтезът на реч на Android; гласовете му са в настройките на Android.</string>
     <string name="settings_directions_in_summary">Думите и гласът за всеки завой</string>
-    <string name="settings_greek">Гръцки</string>
-    <string name="settings_english">Английски</string>
-    <string name="settings_no_english_voice">Няма английски глас: добавете го в гласовите настройки на Android.</string>
-    <string name="settings_no_greek_voice">Няма гръцки глас: добавете го в гласовите настройки на Android.</string>
     <string name="settings_voice_settings_summary">Синтез на реч на Android</string>
     <string name="settings_sharp_bends_summary">С кола: „Остър завой надясно напред“ малко преди всеки остър завой, за който не се казва указание, като по планински пътища</string>
     <string name="settings_parking">Паркиране</string>
@@ -4595,4 +4591,61 @@
     <string name="settings_remove_map">Премахване</string>
     <string name="settings_remove_map_title">Да се премахне ли картата на %1$s?</string>
     <string name="settings_remove_map_body">Файловете ѝ отиват в Кошчето, тук и на другите ви устройства. Запазените ви места остават.</string>
+    <string name="maps_lane_middle">от средната лента</string>
+    <string name="maps_bend_right">Предстои остър завой надясно</string>
+    <string name="maps_bend_left">Предстои остър завой наляво</string>
+    <string name="maps_keep_straight">Продължете направо</string>
+    <string name="maps_towards">%1$s към %2$s</string>
+    <string name="maps_take_ferry">качете се на ферибота</string>
+    <string name="maps_ferry">Ферибот</string>
+    <string name="maps_error_not_near_you">Не сте близо до път, който картата познава (или сте извън картите тук).</string>
+    <string name="maps_error_destination_not_near">Дестинацията не е близо до път, който картата познава (или е на друга карта: маршрутът остава на картата на една държава).</string>
+    <string name="maps_error_no_way">С това превозно средство няма път дотам.</string>
+    <string name="maps_error_no_route">Няма маршрут.</string>
+    <string name="maps_say_stop">Спирка %1$s. Следваща, %2$s: %3$s, щом потеглите</string>
+    <string name="maps_say_next_stop">Следваща спирка %1$s: %2$s, щом потеглите</string>
+    <string name="maps_say_gps_lost">GPS сигналът е изгубен</string>
+    <string name="maps_say_wrong_way">Грешна посока. Обърнете, когато е безопасно</string>
+    <string name="maps_say_toll">пункт за такса</string>
+    <string name="maps_say_new_route">Нов маршрут</string>
+    <string name="maps_sample_turn">завийте надясно</string>
+    <string name="maps_no_voice">Този телефон няма глас за %1$s, затова указанията се показват, но не се изговарят. Можете да добавите глас в гласовите настройки на Android.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">След %1$s километър, %2$s</item>
+        <item quantity="other">След %1$s километра, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">След %1$s метър, %2$s</item>
+        <item quantity="other">След %1$s метра, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">След %1$s миля, %2$s</item>
+        <item quantity="other">След %1$s мили, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">След %1$s фут, %2$s</item>
+        <item quantity="other">След %1$s фута, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">След %1$s ярд, %2$s</item>
+        <item quantity="other">След %1$s ярда, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">от дясната лента</item>
+        <item quantity="other">от %1$d десни ленти</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">от лявата лента</item>
+        <item quantity="other">от %1$d леви ленти</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Близо до дестинацията има %1$d място за хора с увреждания. Натиснете бутона за паркиране, за да отидете там.</item>
+        <item quantity="other">Близо до дестинацията има %1$d места за хора с увреждания. Натиснете бутона за паркиране, за да отидете до едно от тях.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Маршрутът има %1$d пункт за такса</item>
+        <item quantity="other">Маршрутът има %1$d пункта за такса</item>
+    </plurals>
+    <string name="maps_in_km_fraction">След %1$s километра, %2$s</string>
+    <string name="maps_in_mi_fraction">След %1$s мили, %2$s</string>
 </resources>

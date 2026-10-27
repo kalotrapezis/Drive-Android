@@ -360,10 +360,6 @@
     <string name="settings_directions">Rutevejledning</string>
     <string name="settings_directions_note">Stemmen er Androids tekst-til-tale; dens stemmer findes i Androids indstillinger.</string>
     <string name="settings_directions_in_summary">Ordene sving for sving og stemmen</string>
-    <string name="settings_greek">Græsk</string>
-    <string name="settings_english">Engelsk</string>
-    <string name="settings_no_english_voice">Ingen engelsk stemme: tilføj den i Androids stemmeindstillinger.</string>
-    <string name="settings_no_greek_voice">Ingen græsk stemme: tilføj den i Androids stemmeindstillinger.</string>
     <string name="settings_voice_settings_summary">Androids tekst-til-tale</string>
     <string name="settings_sharp_bends_summary">I bil: »Skarpt sving til højre forude« lidt før hvert skarpt sving, hvor der ikke siges et sving, som på bjergveje</string>
     <string name="settings_parking">Parkering</string>
@@ -4595,4 +4591,61 @@
     <string name="settings_remove_map">Fjern</string>
     <string name="settings_remove_map_title">Fjern kortet over %1$s?</string>
     <string name="settings_remove_map_body">Dets filer flyttes til papirkurven, her og på dine andre enheder. Dine gemte steder bliver.</string>
+    <string name="maps_lane_middle">fra den midterste vognbane</string>
+    <string name="maps_bend_right">Skarpt sving til højre forude</string>
+    <string name="maps_bend_left">Skarpt sving til venstre forude</string>
+    <string name="maps_keep_straight">Fortsæt ligeud</string>
+    <string name="maps_towards">%1$s mod %2$s</string>
+    <string name="maps_take_ferry">tag færgen</string>
+    <string name="maps_ferry">Færge</string>
+    <string name="maps_error_not_near_you">Du er ikke i nærheden af en vej, som kortet kender (eller du er uden for kortene her).</string>
+    <string name="maps_error_destination_not_near">Destinationen er ikke i nærheden af en vej, som kortet kender (eller den er på et andet kort: en rute bliver på ét lands kort).</string>
+    <string name="maps_error_no_way">Der er ingen vej derhen med dette transportmiddel.</string>
+    <string name="maps_error_no_route">Ingen rute.</string>
+    <string name="maps_say_stop">Stop %1$s. Næste, %2$s: %3$s, når du kører videre</string>
+    <string name="maps_say_next_stop">Næste stop %1$s: %2$s, når du kører videre</string>
+    <string name="maps_say_gps_lost">GPS-signalet er mistet</string>
+    <string name="maps_say_wrong_way">Forkert retning. Vend om, når det er sikkert</string>
+    <string name="maps_say_toll">en betalingsstation</string>
+    <string name="maps_say_new_route">Ny rute</string>
+    <string name="maps_sample_turn">drej til højre</string>
+    <string name="maps_no_voice">Denne telefon har ingen stemme på %1$s, så rutevejledningen vises, men læses ikke op. Du kan tilføje en i Androids stemmeindstillinger.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Om %1$s kilometer, %2$s</item>
+        <item quantity="other">Om %1$s kilometer, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Om %1$s meter, %2$s</item>
+        <item quantity="other">Om %1$s meter, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Om %1$s engelsk mil, %2$s</item>
+        <item quantity="other">Om %1$s engelske mil, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Om %1$s fod, %2$s</item>
+        <item quantity="other">Om %1$s fod, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Om %1$s yard, %2$s</item>
+        <item quantity="other">Om %1$s yards, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">fra den højre vognbane</item>
+        <item quantity="other">fra de %1$d højre vognbaner</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">fra den venstre vognbane</item>
+        <item quantity="other">fra de %1$d venstre vognbaner</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Der er %1$d handicapparkeringsplads nær destinationen. Tryk på parkeringsknappen for at køre derhen.</item>
+        <item quantity="other">Der er %1$d handicapparkeringspladser nær destinationen. Tryk på parkeringsknappen for at køre til en af dem.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Ruten har %1$d betalingsstation</item>
+        <item quantity="other">Ruten har %1$d betalingsstationer</item>
+    </plurals>
+    <string name="maps_in_km_fraction">Om %1$s kilometer, %2$s</string>
+    <string name="maps_in_mi_fraction">Om %1$s engelsk mil, %2$s</string>
 </resources>

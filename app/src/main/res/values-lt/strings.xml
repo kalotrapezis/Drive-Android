@@ -360,10 +360,6 @@
     <string name="settings_directions">Nuorodos</string>
     <string name="settings_directions_note">Balsas – Android teksto vertimo kalba funkcija; jos balsai yra Android nustatymuose.</string>
     <string name="settings_directions_in_summary">Nuoseklių nuorodų žodžiai ir balsas</string>
-    <string name="settings_greek">Graikų</string>
-    <string name="settings_english">Anglų</string>
-    <string name="settings_no_english_voice">Nėra anglų kalbos balso: pridėkite jį Android balso nustatymuose.</string>
-    <string name="settings_no_greek_voice">Nėra graikų kalbos balso: pridėkite jį Android balso nustatymuose.</string>
     <string name="settings_voice_settings_summary">Android teksto vertimas kalba</string>
     <string name="settings_sharp_bends_summary">Važiuojant automobiliu, „Priekyje staigus posūkis į dešinę“ šiek tiek prieš kiekvieną staigų vingį, kur posūkis nesakomas, kaip kalnų keliuose</string>
     <string name="settings_parking">Stovėjimas</string>
@@ -4779,4 +4775,79 @@
     <string name="settings_remove_map">Pašalinti</string>
     <string name="settings_remove_map_title">Pašalinti žemėlapį: %1$s?</string>
     <string name="settings_remove_map_body">Jo failai keliauja į Šiukšlinę, čia ir kituose jūsų įrenginiuose. Jūsų išsaugotos vietos lieka.</string>
+    <string name="maps_lane_middle">vidurine eismo juosta</string>
+    <string name="maps_bend_right">Priekyje staigus posūkis į dešinę</string>
+    <string name="maps_bend_left">Priekyje staigus posūkis į kairę</string>
+    <string name="maps_keep_straight">Važiuokite tiesiai</string>
+    <string name="maps_towards">%1$s kryptimi %2$s</string>
+    <string name="maps_take_ferry">plaukite keltu</string>
+    <string name="maps_ferry">Keltas</string>
+    <string name="maps_error_not_near_you">Esate ne prie kelio, kurį žino žemėlapis (arba už čia esančių žemėlapių ribų).</string>
+    <string name="maps_error_destination_not_near">Tikslas yra ne prie kelio, kurį žino žemėlapis (arba kitame žemėlapyje: maršrutas lieka vienos šalies žemėlapyje).</string>
+    <string name="maps_error_no_way">Šiuo būdu ten kelio nėra.</string>
+    <string name="maps_error_no_route">Maršruto nėra.</string>
+    <string name="maps_say_stop">Sustojimas %1$s. Kitas, %2$s: %3$s, kai pajudėsite</string>
+    <string name="maps_say_next_stop">Kitas sustojimas %1$s: %2$s, kai pajudėsite</string>
+    <string name="maps_say_gps_lost">Dingo GPS signalas</string>
+    <string name="maps_say_wrong_way">Netinkama kryptis. Apsisukite, kai bus saugu</string>
+    <string name="maps_say_toll">mokamo kelio punktas</string>
+    <string name="maps_say_new_route">Naujas maršrutas</string>
+    <string name="maps_sample_turn">sukite dešinėn</string>
+    <string name="maps_no_voice">Šiame telefone nėra balso kalbai %1$s, todėl nurodymai rodomi, bet neištariami. Balsą galite pridėti „Android“ balso nustatymuose.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Po %1$s kilometro, %2$s</item>
+        <item quantity="few">Po %1$s kilometrų, %2$s</item>
+        <item quantity="many">Po %1$s kilometro, %2$s</item>
+        <item quantity="other">Po %1$s kilometrų, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Po %1$s metro, %2$s</item>
+        <item quantity="few">Po %1$s metrų, %2$s</item>
+        <item quantity="many">Po %1$s metro, %2$s</item>
+        <item quantity="other">Po %1$s metrų, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Po %1$s mylios, %2$s</item>
+        <item quantity="few">Po %1$s mylių, %2$s</item>
+        <item quantity="many">Po %1$s mylios, %2$s</item>
+        <item quantity="other">Po %1$s mylių, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Po %1$s pėdos, %2$s</item>
+        <item quantity="few">Po %1$s pėdų, %2$s</item>
+        <item quantity="many">Po %1$s pėdos, %2$s</item>
+        <item quantity="other">Po %1$s pėdų, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Po %1$s jardo, %2$s</item>
+        <item quantity="few">Po %1$s jardų, %2$s</item>
+        <item quantity="many">Po %1$s jardo, %2$s</item>
+        <item quantity="other">Po %1$s jardų, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">dešine eismo juosta</item>
+        <item quantity="few">viena iš %1$d dešiniųjų eismo juostų</item>
+        <item quantity="many">viena iš %1$d dešiniųjų eismo juostų</item>
+        <item quantity="other">viena iš %1$d dešiniųjų eismo juostų</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">kaire eismo juosta</item>
+        <item quantity="few">viena iš %1$d kairiųjų eismo juostų</item>
+        <item quantity="many">viena iš %1$d kairiųjų eismo juostų</item>
+        <item quantity="other">viena iš %1$d kairiųjų eismo juostų</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Prie tikslo yra %1$d vieta neįgaliųjų automobiliams. Paspauskite stovėjimo mygtuką, kad ten nuvažiuotumėte.</item>
+        <item quantity="few">Prie tikslo yra %1$d vietos neįgaliųjų automobiliams. Paspauskite stovėjimo mygtuką, kad nuvažiuotumėte į vieną iš jų.</item>
+        <item quantity="many">Prie tikslo yra %1$d vietos neįgaliųjų automobiliams. Paspauskite stovėjimo mygtuką, kad nuvažiuotumėte į vieną iš jų.</item>
+        <item quantity="other">Prie tikslo yra %1$d vietų neįgaliųjų automobiliams. Paspauskite stovėjimo mygtuką, kad nuvažiuotumėte į vieną iš jų.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Maršrute yra %1$d mokamas punktas</item>
+        <item quantity="few">Maršrute yra %1$d mokami punktai</item>
+        <item quantity="many">Maršrute yra %1$d mokamo punkto</item>
+        <item quantity="other">Maršrute yra %1$d mokamų punktų</item>
+    </plurals>
+    <string name="maps_in_km_fraction">Po %1$s kilometro, %2$s</string>
+    <string name="maps_in_mi_fraction">Po %1$s mylios, %2$s</string>
 </resources>

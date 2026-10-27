@@ -360,10 +360,6 @@
     <string name="settings_directions">Itinéraire</string>
     <string name="settings_directions_note">La voix est la synthèse vocale d’Android ; ses voix se trouvent dans les paramètres d’Android.</string>
     <string name="settings_directions_in_summary">Les instructions pas à pas et la voix</string>
-    <string name="settings_greek">Grec</string>
-    <string name="settings_english">Anglais</string>
-    <string name="settings_no_english_voice">Aucune voix anglaise : ajoutez-la dans les paramètres vocaux d’Android.</string>
-    <string name="settings_no_greek_voice">Aucune voix grecque : ajoutez-la dans les paramètres vocaux d’Android.</string>
     <string name="settings_voice_settings_summary">Synthèse vocale d’Android</string>
     <string name="settings_sharp_bends_summary">En voiture, « Virage serré à droite » un peu avant chaque courbe serrée sans instruction de tourner, comme sur les routes de montagne</string>
     <string name="settings_parking">Stationnement</string>
@@ -4687,4 +4683,70 @@
     <string name="settings_remove_map">Retirer</string>
     <string name="settings_remove_map_title">Retirer la carte de %1$s ?</string>
     <string name="settings_remove_map_body">Ses fichiers vont dans la Corbeille, ici et sur vos autres appareils. Vos lieux enregistrés restent.</string>
+    <string name="maps_lane_middle">par la voie du milieu</string>
+    <string name="maps_bend_right">Virage serré à droite</string>
+    <string name="maps_bend_left">Virage serré à gauche</string>
+    <string name="maps_keep_straight">Continuez tout droit</string>
+    <string name="maps_towards">%1$s en direction de %2$s</string>
+    <string name="maps_take_ferry">prenez le ferry</string>
+    <string name="maps_ferry">Ferry</string>
+    <string name="maps_error_not_near_you">Vous n’êtes pas près d’une route connue de la carte (ou vous êtes hors des cartes présentes ici).</string>
+    <string name="maps_error_destination_not_near">La destination n’est pas près d’une route connue de la carte (ou elle est sur une autre carte : un itinéraire reste sur la carte d’un seul pays).</string>
+    <string name="maps_error_no_way">Aucun chemin jusque-là avec ce moyen de transport.</string>
+    <string name="maps_error_no_route">Aucun itinéraire.</string>
+    <string name="maps_say_stop">Arrêt %1$s. Prochain, %2$s : %3$s, dès que vous repartez</string>
+    <string name="maps_say_next_stop">Prochain arrêt %1$s : %2$s, dès que vous repartez</string>
+    <string name="maps_say_gps_lost">Signal GPS perdu</string>
+    <string name="maps_say_wrong_way">Mauvaise direction. Faites demi-tour dès que c’est sans danger</string>
+    <string name="maps_say_toll">un péage</string>
+    <string name="maps_say_new_route">Nouvel itinéraire</string>
+    <string name="maps_sample_turn">tournez à droite</string>
+    <string name="maps_no_voice">Ce téléphone n’a pas de voix pour : %1$s. Les instructions s’affichent donc sans être lues. Vous pouvez en ajouter une dans les paramètres de synthèse vocale d’Android.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Dans %1$s kilomètre, %2$s</item>
+        <item quantity="many">Dans %1$s kilomètres, %2$s</item>
+        <item quantity="other">Dans %1$s kilomètres, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Dans %1$s mètre, %2$s</item>
+        <item quantity="many">Dans %1$s mètres, %2$s</item>
+        <item quantity="other">Dans %1$s mètres, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Dans %1$s mile, %2$s</item>
+        <item quantity="many">Dans %1$s miles, %2$s</item>
+        <item quantity="other">Dans %1$s miles, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Dans %1$s pied, %2$s</item>
+        <item quantity="many">Dans %1$s pieds, %2$s</item>
+        <item quantity="other">Dans %1$s pieds, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Dans %1$s yard, %2$s</item>
+        <item quantity="many">Dans %1$s yards, %2$s</item>
+        <item quantity="other">Dans %1$s yards, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">par la voie de droite</item>
+        <item quantity="many">par les %1$d voies de droite</item>
+        <item quantity="other">par les %1$d voies de droite</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">par la voie de gauche</item>
+        <item quantity="many">par les %1$d voies de gauche</item>
+        <item quantity="other">par les %1$d voies de gauche</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Il y a %1$d place handicapé près de votre destination. Appuyez sur le bouton de stationnement pour y aller.</item>
+        <item quantity="many">Il y a %1$d places handicapé près de votre destination. Appuyez sur le bouton de stationnement pour aller à l’une d’elles.</item>
+        <item quantity="other">Il y a %1$d places handicapé près de votre destination. Appuyez sur le bouton de stationnement pour aller à l’une d’elles.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">L’itinéraire comporte %1$d péage</item>
+        <item quantity="many">L’itinéraire comporte %1$d péages</item>
+        <item quantity="other">L’itinéraire comporte %1$d péages</item>
+    </plurals>
+    <string name="maps_in_km_fraction">Dans %1$s kilomètre, %2$s</string>
+    <string name="maps_in_mi_fraction">Dans %1$s mile, %2$s</string>
 </resources>

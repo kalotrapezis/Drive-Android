@@ -360,10 +360,6 @@
     <string name="settings_directions">Οδηγίες</string>
     <string name="settings_directions_note">Η φωνή είναι η μετατροπή κειμένου σε ομιλία του Android· οι φωνές της βρίσκονται στις ρυθμίσεις του Android.</string>
     <string name="settings_directions_in_summary">Οι οδηγίες στις στροφές και η φωνή</string>
-    <string name="settings_greek">Ελληνικά</string>
-    <string name="settings_english">Αγγλικά</string>
-    <string name="settings_no_english_voice">Δεν υπάρχει αγγλική φωνή: προσθέστε τη στις ρυθμίσεις φωνής του Android.</string>
-    <string name="settings_no_greek_voice">Δεν υπάρχει ελληνική φωνή: προσθέστε τη στις ρυθμίσεις φωνής του Android.</string>
     <string name="settings_voice_settings_summary">Μετατροπή κειμένου σε ομιλία του Android</string>
     <string name="settings_sharp_bends_summary">Με αυτοκίνητο, «Κλειστή στροφή δεξιά» λίγο πριν από κάθε κλειστή στροφή όπου δεν λέγεται άλλη οδηγία, όπως στους ορεινούς δρόμους</string>
     <string name="settings_parking">Στάθμευση</string>
@@ -4594,4 +4590,61 @@
     <string name="settings_remove_map">Αφαίρεση</string>
     <string name="settings_remove_map_title">Αφαίρεση του χάρτη: %1$s;</string>
     <string name="settings_remove_map_body">Τα αρχεία του πάνε στον Κάδο, εδώ και στις άλλες συσκευές σας. Τα αποθηκευμένα μέρη σας μένουν.</string>
+    <string name="maps_lane_middle">από τη μεσαία λωρίδα</string>
+    <string name="maps_bend_right">Ακολουθεί απότομη στροφή δεξιά</string>
+    <string name="maps_bend_left">Ακολουθεί απότομη στροφή αριστερά</string>
+    <string name="maps_keep_straight">Συνεχίστε ευθεία</string>
+    <string name="maps_towards">%1$s προς %2$s</string>
+    <string name="maps_take_ferry">πάρτε το πλοίο</string>
+    <string name="maps_ferry">Πλοίο</string>
+    <string name="maps_error_not_near_you">Δεν είστε κοντά σε δρόμο του χάρτη (ή είστε έξω από τους χάρτες εδώ).</string>
+    <string name="maps_error_destination_not_near">Ο προορισμός δεν είναι κοντά σε δρόμο του χάρτη (ή είναι σε άλλον χάρτη: μια διαδρομή μένει στον χάρτη μίας χώρας).</string>
+    <string name="maps_error_no_way">Δεν υπάρχει δρόμος ως εκεί με αυτό το μέσο.</string>
+    <string name="maps_error_no_route">Δεν βρέθηκε διαδρομή.</string>
+    <string name="maps_say_stop">Στάση %1$s. Επόμενη, %2$s: %3$s, μόλις ξεκινήσετε</string>
+    <string name="maps_say_next_stop">Επόμενη στάση %1$s: %2$s, μόλις ξεκινήσετε</string>
+    <string name="maps_say_gps_lost">Χάθηκε το σήμα GPS</string>
+    <string name="maps_say_wrong_way">Λάθος κατεύθυνση. Κάντε αναστροφή όταν είναι ασφαλές</string>
+    <string name="maps_say_toll">διόδια</string>
+    <string name="maps_say_new_route">Νέα διαδρομή</string>
+    <string name="maps_sample_turn">στρίψτε δεξιά</string>
+    <string name="maps_no_voice">Το τηλέφωνο δεν έχει φωνή για τα %1$s, οπότε οι οδηγίες φαίνονται αλλά δεν ακούγονται. Μπορείτε να προσθέσετε μία στις ρυθμίσεις φωνής του Android.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Σε %1$s χιλιόμετρο, %2$s</item>
+        <item quantity="other">Σε %1$s χιλιόμετρα, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Σε %1$s μέτρο, %2$s</item>
+        <item quantity="other">Σε %1$s μέτρα, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Σε %1$s μίλι, %2$s</item>
+        <item quantity="other">Σε %1$s μίλια, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Σε %1$s πόδι, %2$s</item>
+        <item quantity="other">Σε %1$s πόδια, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Σε %1$s γιάρδα, %2$s</item>
+        <item quantity="other">Σε %1$s γιάρδες, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">από τη δεξιά λωρίδα</item>
+        <item quantity="other">από τις %1$d δεξιές λωρίδες</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">από την αριστερή λωρίδα</item>
+        <item quantity="other">από τις %1$d αριστερές λωρίδες</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Υπάρχει %1$d θέση ΑμεΑ κοντά στον προορισμό. Πατήστε το κουμπί στάθμευσης για να πάτε εκεί.</item>
+        <item quantity="other">Υπάρχουν %1$d θέσεις ΑμεΑ κοντά στον προορισμό. Πατήστε το κουμπί στάθμευσης για να πάτε σε μία.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Η διαδρομή έχει %1$d διόδιο</item>
+        <item quantity="other">Η διαδρομή έχει %1$d διόδια</item>
+    </plurals>
+    <string name="maps_in_km_fraction">Σε %1$s χιλιόμετρα, %2$s</string>
+    <string name="maps_in_mi_fraction">Σε %1$s μίλια, %2$s</string>
 </resources>

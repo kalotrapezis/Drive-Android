@@ -18,13 +18,15 @@ import com.graphhopper.routing.weighting.custom.CustomWeighting
 import com.graphhopper.util.EdgeIteratorState
 import com.graphhopper.util.PMap
 import com.graphhopper.util.Parameters
+import com.graphhopper.util.Translation
+import com.graphhopper.util.TranslationMap
 import com.graphhopper.util.TurnCostsConfig
 import java.io.File
 import java.util.Locale
 
 /** One leg of a route's spoken and shown directions; [at] is the index in [Route.points] where it begins. */
 internal data class Step(val text: String, val sign: Int, val metres: Double, val at: Int, val street: String, val ref: String = "",
-    val junction: Junction? = null, val lanes: Lanes? = null)
+    val junction: Junction? = null, val lanes: Lanes? = null, val toward: String = "")
 
 /** [roads]: what it mostly runs on — "motorway", "main" or "local" — for the choice between routes. */
 internal data class Route(val mode: String, val lats: DoubleArray, val lngs: DoubleArray, val metres: Double, val millis: Long, val steps: List<Step>,
@@ -107,21 +109,42 @@ internal object MapsRouting {
         return gh
     }
 
-    /** A route by [mode] (car, foot, bike), its directions in [lang] (el or en: GraphHopper's own translations). */
-    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el", heading: Double = Double.NaN,
+    /** A route by [mode] (car, foot, bike), its directions in [w]'s language. */
+    fun route(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, w: Words, heading: Double = Double.NaN,
               main: Boolean = false): Route =
-        routes(dir, fromLat, fromLng, toLat, toLng, mode, lang, heading, main).first()
+        routes(dir, fromLat, fromLng, toLat, toLng, mode, w, heading, main).first()
+
+    private val translations by lazy { TranslationMap().doImport() }
+    private val translated = HashMap<String, Translation>()
+
+    /**
+     * GraphHopper's turn words in [lang], with Tetra's own over the lines it lacks (resources tetra/graphhopper/<lang>.txt,
+     * GraphHopper's format: et, ga, lv and mt whole, a few lines of es, fi, hr, lt, nl, pt, ro, sl); English where neither has one.
+     */
+    @Synchronized fun translation(lang: String): Translation = translated.getOrPut(lang) {
+        val base = translations.getWithFallBack(Locale.forLanguageTag(if (lang == "pt") "pt-PT" else lang)) // Tetra's Portuguese is Portugal's
+        val ours = MapsRouting::class.java.getResourceAsStream("/tetra/graphhopper/$lang.txt") ?: return@getOrPut base
+        val m = HashMap(base.asMap())
+        ours.bufferedReader().useLines { ls -> ls.filter { '=' in it && !it.startsWith("#") }.forEach { m[it.substringBefore('=')] = it.substringAfter('=') } }
+        val l = Locale.forLanguageTag(lang)
+        object : Translation {
+            override fun tr(key: String, vararg params: Any?) = m[key.lowercase()]?.takeIf { it.isNotEmpty() }?.let { String.format(Locale.ROOT, it, *params) } ?: key
+            override fun asMap() = m
+            override fun getLocale() = l
+            override fun getLanguage() = lang
+        }
+    }
 
     /**
      * Up to three ways there, the fastest first (the user, 21 Oct, beside Google Maps: "can our map have alternative routs with
      * tolls or without, main roads over roral roads"): GraphHopper's alternatives on the same graph; for a car, none that
      * runs a tenth of its way on tracks.
      */
-    fun routes(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, lang: String = "el",
+    fun routes(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, w: Words,
                heading: Double = Double.NaN, main: Boolean = false): List<Route> {
         val gh = open(dir)
         val main = main && mode == "car"
-        val locale = Locale.forLanguageTag(lang)
+        val tr = translation(w.lang); val locale = tr.locale
         val mode = if (mode == "wheelchair" && "wheelchair" !in profiles(dir)) "foot" else mode // a graph from before Rolling
         val req = GHRequest(fromLat, fromLng, toLat, toLng).setProfile(mode).setLocale(locale).setAlgorithm(Parameters.Algorithms.ALT_ROUTE)
             .setPathDetails(listOf("street_name", "street_ref", "road_environment", "road_class"))
@@ -135,38 +158,36 @@ internal object MapsRouting {
             ahead.hints.putObject(Parameters.CH.DISABLE, true).putObject(Parameters.Routing.MAX_VISITED_NODES, MAX_HEADED_NODES)
                 .putObject(Parameters.Routing.HEADING_PENALTY, TURN_BACK_SECONDS).putObject(MAIN_ROADS, main)
             val r = gh.route(ahead)
-            if (!r.hasErrors()) return listOf(MapsLanes.on(build(gh, r.best, gh.translationMap.getWithFallBack(locale), lang, mode), dir.absoluteFile.parentFile))
+            if (!r.hasErrors()) return listOf(MapsLanes.on(build(gh, r.best, tr, w, mode), dir.absoluteFile.parentFile, w))
         }
         val t0 = System.nanoTime()
         var rsp = gh.route(req)
         if (rsp.hasErrors()) rsp = gh.route(req.setAlgorithm(""))
         if (rsp.hasErrors() && main) { // too far to search without the shortcuts: today's way
             WriterLog.i("Maps: main roads too far to search (${rsp.errors.firstOrNull()?.message}), the shortest way instead")
-            return routes(dir, fromLat, fromLng, toLat, toLng, mode, lang, heading, false)
+            return routes(dir, fromLat, fromLng, toLat, toLng, mode, w, heading, false)
         }
         val t1 = System.nanoTime() // alternatives not to be had here: the one way
-        check(!rsp.hasErrors()) { words(rsp.errors.firstOrNull(), lang) }
-        val tr = gh.translationMap.getWithFallBack(locale)
-        val all = rsp.all.map { MapsLanes.on(build(gh, it, tr, lang, mode), dir.absoluteFile.parentFile) }
+        check(!rsp.hasErrors()) { words(rsp.errors.firstOrNull(), w) }
+        val all = rsp.all.map { MapsLanes.on(build(gh, it, tr, w, mode), dir.absoluteFile.parentFile, w) }
         WriterLog.i("Maps: route found in ${(t1 - t0) / 1_000_000} ms${if (main) " on main roads" else ""}, its crossings and lanes in ${(System.nanoTime() - t1) / 1_000_000} ms")
         val usable = all.filter { r -> mode != "car" || r.roads != "track" }.ifEmpty { all }
         return usable.sortedBy { it.millis }
     }
 
     /** GraphHopper's error in the user's words (it said "Cannot find point 0: 37.9,23.55" for a spot at sea). */
-    fun words(e: Throwable?, lang: String): String {
-        val m = e?.message.orEmpty(); val en = lang == "en"
+    fun words(e: Throwable?, w: Words): String {
+        val m = e?.message.orEmpty()
         return when {
             e is com.graphhopper.util.exceptions.PointNotFoundException || "Cannot find point" in m ->
-                if ((e as? com.graphhopper.util.exceptions.PointNotFoundException)?.pointIndex == 0 || "point 0" in m)
-                    (if (en) "You are not near a road the map knows (or outside the maps here)." else "Δεν είστε κοντά σε δρόμο του χάρτη (ή είστε έξω από τους χάρτες εδώ).")
-                else (if (en) "The destination is not near a road the map knows (or on another map: a route stays on one country's map)." else "Ο προορισμός δεν είναι κοντά σε δρόμο του χάρτη (ή είναι σε άλλον χάρτη: μια διαδρομή μένει στον χάρτη μίας χώρας).")
-            "Connection between locations not found" in m -> if (en) "No way there by this means." else "Δεν υπάρχει δρόμος ως εκεί με αυτό το μέσο."
-            else -> m.ifEmpty { if (en) "No route." else "Δεν βρέθηκε διαδρομή." }
+                if ((e as? com.graphhopper.util.exceptions.PointNotFoundException)?.pointIndex == 0 || "point 0" in m) w.s(R.string.maps_error_not_near_you)
+                else w.s(R.string.maps_error_destination_not_near)
+            "Connection between locations not found" in m -> w.s(R.string.maps_error_no_way)
+            else -> m.ifEmpty { w.s(R.string.maps_error_no_route) }
         }
     }
 
-    private fun build(gh: GraphHopper, best: com.graphhopper.ResponsePath, tr: com.graphhopper.util.Translation, lang: String, mode: String): Route {
+    private fun build(gh: GraphHopper, best: com.graphhopper.ResponsePath, tr: Translation, w: Words, mode: String): Route {
         val names = best.pathDetails["street_name"].orEmpty(); val refs = best.pathDetails["street_ref"].orEmpty()
         val environment = best.pathDetails["road_environment"].orEmpty()
         /** Whether a leg is mostly a ferry (GraphHopper 10 has no ferry instruction: it said "turn left" for 58 km of sea). */
@@ -182,21 +203,22 @@ internal object MapsRouting {
         val steps = best.instructions.map { ins ->
             var text = ins.getTurnDescription(tr)
             var street = ins.name.orEmpty(); var ref = (ins.extraInfoJSON["street_ref"] as? String).orEmpty()
+            var toward = (ins.extraInfoJSON["street_destination"] as? String).orEmpty().ifEmpty { (ins.extraInfoJSON["street_destination_ref"] as? String).orEmpty() }
             if (ferry(at, at + ins.points.size())) {
-                text = (if (lang == "en") "take the ferry" else "πάρτε το πλοίο") + (if (street.isNotEmpty()) " ($street)" else "")
-                street = if (lang == "en") "Ferry" else "Πλοίο"
+                text = w.s(R.string.maps_take_ferry) + (if (street.isNotEmpty()) " ($street)" else "")
+                street = w.s(R.string.maps_ferry)
             }
             // a turn onto a ramp with no name says where the ramp leads (the user, 21 Oct, on motorways: "Στρίψτε αριστερά" for 61 km)
             if (street.isEmpty() && ins.sign != com.graphhopper.util.Instruction.FINISH) {
                 val road = mostly(at, at + ins.points.size())
                 if (road.isNotEmpty() && ins.distance > 1000) {
-                    text += (if (lang == "en") " towards " else " προς ") + road
+                    text = w.s(R.string.maps_towards, text, road); toward = road
                     street = road.substringAfter(' ', road); ref = ref.ifEmpty { road.substringBefore(' ').takeIf { r -> r.any(Char::isDigit) }.orEmpty() }
                 }
             }
             // a car's turn: its crossing, for the turn card's picture (the user, 23 Oct: Δράμα's five streets)
             val cross = if (mode == "car" && at > 0 && ins.sign !in setOf(0, 4, 5)) runCatching { junction(gh, best.points, at, at + ins.points.size(), ins.sign == 6) }.getOrNull() else null
-            Step(text.replaceFirstChar { it.uppercase() }, ins.sign, ins.distance, at, street, ref, cross).also { at += ins.points.size() }
+            Step(text.replaceFirstChar { it.uppercase() }, ins.sign, ins.distance, at, street, ref, cross, toward = toward).also { at += ins.points.size() }
         }
         val pts = best.points
         // what it runs on, by share of its length (a motorway has few points for many kilometres)

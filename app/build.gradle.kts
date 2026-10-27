@@ -113,6 +113,7 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
     testImplementation("org.json:json:20240303") // real org.json for JVM tests (Android stubs it)
+    testImplementation("com.ibm.icu:icu4j:72.1") // CLDR's plural rules for JVM tests (Android has them as android.icu)
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }

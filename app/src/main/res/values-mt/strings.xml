@@ -360,10 +360,6 @@
     <string name="settings_directions">Direzzjonijiet</string>
     <string name="settings_directions_note">Il-vuċi hija text-to-speech tal-Android; il-vuċijiet tagħha jinsabu fis-settings tal-Android.</string>
     <string name="settings_directions_in_summary">Il-kliem tad-direzzjonijiet u l-vuċi</string>
-    <string name="settings_greek">Grieg</string>
-    <string name="settings_english">Ingliż</string>
-    <string name="settings_no_english_voice">M’hemm l-ebda vuċi Ingliża: żidha fis-settings tal-vuċi tal-Android.</string>
-    <string name="settings_no_greek_voice">M’hemm l-ebda vuċi Griega: żidha fis-settings tal-vuċi tal-Android.</string>
     <string name="settings_voice_settings_summary">Text-to-speech tal-Android</string>
     <string name="settings_sharp_bends_summary">Bil-karozza, “Kurva qawwija fil-lemin ’il quddiem” ftit qabel kull kurva stretta fejn ma jingħad l-ebda dawran, bħal fit-toroq tal-muntanji</string>
     <string name="settings_parking">Parkeġġ</string>
@@ -4779,4 +4775,79 @@
     <string name="settings_remove_map">Neħħi</string>
     <string name="settings_remove_map_title">Tneħħi l-mappa ta\' %1$s?</string>
     <string name="settings_remove_map_body">Il-fajls tagħha jmorru fl-Iskart, hawn u fuq l-apparati l-oħra tiegħek. Postijiet maħżuna tiegħek jibqgħu.</string>
+    <string name="maps_lane_middle">mill-karreġġjata tan-nofs</string>
+    <string name="maps_bend_right">Liwja qawwija lejn il-lemin quddiem</string>
+    <string name="maps_bend_left">Liwja qawwija lejn ix-xellug quddiem</string>
+    <string name="maps_keep_straight">Kompli dritt</string>
+    <string name="maps_towards">%1$s lejn %2$s</string>
+    <string name="maps_take_ferry">ħu l-vapur</string>
+    <string name="maps_ferry">Vapur</string>
+    <string name="maps_error_not_near_you">M\'intix qrib triq li l-mappa taf (jew int barra mill-mapep li hawn).</string>
+    <string name="maps_error_destination_not_near">Id-destinazzjoni mhix qrib triq li l-mappa taf (jew qiegħda f\'mappa oħra: rotta tibqa\' fuq il-mappa ta\' pajjiż wieħed).</string>
+    <string name="maps_error_no_way">M\'hemmx triq sa hemm b\'dan il-mezz.</string>
+    <string name="maps_error_no_route">L-ebda rotta.</string>
+    <string name="maps_say_stop">Waqfa %1$s. Li jmiss, %2$s: %3$s, meta titlaq</string>
+    <string name="maps_say_next_stop">Il-waqfa li jmiss %1$s: %2$s, meta titlaq</string>
+    <string name="maps_say_gps_lost">Is-sinjal tal-GPS intilef</string>
+    <string name="maps_say_wrong_way">Direzzjoni ħażina. Dur lura meta jkun sigur</string>
+    <string name="maps_say_toll">punt tat-tariffa</string>
+    <string name="maps_say_new_route">Rotta ġdida</string>
+    <string name="maps_sample_turn">dur lejn il-lemin</string>
+    <string name="maps_no_voice">Dan it-telefon m\'għandux leħen għal %1$s, għalhekk l-istruzzjonijiet jidhru iżda ma jinqrawx. Tista\' żżid wieħed fis-settings tal-leħen ta\' Android.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Wara %1$s kilometru, %2$s</item>
+        <item quantity="few">Wara %1$s kilometri, %2$s</item>
+        <item quantity="many">Wara %1$s kilometru, %2$s</item>
+        <item quantity="other">Wara %1$s kilometru, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Wara %1$s metru, %2$s</item>
+        <item quantity="few">Wara %1$s metri, %2$s</item>
+        <item quantity="many">Wara %1$s metru, %2$s</item>
+        <item quantity="other">Wara %1$s metru, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Wara %1$s mil, %2$s</item>
+        <item quantity="few">Wara %1$s mili, %2$s</item>
+        <item quantity="many">Wara %1$s mil, %2$s</item>
+        <item quantity="other">Wara %1$s mil, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Wara %1$s pied, %2$s</item>
+        <item quantity="few">Wara %1$s piedi, %2$s</item>
+        <item quantity="many">Wara %1$s pied, %2$s</item>
+        <item quantity="other">Wara %1$s pied, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Wara %1$s jarda, %2$s</item>
+        <item quantity="few">Wara %1$s jardi, %2$s</item>
+        <item quantity="many">Wara %1$s jarda, %2$s</item>
+        <item quantity="other">Wara %1$s jarda, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">mill-karreġġjata tal-lemin</item>
+        <item quantity="few">minn waħda mill-%1$d karreġġjati tal-lemin</item>
+        <item quantity="many">minn waħda mill-%1$d karreġġjati tal-lemin</item>
+        <item quantity="other">minn waħda mill-%1$d karreġġjati tal-lemin</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">mill-karreġġjata tax-xellug</item>
+        <item quantity="few">minn waħda mill-%1$d karreġġjati tax-xellug</item>
+        <item quantity="many">minn waħda mill-%1$d karreġġjati tax-xellug</item>
+        <item quantity="other">minn waħda mill-%1$d karreġġjati tax-xellug</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Hemm %1$d post tal-ipparkjar għal persuni b\'diżabilità qrib id-destinazzjoni. Agħfas il-buttuna tal-ipparkjar biex tmur hemm.</item>
+        <item quantity="few">Hemm %1$d postijiet tal-ipparkjar għal persuni b\'diżabilità qrib id-destinazzjoni. Agħfas il-buttuna tal-ipparkjar biex tmur f\'wieħed minnhom.</item>
+        <item quantity="many">Hemm %1$d post tal-ipparkjar għal persuni b\'diżabilità qrib id-destinazzjoni. Agħfas il-buttuna tal-ipparkjar biex tmur f\'wieħed minnhom.</item>
+        <item quantity="other">Hemm %1$d post tal-ipparkjar għal persuni b\'diżabilità qrib id-destinazzjoni. Agħfas il-buttuna tal-ipparkjar biex tmur f\'wieħed minnhom.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Ir-rotta għandha %1$d punt tat-tariffa</item>
+        <item quantity="few">Ir-rotta għandha %1$d punti tat-tariffa</item>
+        <item quantity="many">Ir-rotta għandha %1$d punt tat-tariffa</item>
+        <item quantity="other">Ir-rotta għandha %1$d punt tat-tariffa</item>
+    </plurals>
+    <string name="maps_in_km_fraction">Wara %1$s kilometru, %2$s</string>
+    <string name="maps_in_mi_fraction">Wara %1$s mil, %2$s</string>
 </resources>

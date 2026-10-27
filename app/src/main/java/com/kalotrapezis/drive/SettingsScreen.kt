@@ -462,18 +462,19 @@ internal fun SettingsTab(
     var lang by remember { mutableStateOf(MapsPrefs.lang(mapsContext)) }
     var bends by remember { mutableStateOf(MapsPrefs.bends(mapsContext)) }
     SettingsSection(stringResource(R.string.settings_directions), stringResource(R.string.settings_directions_note)) {
-        ChoiceRow(stringResource(R.string.settings_directions_in), stringResource(R.string.settings_directions_in_summary), listOf("el" to stringResource(R.string.settings_greek), "en" to stringResource(R.string.settings_english)), lang) { lang = it; MapsPrefs.setLang(mapsContext, it) }
-        SettingRow(stringResource(R.string.settings_test_voice), MapsPrefs.sample(lang), onClick = {
+        ChoiceRow(stringResource(R.string.settings_directions_in), stringResource(R.string.settings_directions_in_summary), AppLocale.tags.map { it to AppLocale.name(it) }, lang) { lang = it; MapsPrefs.setLang(mapsContext, it) }
+        val words = remember(lang) { Words.of(mapsContext, lang) }
+        SettingRow(stringResource(R.string.settings_test_voice), MapsPrefs.sample(words), onClick = {
             var t: android.speech.tts.TextToSpeech? = null
             t = android.speech.tts.TextToSpeech(mapsContext.applicationContext) { ok ->
                 if (ok == android.speech.tts.TextToSpeech.SUCCESS) {
-                    val r = t?.setLanguage(MapsPrefs.ttsLocale(lang)) ?: -2
-                    if (r < 0) Toast.makeText(mapsContext, mapsContext.getString(if (lang == "en") R.string.settings_no_english_voice else R.string.settings_no_greek_voice), Toast.LENGTH_LONG).show()
-                    else t?.speak(MapsPrefs.sample(lang), android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "test")
+                    val r = t?.setLanguage(MapsPrefs.ttsLocale(words)) ?: -2
+                    if (r < 0) Toast.makeText(mapsContext, mapsContext.getString(R.string.maps_no_voice, java.util.Locale.forLanguageTag(lang).getDisplayLanguage(mapsContext.resources.configuration.locales[0])), Toast.LENGTH_LONG).show()
+                    else t?.speak(MapsPrefs.sample(words), android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "test")
                 }
             }
         })
-        SettingRow(stringResource(R.string.settings_voice_settings), stringResource(R.string.settings_voice_settings_summary), onClick = { runCatching { mapsContext.startActivity(Intent("com.android.settings.TTS_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Chevron() }
+        SettingRow(stringResource(R.string.settings_voice_settings), stringResource(R.string.settings_voice_settings_summary), onClick = { MapsPrefs.voiceSettings(mapsContext) }) { Chevron() }
         SwitchRow(stringResource(R.string.settings_sharp_bends), stringResource(R.string.settings_sharp_bends_summary), bends) { bends = it; MapsPrefs.setBends(mapsContext, it) }
     }
     var autoPark by remember { mutableStateOf(MapsPrefs.autoPark(mapsContext)) }

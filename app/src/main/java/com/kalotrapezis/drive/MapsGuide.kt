@@ -28,10 +28,48 @@ internal data class Tick(
     fun why() = "$due for step ${p.next}, ${p.toNext.toInt()} m, ${Math.round(speed * 3.6)} km/h" + (step.lanes?.let { " lanes ${it.turns.joinToString("|") { l -> l.joinToString(";") }} use ${it.use.sorted()}" } ?: "")
 
     /** The due warning's words. */
-    fun words(lang: String, car: Boolean): String? = when (due) {
-        "n" -> nearWords(lang, p.toNext, car, MapsLanes.said(step, lang))
-        "f", "e" -> MapsPrefs.inDistance(lang, p.toNext, car, MapsLanes.said(step, lang))
+    fun words(w: Words, car: Boolean): String? = when (due) {
+        "n" -> nearWords(w, p.toNext, car, MapsLanes.said(step, w))
+        "f", "e" -> MapsPrefs.inDistance(w, p.toNext, car, MapsLanes.said(step, w))
         else -> null
+    }
+}
+
+/**
+ * Tetra's own words in the directions — the warnings, lanes, bends, stops, errors — in the directions' language [lang], from
+ * the string resources, so in every language Tetra has (GraphHopper's turn words beside them: MapsRouting.translation);
+ * [units] how distances are said and shown ([MapsPrefs.units]). [string] and [plural] give a resource's text, filled in;
+ * [category] a number's plural category by the language's rules (CLDR's: "one", "few", "many"…).
+ */
+internal class Words(val lang: String, val units: String, private val string: (Int, Array<out Any>) -> String,
+                     private val plural: (Int, Int, Array<out Any>) -> String, private val category: (Double) -> String) {
+    fun s(id: Int, vararg a: Any) = string(id, a)
+    fun q(id: Int, n: Int, vararg a: Any) = plural(id, n, a)
+
+    /**
+     * Plural [id]'s words for [x], which may be a fraction (1.5 km): Android's plurals take whole numbers, so a fraction takes
+     * those of a whole number in the same category (French "1,5 kilomètre": one; Romanian "1,5 kilometri": few), or the string
+     * [fraction] where no whole number has its category (Czech "1,5 kilometru", Polish "1,5 kilometra").
+     */
+    fun measure(id: Int, x: Double, fraction: Int, vararg a: Any): String {
+        if (x % 1.0 == 0.0) return plural(id, x.toInt(), a)
+        val c = category(x)
+        // 0 and 1 last: Android's Portuguese counts them "one", Portugal's rules ([pluralLocale]) only 1
+        val n = ((2..199) + 1 + 0).firstOrNull { category(it.toDouble()) == c } ?: return string(fraction, a)
+        return plural(id, n, a)
+    }
+    /** A distance's number as the language writes it: "1,5" in Greek, "1.5" in English. */
+    fun number(d: Double): String = java.text.NumberFormat.getInstance(Locale.forLanguageTag(lang)).apply { isGroupingUsed = false; maximumFractionDigits = 1 }.format(d)
+
+    companion object {
+        fun of(c: Context, lang: String, units: String = MapsPrefs.units): Words {
+            val r = c.createConfigurationContext(android.content.res.Configuration(c.resources.configuration).apply { setLocale(Locale.forLanguageTag(lang)) }).resources
+            val rules = android.icu.text.PluralRules.forLocale(pluralLocale(lang))
+            return Words(lang, units, { id, a -> r.getString(id, *a) }, { id, n, a -> r.getQuantityString(id, n, *a) }, rules::select)
+        }
+
+        /** The language whose plural rules a fraction follows: Tetra's Portuguese is Portugal's ("1,5 quilómetros"). */
+        fun pluralLocale(lang: String): Locale = Locale.forLanguageTag(if (lang == "pt") "pt-PT" else lang)
     }
 }
 

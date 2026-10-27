@@ -360,10 +360,6 @@
     <string name="settings_directions">Indicações</string>
     <string name="settings_directions_note">A voz é a conversão de texto em voz do Android; as vozes estão nas definições do Android.</string>
     <string name="settings_directions_in_summary">As palavras das indicações passo a passo e a voz</string>
-    <string name="settings_greek">Grego</string>
-    <string name="settings_english">Inglês</string>
-    <string name="settings_no_english_voice">Sem voz em inglês: adicione-a nas definições de voz do Android.</string>
-    <string name="settings_no_greek_voice">Sem voz em grego: adicione-a nas definições de voz do Android.</string>
     <string name="settings_voice_settings_summary">Conversão de texto em voz do Android</string>
     <string name="settings_sharp_bends_summary">De carro, «Curva apertada à direita» um pouco antes de cada curva fechada onde não é indicada nenhuma viragem, como em estradas de montanha</string>
     <string name="settings_parking">Estacionamento</string>
@@ -4687,4 +4683,70 @@
     <string name="settings_remove_map">Remover</string>
     <string name="settings_remove_map_title">Remover o mapa de %1$s?</string>
     <string name="settings_remove_map_body">Os seus ficheiros vão para o Lixo, aqui e nos seus outros dispositivos. Os seus locais guardados ficam.</string>
+    <string name="maps_lane_middle">pela via do meio</string>
+    <string name="maps_bend_right">Curva apertada à direita</string>
+    <string name="maps_bend_left">Curva apertada à esquerda</string>
+    <string name="maps_keep_straight">Siga em frente</string>
+    <string name="maps_towards">%1$s em direção a %2$s</string>
+    <string name="maps_take_ferry">apanhe o ferry</string>
+    <string name="maps_ferry">Ferry</string>
+    <string name="maps_error_not_near_you">Não está perto de uma estrada que o mapa conheça (ou está fora dos mapas aqui).</string>
+    <string name="maps_error_destination_not_near">O destino não está perto de uma estrada que o mapa conheça (ou está noutro mapa: um percurso fica no mapa de um só país).</string>
+    <string name="maps_error_no_way">Não há caminho até lá com este meio.</string>
+    <string name="maps_error_no_route">Sem percurso.</string>
+    <string name="maps_say_stop">Paragem %1$s. A seguir, %2$s: %3$s, quando arrancar</string>
+    <string name="maps_say_next_stop">Próxima paragem %1$s: %2$s, quando arrancar</string>
+    <string name="maps_say_gps_lost">Sinal de GPS perdido</string>
+    <string name="maps_say_wrong_way">Direção errada. Inverta a marcha quando for seguro</string>
+    <string name="maps_say_toll">uma portagem</string>
+    <string name="maps_say_new_route">Novo percurso</string>
+    <string name="maps_sample_turn">vire à direita</string>
+    <string name="maps_no_voice">Este telemóvel não tem voz para %1$s, por isso as indicações aparecem mas não são ditas. Pode adicionar uma nas definições de voz do Android.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Dentro de %1$s quilómetro, %2$s</item>
+        <item quantity="many">Dentro de %1$s quilómetros, %2$s</item>
+        <item quantity="other">Dentro de %1$s quilómetros, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Dentro de %1$s metro, %2$s</item>
+        <item quantity="many">Dentro de %1$s metros, %2$s</item>
+        <item quantity="other">Dentro de %1$s metros, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Dentro de %1$s milha, %2$s</item>
+        <item quantity="many">Dentro de %1$s milhas, %2$s</item>
+        <item quantity="other">Dentro de %1$s milhas, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Dentro de %1$s pé, %2$s</item>
+        <item quantity="many">Dentro de %1$s pés, %2$s</item>
+        <item quantity="other">Dentro de %1$s pés, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Dentro de %1$s jarda, %2$s</item>
+        <item quantity="many">Dentro de %1$s jardas, %2$s</item>
+        <item quantity="other">Dentro de %1$s jardas, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">pela via da direita</item>
+        <item quantity="many">pelas %1$d vias da direita</item>
+        <item quantity="other">pelas %1$d vias da direita</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">pela via da esquerda</item>
+        <item quantity="many">pelas %1$d vias da esquerda</item>
+        <item quantity="other">pelas %1$d vias da esquerda</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Há %1$d lugar para pessoas com deficiência perto do destino. Prima o botão de estacionamento para ir até lá.</item>
+        <item quantity="many">Há %1$d lugares para pessoas com deficiência perto do destino. Prima o botão de estacionamento para ir até um.</item>
+        <item quantity="other">Há %1$d lugares para pessoas com deficiência perto do destino. Prima o botão de estacionamento para ir até um.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">O percurso tem %1$d portagem</item>
+        <item quantity="many">O percurso tem %1$d portagens</item>
+        <item quantity="other">O percurso tem %1$d portagens</item>
+    </plurals>
+    <string name="maps_in_km_fraction">Dentro de %1$s quilómetros, %2$s</string>
+    <string name="maps_in_mi_fraction">Dentro de %1$s milhas, %2$s</string>
 </resources>

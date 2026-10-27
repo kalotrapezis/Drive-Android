@@ -105,7 +105,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     private val root = MapsFiles.root(TetraFolder.root(Environment.getExternalStorageDirectory()))
     /** The roads of the map a spot is on (Tetra/Maps can hold several countries'). */
     private fun graphAt(lat: Double, lng: Double) = MapsFiles.graphAt(root, lat, lng)
-    private val lang = MapsPrefs.lang(car)
+    private val words = MapsPrefs.words(car)
     private val navigation = car.getCarService(NavigationManager::class.java)
     private var here: Location? = null
     private var nav: Nav? = null
@@ -764,7 +764,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 kotlinx.coroutines.delay(2000)
                 if (!signalLost && android.os.SystemClock.elapsedRealtime() - fixAt > 10_000) {
                     signalLost = true; showSpeed()
-                    if (nav != null) say(t("Χάθηκε το σήμα GPS", "GPS signal lost"), important = true)
+                    if (nav != null) say(words.s(R.string.maps_say_gps_lost), important = true)
                 }
             }
         }
@@ -837,7 +837,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 stop(keepTrip = true)
                 waitNext = next; stoppedAt = loc
                 trip?.let { tr -> MapsPrefs.setPendingTrip(carContext, tr, tr.stops.size - 1 - queue.size) }
-                say(t("Επόμενη στάση $letter: ${next.name}, μόλις ξεκινήσετε", "Next stop $letter: ${next.name}, when you drive on"), important = true)
+                say(words.s(R.string.maps_say_next_stop, letter, next.name), important = true)
                 CarToast.makeText(carContext, s(R.string.car_next, next.name), CarToast.LENGTH_LONG).show(); return
             }
             stop()
@@ -849,20 +849,19 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         lastAlong = p.along
         if (backFixes >= 3 && System.currentTimeMillis() - wrongSaidAt > 60_000) {
             wrongSaidAt = System.currentTimeMillis()
-            say(t("Λάθος κατεύθυνση. Κάντε αναστροφή όταν είναι ασφαλές", "Wrong direction. Turn around when it is safe"), important = true)
+            say(words.s(R.string.maps_say_wrong_way), important = true)
         }
         tollsAhead = tolls.count { it > p.along }
         // about a kilometre before each toll (a minute ahead at motorway speed)
         tolls.withIndex().firstOrNull { (i, at) -> at - p.along in 0.0..1100.0 && i !in tollSaid }?.let { (i, at) ->
             tollSaid = tollSaid + i
-            if (at - p.along > 300) say(t("Σε ${if (at - p.along > 750) "1 χιλιόμετρο" else "500 μέτρα"}, διόδια", "In ${if (at - p.along > 750) "1 kilometre" else "500 metres"}, a toll"))
+            if (at - p.along > 300) say(MapsPrefs.inDistance(words, if (at - p.along > 750) 1000.0 else 500.0, true, words.s(R.string.maps_say_toll)))
         }
         // near the end: the ΑμεΑ spots by the destination said once, when there are any
         if (p.left < 1500 && parkingAsked != n.target) {
             parkingAsked = n.target
             if (parkingSpots > 0 && n.target.icon != "accessible")
-                say(t("Υπάρχουν $parkingSpots θέσεις ΑμεΑ κοντά στον προορισμό. Πατήστε το κουμπί στάθμευσης για να πάτε σε μία.",
-                    "There are $parkingSpots disabled parking spots near your destination. Press Parking to go to one."), important = true)
+                say(words.q(R.plurals.maps_say_parking, parkingSpots, parkingSpots), important = true)
         }
         val step = g.step
         // the camera: further out at speed on a long stretch, closer towards a busy crossing or a turn slowed for
@@ -873,8 +872,8 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 lc.zoomWhileTracking(view.first, 1500); lc.tiltWhileTracking(view.second, 1500)
             }
         }
-        g.words(lang, true)?.let { say(it, why = g.why()) }
-        g.bend?.let { b -> say(MapsPrefs.bendWords(lang, n.bends[b].right), why = "bend ${(n.bends[b].along - p.along).toInt()} m ahead, ${(speed * 3.6).toInt()} km/h") }
+        g.words(words, true)?.let { say(it, why = g.why()) }
+        g.bend?.let { b -> say(MapsPrefs.bendWords(words, n.bends[b].right), why = "bend ${(n.bends[b].along - p.along).toInt()} m ahead, ${(speed * 3.6).toInt()} km/h") }
         val said = g.said(n.said); val i = g.index
         nav = n.copy(index = i, p = p, offFixes = 0, said = said)
         CarLink.nav.value = nav
@@ -916,7 +915,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         val t0 = System.currentTimeMillis()
         val facing = headingOf(from)
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", lang, facing, MapsPrefs.mainRoads(carContext)) } }
+            val r = withContext(Dispatchers.IO) { runCatching { chosen ?: MapsRouting.route(graphDir, from.latitude, from.longitude, target.lat, target.lng, "car", words, facing, MapsPrefs.mainRoads(carContext)) } }
             finding = null
             r.onSuccess { route ->
                 val rerouted = nav?.target == target
@@ -937,13 +936,12 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                         onRoute.map { (t, _) -> org.maplibre.geojson.Feature.fromGeometry(org.maplibre.geojson.Point.fromLngLat(t.lng, t.lat)) }))
                     if (!rerouted && tolls.isNotEmpty()) {
                         kotlinx.coroutines.delay(4000) // after the first direction
-                        say(t(if (tolls.size == 1) "Η διαδρομή έχει ένα διόδιο" else "Η διαδρομή έχει ${tolls.size} διόδια",
-                            if (tolls.size == 1) "The route has one toll" else "The route has ${tolls.size} tolls"))
+                        say(words.q(R.plurals.maps_say_route_tolls, tolls.size, tolls.size))
                     }
                     invalidate()
                 }
                 // "new route" said once in two minutes at most (the user, 23 Oct: it said it all the way for kilometres)
-                if (rerouted && System.currentTimeMillis() - newRouteSaidAt > 120_000) { newRouteSaidAt = System.currentTimeMillis(); say(t("Νέα διαδρομή", "New route"), important = true) }
+                if (rerouted && System.currentTimeMillis() - newRouteSaidAt > 120_000) { newRouteSaidAt = System.currentTimeMillis(); say(words.s(R.string.maps_say_new_route), important = true) }
                 else { showParking(0); launch { val c = withContext(Dispatchers.IO) { parkingNear(target).size }; if (nav?.target == target) showParking(c) } }
                 if (!rerouted) {
                     hostNav { navigationStarted() }
@@ -984,7 +982,10 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         var t: TextToSpeech? = null
         t = TextToSpeech(car.applicationContext) { ok ->
             if (ok != TextToSpeech.SUCCESS) return@TextToSpeech
-            t?.language = MapsPrefs.ttsLocale(lang); t?.setAudioAttributes(speech)
+            // no voice for the language: said once on the car's screen (its settings are on the phone)
+            if ((t?.setLanguage(MapsPrefs.ttsLocale(words)) ?: -2) < 0 && MapsPrefs.firstNoVoice(carContext, words.lang))
+                CarToast.makeText(carContext, s(R.string.maps_no_voice, java.util.Locale.forLanguageTag(words.lang).getDisplayLanguage(carContext.resources.configuration.locales[0])), CarToast.LENGTH_LONG).show()
+            t?.setAudioAttributes(speech)
             t?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(id: String?) = Unit
                 override fun onDone(id: String?) { audio.abandonAudioFocusRequest(focus) }
@@ -993,8 +994,6 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             tts = t
         }
     }
-
-    private fun t(el: String, en: String) = if (lang == "en") en else el
 
     /** Spoken unless the voice is off, or set to the important ones only and this is not one. */
     /** [text] spoken over the music; [why] in the log only: which warning, how far, how fast. */
@@ -1029,9 +1028,14 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         return CarIcon.Builder(IconCompat.createWithBitmap(b)).build()
     }
 
-    private fun distance(m: Double): Distance =
-        if (m >= 950) Distance.create(m / 1000, if (m < 9950) Distance.UNIT_KILOMETERS_P1 else Distance.UNIT_KILOMETERS)
-        else Distance.create((Math.round(m / 10.0) * 10).toDouble(), Distance.UNIT_METERS)
+    /** As [metresText]: metres and kilometres, or miles and feet or yards where the phone's region uses them. */
+    private fun distance(m: Double): Distance = when (words.units) {
+        "us", "uk" -> if (m >= 0.1 * MILE) Distance.create(m / MILE, if (m < 9.95 * MILE) Distance.UNIT_MILES_P1 else Distance.UNIT_MILES)
+            else if (words.units == "us") Distance.create((Math.round(m * FEET / 10.0) * 10).toDouble(), Distance.UNIT_FEET)
+            else Distance.create((Math.round(m * YARDS / 10.0) * 10).toDouble(), Distance.UNIT_YARDS)
+        else -> if (m >= 950) Distance.create(m / 1000, if (m < 9950) Distance.UNIT_KILOMETERS_P1 else Distance.UNIT_KILOMETERS)
+            else Distance.create((Math.round(m / 10.0) * 10).toDouble(), Distance.UNIT_METERS)
+    }
 
     private fun away(lat: Double, lng: Double) = here?.let { metresText(metresBetween(it.latitude, it.longitude, lat, lng)) } ?: ""
 
@@ -1163,7 +1167,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             val h = here
             lifecycleScope.launch {
                 routes = if (h == null) emptyList() else withContext(Dispatchers.IO) {
-                    runCatching { MapsRouting.routes(graphAt(h.latitude, h.longitude), h.latitude, h.longitude, target.lat, target.lng, "car", lang, main = MapsPrefs.mainRoads(carContext)) }.getOrDefault(emptyList())
+                    runCatching { MapsRouting.routes(graphAt(h.latitude, h.longitude), h.latitude, h.longitude, target.lat, target.lng, "car", words, main = MapsPrefs.mainRoads(carContext)) }.getOrDefault(emptyList())
                         .also { rs -> tollCounts = rs.map { r -> runCatching { tollsOn(r, cumulative(r), MapsSearch.tolls(root)).size }.getOrDefault(0) } }
                 }
                 invalidate()

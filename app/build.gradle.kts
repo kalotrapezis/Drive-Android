@@ -23,8 +23,8 @@ android {
         minSdk = 30
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 13
-        versionName = "0.6.0-beta.2"
+        versionCode = 14
+        versionName = "0.6.0-beta.3"
         // The languages Settings offers: English (res/values) and each res/values-<tag> with a strings.xml, so adding a
         // language is that one file. Android's own App languages page reads the same folders (generateLocaleConfig).
         val languages = listOf("en") + file("src/main/res").listFiles().orEmpty()

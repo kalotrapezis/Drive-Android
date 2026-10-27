@@ -4564,6 +4564,7 @@
     <string name="pdf_flattened">Opmerkingen en formuliervelden horen nu bij de pagina\'s</string>
     <string name="pdf_remove_hidden">Verborgen informatie verwijderen</string>
     <string name="pdf_hidden_removed">Gegevens (auteur, titel, programma\'s), scripts en bijlagen gaan weg bij opslaan</string>
+    <string name="pdf_page_in_file">Een pagina in dit bestand</string>
     <string name="pdf_picture_more">Afbeelding…</string>
     <string name="pdf_insert_pdf">PDF invoegen</string>
     <string name="pdf_remove_password">Wachtwoord verwijderen</string>

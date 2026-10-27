@@ -4564,6 +4564,7 @@
     <string name="pdf_flattened">Kommentarer och formulärfält är nu en del av sidorna</string>
     <string name="pdf_remove_hidden">Ta bort dold information</string>
     <string name="pdf_hidden_removed">Uppgifter (författare, titel, program), skript och bilagor tas bort när den sparas</string>
+    <string name="pdf_page_in_file">En sida i den här filen</string>
     <string name="pdf_picture_more">Bild…</string>
     <string name="pdf_insert_pdf">Infoga PDF</string>
     <string name="pdf_remove_password">Ta bort lösenord</string>

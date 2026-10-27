@@ -4563,6 +4563,7 @@
     <string name="pdf_flattened">Τα σχόλια και τα πεδία φόρμας έγιναν μέρος των σελίδων</string>
     <string name="pdf_remove_hidden">Αφαίρεση κρυφών πληροφοριών</string>
     <string name="pdf_hidden_removed">Τα στοιχεία του (συντάκτης, τίτλος, προγράμματα), τα σενάρια και τα συνημμένα φεύγουν στην αποθήκευση</string>
+    <string name="pdf_page_in_file">Μια σελίδα του αρχείου</string>
     <string name="pdf_picture_more">Εικόνα…</string>
     <string name="pdf_insert_pdf">Εισαγωγή PDF</string>
     <string name="pdf_remove_password">Κατάργηση κωδικού</string>

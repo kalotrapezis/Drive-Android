@@ -4744,6 +4744,7 @@
     <string name="pdf_flattened">Komentáře a pole formuláře jsou nyní součástí stránek</string>
     <string name="pdf_remove_hidden">Odebrat skryté informace</string>
     <string name="pdf_hidden_removed">Údaje (autor, název, programy), skripty a přílohy zmizí při uložení</string>
+    <string name="pdf_page_in_file">Stránka v tomto souboru</string>
     <string name="pdf_picture_more">Obrázek…</string>
     <string name="pdf_insert_pdf">Vložit PDF</string>
     <string name="pdf_remove_password">Odebrat heslo</string>

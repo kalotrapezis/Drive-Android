@@ -4834,6 +4834,7 @@
     <string name="pdf_flattened">Tá na nótaí tráchta agus réimsí foirme anois mar chuid de na leathanaigh</string>
     <string name="pdf_remove_hidden">Bain faisnéis fholaithe</string>
     <string name="pdf_hidden_removed">Imíonn a shonraí (údar, teideal, ríomhchláir), scripteanna agus ceangaltáin nuair a shábháiltear é</string>
+    <string name="pdf_page_in_file">Leathanach sa chomhad seo</string>
     <string name="pdf_picture_more">Pictiúr…</string>
     <string name="pdf_insert_pdf">Cuir PDF isteach</string>
     <string name="pdf_remove_password">Bain an pasfhocal</string>

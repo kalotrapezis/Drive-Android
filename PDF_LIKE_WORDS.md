@@ -27,11 +27,26 @@ Done, one commit a step (`git log claude/pdf-like-words`):
 - **Checked** on the emulator (`books_tablet`, read-only) at tablet and phone size, keyboard up and down, Compact tools,
   ribbon at the top. Tests: 665 unit tests; 14 PDF device tests (PdfObjectsDeviceTest new).
 
+**27 Oct, morning (after the user's "go on"), on the tablet 971f6b37** — the branch's build is installed there:
+- Done and seen on the tablet: Words' Add text in a shape; Crop (Words' crop window, the piece kept where it was);
+  Words' WordArt gallery strip (a card on the page at once, ✓ then its words, × takes it off and no Redo); Links —
+  a tap shows Words' "Go to" pill (a page of the file or the address), Insert › Link (and the page menu) puts one on the
+  chosen object (Words' LinkDialog, "A page in this file"). Edit text for a WordArt keeps its colour, effects and bend.
+- Fixed: the chosen object drawn on white (hid what was under it: AndroidDrawDevice clears unless told not to).
+- Fixed: PdfScreen past the size Android verifies → VerifyError on opening any PDF (the dialogs moved into a local
+  `Dialogs()`, as Words'); `screensLoad` device test catches it now.
+- Found (on main too): MuPDF's undo cannot take off what a save wrote (says it can, changes nothing). Now Undo goes
+  back to the last save, Redo only to what was undone since (`savedAt`/`redoStale` in PdfDoc). AutoSave for PDFs:
+  30 s without a change (was 4 s), and on going to the background and on leaving editing (no question with AutoSave
+  on); never a gallery's preview. MuPDF's journal could not be replayed onto a fresh copy (loadJournal ignores it).
+- Tests: 18 PDF device tests pass on the tablet; the unit tests were not run after these changes (run was stopped).
+- Checked at tablet size and phone size (wm size, reset after); keyboard-up and desktop ribbon not re-checked today.
+
 Left:
-- On the real pair (tablet 971f6b37, phone 208c8192): every state.
-- Words' "Add text" in a shape; Crop for a picture (Words' CornerEditor); Group and Ungroup; Wrap's "behind the text".
-- Insert › Table and Link; Reading mode (MuPDF's reflow); Spelling in Tetra's texts.
-- WordArt's gallery strip: Insert › WordArt opens Words' WordArt window straight away.
+- Run the unit tests; the phone 208c8192 (tools/phone-install.sh); keyboard-up and desktop ribbon with today's parts.
+- Offer the honest-undo part to `claude/pdf-save-fix` too (main has the same Undo-after-AutoSave bug).
+- Group and Ungroup; Wrap's "behind the text".
+- Insert › Table; Reading mode (MuPDF's reflow); Spelling in Tetra's texts.
 - The comments pane lists the cards; Words puts each card level with its words.
 - Words' Versions page (versions shown as pages); the PDF keeps the list window.
 - A 1-in-15 Words device test (`WriterLayoutDeviceTest.contentsTab…`) failed before this branch: `EditorTab` gained

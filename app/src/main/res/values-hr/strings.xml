@@ -4654,6 +4654,7 @@
     <string name="pdf_flattened">Komentari i polja obrasca sada su dio stranica</string>
     <string name="pdf_remove_hidden">Ukloni skrivene podatke</string>
     <string name="pdf_hidden_removed">Podaci (autor, naslov, programi), skripte i privici uklanjaju se pri spremanju</string>
+    <string name="pdf_page_in_file">Stranica u ovoj datoteci</string>
     <string name="pdf_picture_more">Slika…</string>
     <string name="pdf_insert_pdf">Umetni PDF</string>
     <string name="pdf_remove_password">Ukloni lozinku</string>

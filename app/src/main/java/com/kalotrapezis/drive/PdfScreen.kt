@@ -245,8 +245,12 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     // —— editing (Plan.md § PDF, Phase 1: pages) ——
 
     val editable get() = pdf != null
-    val canUndo get() = synchronized(this) { (pdf?.undoRedoPosition() ?: 0) > 0 }
-    val canRedo get() = synchronized(this) { pdf?.let { it.undoRedoPosition() < it.undoRedoSteps() } == true }
+    // MuPDF's undo cannot take off what a save wrote (it says it can, and changes nothing; changes after the save undo
+    // and redo as before, 27 Oct): Undo goes back to the last save, Redo only to what was undone since
+    private var savedAt = 0
+    private var redoStale = false
+    val canUndo get() = synchronized(this) { (pdf?.undoRedoPosition() ?: 0) > savedAt }
+    val canRedo get() = synchronized(this) { !redoStale && pdf?.let { it.undoRedoPosition() < it.undoRedoSteps() } == true }
     val dirty get() = synchronized(this) { pdf?.hasUnsavedChanges() == true || rewrite != null || copied }
     /** Saved only as a copy (File › Save a copy) since the last change: the file itself still is not. */
     private var copied = false
@@ -259,9 +263,12 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         WriterLog.i("PDF: $what")
         p.beginOperation(what)
         try { change(p) } finally { p.endOperation() }
+        redoStale = false // what could be redone is gone with a new change
         changed()
     }
     fun undo() = synchronized(this) { if (canUndo) { pdf?.undo(); changed() } }
+    /** What was just undone not to be redone (a gallery's preview taken off, as Words' Cancel). */
+    fun forgetRedo() = synchronized(this) { redoStale = true }
     fun redo() = synchronized(this) { if (canRedo) { pdf?.redo(); changed() } }
     private fun changed() { cache.evictAll(); sizes = readSizes() }
 
@@ -946,6 +953,21 @@ internal class PdfDoc(private val file: File, password: String? = null) {
             a.bounds.let { r -> x >= r.x0 - 6 && x <= r.x1 + 6 && y >= r.y0 - 6 && y <= r.y1 + 6 } }?.contents
     } }
 
+    /** The link on page [i] at [at] (the page's points): its address and, for a place in this file, the page it goes to. */
+    fun linkAt(i: Int, at: Offset): Pair<String, Int?>? = synchronized(this) { page(i) { p ->
+        val o = p.bounds; val x = at.x + o.x0; val y = at.y + o.y0
+        p.links.orEmpty().lastOrNull { l -> l.bounds.let { r -> x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1 } }?.let { l ->
+            l.uri to (if (l.isExternal) null else runCatching { doc.pageNumberFromLocation(doc.resolveLink(l)) }.getOrNull()?.takeIf { it >= 0 })
+        }
+    } }
+    /** A link over [r] (page points) on page [i] to [uri] — "#page=n" a page of this file — the links there before taken off; null: only taken off. */
+    fun link(i: Int, r: android.graphics.RectF, uri: String?) = edit(if (uri == null) "Remove link" else "Link") { _ -> page(i) { p ->
+        val o = p.bounds; val box = com.artifex.mupdf.fitz.Rect(r.left + o.x0, r.top + o.y0, r.right + o.x0, r.bottom + o.y0)
+        // the ones whose middle is in it
+        p.links.orEmpty().filter { l -> l.bounds.let { b -> box.contains((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2) } }.forEach(p::deleteLink)
+        if (uri != null) p.createLink(box, uri)
+    } }
+
     /** The file as this document read it (its length and time): what its one appended save goes onto. */
     private val openedAs = file.length() to file.lastModified()
     /** Saved once already: MuPDF appends only onto the file it opened, so every save after the first is written whole. */
@@ -973,6 +995,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         else if (appendable) { file.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
         else p.save(temp.path, "garbage=compact,compress")
         if (!temp.renameTo(to)) throw PdfError(R.string.pdf_save_failed_file)
+        p.undoRedoPosition().let { at -> savedAt = at; redoStale = p.undoRedoSteps() > at }
         savedOnce = true
         copied = copy && was
         WriterLog.i("PDF: saved${if (copy) " a copy" else ""}${if (whole == null && !appendable) " whole" else ""} (${to.length() / 1024} KB)")
@@ -1202,10 +1225,13 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     val dictate = rememberDictation { said -> val t = typed.annotatedString.text
         val before = t.getOrNull(typed.selection.min - 1); val after = t.getOrNull(typed.selection.max)
         typed.addTextAfterSelection((if (before != null && !before.isWhitespace()) " " else "") + said + (if (after != null && after.isLetterOrDigit()) " " else "")) }
-    var inserting by remember { mutableStateOf<String?>(null) } // Insert's, Design's and Layout's windows: shapes, wordart, chart, equation, symbol, date, page, border, boxText
+    var inserting by remember { mutableStateOf<String?>(null) } // Insert's, Design's and Layout's windows: shapes, chart, equation, symbol, date, page, border, boxText
     var drawingOn by remember { mutableStateOf<Pair<Int, Bitmap?>?>(null) } // Draw › Draw on page: the page, its picture under the pen
     var drawingBox by remember { mutableStateOf(false) } // Draw › Drawing box
     var editingInk by remember { mutableStateOf(false) } // Picture › Edit drawing
+    var cropping by remember { mutableStateOf<Bitmap?>(null) } // Picture › Crop: the picture as it shows, in Words' crop window
+    var linking by remember { mutableStateOf<Pair<String, Int?>?>(null) } // Insert › Link for the chosen one: its link now ("" none)
+    var linkHere by remember { mutableStateOf<Pair<String, Int?>?>(null) } // a link tapped: Words' "Go to" over the page
     var paragraphPage by remember { mutableStateOf<Pair<Set<Int>, ParaLook>?>(null) } // Home › Line spacing, More…: Words' Paragraph window
     // an object chosen: its own tab shown, named by its kind (Words' Image, Shape, Text box…); none chosen: the tab before
     LaunchedEffect(chosen != null) {
@@ -1384,6 +1410,15 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     /** Whether the chosen object can be turned: Tetra's own (another app's keeps its way up). */
     fun turnable(c: PdfObject) = c.text != null || c.words?.let { Arrange.rotated(it.img, 0f) != null } == true
     /** The chosen object taken off the page (one undo step). */
+    /** Insert › Link's window for the chosen one, with the link it has. */
+    fun askLink() { val c = chosen ?: return; val d = doc ?: return
+        scope.launch { linking = withContext(Dispatchers.IO) { runCatching { d.linkAt(c.page, Offset(c.rect.centerX(), c.rect.centerY())) }.getOrNull() } ?: ("" to null) } }
+    /** A tap at [pt] on page [i]: a link there shown as Words' "Go to" (not on an object being chosen). */
+    fun tappedLink(i: Int, pt: Offset) {
+        val d = doc ?: return
+        if (tool != null || typing != null || editing && objectsOn(i).any { o -> o.rect.contains(pt.x, pt.y) }) return
+        scope.launch { linkHere = withContext(Dispatchers.IO) { runCatching { d.linkAt(i, pt) }.getOrNull() } }
+    }
     fun deleteChosen() {
         val c = chosen ?: return; chosen = null; val d = doc ?: return
         change { d.deleteObject(c.page, c.id) }
@@ -1466,6 +1501,22 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         tool = null; chosen = d.objectById(page, id)
         WriterLog.i("PDF: ${w.kind} put in")
     }
+    // Insert › WordArt (Words'): its gallery in the ribbon's place, the card tapped on the page at once; OK keeps it (one
+    // undo step) and its words are typed next, Cancel takes it off
+    var artGallery by remember { mutableStateOf<Pair<ArtStyle?, ArtBend?>?>(null) }
+    var artPut by remember { mutableStateOf(false) }
+    fun artPick(c: Any) {
+        val d = doc ?: return; val (s0, b0) = artGallery ?: return
+        val style = c as? ArtStyle ?: s0 ?: ART_STYLES[0]; val bend = c as? ArtBend ?: b0 ?: ArtBend(null)
+        if (artPut) d.undo() // the card before taken off: one step in all
+        putNew(newTextBoxImage(OfficeKind.Docx, listOf("Your text here"), 0xFF000000.toInt() or style.color,
+            TextEffects(if (style.outline) artOutline(style.color) else null, style.shadow, if (style.glow) artGlow(style.color) else null), bend.warp, PictureWrap.InFront))
+        artPut = true; artGallery = style to bend
+    }
+    fun artClosed(keep: Boolean) {
+        if (artPut) { if (keep) inserting = "boxText" else { doc?.let { d -> d.undo(); d.forgetRedo() }; chosen = null; version++ } }
+        artGallery = null; artPut = false
+    }
     // Review (Words'): the comments as Words' cards, the one tapped "here" for Reply, Resolve and Delete; Read aloud the pages' words
     var commentList by remember { mutableStateOf<List<PdfComment>>(emptyList()) }
     var hereComment by remember { mutableStateOf<PdfComment?>(null) }
@@ -1537,7 +1588,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         ?: if (chosenText != null && scratch != null) PdfTextTarget(scratch, chosenText, {
             rechange(t = chosenText.with(WriterBridge.fromEditorKeeping(chosenText.doc.paras, scratch.toRichTextDocument(), chosenText.doc.basePt))) }) { ps -> rechange(t = chosenText.with(ps)) }
         else null
-    BackHandler(enabled = editing || organize) { if (organize) organize = false else if (typing != null) putTyped() else if (chosen != null) chosen = null else if (tool != null) tool = null else if (doc?.dirty == true) leaving = true else editing = false }
+    BackHandler(enabled = editing || organize) { if (organize) organize = false else if (typing != null) putTyped() else if (chosen != null) chosen = null else if (tool != null) tool = null else if (doc?.dirty != true) editing = false else if (autoSave) save { editing = false } else leaving = true }
     /** What a finger did on page [i] with the tool on: [pts] its path in page points (a tap: one point). */
     fun onPage(i: Int, pts: List<Offset>) {
         if (typing != null) { putTyped(); return } // a tap off the words being typed puts them on, as Words' click outside a box
@@ -1631,6 +1682,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 androidx.compose.material3.TextButton(onClick = { leaving = false }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             } })
     }
+    // The windows, in a function of their own (as Words' Dialogs): PdfScreen's one method is at the size Android's
+    // verifier takes (past it, a VerifyError when a PDF opens, 27 Oct)
+    @Composable fun Dialogs() {
     // Insert › Comment where tapped, Reply and Edit: Words' comment window (your name kept as Words keeps it)
     writing?.let { (i, at0) -> NewCommentDialog(author, { writing = null }) { name, text -> writing = null; keepAuthor(name)
         doc?.let { d -> change { d.note(i, at0, text.trim(), markColour, name.trim()) } } } }
@@ -1649,8 +1703,6 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         "shapes" -> ShapesDialog(false, { inserting = null }) { shape, fill, line -> inserting = null
             val (w, h) = shapeSize(shape)
             putNew(DocImage("s${System.nanoTime()}", null, w, h, PictureXml.newShape(shape, OfficeKind.Docx, fill, line, 1f, w, h), wrap = PictureWrap.InFront)) }
-        "wordart" -> TextBoxDialog("Your text here", { inserting = null }, art = true) { text, color, fx, warp -> inserting = null
-            putNew(newTextBoxImage(OfficeKind.Docx, text.lines(), color, fx, warp, PictureWrap.InFront)) }
         "chart" -> ChartDialog(WORD_SAMPLE_CHART, false, { inserting = null }) { ch -> inserting = null
             putNew(DocImage("c${System.nanoTime()}", null, 396f, 230f, chart = ch, wrap = PictureWrap.InFront)) }
         "equation" -> EquationDialog(null, { inserting = null }) { m -> inserting = null
@@ -1670,12 +1722,17 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         } }
         "border" -> PageBorderDialog(design.border, { inserting = null }) { line, sides -> inserting = null
             doc?.let { d -> change { d.setDesign(design.copy(border = line?.let { PdfDesign.border(it, sides) })) } } }
-        "boxText" -> chosen?.words?.let { o -> val img = o.img; val art = TextWarp.art(img.raw) != null
-            TextBoxDialog(img.box.orEmpty().joinToString("\n") { it.text }, { inserting = null }, art = art, confirm = stringResource(R.string.common_done)) { text, color, fx, warp ->
+        "boxText" -> chosen?.words?.let { o -> val img = o.img; val art = TextWarp.art(img.raw) != null; val shape = img.box == null
+            TextBoxDialog(img.box.orEmpty().joinToString("\n") { it.text }, { inserting = null }, art = art, confirm = stringResource(R.string.common_done),
+                title = if (shape) stringResource(R.string.words_words_in_shape) else null,
+                // a WordArt's colour, effects and bend as they are (Words'), kept unless changed
+                start = if (art) TextWarp.art(img.raw)?.let { (rgb, fx) -> Triple(0xFF000000.toInt() or rgb, fx, TextWarp.of(img.raw)) } else null) { text, color, fx, warp ->
                 inserting = null
                 val lines = text.lines()
                 if (art) reput(PdfWords.of(newTextBoxImage(OfficeKind.Docx, lines, color, fx, warp, PictureWrap.InFront).let { n -> Arrange.rotated(n, o.turn) ?: n }))
-                else img.raw?.let { raw -> reput(o.with(img.with(raw = PictureXml.boxText(raw, OfficeKind.Docx, lines), box = PictureXml.boxParas(img, lines)))) }
+                else img.raw?.let { raw -> reput(o.with(img.with(raw = PictureXml.boxText(raw, OfficeKind.Docx, lines), box = PictureXml.boxParas(img, lines)
+                    // a shape's first words centred, as Words'
+                    .let { ps -> if (shape) ps.map { it.copy(align = DocAlign.Center) } else ps }))) }
             } }
     }
     // Draw › Draw on page (Words'): drawn over the page as it is, put on it as a drawing; Drawing box: drawn in a box, put in the page's middle
@@ -1691,6 +1748,35 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             editingInk = false
             reput(PdfWords.of(DocImage(o.img.key, null, lw, lh, bytes = png, wrap = PictureWrap.InFront)).let { n -> Arrange.rotated(n.img, o.turn)?.let(n::with) ?: n })
         } } }
+    // Insert › Link (Words' window): a web address or a page of this file, for the chosen text or object
+    linking?.let { (now, toPage) -> chosen?.let { c -> doc?.let { d ->
+        LinkDialog(false, toPage?.let { "#$it" } ?: now.ifEmpty { null }, null, now.isNotEmpty(), { linking = null }, { linking = null; change { d.link(c.page, c.rect, null) } },
+            slides = d.sizes.indices.map { "" }, place = stringResource(R.string.pdf_page_in_file)) { _, to ->
+            linking = null
+            val uri = to.takeIf { it.startsWith("#") }?.drop(1)?.toIntOrNull()?.let { "#page=${it + 1}" } ?: to.trim().takeIf { it.isNotEmpty() && it != "https://" } ?: return@LinkDialog
+            change { d.link(c.page, c.rect, uri) }
+            WriterLog.i("PDF: link on ${c.kind}: ${if (uri.startsWith("#")) uri else "web"}")
+        } } } }
+    // Picture › Crop: Words' crop window (straight cuts at first); the piece cut stays where it was on the page
+    cropping?.let { bitmap -> androidx.compose.ui.window.Dialog({ cropping = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            CornerEditor(bitmap, DocumentQuad.fullFrame(), DocumentQuad.fullFrame(), stringResource(R.string.words_reset), straightOption = true, done = { quad ->
+                cropping = null
+                val c = chosen ?: return@CornerEditor; val o = c.words ?: return@CornerEditor
+                if (quad == DocumentQuad.fullFrame()) return@CornerEditor
+                val cut = runCatching { cropScan(bitmap, quad, 2400f) }.getOrNull() ?: return@CornerEditor
+                val png = o.img.extension == "png" || o.img.part?.endsWith(".png", ignoreCase = true) == true
+                val bytes = java.io.ByteArrayOutputStream().also { cut.compress(if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
+                val (lw, lh) = o.laid
+                val n = PdfWords.of(DocImage(o.img.key, null, lw * cut.width / bitmap.width, lh * cut.height / bitmap.height, null, bytes, if (png) "png" else "jpg", PictureWrap.InFront))
+                // the cut piece's middle where it was (a turned picture: its middle kept)
+                val xs = quad.points.map { it.x }; val ys = quad.points.map { it.y }
+                val (cx, cy) = if (o.turn != 0f) c.rect.centerX() to c.rect.centerY()
+                    else c.rect.left + (xs.min() + xs.max()) / 2 * c.rect.width() to c.rect.top + (ys.min() + ys.max()) / 2 * c.rect.height()
+                reput(Arrange.rotated(n.img, o.turn)?.let(n::with) ?: n, cx, cy)
+            }, cancel = { cropping = null })
+        }
+    } }
     // Home › Line spacing and More…: Words' Paragraph window, for the paragraphs Home's target has chosen
     paragraphPage?.let { (at, look) -> ParagraphDialog(look, { paragraphPage = null }) { now ->
         paragraphPage = null
@@ -1741,6 +1827,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             reput(signatureWords(png, lw).let { n -> c.words?.turn?.let { t -> Arrange.rotated(n.img, t)?.let(n::with) } ?: n })
         }
     }
+    }
+    Dialogs()
     filling?.let { (i, at0, f) ->
         var value by remember { mutableStateOf(f.value) }
         androidx.compose.material3.AlertDialog(onDismissRequest = { filling = null }, title = { Text(f.name.ifBlank { stringResource(R.string.pdf_field) }) },
@@ -1834,7 +1922,16 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             confirmButton = { androidx.compose.material3.TextButton(onClick = { reading = null }) { Text(stringResource(R.string.common_close), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
     }
     // File › AutoSave (Words' own): a few seconds after the last change, saved
-    LaunchedEffect(version, autoSave, editing, typing == null) { if (autoSave && editing && typing == null && doc?.dirty == true) { delay(4000); save() } }
+    // AutoSave: after half a minute without a change (Undo goes back only to a save), when Tetra goes to the background,
+    // and on leaving editing; not while "Save the changes?" asks, nor a gallery's preview
+    LaunchedEffect(version, autoSave, editing, typing == null, leaving, artGallery == null) {
+        if (autoSave && editing && typing == null && !leaving && artGallery == null && doc?.dirty == true) { delay(30_000); save() } }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycle, autoSave, editing) {
+        val o = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP && autoSave && editing && artGallery == null) { putTyped(); if (doc?.dirty == true) save() } }
+        lifecycle.lifecycle.addObserver(o); onDispose { lifecycle.lifecycle.removeObserver(o) }
+    }
     if (officeSettings) OfficeSettingsDialog { officeSettings = false }
     // File › Save as and Rename (Words' and Slides'): beside it, a PDF; Save as goes on with the new one
     naming?.let { how -> file?.let { f ->
@@ -1893,7 +1990,8 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     // typing on the page: Font's strip in the ribbon's place, as Words' and Slides'; a card tapped shows on the words at once
     val before = fontBefore
     val ch0 = chosen?.takeIf { it.text != null }
-    if (typing != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
+    if (artGallery != null) DesignGalleryStrip(DesignGallery.WordArt, artGallery, cancel = { artClosed(false) }, ok = { artClosed(true) }, pick = ::artPick)
+    else if (typing != null && before != null) DesignGalleryStrip(DesignGallery.Font, FontChoice(textLook.font), cancel = { textLook = textLook.copy(font = before); fontBefore = null },
         ok = { fontBefore = null }, pick = { ch -> (ch as? FontChoice)?.let { textLook = textLook.copy(font = it.name) } }, fonts = STYLE_FONTS, now = textLook.font)
     // a chosen text: the font a card shows put on at once (Cancel puts the one before back)
     else if (ch0 != null && before != null) ch0.text!!.let { ct -> fun inFont(f: String) = ct.look.copy(font = f).let { l -> ct.with(fonted(ct.doc.paras, l)).with(l) }
@@ -2054,11 +2152,18 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         if (c0.text != null) RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit) { retype(c0) }
                         // Words' own for its kinds: a text box's or WordArt's words, a drawing drawn on again, a chart's data, an equation
                         if (img?.box != null) RibbonButton(stringResource(R.string.words_edit_text), w, R.drawable.ic_edit) { inserting = "boxText" }
+                        // a shape's own words (Word's Add Text): typed in the box's window, in the shape's middle
+                        if (img != null && img.box == null && img.group == null && ShapePicture.of(img)?.geometry?.let { it != "line" && it != "straightConnector1" } == true)
+                            RibbonButton(stringResource(R.string.words_add_text), w, R.drawable.ic_edit) { inserting = "boxText" }
                         if (img != null && remember(c0.id) { o.bytes()?.let(InkPicture::strokesOf) != null }) RibbonButton(stringResource(R.string.words_edit_drawing), w, R.drawable.ic_draw) { editingInk = true }
                         if (img?.chart != null) RibbonButton(stringResource(R.string.words_edit_data), w, R.drawable.ic_bar_chart) { inserting = "chartEdit" }
                         if (img?.math != null) RibbonButton(stringResource(R.string.words_edit_equation), w, R.drawable.ic_functions) { inserting = "mathEdit" }
                         if (c0.text != null || img != null && img.group == null && ShapePicture.of(img) != null) RibbonButton(stringResource(R.string.words_shape_options), w, R.drawable.ic_tune) { shapeOptions = true }
                         RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_aspect_ratio) { sizing = true }
+                        if (picture) RibbonButton(stringResource(R.string.words_crop), w, R.drawable.ic_crop) { scope.launch {
+                            cropping = withContext(Dispatchers.IO) { o.bytes()?.let { runCatching { OfficePages.croppedPicture(img, it, 2400) }.getOrNull() } }
+                            if (cropping == null) Toast.makeText(context, R.string.words_cannot_crop, Toast.LENGTH_SHORT).show()
+                        } }
                         RibbonDivider(w)
                         RibbonButton(stringResource(R.string.words_position), w, R.drawable.ic_open_with) { positioning = true }
                         RibbonDivider(w)
@@ -2129,7 +2234,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         RibbonButton(stringResource(R.string.words_shapes), w, R.drawable.ic_category) { inserting = "shapes" }
                         RibbonDivider(w)
                         RibbonButton(stringResource(R.string.words_text_box), w, R.drawable.ic_text_box, on = tool == PdfTool.TextBox) { tool = if (tool == PdfTool.TextBox) null else PdfTool.TextBox }
-                        RibbonButton(stringResource(R.string.words_wordart), w, R.drawable.ic_format_color_text) { inserting = "wordart" }
+                        RibbonButton(stringResource(R.string.words_wordart), w, R.drawable.ic_format_color_text) { artGallery = null to null }
                         RibbonButton(stringResource(R.string.words_chart), w, R.drawable.ic_bar_chart) { inserting = "chart" }
                         // Stamp: the kind chosen in a strip (✓/×, as Office's options), then a tap on the page puts it there
                         val stampStrip = officeStrip(stringResource(R.string.pdf_stamp), ok = { st -> (st.picked as? String)?.let { stampName = it; tool = PdfTool.Stamp } }) { st ->
@@ -2141,6 +2246,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             else stampName.replace(Regex("(?<=[a-z])(?=[A-Z])"), " "), w, R.drawable.ic_branding_watermark, on = tool == PdfTool.Stamp) {
                             if (stampStrip != null) stampStrip() else tool = if (tool == PdfTool.Stamp) null else PdfTool.Stamp
                         }
+                        RibbonDivider(w)
+                        // Words' Links: on the chosen text or object (a PDF link covers a part of the page)
+                        RibbonButton(stringResource(R.string.words_link), w, R.drawable.ic_link, enabled = chosen != null && typing == null) { askLink() }
                         RibbonDivider(w)
                         RibbonButton(stringResource(R.string.words_comment), w, R.drawable.ic_comment, on = tool == PdfTool.Note) { tool = if (tool == PdfTool.Note) null else PdfTool.Note }
                         RibbonDivider(w)
@@ -2317,7 +2425,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             Tool(R.drawable.ic_save, stringResource(R.string.common_save), tint, enabled = d0.dirty || typing != null) { putTyped(); save() }
                         }
                         // Done at the far right, back to the pages (Words')
-                        Tool(R.drawable.ic_check, stringResource(R.string.common_done), tint) { putTyped(); chosen = null; if (d0.dirty) leaving = true else editing = false }
+                        Tool(R.drawable.ic_check, stringResource(R.string.common_done), tint) { putTyped(); chosen = null; if (!d0.dirty) editing = false else if (autoSave) save { editing = false } else leaving = true }
                     } else if (d0 != null) {
                         // Words' view-only bar: the list of pages, two pages, find, share, save (with changes), Edit
                         val wide0 = LocalConfiguration.current.screenWidthDp >= 700
@@ -2445,6 +2553,15 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                                 pageMenu = Triple(i, down.position, pt)
                                             }
                                         }
+                                        // a tap on a link: Words' "Go to" for it (watched, not taken: the page's own taps go on)
+                                        .pointerInput(i, s) { awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                            while (true) {
+                                                val ch = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                                                if ((ch.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+                                                if (!ch.pressed) { if (ch.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) tappedLink(i, down.position / (size.width / s.width)); break }
+                                            }
+                                        } }
                                         // an object on this page as Words' (the user, 26 Oct): pressed and dragged it moves at once, a tap chooses it,
                                         // a long press opens Position, a tap on a chosen text types in it
                                         .pdfObjectGestures(s, editing && typing == null && (tool == null || tool == PdfTool.Text || tool == PdfTool.TextBox),
@@ -2463,6 +2580,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                             if (c.text != null) entry(stringResource(R.string.words_edit_text), R.drawable.ic_edit) { retype(c) }
                                             entry(stringResource(R.string.common_cut), R.drawable.ic_content_cut) { if (copyChosen()) deleteChosen() }
                                             entry(stringResource(R.string.common_copy), R.drawable.ic_copy) { copyChosen() }
+                                            entry(stringResource(R.string.words_link), R.drawable.ic_link) { askLink() }
                                         }
                                         entry(stringResource(R.string.common_paste), R.drawable.ic_content_paste) { paste(i, if (c == null) pt else null) }
                                         if (c != null) {
@@ -2488,6 +2606,24 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (!wide) Icon(painterResource(R.drawable.ic_view_grid), contentDescription = stringResource(if (pages) R.string.pdf_hide_pages else R.string.pdf_show_pages), modifier = Modifier.padding(end = 8.dp).size(18.dp))
                     Text(stringResource(R.string.words_page_of, (at + 1).coerceAtMost(d.sizes.size), d.sizes.size), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            // a link tapped: Words' "Go to" pill, a tap goes (a page of this file, or the address in its app); gone by itself
+            linkHere?.let { (uri, toPage) ->
+                LaunchedEffect(linkHere) { delay(5000); linkHere = null }
+                Surface(color = Color.Black, contentColor = Color.White, shape = androidx.compose.foundation.shape.CircleShape,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp, start = 16.dp, end = 16.dp).clip(androidx.compose.foundation.shape.CircleShape).clickable {
+                        linkHere = null
+                        if (toPage != null) goTo(toPage)
+                        else runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri))) }
+                            .onFailure { Toast.makeText(context, R.string.pdf_could_not_do, Toast.LENGTH_SHORT).show() }
+                        WriterLog.i("PDF: link followed (${if (toPage != null) "page" else "address"})")
+                    }) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(painterResource(R.drawable.ic_link), contentDescription = null, modifier = Modifier.size(18.dp).padding(end = 6.dp))
+                        Text(stringResource(R.string.words_go_to, toPage?.let { stringResource(R.string.pdf_page_lower, it + 1) } ?: uri.removePrefix("mailto:").take(60)),
+                            style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
             // a phone: the pane over the lower half of the pages

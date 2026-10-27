@@ -4654,6 +4654,7 @@
     <string name="pdf_flattened">Commentaires et champs font maintenant partie des pages</string>
     <string name="pdf_remove_hidden">Supprimer les informations masquées</string>
     <string name="pdf_hidden_removed">Ses détails (auteur, titre, logiciels), scripts et pièces jointes partent à l\'enregistrement</string>
+    <string name="pdf_page_in_file">Une page de ce fichier</string>
     <string name="pdf_picture_more">Image…</string>
     <string name="pdf_insert_pdf">Insérer un PDF</string>
     <string name="pdf_remove_password">Supprimer le mot de passe</string>

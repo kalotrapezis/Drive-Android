@@ -4654,6 +4654,7 @@
     <string name="pdf_flattened">Komentāri un veidlapas lauki tagad ir lappušu daļa</string>
     <string name="pdf_remove_hidden">Noņemt slēpto informāciju</string>
     <string name="pdf_hidden_removed">Dati (autors, nosaukums, programmas), skripti un pielikumi tiek noņemti saglabājot</string>
+    <string name="pdf_page_in_file">Šī faila lappuse</string>
     <string name="pdf_picture_more">Attēls…</string>
     <string name="pdf_insert_pdf">Ievietot PDF</string>
     <string name="pdf_remove_password">Noņemt paroli</string>

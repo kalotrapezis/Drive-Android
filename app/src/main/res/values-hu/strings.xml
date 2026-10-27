@@ -4564,6 +4564,7 @@
     <string name="pdf_flattened">A megjegyzések és űrlapmezők most már az oldalak részei</string>
     <string name="pdf_remove_hidden">Rejtett adatok eltávolítása</string>
     <string name="pdf_hidden_removed">Az adatai (szerző, cím, programok), szkriptjei és mellékletei mentéskor törlődnek</string>
+    <string name="pdf_page_in_file">Egy oldal ebben a fájlban</string>
     <string name="pdf_picture_more">Kép…</string>
     <string name="pdf_insert_pdf">PDF beszúrása</string>
     <string name="pdf_remove_password">Jelszó eltávolítása</string>

@@ -4744,6 +4744,7 @@
     <string name="pdf_flattened">Il-kummenti u l-oqsma issa huma parti mill-paġni</string>
     <string name="pdf_remove_hidden">Neħħi informazzjoni moħbija</string>
     <string name="pdf_hidden_removed">Id-dettalji (awtur, titlu, programmi), skripts u fajls mehmuża jitneħħew meta jiġi salvat</string>
+    <string name="pdf_page_in_file">Paġna f\'dan il-fajl</string>
     <string name="pdf_picture_more">Immaġni…</string>
     <string name="pdf_insert_pdf">Daħħal PDF</string>
     <string name="pdf_remove_password">Neħħi l-password</string>

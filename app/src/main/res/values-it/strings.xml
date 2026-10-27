@@ -4564,6 +4564,7 @@
     <string name="pdf_flattened">Commenti e campi ora fanno parte delle pagine</string>
     <string name="pdf_remove_hidden">Rimuovi informazioni nascoste</string>
     <string name="pdf_hidden_removed">Dati (autore, titolo, programmi), script e allegati vanno via al salvataggio</string>
+    <string name="pdf_page_in_file">Una pagina di questo file</string>
     <string name="pdf_picture_more">Immagine…</string>
     <string name="pdf_insert_pdf">Inserisci PDF</string>
     <string name="pdf_remove_password">Rimuovi password</string>

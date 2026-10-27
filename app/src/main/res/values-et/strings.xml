@@ -4564,6 +4564,7 @@
     <string name="pdf_flattened">Kommentaarid ja vormiväljad on nüüd lehtede osa</string>
     <string name="pdf_remove_hidden">Eemalda peidetud teave</string>
     <string name="pdf_hidden_removed">Andmed (autor, pealkiri, programmid), skriptid ja manused kaovad salvestamisel</string>
+    <string name="pdf_page_in_file">Selle faili lehekülg</string>
     <string name="pdf_picture_more">Pilt…</string>
     <string name="pdf_insert_pdf">Lisa PDF</string>
     <string name="pdf_remove_password">Eemalda parool</string>

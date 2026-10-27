@@ -4744,6 +4744,7 @@
     <string name="pdf_flattened">Komentarai ir formos laukai dabar yra puslapių dalis</string>
     <string name="pdf_remove_hidden">Šalinti paslėptą informaciją</string>
     <string name="pdf_hidden_removed">Duomenys (autorius, pavadinimas, programos), scenarijai ir priedai pašalinami įrašant</string>
+    <string name="pdf_page_in_file">Šio failo puslapis</string>
     <string name="pdf_picture_more">Paveikslėlis…</string>
     <string name="pdf_insert_pdf">Įterpti PDF</string>
     <string name="pdf_remove_password">Šalinti slaptažodį</string>

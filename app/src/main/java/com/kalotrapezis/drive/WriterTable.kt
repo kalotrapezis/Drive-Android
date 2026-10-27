@@ -686,7 +686,7 @@ internal fun LinkDialog(showText: Boolean, startUrl: String?, startText: String?
                 }
                 if (slide == null) OutlinedTextField(url, { url = it }, singleLine = true, label = { Text(stringResource(R.string.words_address)) })
                 else if (slide != -1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    slides.orEmpty().forEachIndexed { i, name -> Choice("${i + 1}. $name", slide == i) { slide = i } }
+                    slides.orEmpty().forEachIndexed { i, name -> Choice(if (name.isEmpty()) "${i + 1}" else "${i + 1}. $name", slide == i) { slide = i } }
                 }
             }
         },

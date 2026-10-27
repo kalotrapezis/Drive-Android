@@ -4565,6 +4565,7 @@
     <string name="pdf_flattened">Comments and form fields are now part of the pages</string>
     <string name="pdf_remove_hidden">Remove hidden information</string>
     <string name="pdf_hidden_removed">Its details (author, title, programs), scripts and attached files go when it is saved</string>
+    <string name="pdf_page_in_file">A page in this file</string>
     <string name="pdf_picture_more">Picture…</string>
     <string name="pdf_insert_pdf">Insert PDF</string>
     <string name="pdf_remove_password">Remove password</string>

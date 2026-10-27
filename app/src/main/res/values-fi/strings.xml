@@ -4564,6 +4564,7 @@
     <string name="pdf_flattened">Kommentit ja lomakekentät ovat nyt osa sivuja</string>
     <string name="pdf_remove_hidden">Poista piilotetut tiedot</string>
     <string name="pdf_hidden_removed">Tiedot (tekijä, otsikko, ohjelmat), komentosarjat ja liitteet poistuvat tallennettaessa</string>
+    <string name="pdf_page_in_file">Tämän tiedoston sivu</string>
     <string name="pdf_picture_more">Kuva…</string>
     <string name="pdf_insert_pdf">Lisää PDF</string>
     <string name="pdf_remove_password">Poista salasana</string>

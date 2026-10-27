@@ -229,7 +229,8 @@ internal fun PdfDoc.objectPicture(i: Int, id: Int, w: Int): android.graphics.Bit
     val r = a.bounds.transform(m)
     val x0 = kotlin.math.floor(r.x0).toInt(); val y0 = kotlin.math.floor(r.y0).toInt()
     val bmp = android.graphics.Bitmap.createBitmap((kotlin.math.ceil(r.x1).toInt() - x0).coerceIn(1, 4096), (kotlin.math.ceil(r.y1).toInt() - y0).coerceIn(1, 4096), android.graphics.Bitmap.Config.ARGB_8888)
-    val dev = com.artifex.mupdf.fitz.android.AndroidDrawDevice(bmp, x0, y0)
+    // not cleared to white: the object alone, what is under it on the page seen through it
+    val dev = com.artifex.mupdf.fitz.android.AndroidDrawDevice(bmp, x0, y0, false)
     try { a.run(dev, m, null) } finally { dev.close(); dev.destroy() }
     bmp
 } }.onFailure { WriterLog.w("PDF: object picture", it) }.getOrNull() }

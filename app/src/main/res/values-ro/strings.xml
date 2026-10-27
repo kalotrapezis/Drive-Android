@@ -4654,6 +4654,7 @@
     <string name="pdf_flattened">Comentariile și câmpurile fac acum parte din pagini</string>
     <string name="pdf_remove_hidden">Elimină informațiile ascunse</string>
     <string name="pdf_hidden_removed">Detaliile (autor, titlu, programe), scripturile și atașamentele dispar la salvare</string>
+    <string name="pdf_page_in_file">O pagină din acest fișier</string>
     <string name="pdf_picture_more">Imagine…</string>
     <string name="pdf_insert_pdf">Inserare PDF</string>
     <string name="pdf_remove_password">Elimină parola</string>

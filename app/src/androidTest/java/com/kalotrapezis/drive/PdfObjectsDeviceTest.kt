@@ -194,4 +194,69 @@ class PdfObjectsDeviceTest {
         assertEquals(null, again.info(com.artifex.mupdf.fitz.Document.META_INFO_CREATOR))
         again.close(); dir.deleteRecursively()
     }
+
+    @Test fun linksPutReadAndTakenOff() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-objects-links").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        d.insertBlank(1)
+        val r = android.graphics.RectF(100f, 100f, 300f, 140f)
+        d.link(0, r, "https://example.org/a")
+        assertEquals("https://example.org/a" to null, d.linkAt(0, Offset(200f, 120f)))
+        assertEquals(null, d.linkAt(0, Offset(200f, 200f)))
+        // another over it: the one before goes; a page of this file
+        d.link(0, r, "#page=2")
+        assertEquals(1, d.linkAt(0, Offset(200f, 120f))?.second)
+        d.save(); d.close()
+        val again = PdfDoc(f)
+        assertEquals(1, again.linkAt(0, Offset(150f, 110f))?.second)
+        again.link(0, r, null)
+        assertEquals(null, again.linkAt(0, Offset(200f, 120f)))
+        again.close(); dir.deleteRecursively()
+    }
+
+    @Test fun undoTakesAnObjectOffThePage() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-objects-undo").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        // what is drawn in the object's box (page points = pixels)
+        fun inked() = kotlinx.coroutines.runBlocking { d.page(0, d.sizes[0].width.toInt()) }!!.let { bm ->
+            (260 until 341).sumOf { y -> (140 until 261).count { x -> bm.getPixel(x, y) and 0xFFFFFF != 0xFFFFFF } } }
+        val shape = PdfWords.of(DocImage("s1", null, 120f, 80f, PictureXml.newShape("rect", OfficeKind.Docx, 0xFF0000, 0xFF0000, 1f, 120f, 80f), wrap = PictureWrap.InFront))
+        d.putWords(0, shape, 200f, 300f)
+        assertEquals(1, d.objects(0).size)
+        assertTrue(inked() > 100)
+        d.undo()
+        assertEquals(0, d.objects(0).size)
+        assertEquals(0, inked())
+        d.close(); dir.deleteRecursively()
+    }
+
+    @Test fun undoGoesBackToTheLastSave() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-objects-undo-save").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        fun shape(x: Float) = d.putWords(0, PdfWords.of(DocImage("s$x", null, 60f, 40f, PictureXml.newShape("rect", OfficeKind.Docx, 0xFF0000, 0xFF0000, 1f, 60f, 40f), wrap = PictureWrap.InFront)), x, 300f)
+        shape(100f)
+        d.save()
+        // what the save wrote stays (MuPDF's undo would say it can, and change nothing)
+        assertTrue(!d.canUndo)
+        shape(200f); shape(300f)
+        d.undo(); assertEquals(2, d.objects(0).size)
+        d.redo(); assertEquals(3, d.objects(0).size)
+        d.undo(); d.save()
+        // undone before the save: not to be redone after it
+        assertTrue(!d.canRedo && !d.canUndo)
+        shape(400f); d.undo(); assertEquals(2, d.objects(0).size)
+        assertTrue(d.canRedo)
+        d.close()
+        val again = PdfDoc(f)
+        assertEquals(2, again.objects(0).size)
+        again.close(); dir.deleteRecursively()
+    }
+
+    /** The screens load: Android's verifier takes their code (PdfScreen past its size failed so, 27 Oct, unseen by the tests above). */
+    @Test fun screensLoad() {
+        listOf("PdfScreenKt", "WriterKt", "SlidesScreenKt").forEach { Class.forName("com.kalotrapezis.drive.$it") }
+    }
 }

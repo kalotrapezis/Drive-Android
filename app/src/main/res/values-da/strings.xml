@@ -4564,6 +4564,7 @@
     <string name="pdf_flattened">Kommentarer og formularfelter er nu en del af siderne</string>
     <string name="pdf_remove_hidden">Fjern skjulte oplysninger</string>
     <string name="pdf_hidden_removed">Oplysninger (forfatter, titel, programmer), scripts og vedhæftede filer fjernes ved gemning</string>
+    <string name="pdf_page_in_file">En side i denne fil</string>
     <string name="pdf_picture_more">Billede…</string>
     <string name="pdf_insert_pdf">Indsæt PDF</string>
     <string name="pdf_remove_password">Fjern adgangskode</string>

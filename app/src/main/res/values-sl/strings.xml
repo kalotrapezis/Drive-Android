@@ -4744,6 +4744,7 @@
     <string name="pdf_flattened">Komentarji in polja obrazca so zdaj del strani</string>
     <string name="pdf_remove_hidden">Odstrani skrite podatke</string>
     <string name="pdf_hidden_removed">Podatki (avtor, naslov, programi), skripti in priloge izginejo ob shranjevanju</string>
+    <string name="pdf_page_in_file">Stran v tej datoteki</string>
     <string name="pdf_picture_more">Slika…</string>
     <string name="pdf_insert_pdf">Vstavi PDF</string>
     <string name="pdf_remove_password">Odstrani geslo</string>

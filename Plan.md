@@ -29,7 +29,9 @@ How to write here:
       Words' paragraphs on Words' engine, Words' Home, top bar, Find and Replace, Insert, Draw, Design (new), Layout,
       Review (Words' comment cards), Selection and object tabs, the phone's keyboard bar, the ribbon at the top on a
       desktop; Pages' Duplicate, Split, Crop, Flatten; Protect's Remove hidden information. Done and left in
-      PDF_LIKE_WORDS.md › State. Emulator only: not yet on the tablet or the phone.
+      PDF_LIKE_WORDS.md › State. 27 Oct morning: Add text, Crop, WordArt gallery, Links; on the tablet (its build installed
+      there); found Undo-after-AutoSave does nothing (main too) — Undo now stops at the last save, PDF AutoSave 30 s +
+      background + leaving. Unit tests not re-run; phone not tried. Paused for the user's workday, to continue after.
 - [ ] **Merge `claude/pdf-save-fix` first** (from main, one commit): every PDF save after the first in a session (AutoSave's)
       or on another day dropped what the saves before wrote — the file left with dangling objects. Found 27 Oct.
 - [ ] (was the top of the list; the item as the user gave it) **TOP OF THE LIST — the PDF editor works exactly like Words** — **with the user, when they have time, watching each step; no agent starts it alone** (the user, 26 Oct, on the tablet: "I don't like how PDF

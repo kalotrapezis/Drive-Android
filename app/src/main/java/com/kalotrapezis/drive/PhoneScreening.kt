@@ -19,7 +19,7 @@ class PhoneScreening : CallScreeningService() {
         val ok = CallResponse.Builder().build()
         if (details.callDirection != Call.Details.DIRECTION_INCOMING) return respondToCall(details, ok)
         val number = details.handle?.schemeSpecificPart?.takeIf { it.isNotBlank() && details.handlePresentation == TelecomManager.PRESENTATION_ALLOWED }
-        val spam = number?.let { PhoneSpam.matches(PhoneSpam.read(), it) }
+        val spam = number?.let { PhoneSpam.matches(PhoneSpam.read(), it, PhoneCountry.of(this)) }
         val response = when {
             // spam and unwanted (Tetra/Phone/spam.txt, the same list on every device): declined before it rings, no notice; Recents keeps it
             spam != null -> CallResponse.Builder().setDisallowCall(true).setRejectCall(true).setSkipNotification(true).build()
@@ -64,21 +64,9 @@ internal object PhoneSpam {
     fun parse(text: String): List<Entry> = text.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
         .map { l -> Entry(l.substringBefore('#').trim().replace(" ", ""), l.substringAfter('#', "").trim()) }.filter { e -> e.number.any(Char::isDigit) }
 
-    /** A number in the form it is compared in: a Greek one without +30 / 0030, another country's with + and its code. */
-    fun national(n: String): String {
-        val t = n.trim(); val d = n.filter(Char::isDigit)
-        return when {
-            t.startsWith("+30") -> d.drop(2)
-            t.startsWith("0030") -> d.drop(4)
-            t.startsWith("+") -> "+$d"
-            t.startsWith("00") -> "+" + d.drop(2)
-            else -> d
-        }
-    }
-
     /** The list's line that takes this number, if any. */
-    fun matches(list: List<Entry>, number: String): Entry? = list.firstOrNull { e ->
-        if (e.number.endsWith("*")) national(e.number.dropLast(1)).let { p -> p.count(Char::isDigit) >= 2 && national(number).startsWith(p) }
+    fun matches(list: List<Entry>, number: String, region: String): Entry? = list.firstOrNull { e ->
+        if (e.number.endsWith("*")) e.number.dropLast(1).takeIf { it.count(Char::isDigit) >= 2 }?.let { PhoneCountry.international(number, region).startsWith(PhoneCountry.international(it, region)) } == true
         else PhoneLog.same(e.number, number)
     }
 
@@ -86,7 +74,7 @@ internal object PhoneSpam {
     fun read(): List<Entry> = runCatching { parse(file().readText()) }.getOrDefault(emptyList())
 
     fun add(c: Context, number: String, note: String = "") = runCatching {
-        if (matches(read(), number) != null) return@runCatching
+        if (matches(read(), number, PhoneCountry.of(c)) != null) return@runCatching
         val f = file().apply { parentFile?.mkdirs() }
         val was = if (f.exists()) f.readText() else HEAD
         f.writeText(was.trimEnd('\n') + "\n" + number.trim() + (if (note.isNotBlank()) "  # ${note.trim()}" else "") + "\n")
@@ -109,7 +97,7 @@ internal object PhoneSpam {
     }
 
     /** CallInsider's page for a Greek number, opened in the browser as a person would (its terms forbid automated look-ups). */
-    fun lookUp(number: String): String? = national(number).takeIf { it.length == 10 && !it.startsWith("+") }?.let { "https://www.callinsider.gr/gr/$it" }
+    fun lookUp(number: String, region: String): String? = PhoneCountry.international(number, region).takeIf { it.startsWith("+30") && it.length == 13 }?.let { "https://www.callinsider.gr/gr/${it.drop(3)}" }
 }
 
 /** Android's blocked numbers (BlockedNumberContract): only the phone app, the SMS app and the carrier may read and change them. */

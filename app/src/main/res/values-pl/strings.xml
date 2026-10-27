@@ -360,10 +360,6 @@
     <string name="settings_directions">Wskazówki</string>
     <string name="settings_directions_note">Głos to synteza mowy Androida; jej głosy są w ustawieniach Androida.</string>
     <string name="settings_directions_in_summary">Słowa nawigacji zakręt po zakręcie i głos</string>
-    <string name="settings_greek">Grecki</string>
-    <string name="settings_english">Angielski</string>
-    <string name="settings_no_english_voice">Brak angielskiego głosu: dodaj go w ustawieniach głosu Androida.</string>
-    <string name="settings_no_greek_voice">Brak greckiego głosu: dodaj go w ustawieniach głosu Androida.</string>
     <string name="settings_voice_settings_summary">Synteza mowy Androida</string>
     <string name="settings_sharp_bends_summary">Samochodem: „Ostry zakręt w prawo” chwilę przed każdym ciasnym łukiem, gdzie nie ma komunikatu o skręcie, jak na drogach górskich</string>
     <string name="settings_parking">Parkowanie</string>
@@ -4779,4 +4775,77 @@
     <string name="settings_remove_map">Usuń</string>
     <string name="settings_remove_map_title">Usunąć mapę: %1$s?</string>
     <string name="settings_remove_map_body">Jej pliki trafią do Kosza, tutaj i na Twoich innych urządzeniach. Zapisane miejsca zostaną.</string>
+    <string name="maps_lane_middle">środkowym pasem</string>
+    <string name="maps_bend_right">Uwaga, ostry zakręt w prawo</string>
+    <string name="maps_bend_left">Uwaga, ostry zakręt w lewo</string>
+    <string name="maps_keep_straight">Jedź prosto</string>
+    <string name="maps_towards">%1$s w kierunku %2$s</string>
+    <string name="maps_take_ferry">wjedź na prom</string>
+    <string name="maps_ferry">Prom</string>
+    <string name="maps_error_not_near_you">Nie jesteś w pobliżu drogi znanej mapie (albo jesteś poza tutejszymi mapami).</string>
+    <string name="maps_error_destination_not_near">Cel nie jest w pobliżu drogi znanej mapie (albo jest na innej mapie: trasa pozostaje na mapie jednego kraju).</string>
+    <string name="maps_error_no_way">Tym środkiem transportu nie ma tam drogi.</string>
+    <string name="maps_error_no_route">Brak trasy.</string>
+    <string name="maps_say_stop">Przystanek %1$s. Następny, %2$s: %3$s, gdy ruszysz</string>
+    <string name="maps_say_next_stop">Następny przystanek %1$s: %2$s, gdy ruszysz</string>
+    <string name="maps_say_gps_lost">Utracono sygnał GPS</string>
+    <string name="maps_say_wrong_way">Zły kierunek. Zawróć, gdy będzie bezpiecznie</string>
+    <string name="maps_say_toll">punkt poboru opłat</string>
+    <string name="maps_say_new_route">Nowa trasa</string>
+    <string name="maps_sample_turn">skręć w prawo</string>
+    <string name="maps_no_voice">Ten telefon nie ma głosu dla języka: %1$s, więc wskazówki są wyświetlane, ale nie czytane. Głos możesz dodać w ustawieniach mowy Androida.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Za %1$s kilometr, %2$s</item>
+        <item quantity="few">Za %1$s kilometry, %2$s</item>
+        <item quantity="many">Za %1$s kilometrów, %2$s</item>
+        <item quantity="other">Za %1$s kilometra, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Za %1$s metr, %2$s</item>
+        <item quantity="few">Za %1$s metry, %2$s</item>
+        <item quantity="many">Za %1$s metrów, %2$s</item>
+        <item quantity="other">Za %1$s metra, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Za %1$s milę, %2$s</item>
+        <item quantity="few">Za %1$s mile, %2$s</item>
+        <item quantity="many">Za %1$s mil, %2$s</item>
+        <item quantity="other">Za %1$s mili, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Za %1$s stopę, %2$s</item>
+        <item quantity="few">Za %1$s stopy, %2$s</item>
+        <item quantity="many">Za %1$s stóp, %2$s</item>
+        <item quantity="other">Za %1$s stopy, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Za %1$s jard, %2$s</item>
+        <item quantity="few">Za %1$s jardy, %2$s</item>
+        <item quantity="many">Za %1$s jardów, %2$s</item>
+        <item quantity="other">Za %1$s jarda, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">prawym pasem</item>
+        <item quantity="few">jednym z %1$d prawych pasów</item>
+        <item quantity="many">jednym z %1$d prawych pasów</item>
+        <item quantity="other">jednym z %1$d prawych pasów</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">lewym pasem</item>
+        <item quantity="few">jednym z %1$d lewych pasów</item>
+        <item quantity="many">jednym z %1$d lewych pasów</item>
+        <item quantity="other">jednym z %1$d lewych pasów</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">W pobliżu celu jest %1$d miejsce dla osób z niepełnosprawnościami. Naciśnij przycisk parkowania, aby tam dojechać.</item>
+        <item quantity="few">W pobliżu celu są %1$d miejsca dla osób z niepełnosprawnościami. Naciśnij przycisk parkowania, aby dojechać do jednego z nich.</item>
+        <item quantity="many">W pobliżu celu jest %1$d miejsc dla osób z niepełnosprawnościami. Naciśnij przycisk parkowania, aby dojechać do jednego z nich.</item>
+        <item quantity="other">W pobliżu celu są %1$d miejsca dla osób z niepełnosprawnościami. Naciśnij przycisk parkowania, aby dojechać do jednego z nich.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Na trasie jest %1$d punkt poboru opłat</item>
+        <item quantity="few">Na trasie są %1$d punkty poboru opłat</item>
+        <item quantity="many">Na trasie jest %1$d punktów poboru opłat</item>
+        <item quantity="other">Na trasie są %1$d punktu poboru opłat</item>
+    </plurals>
 </resources>

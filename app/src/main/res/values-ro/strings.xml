@@ -360,10 +360,6 @@
     <string name="settings_directions">Indicații</string>
     <string name="settings_directions_note">Vocea este sinteza vocală Android; vocile ei sunt în setările Android.</string>
     <string name="settings_directions_in_summary">Cuvintele indicațiilor pas cu pas și vocea</string>
-    <string name="settings_greek">Greacă</string>
-    <string name="settings_english">Engleză</string>
-    <string name="settings_no_english_voice">Nicio voce în engleză: adaug-o în setările de voce Android.</string>
-    <string name="settings_no_greek_voice">Nicio voce în greacă: adaug-o în setările de voce Android.</string>
     <string name="settings_voice_settings_summary">Sinteza vocală Android</string>
     <string name="settings_sharp_bends_summary">Cu mașina, „Curbă strânsă la dreapta în față” puțin înaintea fiecărei curbe strânse unde nu se anunță o virare, ca pe drumurile de munte</string>
     <string name="settings_parking">Parcare</string>
@@ -4687,4 +4683,68 @@
     <string name="settings_remove_map">Elimină</string>
     <string name="settings_remove_map_title">Elimini harta: %1$s?</string>
     <string name="settings_remove_map_body">Fișierele ei merg în Coșul de gunoi, aici și pe celelalte dispozitive. Locurile salvate rămân.</string>
+    <string name="maps_lane_middle">pe banda din mijloc</string>
+    <string name="maps_bend_right">Urmează o curbă strânsă la dreapta</string>
+    <string name="maps_bend_left">Urmează o curbă strânsă la stânga</string>
+    <string name="maps_keep_straight">Continuați drept înainte</string>
+    <string name="maps_towards">%1$s spre %2$s</string>
+    <string name="maps_take_ferry">luați feribotul</string>
+    <string name="maps_ferry">Feribot</string>
+    <string name="maps_error_not_near_you">Nu sunteți lângă un drum cunoscut de hartă (sau sunteți în afara hărților de aici).</string>
+    <string name="maps_error_destination_not_near">Destinația nu este lângă un drum cunoscut de hartă (sau este pe altă hartă: un traseu rămâne pe harta unei singure țări).</string>
+    <string name="maps_error_no_way">Cu acest mijloc de transport nu există drum până acolo.</string>
+    <string name="maps_error_no_route">Niciun traseu.</string>
+    <string name="maps_say_stop">Oprirea %1$s. Următoarea, %2$s: %3$s, când porniți</string>
+    <string name="maps_say_next_stop">Următoarea oprire %1$s: %2$s, când porniți</string>
+    <string name="maps_say_gps_lost">Semnalul GPS s-a pierdut</string>
+    <string name="maps_say_wrong_way">Direcție greșită. Întoarceți când este sigur</string>
+    <string name="maps_say_toll">o barieră de taxare</string>
+    <string name="maps_say_new_route">Traseu nou</string>
+    <string name="maps_sample_turn">virați la dreapta</string>
+    <string name="maps_no_voice">Acest telefon nu are o voce pentru %1$s, așa că indicațiile sunt afișate, dar nu sunt rostite. Puteți adăuga una în setările de voce Android.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Peste %1$s kilometru, %2$s</item>
+        <item quantity="few">Peste %1$s kilometri, %2$s</item>
+        <item quantity="other">Peste %1$s de kilometri, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Peste %1$s metru, %2$s</item>
+        <item quantity="few">Peste %1$s metri, %2$s</item>
+        <item quantity="other">Peste %1$s de metri, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Peste %1$s milă, %2$s</item>
+        <item quantity="few">Peste %1$s mile, %2$s</item>
+        <item quantity="other">Peste %1$s de mile, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Peste %1$s picior, %2$s</item>
+        <item quantity="few">Peste %1$s picioare, %2$s</item>
+        <item quantity="other">Peste %1$s de picioare, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Peste %1$s iard, %2$s</item>
+        <item quantity="few">Peste %1$s iarzi, %2$s</item>
+        <item quantity="other">Peste %1$s de iarzi, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">pe banda din dreapta</item>
+        <item quantity="few">pe una dintre cele %1$d benzi din dreapta</item>
+        <item quantity="other">pe una dintre cele %1$d de benzi din dreapta</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">pe banda din stânga</item>
+        <item quantity="few">pe una dintre cele %1$d benzi din stânga</item>
+        <item quantity="other">pe una dintre cele %1$d de benzi din stânga</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Lângă destinație există %1$d loc de parcare pentru persoane cu dizabilități. Apăsați butonul de parcare ca să mergeți acolo.</item>
+        <item quantity="few">Lângă destinație există %1$d locuri de parcare pentru persoane cu dizabilități. Apăsați butonul de parcare ca să mergeți la unul.</item>
+        <item quantity="other">Lângă destinație există %1$d de locuri de parcare pentru persoane cu dizabilități. Apăsați butonul de parcare ca să mergeți la unul.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Traseul are %1$d barieră de taxare</item>
+        <item quantity="few">Traseul are %1$d bariere de taxare</item>
+        <item quantity="other">Traseul are %1$d de bariere de taxare</item>
+    </plurals>
 </resources>

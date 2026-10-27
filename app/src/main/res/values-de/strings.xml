@@ -360,10 +360,6 @@
     <string name="settings_directions">Navigation</string>
     <string name="settings_directions_note">Die Stimme ist die Sprachausgabe von Android; ihre Stimmen sind in den Android-Einstellungen.</string>
     <string name="settings_directions_in_summary">Die Abbiegehinweise und die Stimme</string>
-    <string name="settings_greek">Griechisch</string>
-    <string name="settings_english">Englisch</string>
-    <string name="settings_no_english_voice">Keine englische Stimme: füge sie in den Spracheinstellungen von Android hinzu.</string>
-    <string name="settings_no_greek_voice">Keine griechische Stimme: füge sie in den Spracheinstellungen von Android hinzu.</string>
     <string name="settings_voice_settings_summary">Sprachausgabe von Android</string>
     <string name="settings_sharp_bends_summary">Mit dem Auto „Scharfe Rechtskurve voraus“ kurz vor jeder engen Kurve ohne Abbiegeansage, wie auf Bergstraßen</string>
     <string name="settings_parking">Parken</string>
@@ -4595,4 +4591,59 @@
     <string name="settings_remove_map">Entfernen</string>
     <string name="settings_remove_map_title">Karte von %1$s entfernen?</string>
     <string name="settings_remove_map_body">Ihre Dateien kommen in den Papierkorb, hier und auf deinen anderen Geräten. Deine gespeicherten Orte bleiben erhalten.</string>
+    <string name="maps_lane_middle">über den mittleren Fahrstreifen</string>
+    <string name="maps_bend_right">Achtung, scharfe Rechtskurve</string>
+    <string name="maps_bend_left">Achtung, scharfe Linkskurve</string>
+    <string name="maps_keep_straight">Geradeaus weiterfahren</string>
+    <string name="maps_towards">%1$s Richtung %2$s</string>
+    <string name="maps_take_ferry">nimm die Fähre</string>
+    <string name="maps_ferry">Fähre</string>
+    <string name="maps_error_not_near_you">Du bist nicht in der Nähe einer Straße, die die Karte kennt (oder außerhalb der Karten hier).</string>
+    <string name="maps_error_destination_not_near">Das Ziel ist nicht in der Nähe einer Straße, die die Karte kennt (oder auf einer anderen Karte: Eine Route bleibt auf der Karte eines Landes).</string>
+    <string name="maps_error_no_way">Mit diesem Verkehrsmittel gibt es keinen Weg dorthin.</string>
+    <string name="maps_error_no_route">Keine Route.</string>
+    <string name="maps_say_stop">Halt %1$s. Als Nächstes %2$s: %3$s, sobald du weiterfährst</string>
+    <string name="maps_say_next_stop">Nächster Halt %1$s: %2$s, sobald du weiterfährst</string>
+    <string name="maps_say_gps_lost">GPS-Signal verloren</string>
+    <string name="maps_say_wrong_way">Falsche Richtung. Wende, sobald es sicher ist</string>
+    <string name="maps_say_toll">eine Mautstelle</string>
+    <string name="maps_say_new_route">Neue Route</string>
+    <string name="maps_sample_turn">rechts abbiegen</string>
+    <string name="maps_no_voice">Dieses Telefon hat keine Stimme für %1$s, daher werden die Anweisungen angezeigt, aber nicht gesprochen. Du kannst eine in den Sprachausgabe-Einstellungen von Android hinzufügen.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">In %1$s Kilometer, %2$s</item>
+        <item quantity="other">In %1$s Kilometern, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">In %1$s Meter, %2$s</item>
+        <item quantity="other">In %1$s Metern, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">In %1$s Meile, %2$s</item>
+        <item quantity="other">In %1$s Meilen, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">In %1$s Fuß, %2$s</item>
+        <item quantity="other">In %1$s Fuß, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">In %1$s Yard, %2$s</item>
+        <item quantity="other">In %1$s Yards, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">über den rechten Fahrstreifen</item>
+        <item quantity="other">über die %1$d rechten Fahrstreifen</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">über den linken Fahrstreifen</item>
+        <item quantity="other">über die %1$d linken Fahrstreifen</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">In der Nähe des Ziels gibt es %1$d Behindertenparkplatz. Drück die Parken-Taste, um dorthin zu fahren.</item>
+        <item quantity="other">In der Nähe des Ziels gibt es %1$d Behindertenparkplätze. Drück die Parken-Taste, um zu einem zu fahren.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Die Route hat %1$d Mautstelle</item>
+        <item quantity="other">Die Route hat %1$d Mautstellen</item>
+    </plurals>
 </resources>

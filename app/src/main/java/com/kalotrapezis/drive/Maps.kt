@@ -266,12 +266,23 @@ internal object MapsFiles {
     fun newId(): String = java.util.UUID.randomUUID().toString().replace("-", "").take(6)
 }
 
-/** "350 m", "12 km", "1.4 km": a distance for a glance. */
-internal fun metresText(m: Double): String = when {
-    m < 950 -> "${(Math.round(m / 10.0) * 10).coerceAtLeast(0)} m"
-    m < 9950 -> String.format(java.util.Locale.ENGLISH, "%.1f km", m / 1000)
-    else -> "${Math.round(m / 1000)} km"
+/** "350 m", "12 km", "1.4 km": a distance for a glance; in [units] "us" "500 ft", "0.3 mi", in "uk" "300 yd", "0.3 mi". */
+internal fun metresText(m: Double, units: String = MapsPrefs.units): String {
+    val (small, perMetre) = when (units) { "us" -> "ft" to FEET; "uk" -> "yd" to YARDS; else -> return when {
+        m < 950 -> "${(Math.round(m / 10.0) * 10).coerceAtLeast(0)} m"
+        m < 9950 -> String.format(java.util.Locale.ENGLISH, "%.1f km", m / 1000)
+        else -> "${Math.round(m / 1000)} km"
+    } }
+    return when {
+        m < 0.1 * MILE -> "${(Math.round(m * perMetre / 10.0) * 10).coerceAtLeast(0)} $small"
+        m < 9.95 * MILE -> String.format(java.util.Locale.ENGLISH, "%.1f mi", m / MILE)
+        else -> "${Math.round(m / MILE)} mi"
+    }
 }
+
+internal const val MILE = 1609.344
+internal const val FEET = 3.28084
+internal const val YARDS = 1.093613
 
 /** Where on a route a fix is: how far off it, how far along, and the next turn ahead. */
 internal data class Progress(val off: Double, val along: Double, val left: Double, val next: Int, val toNext: Double)
@@ -446,16 +457,26 @@ internal fun bendsOn(r: Route, cum: DoubleArray): List<Bend> {
 }
 
 /** The warning at a turn: with its distance while that is over 100 m by car, so the right street is clear. */
-internal fun nearWords(lang: String, toNext: Double, car: Boolean, text: String) =
-    if (car && toNext > 100) MapsPrefs.inDistance(lang, toNext, true, text) else text
+internal fun nearWords(w: Words, toNext: Double, car: Boolean, text: String) =
+    if (car && toNext > 100) MapsPrefs.inDistance(w, toNext, true, text) else text
 
 /** The sharp bend ([bendsOn]) to warn of now, as its index: 30 m to ~7 s ahead (150 m at least), once each. */
 internal fun dueBend(bends: List<Bend>, along: Double, speed: Double, said: Set<String>): Int? =
     bends.indices.firstOrNull { i -> "b$i" !in said && bends[i].along - along in 30.0..maxOf(150.0, speed * 7) }
 
-/** A warning's distance as said: whole or half kilometres from 1 km, else metres to 50 (to 10 on foot). */
-internal fun spokenDistance(m: Double, car: Boolean): Pair<Double, Boolean> =
-    if (m >= 950) (Math.round(m / 500.0) * 0.5) to true else (Math.round(m / (if (car) 50.0 else 10.0)) * (if (car) 50.0 else 10.0)) to false
+/**
+ * A warning's distance as said, with its unit: whole or half kilometres from 1 km, else metres to 50 (to 10 on foot); in
+ * [units] "us" or "uk", half miles from half a mile, else feet to 100 (25 on foot) or yards to 50 (10 on foot).
+ */
+internal fun spokenDistance(m: Double, car: Boolean, units: String = "metric"): Pair<Double, String> {
+    fun near(v: Double, step: Double) = Math.round(v / step) * step
+    return when {
+        units != "us" && units != "uk" -> if (m >= 950) near(m / 1000, 0.5) to "km" else near(m, if (car) 50.0 else 10.0) to "m"
+        m >= 0.45 * MILE -> near(m / MILE, 0.5) to "mi"
+        units == "us" -> near(m * FEET, if (car) 100.0 else 25.0) to "ft"
+        else -> near(m * YARDS, if (car) 50.0 else 10.0) to "yd"
+    }
+}
 
 /**
  * The toll stations on route [r] (its [cum]ulative metres) and how far along it each is (the user, 21 Oct: "Do we know where

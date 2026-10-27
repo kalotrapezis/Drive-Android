@@ -360,10 +360,6 @@
     <string name="settings_directions">Vägbeskrivning</string>
     <string name="settings_directions_note">Rösten är Androids text till tal; dess röster finns i Androids inställningar.</string>
     <string name="settings_directions_in_summary">Instruktionerna sväng för sväng och rösten</string>
-    <string name="settings_greek">Grekiska</string>
-    <string name="settings_english">Engelska</string>
-    <string name="settings_no_english_voice">Ingen engelsk röst: lägg till den i Androids röstinställningar.</string>
-    <string name="settings_no_greek_voice">Ingen grekisk röst: lägg till den i Androids röstinställningar.</string>
     <string name="settings_voice_settings_summary">Androids text till tal</string>
     <string name="settings_sharp_bends_summary">Med bil, ”Skarp kurva till höger” strax före varje snäv kurva där ingen sväng sägs, som på bergsvägar</string>
     <string name="settings_parking">Parkering</string>
@@ -4595,4 +4591,59 @@
     <string name="settings_remove_map">Ta bort</string>
     <string name="settings_remove_map_title">Ta bort kartan över %1$s?</string>
     <string name="settings_remove_map_body">Dess filer hamnar i Papperskorgen, här och på dina andra enheter. Dina sparade platser blir kvar.</string>
+    <string name="maps_lane_middle">från mittenfilen</string>
+    <string name="maps_bend_right">Skarp högerkurva</string>
+    <string name="maps_bend_left">Skarp vänsterkurva</string>
+    <string name="maps_keep_straight">Fortsätt rakt fram</string>
+    <string name="maps_towards">%1$s mot %2$s</string>
+    <string name="maps_take_ferry">ta färjan</string>
+    <string name="maps_ferry">Färja</string>
+    <string name="maps_error_not_near_you">Du är inte nära en väg som kartan känner till (eller utanför kartorna här).</string>
+    <string name="maps_error_destination_not_near">Målet är inte nära en väg som kartan känner till (eller på en annan karta: en rutt stannar på ett lands karta).</string>
+    <string name="maps_error_no_way">Det finns ingen väg dit med det här färdsättet.</string>
+    <string name="maps_error_no_route">Ingen rutt.</string>
+    <string name="maps_say_stop">Stopp %1$s. Nästa, %2$s: %3$s, när du kör vidare</string>
+    <string name="maps_say_next_stop">Nästa stopp %1$s: %2$s, när du kör vidare</string>
+    <string name="maps_say_gps_lost">GPS-signalen förlorad</string>
+    <string name="maps_say_wrong_way">Fel riktning. Vänd när det är säkert</string>
+    <string name="maps_say_toll">en vägtull</string>
+    <string name="maps_say_new_route">Ny rutt</string>
+    <string name="maps_sample_turn">sväng höger</string>
+    <string name="maps_no_voice">Den här telefonen har ingen röst för %1$s, så vägbeskrivningen visas men läses inte upp. Du kan lägga till en i Androids röstinställningar.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Om %1$s kilometer, %2$s</item>
+        <item quantity="other">Om %1$s kilometer, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Om %1$s meter, %2$s</item>
+        <item quantity="other">Om %1$s meter, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Om %1$s engelsk mil, %2$s</item>
+        <item quantity="other">Om %1$s engelska mil, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Om %1$s fot, %2$s</item>
+        <item quantity="other">Om %1$s fot, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Om %1$s yard, %2$s</item>
+        <item quantity="other">Om %1$s yard, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">från högra filen</item>
+        <item quantity="other">från de %1$d högra filerna</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">från vänstra filen</item>
+        <item quantity="other">från de %1$d vänstra filerna</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Det finns %1$d parkeringsplats för rörelsehindrade nära målet. Tryck på parkeringsknappen för att åka dit.</item>
+        <item quantity="other">Det finns %1$d parkeringsplatser för rörelsehindrade nära målet. Tryck på parkeringsknappen för att åka till en av dem.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Rutten har %1$d vägtull</item>
+        <item quantity="other">Rutten har %1$d vägtullar</item>
+    </plurals>
 </resources>

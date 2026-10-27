@@ -360,10 +360,6 @@
     <string name="settings_directions">Navigácia</string>
     <string name="settings_directions_note">Hlas je prevod textu na reč Androidu; jeho hlasy sú v nastaveniach Androidu.</string>
     <string name="settings_directions_in_summary">Slová navigácie a hlas</string>
-    <string name="settings_greek">Gréčtina</string>
-    <string name="settings_english">Angličtina</string>
-    <string name="settings_no_english_voice">Žiadny anglický hlas: pridajte ho v nastaveniach hlasu Androidu.</string>
-    <string name="settings_no_greek_voice">Žiadny grécky hlas: pridajte ho v nastaveniach hlasu Androidu.</string>
     <string name="settings_voice_settings_summary">Prevod textu na reč Androidu</string>
     <string name="settings_sharp_bends_summary">Autom: „Pozor, ostrá zákruta doprava“ kúsok pred každou ostrou zákrutou, kde sa nehlási odbočenie, ako na horských cestách</string>
     <string name="settings_parking">Parkovanie</string>
@@ -4779,4 +4775,77 @@
     <string name="settings_remove_map">Odstrániť</string>
     <string name="settings_remove_map_title">Odstrániť mapu: %1$s?</string>
     <string name="settings_remove_map_body">Jej súbory sa presunú do Koša, tu aj vo vašich ďalších zariadeniach. Vaše uložené miesta zostanú.</string>
+    <string name="maps_lane_middle">stredným pruhom</string>
+    <string name="maps_bend_right">Pozor, ostrá zákruta doprava</string>
+    <string name="maps_bend_left">Pozor, ostrá zákruta doľava</string>
+    <string name="maps_keep_straight">Pokračujte rovno</string>
+    <string name="maps_towards">%1$s smerom na %2$s</string>
+    <string name="maps_take_ferry">nastúpte na trajekt</string>
+    <string name="maps_ferry">Trajekt</string>
+    <string name="maps_error_not_near_you">Nie ste pri ceste, ktorú mapa pozná (alebo ste mimo tunajších máp).</string>
+    <string name="maps_error_destination_not_near">Cieľ nie je pri ceste, ktorú mapa pozná (alebo je na inej mape: trasa zostáva na mape jednej krajiny).</string>
+    <string name="maps_error_no_way">Týmto spôsobom dopravy tam cesta nevedie.</string>
+    <string name="maps_error_no_route">Žiadna trasa.</string>
+    <string name="maps_say_stop">Zastávka %1$s. Ďalšia, %2$s: %3$s, keď sa pohnete</string>
+    <string name="maps_say_next_stop">Ďalšia zastávka %1$s: %2$s, keď sa pohnete</string>
+    <string name="maps_say_gps_lost">Signál GPS sa stratil</string>
+    <string name="maps_say_wrong_way">Nesprávny smer. Otočte sa, keď to bude bezpečné</string>
+    <string name="maps_say_toll">mýtna brána</string>
+    <string name="maps_say_new_route">Nová trasa</string>
+    <string name="maps_sample_turn">odbočte doprava</string>
+    <string name="maps_no_voice">Tento telefón nemá hlas pre jazyk %1$s, preto sa pokyny zobrazujú, ale nečítajú. Hlas môžete pridať v nastaveniach hlasu systému Android.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">O %1$s kilometer, %2$s</item>
+        <item quantity="few">O %1$s kilometre, %2$s</item>
+        <item quantity="many">O %1$s kilometra, %2$s</item>
+        <item quantity="other">O %1$s kilometrov, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">O %1$s meter, %2$s</item>
+        <item quantity="few">O %1$s metre, %2$s</item>
+        <item quantity="many">O %1$s metra, %2$s</item>
+        <item quantity="other">O %1$s metrov, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">O %1$s míľu, %2$s</item>
+        <item quantity="few">O %1$s míle, %2$s</item>
+        <item quantity="many">O %1$s míle, %2$s</item>
+        <item quantity="other">O %1$s míľ, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">O %1$s stopu, %2$s</item>
+        <item quantity="few">O %1$s stopy, %2$s</item>
+        <item quantity="many">O %1$s stopy, %2$s</item>
+        <item quantity="other">O %1$s stôp, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">O %1$s yard, %2$s</item>
+        <item quantity="few">O %1$s yardy, %2$s</item>
+        <item quantity="many">O %1$s yardu, %2$s</item>
+        <item quantity="other">O %1$s yardov, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">pravým pruhom</item>
+        <item quantity="few">jedným z %1$d pravých pruhov</item>
+        <item quantity="many">jedným z %1$d pravých pruhov</item>
+        <item quantity="other">jedným z %1$d pravých pruhov</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">ľavým pruhom</item>
+        <item quantity="few">jedným z %1$d ľavých pruhov</item>
+        <item quantity="many">jedným z %1$d ľavých pruhov</item>
+        <item quantity="other">jedným z %1$d ľavých pruhov</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Pri cieli je %1$d parkovacie miesto pre ľudí so zdravotným postihnutím. Stlačte tlačidlo parkovania a choďte tam.</item>
+        <item quantity="few">Pri cieli sú %1$d parkovacie miesta pre ľudí so zdravotným postihnutím. Stlačte tlačidlo parkovania a choďte k jednému z nich.</item>
+        <item quantity="many">Pri cieli je %1$d parkovacieho miesta pre ľudí so zdravotným postihnutím. Stlačte tlačidlo parkovania a choďte k jednému z nich.</item>
+        <item quantity="other">Pri cieli je %1$d parkovacích miest pre ľudí so zdravotným postihnutím. Stlačte tlačidlo parkovania a choďte k jednému z nich.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Trasa má %1$d mýtnu bránu</item>
+        <item quantity="few">Trasa má %1$d mýtne brány</item>
+        <item quantity="many">Trasa má %1$d mýtnej brány</item>
+        <item quantity="other">Trasa má %1$d mýtnych brán</item>
+    </plurals>
 </resources>

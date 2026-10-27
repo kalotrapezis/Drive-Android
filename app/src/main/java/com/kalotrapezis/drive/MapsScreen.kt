@@ -229,8 +229,7 @@ internal object MapsPrefs {
     fun mainRoads(c: Context) = prefs(c).getBoolean("main_roads", true)
     fun setMainRoads(c: Context, on: Boolean) = prefs(c).edit().putBoolean("main_roads", on).apply()
     /** What is said a little before a sharp bend ([bendsOn]). */
-    fun bendWords(lang: String, right: Boolean) = if (lang == "en") "Sharp bend to the ${if (right) "right" else "left"} ahead"
-        else "Ακολουθεί απότομη στροφή ${if (right) "δεξιά" else "αριστερά"}"
+    fun bendWords(w: Words, right: Boolean) = w.s(if (right) R.string.maps_bend_right else R.string.maps_bend_left)
     fun autoPark(c: Context) = prefs(c).getBoolean("auto_park", true)
     fun setAutoPark(c: Context, on: Boolean) = prefs(c).edit().putBoolean("auto_park", on).apply()
     fun openAtCar(c: Context) = prefs(c).getBoolean("open_at_car", false)
@@ -266,20 +265,38 @@ internal object MapsPrefs {
     /** How much the car's voice says: "all", "important" (wrong way, new route, no GPS, arrival) or "off". */
     fun voice(c: Context) = prefs(c).getString("voice", "all") ?: "all"
     fun setVoice(c: Context, v: String) = prefs(c).edit().putString("voice", v).apply()
-    /** Until one is chosen, the app's own language (Settings › Appearance › Language): Greek, or else English. */
-    fun lang(c: Context) = prefs(c).getString("lang", null) ?: if (c.resources.configuration.locales[0].language == "el") "el" else "en"
+    /** Until one is chosen, the app's own language (Settings › Appearance › Language), of Tetra's; else English. */
+    fun lang(c: Context) = prefs(c).getString("lang", null) ?: c.resources.configuration.locales[0].language.let { if (it in AppLocale.tags) it else "en" }
     fun setLang(c: Context, lang: String) = prefs(c).edit().putString("lang", lang).apply()
-    fun ttsLocale(lang: String): Locale = Locale.forLanguageTag(if (lang == "en") "en-GB" else "el-GR")
-    fun inDistance(lang: String, metres: Double, car: Boolean, then: String): String {
-        val (d, km) = spokenDistance(metres, car)
-        val n = if (d % 1.0 == 0.0) d.toLong().toString() else if (lang == "en") d.toString() else d.toString().replace('.', ',')
-        return when {
-            lang == "en" -> "In $n ${if (km) (if (d == 1.0) "kilometre" else "kilometres") else "metres"}, $then"
-            km -> "Σε $n ${if (d == 1.0) "χιλιόμετρο" else "χιλιόμετρα"}, $then"
-            else -> "Σε $n μέτρα, $then"
-        }
+    /** Tetra's words for the directions, in their language. */
+    fun words(c: Context) = Words.of(c, lang(c))
+    /**
+     * How distances are said and shown, as the phone's region measures (Android's own setting): "us" miles and feet, "uk"
+     * miles and yards, else "metric". Read once; JVM tests have no Android, so metric there.
+     */
+    val units: String by lazy {
+        runCatching {
+            when (android.icu.util.LocaleData.getMeasurementSystem(android.icu.util.ULocale.forLocale(android.content.res.Resources.getSystem().configuration.locales[0]))) {
+                android.icu.util.LocaleData.MeasurementSystem.US -> "us"
+                android.icu.util.LocaleData.MeasurementSystem.UK -> "uk"
+                else -> "metric"
+            }
+        }.getOrDefault("metric")
     }
-    fun sample(lang: String) = if (lang == "en") "In 300 metres, turn right onto Panepistimiou" else "Σε 300 μέτρα, στρίψτε δεξιά στην Πανεπιστημίου"
+    /** The voice for [w]'s language: Britain's or America's English by the units, Greece's Greek, Portugal's Portuguese. */
+    fun ttsLocale(w: Words): Locale = Locale.forLanguageTag(when (w.lang) { "en" -> if (w.units == "us") "en-US" else "en-GB"; "el" -> "el-GR"; "pt" -> "pt-PT"; else -> w.lang })
+    /** "In 2 kilometres, [then]": the warning ahead of a turn, its distance as [spokenDistance] rounds it. */
+    fun inDistance(w: Words, metres: Double, car: Boolean, then: String): String {
+        val (d, unit) = spokenDistance(metres, car, w.units)
+        val id = when (unit) { "km" -> R.plurals.maps_in_km; "mi" -> R.plurals.maps_in_mi; "ft" -> R.plurals.maps_in_ft; "yd" -> R.plurals.maps_in_yd; else -> R.plurals.maps_in_m }
+        // shortcut: a half (1.5 km) takes the plural of 100, which is right in most languages but not Czech, Slovak, Polish or Lithuanian's fraction form; Android's plurals take whole numbers only
+        return w.q(id, if (d % 1.0 == 0.0) d.toInt() else 100, w.number(d), then)
+    }
+    fun sample(w: Words) = inDistance(w, 300.0, true, w.s(R.string.maps_sample_turn))
+    /** Whether the phone's missing voice for [lang] is yet to be told: true once a language. */
+    fun firstNoVoice(c: Context, lang: String) = ("no_voice_$lang" !in prefs(c).all).also { if (it) prefs(c).edit().putBoolean("no_voice_$lang", true).apply() }
+    /** Android's text-to-speech settings, where a voice is added. */
+    fun voiceSettings(c: Context) = runCatching { c.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }
 
 internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
@@ -370,14 +387,19 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     LaunchedEffect(Unit) { if (!granted) ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }
 
     // the voice: the directions' language (Settings › Maps)
-    val lang = remember { MapsPrefs.lang(context) }
+    val words = remember { MapsPrefs.words(context) }
+    var noVoice by remember { mutableStateOf(false) }
     val rolling = remember { MapsPrefs.rolling(context) }
     fun profile(mode: String) = if (mode == "foot" && rolling) "wheelchair" else mode
     var fast by remember { mutableStateOf(0) } // fixes in a row at car speed
     val tts = remember { mutableStateOf<TextToSpeech?>(null) }
     DisposableEffect(Unit) {
         var t: TextToSpeech? = null
-        t = TextToSpeech(context.applicationContext) { ok -> if (ok == TextToSpeech.SUCCESS) { t?.language = MapsPrefs.ttsLocale(lang); tts.value = t } }
+        t = TextToSpeech(context.applicationContext) { ok ->
+            if (ok != TextToSpeech.SUCCESS) return@TextToSpeech
+            if ((t?.setLanguage(MapsPrefs.ttsLocale(words)) ?: -2) < 0 && MapsPrefs.firstNoVoice(context, words.lang)) noVoice = true
+            tts.value = t
+        }
         onDispose { t.stop(); t.shutdown() }
     }
     /** [text] spoken; [why] in the log only: which warning, how far, how fast. */
@@ -456,7 +478,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         if (target.id.isEmpty()) MapsPrefs.addRecent(context, target)
         finding = context.getString(R.string.maps_finding)
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.routes(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), lang,
+            val r = withContext(Dispatchers.IO) { runCatching { MapsRouting.routes(graphDir, from.latitude, from.longitude, target.lat, target.lng, profile(mode), words,
                 if (mode == "car" && !choose) headingOf(from) else Double.NaN, MapsPrefs.mainRoads(context)) } }
             finding = null
             r.onSuccess { routes ->
@@ -527,8 +549,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             tripRun?.let { (t, i) ->
                 if (i < t.stops.lastIndex) {
                     tripRun = t to i + 1; nextStop = t.stops[i + 1]; stoppedAt = loc; MapsPrefs.setPendingTrip(context, t, i + 1)
-                    say(if (lang == "en") "Stop ${Trip.letter(i)}. Next, ${Trip.letter(i + 1)}: ${t.stops[i + 1].name}, when you drive on"
-                        else "Στάση ${Trip.letter(i)}. Επόμενη, ${Trip.letter(i + 1)}: ${t.stops[i + 1].name}, μόλις ξεκινήσετε")
+                    say(words.s(R.string.maps_say_stop, Trip.letter(i), Trip.letter(i + 1), t.stops[i + 1].name))
                 } else tripRun = null
             }
             if (car && MapsPrefs.autoPark(context)) park(loc, "a car trip ended")
@@ -540,8 +561,8 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             WriterLog.i("Maps: camera zoom ${view.first} tilt ${view.second.toInt()} (step ${p.next} ${p.toNext.toInt()} m ahead, ${Math.round(speedMs * 3.6)} km/h)")
             lc?.takeIf { it.cameraMode == CameraMode.TRACKING_GPS }?.let { it.zoomWhileTracking(view.first, 1500); it.tiltWhileTracking(view.second, 1500) }
         }
-        g.words(lang, car)?.let { say(it, why = g.why()) }
-        g.bend?.let { b -> say(MapsPrefs.bendWords(lang, n.bends[b].right), why = "bend ${(n.bends[b].along - p.along).toInt()} m ahead, ${Math.round(speedMs * 3.6)} km/h") }
+        g.words(words, car)?.let { say(it, why = g.why()) }
+        g.bend?.let { b -> say(MapsPrefs.bendWords(words, n.bends[b].right), why = "bend ${(n.bends[b].along - p.along).toInt()} m ahead, ${Math.round(speedMs * 3.6)} km/h") }
         nav = n.copy(index = g.index, p = p, offFixes = 0, said = g.said(n.said))
     }
 
@@ -967,7 +988,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                 }.padding(top = 8.dp, bottom = 2.dp), contentAlignment = Alignment.Center) {
                     Box(Modifier.size(width = 36.dp, height = 4.dp).clip(CircleShape).background(islandContentColor().copy(alpha = 0.5f)))
                 }
-                if (navSheet) NavSheet(n, navTolls, lang)
+                if (navSheet) NavSheet(n, navTolls)
                 Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 2.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         val left = n.p?.left ?: n.route.metres
@@ -1124,6 +1145,11 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
             }
         }
     }
+    // no voice on this phone for the directions' language: said once, with the way to add one
+    if (noVoice) AlertDialog(onDismissRequest = { noVoice = false },
+        text = { Text(stringResource(R.string.maps_no_voice, Locale.forLanguageTag(words.lang).getDisplayLanguage(context.resources.configuration.locales[0]))) },
+        confirmButton = { TextButton(onClick = { noVoice = false; MapsPrefs.voiceSettings(context) }) { Text(stringResource(R.string.settings_voice_settings)) } },
+        dismissButton = { TextButton(onClick = { noVoice = false }) { Text(stringResource(R.string.common_ok)) } })
     deleting?.let { p -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text(stringResource(R.string.maps_delete_place, p.name)) },
         text = { Text(stringResource(if (p.slot > 0) R.string.maps_delete_leaves_home else R.string.maps_delete_everywhere)) },
         confirmButton = { TextButton(onClick = {
@@ -1209,7 +1235,7 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
 }
 
 /** Under the handle: the tolls still ahead (name, operator and price where OSM has them, how far) and the next turns. */
-@Composable private fun NavSheet(n: Nav, tolls: List<Pair<Poi, Double>>, lang: String) {
+@Composable private fun NavSheet(n: Nav, tolls: List<Pair<Poi, Double>>) {
     val context = LocalContext.current
     val along = n.p?.along ?: 0.0
     val ahead = tolls.filter { it.second > along - 20 }

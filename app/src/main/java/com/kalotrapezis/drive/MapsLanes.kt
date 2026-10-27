@@ -54,7 +54,7 @@ internal object MapsLanes {
     }
 
     /** [r]'s steps with their lanes, where [dir] has the lanes file and the route passes a piece's end before a turn. */
-    fun on(r: Route, dir: File): Route {
+    fun on(r: Route, dir: File, w: Words): Route {
         val ends = load(dir)
         if (ends.isEmpty() || r.lats.size < 2) return r
         val cum = cumulative(r)
@@ -62,17 +62,14 @@ internal object MapsLanes {
             val l = if (s.at <= 0 || s.sign in setOf(0, 4, 5, 6)) null else before(r, cum, s, ends)
             // a keep whose lanes are the road's through lanes: the road goes on, the other way leaves (the user, 23 Oct:
             // Google's "take the exit on the right" where one just drives on)
-            if (l != null && s.sign in setOf(7, -7) && l.use.all { "through" in l.turns[it] }) s.copy(lanes = l, sign = 0, text = straight(s.text))
+            if (l != null && s.sign in setOf(7, -7) && l.use.all { "through" in l.turns[it] }) s.copy(lanes = l, sign = 0, text = straight(s, w))
             else s.copy(lanes = l)
         })
     }
 
-    /** "Μείνετε δεξιά και οδηγείστε προς Θεσπιές" as "Συνεχίστε ευθεία προς Θεσπιές" (GraphHopper's Greek or English). */
-    fun straight(text: String): String {
-        val greek = text.any { it in 'Α'..'ω' }
-        val to = Regex("(προς|towards?) .*").find(text)?.value
-        return (if (greek) "Συνεχίστε ευθεία" else "Keep straight on") + (to?.let { " $it" } ?: "")
-    }
+    /** "Μείνετε δεξιά και οδηγείστε προς Θεσπιές" as "Συνεχίστε ευθεία προς Θεσπιές". */
+    fun straight(s: Step, w: Words): String =
+        if (s.toward.isEmpty()) w.s(R.string.maps_keep_straight) else w.s(R.string.maps_towards, w.s(R.string.maps_keep_straight), s.toward)
 
     private fun before(r: Route, cum: DoubleArray, s: Step, ends: Map<Long, List<End>>): Lanes? {
         val at = s.at.coerceAtMost(cum.lastIndex); val turn = cum[at]
@@ -108,20 +105,20 @@ internal object MapsLanes {
     }
 
     /** The lanes in words for the voice, when they are a few at one side ("from the 2 right lanes"); null when all or unclear. */
-    fun words(l: Lanes, lang: String): String? {
+    fun words(l: Lanes, w: Words): String? {
         val n = l.turns.size; val u = l.use.sorted()
         if (n < 2 || u.isEmpty() || u.size == n || u.last() - u.first() + 1 != u.size) return null
-        val k = u.size; val en = lang == "en"
+        val k = u.size
         return when {
-            u.last() == n - 1 -> if (en) (if (k == 1) "from the right lane" else "from the $k right lanes") else (if (k == 1) "από τη δεξιά λωρίδα" else "από τις $k δεξιές λωρίδες")
-            u.first() == 0 -> if (en) (if (k == 1) "from the left lane" else "from the $k left lanes") else (if (k == 1) "από την αριστερή λωρίδα" else "από τις $k αριστερές λωρίδες")
-            k == 1 && n == 3 -> if (en) "from the middle lane" else "από τη μεσαία λωρίδα"
+            u.last() == n - 1 -> w.q(R.plurals.maps_lanes_right, k, k)
+            u.first() == 0 -> w.q(R.plurals.maps_lanes_left, k, k)
+            k == 1 && n == 3 -> w.s(R.string.maps_lane_middle)
             else -> null
         }
     }
 
     /** A turn as said ahead of it, with its lanes when they help: "Μείνετε δεξιά προς Θεσπιές, από τη δεξιά λωρίδα". */
-    fun said(s: Step, lang: String) = s.text + (s.lanes?.let { words(it, lang) }?.let { ", $it" } ?: "")
+    fun said(s: Step, w: Words) = s.text + (s.lanes?.let { words(it, w) }?.let { ", $it" } ?: "")
 }
 
 /** Whether the turn card shows the lanes now: from ~1.5 km before the turn. */

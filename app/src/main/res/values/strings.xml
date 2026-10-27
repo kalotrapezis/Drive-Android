@@ -361,10 +361,6 @@
     <string name="settings_directions">Directions</string>
     <string name="settings_directions_note">The voice is Android\'s text-to-speech; its voices are in Android\'s settings.</string>
     <string name="settings_directions_in_summary">The turn-by-turn words and the voice</string>
-    <string name="settings_greek">Greek</string>
-    <string name="settings_english">English</string>
-    <string name="settings_no_english_voice">No English voice: add it in Android\'s voice settings.</string>
-    <string name="settings_no_greek_voice">No Greek voice: add it in Android\'s voice settings.</string>
     <string name="settings_voice_settings_summary">Android\'s text-to-speech</string>
     <string name="settings_sharp_bends_summary">By car, \"Sharp bend to the right ahead\" a little before each tight curve where no turn is said, as on mountain roads</string>
     <string name="settings_parking">Parking</string>
@@ -4596,4 +4592,59 @@
     <string name="settings_remove_map">Remove</string>
     <string name="settings_remove_map_title">Remove the map of %1$s?</string>
     <string name="settings_remove_map_body">Its files go to the Trash, here and on your other devices. Your saved places stay.</string>
+    <string name="maps_lane_middle">from the middle lane</string>
+    <string name="maps_bend_right">Sharp bend to the right ahead</string>
+    <string name="maps_bend_left">Sharp bend to the left ahead</string>
+    <string name="maps_keep_straight">Keep straight on</string>
+    <string name="maps_towards">%1$s towards %2$s</string>
+    <string name="maps_take_ferry">take the ferry</string>
+    <string name="maps_ferry">Ferry</string>
+    <string name="maps_error_not_near_you">You are not near a road the map knows (or outside the maps here).</string>
+    <string name="maps_error_destination_not_near">The destination is not near a road the map knows (or on another map: a route stays on one country\'s map).</string>
+    <string name="maps_error_no_way">No way there by this means.</string>
+    <string name="maps_error_no_route">No route.</string>
+    <string name="maps_say_stop">Stop %1$s. Next, %2$s: %3$s, when you drive on</string>
+    <string name="maps_say_next_stop">Next stop %1$s: %2$s, when you drive on</string>
+    <string name="maps_say_gps_lost">GPS signal lost</string>
+    <string name="maps_say_wrong_way">Wrong direction. Turn around when it is safe</string>
+    <string name="maps_say_toll">a toll</string>
+    <string name="maps_say_new_route">New route</string>
+    <string name="maps_sample_turn">turn right</string>
+    <string name="maps_no_voice">This phone has no voice for %1$s, so the directions are shown but not spoken. You can add one in Android\'s voice settings.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">In %1$s kilometre, %2$s</item>
+        <item quantity="other">In %1$s kilometres, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">In %1$s metre, %2$s</item>
+        <item quantity="other">In %1$s metres, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">In %1$s mile, %2$s</item>
+        <item quantity="other">In %1$s miles, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">In %1$s foot, %2$s</item>
+        <item quantity="other">In %1$s feet, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">In %1$s yard, %2$s</item>
+        <item quantity="other">In %1$s yards, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">from the right lane</item>
+        <item quantity="other">from the %1$d right lanes</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">from the left lane</item>
+        <item quantity="other">from the %1$d left lanes</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">There is %1$d disabled parking spot near your destination. Press Parking to go to it.</item>
+        <item quantity="other">There are %1$d disabled parking spots near your destination. Press Parking to go to one.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">The route has %1$d toll</item>
+        <item quantity="other">The route has %1$d tolls</item>
+    </plurals>
 </resources>

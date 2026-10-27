@@ -360,10 +360,6 @@
     <string name="settings_directions">Reittiohjeet</string>
     <string name="settings_directions_note">Ääni on Androidin tekstistä puheeksi -toiminto; sen äänet ovat Androidin asetuksissa.</string>
     <string name="settings_directions_in_summary">Käännös käännökseltä -ohjeiden sanat ja ääni</string>
-    <string name="settings_greek">Kreikka</string>
-    <string name="settings_english">Englanti</string>
-    <string name="settings_no_english_voice">Ei englanninkielistä ääntä: lisää se Androidin ääniasetuksissa.</string>
-    <string name="settings_no_greek_voice">Ei kreikankielistä ääntä: lisää se Androidin ääniasetuksissa.</string>
     <string name="settings_voice_settings_summary">Androidin tekstistä puheeksi</string>
     <string name="settings_sharp_bends_summary">Autolla ”Jyrkkä oikea mutka edessä” vähän ennen jokaista tiukkaa kaarretta, jossa käännöstä ei mainita, kuten vuoristoteillä</string>
     <string name="settings_parking">Pysäköinti</string>
@@ -4595,4 +4591,59 @@
     <string name="settings_remove_map">Poista</string>
     <string name="settings_remove_map_title">Poistetaanko kartta: %1$s?</string>
     <string name="settings_remove_map_body">Sen tiedostot siirretään roskakoriin, täällä ja muilla laitteillasi. Tallennetut paikkasi säilyvät.</string>
+    <string name="maps_lane_middle">keskimmäiseltä kaistalta</string>
+    <string name="maps_bend_right">Jyrkkä mutka oikealle edessä</string>
+    <string name="maps_bend_left">Jyrkkä mutka vasemmalle edessä</string>
+    <string name="maps_keep_straight">Jatka suoraan</string>
+    <string name="maps_towards">%1$s suuntaan %2$s</string>
+    <string name="maps_take_ferry">nouse lautalle</string>
+    <string name="maps_ferry">Lautta</string>
+    <string name="maps_error_not_near_you">Et ole lähellä tietä, jonka kartta tuntee (tai olet täällä olevien karttojen ulkopuolella).</string>
+    <string name="maps_error_destination_not_near">Määränpää ei ole lähellä tietä, jonka kartta tuntee (tai se on toisella kartalla: reitti pysyy yhden maan kartalla).</string>
+    <string name="maps_error_no_way">Tällä kulkutavalla sinne ei ole reittiä.</string>
+    <string name="maps_error_no_route">Ei reittiä.</string>
+    <string name="maps_say_stop">Pysähdys %1$s. Seuraavaksi %2$s: %3$s, kun jatkat matkaa</string>
+    <string name="maps_say_next_stop">Seuraava pysähdys %1$s: %2$s, kun jatkat matkaa</string>
+    <string name="maps_say_gps_lost">GPS-signaali katosi</string>
+    <string name="maps_say_wrong_way">Väärä suunta. Käänny ympäri, kun se on turvallista</string>
+    <string name="maps_say_toll">tietulli</string>
+    <string name="maps_say_new_route">Uusi reitti</string>
+    <string name="maps_sample_turn">käänny oikealle</string>
+    <string name="maps_no_voice">Tässä puhelimessa ei ole ääntä kielelle %1$s, joten ohjeet näytetään mutta niitä ei lueta ääneen. Voit lisätä äänen Androidin puheasetuksista.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">%1$s kilometrin päästä, %2$s</item>
+        <item quantity="other">%1$s kilometrin päästä, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">%1$s metrin päästä, %2$s</item>
+        <item quantity="other">%1$s metrin päästä, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">%1$s mailin päästä, %2$s</item>
+        <item quantity="other">%1$s mailin päästä, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">%1$s jalan päästä, %2$s</item>
+        <item quantity="other">%1$s jalan päästä, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">%1$s jaardin päästä, %2$s</item>
+        <item quantity="other">%1$s jaardin päästä, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">oikeanpuoleiselta kaistalta</item>
+        <item quantity="other">%1$d oikeanpuoleiselta kaistalta</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">vasemmanpuoleiselta kaistalta</item>
+        <item quantity="other">%1$d vasemmanpuoleiselta kaistalta</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Määränpään lähellä on %1$d liikkumisesteisten pysäköintipaikka. Paina pysäköintipainiketta mennäksesi sinne.</item>
+        <item quantity="other">Määränpään lähellä on %1$d liikkumisesteisten pysäköintipaikkaa. Paina pysäköintipainiketta mennäksesi johonkin niistä.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Reitillä on %1$d tietulli</item>
+        <item quantity="other">Reitillä on %1$d tietullia</item>
+    </plurals>
 </resources>

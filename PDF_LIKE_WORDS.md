@@ -39,12 +39,13 @@ Done, one commit a step (`git log claude/pdf-like-words`):
   back to the last save, Redo only to what was undone since (`savedAt`/`redoStale` in PdfDoc). AutoSave for PDFs:
   30 s without a change (was 4 s), and on going to the background and on leaving editing (no question with AutoSave
   on); never a gallery's preview. MuPDF's journal could not be replayed onto a fresh copy (loadJournal ignores it).
-- Tests: 18 PDF device tests pass on the tablet; the unit tests were not run after these changes (run was stopped).
-- Checked at tablet size and phone size (wm size, reset after); keyboard-up and desktop ribbon not re-checked today.
+- Tests: 18 PDF device tests pass on the tablet; 665 unit tests pass.
+- Checked on the tablet at its size, at phone size (wm size, reset after) and with the ribbon at the top (a mouse:
+  rows, the WordArt strip in its place); with the keyboard up: WordArt's and Add text's windows.
+- The honest-undo part is on `claude/pdf-save-fix` too (a0f5f421, its 5 PDF device tests pass on the tablet).
 
 Left:
-- Run the unit tests; the phone 208c8192 (tools/phone-install.sh); keyboard-up and desktop ribbon with today's parts.
-- Offer the honest-undo part to `claude/pdf-save-fix` too (main has the same Undo-after-AutoSave bug).
+- The phone 208c8192 (tools/phone-install.sh): not connected 27 Oct.
 - Group and Ungroup; Wrap's "behind the text".
 - Insert › Table; Reading mode (MuPDF's reflow); Spelling in Tetra's texts.
 - The comments pane lists the cards; Words puts each card level with its words.

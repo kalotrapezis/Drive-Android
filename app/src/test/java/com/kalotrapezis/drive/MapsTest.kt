@@ -71,7 +71,7 @@ class MapsTest {
 
     /** On the computer's graph (tools/maps-greece.sh), when it is there: Syntagma to the Acropolis, each way to go. */
     @Test fun route() {
-        val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         for (mode in Place.MODES) {
             val r = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, mode, el)
@@ -165,7 +165,7 @@ class MapsWarningTest {
 class MapsMotorwayTest {
     /** Σχηματάρι to Ναύπλιο on the computer's graph, when it is there: the on-ramp to Olympia Odos names the road it leads onto. */
     @Test fun aRampSaysWhereItLeads() {
-        val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         val r = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car", el)
         r.steps.forEach { println("${it.sign}\t${it.metres.toInt()} m\t${it.text}\t[${it.ref}] ${it.street}") }
@@ -204,7 +204,7 @@ class MapsTakeoutRunTest {
     @Test fun importARealTakeout() {
         val zip = System.getenv("TETRA_TAKEOUT"); val out = System.getenv("TETRA_IMPORT_OUT")
         assumeTrue(zip != null && out != null)
-        val maps = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data")
+        val maps = File(System.getProperty("user.home"), "Tetra/Files/Maps")
         val root = File(out!!).apply { mkdirs() }
         listOf("greece-places.tsv", MapsSearch.EOPYY, "greece-addresses.tsv").forEach { n -> File(maps, n).takeIf { it.isFile }?.copyTo(File(root, n), overwrite = true) }
         File(root, "greece.pmtiles").createNewFile() // a map's lists are read beside its map
@@ -218,7 +218,7 @@ class MapsTakeoutRunTest {
 class MapsLimitFerryTest {
     /** On the computer's graph, when it is there: a motorway's limit, and the ferry to Samothraki said as a ferry. */
     @Test fun limitsAndFerries() {
-        val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         // Egnatia near Kavala, and Panepistimiou in Athens
         val r = MapsRouting.route(dir, 41.149912, 24.146884, 40.475293, 25.473550, "car", el)
@@ -235,7 +235,7 @@ class MapsLimitFerryTest {
 class MapsAlternativesTest {
     /** Άγιος Λουκάς to the 2nd school of Κρεώνας, beside Google's two (21 Oct): the motorway and the local roads, no tracks, fastest first. */
     @Ignore("its places were made up before publishing; put your own back locally to run it") @Test fun twoWaysThere() {
-        val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         val rs = MapsRouting.routes(dir, 37.277768, 22.585572, 37.3713423, 22.4651517, "car", el)
         rs.forEach { println("${it.millis / 60000} min ${(it.metres / 100).toInt() / 10.0} km ${it.roads}") }
@@ -243,7 +243,7 @@ class MapsAlternativesTest {
         assertEquals(rs.sortedBy { it.millis }, rs)
         assertTrue(rs.any { it.roads == "motorway" } && rs.any { it.roads != "motorway" })
         // the tolls on each: the motorway passes OSM's toll stations, the local roads none
-        val all = MapsSearch.load(File(System.getProperty("user.home"), "Tetra/.System/Maps/Data"))
+        val all = MapsSearch.load(File(System.getProperty("user.home"), "Tetra/Files/Maps"))
         assumeTrue(all.any { it.kind == "toll" })
         // (OSM has no toll station near Σχηματάρι or Οινόφυτα: the local roads have none, the motorway none known)
         assertTrue(rs.all { r -> tollsOn(r, cumulative(r), all).isEmpty() })
@@ -309,9 +309,9 @@ class MapsEdgeCaseTest {
     private data class Case(val name: String, val from: Pair<Double, Double>, val to: Pair<Double, Double>, val mode: String = "car", val expectRoute: Boolean = true)
 
     @Test fun edgeCases() {
-        val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
-        val all = MapsSearch.load(File(System.getProperty("user.home"), "Tetra/.System/Maps/Data"))
+        val all = MapsSearch.load(File(System.getProperty("user.home"), "Tetra/Files/Maps"))
         val cases = listOf(
             Case("Άγιος Λουκάς → Χαλκίδα (time ~30 min)", 37.277768 to 22.585572, 38.462274 to 23.594611),
             Case("same point", 37.2777 to 22.5855, 37.2777 to 22.5855),
@@ -398,7 +398,7 @@ class MapsTripTest {
 
     /** A moving car's new route goes on the way it faces, not back (the user, 23 Oct, near Σκάλα: "a new route" every 11 s for 3 km). */
     @Test fun headed() {
-        val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         fun bearing(r: Route): Double { // of the route's first ~50 m
             var k = 1; while (k < r.lats.size - 1 && metresBetween(r.lats[0], r.lngs[0], r.lats[k], r.lngs[k]) < 50) k++
@@ -462,7 +462,7 @@ class MapsBendTest {
 class MapsJunctionTest {
     /** On the computer's graph: a turn's crossing from the graph — the way in behind, the way on another road. */
     @Test fun crossings() {
-        val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         val drives = listOf("Δράμα" to doubleArrayOf(41.1440, 24.1300, 41.1570, 24.1600), "Ομόνοια" to doubleArrayOf(37.9890, 23.7200, 37.9800, 23.7330),
             "Χαλκίδα" to doubleArrayOf(38.4700, 23.5900, 38.4500, 23.6200),
@@ -508,7 +508,7 @@ class MapsLanesTest {
 
     /** On the computer's graph and lanes file: the turns where the user met them (23 Oct). */
     @Test fun lanesOnRealRoutes() {
-        val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile && File(dir.parentFile, "greece-lanes.tsv").isFile)
         val tripoli = MapsRouting.route(dir, 37.9838, 23.7275, 37.5100, 22.3720, "car", el)
         val corinth = tripoli.steps.first { "Τρίπολη" in it.text && it.sign == -7 }
@@ -531,7 +531,7 @@ class MapsLanesTest {
  * screen takes them, a new route from the fix where it says so — with the car's heading or, to compare, without.
  */
 class MapsReplayTest {
-    private val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+    private val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
 
     data class Played(val reroutes: Int, val said: List<String>, val arrived: Boolean)
 
@@ -593,7 +593,7 @@ class MapsReplayTest {
 
     /** The phone's own traces, put in ~/Tetra/.System/Maps/Data/traces (adb pull …/files/logs/drive): each drive replayed and told. */
     @Test fun realTraces() {
-        val traces = File(dir.parentFile, "traces").listFiles { f -> f.name.endsWith(".csv") }.orEmpty()
+        val traces = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/traces").listFiles { f -> f.name.endsWith(".csv") }.orEmpty()
         assumeTrue(File(dir, "properties").isFile && traces.isNotEmpty())
         for (f in traces.sortedBy { it.name }) for (d in MapsTrace.read(f)) {
             if (d.fixes.size < 10) continue
@@ -607,7 +607,7 @@ class MapsReplayTest {
 class MapsAddressTest {
     /** The user's house in Άγιος Λουκάς (23 Oct): no house there has a number, so its street and the village's postcode. */
     @Ignore("its places were made up before publishing; put your own back locally to run it") @Test fun aVillageWithoutNumbers() {
-        val root = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data")
+        val root = File(System.getProperty("user.home"), "Tetra/Files/Maps")
         assumeTrue(File(root, "greece-addresses.tsv").isFile && File(root, "greece-streets.tsv").isFile)
         val pois = MapsSearch.load(root)
         assertEquals("Οδός Παραδείγματος, 12345 Άγιος Λουκάς", MapsAddresses.describe(root, pois, 37.27642, 22.58903))
@@ -640,7 +640,7 @@ class MapsAddressTest {
  * path … even if that means a road that falls off a cliff"), on the computer's graph when it is there.
  */
 class MapsMainRoadsTest {
-    private val dir = File(System.getProperty("user.home"), "Tetra/.System/Maps/Data/greece-gh")
+    private val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
 
     /** Kilometres of each road class along the way from → to, as the phone asks it. */
     private fun classes(from: Pair<Double, Double>, to: Pair<Double, Double>, main: Boolean): Map<String, Double> {

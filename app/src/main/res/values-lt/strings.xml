@@ -4784,6 +4784,7 @@
     <string name="maps_ferry">Keltas</string>
     <string name="maps_error_not_near_you">Esate ne prie kelio, kurį žino žemėlapis (arba už čia esančių žemėlapių ribų).</string>
     <string name="maps_error_destination_not_near">Tikslas yra ne prie kelio, kurį žino žemėlapis (arba žemėlapyje, kurio keliai nesujungti su šiuo: atnaujinkite žemėlapį kompiuterio Tetra, kad jie susijungtų).</string>
+    <string name="maps_error_not_joined">%1$s ir %2$s nesujungti nuorodoms. Atnaujinus žemėlapį kompiuterio Tetra (Nustatymai › Žemėlapiai), jis sujungiamas su kaimynais; maršrutas per trečią šalį dar negalimas: pirmiausia nuvykite prie sienos.</string>
     <string name="maps_error_no_way">Šiuo būdu ten kelio nėra.</string>
     <string name="maps_error_no_route">Maršruto nėra.</string>
     <string name="maps_say_stop">Sustojimas %1$s. Kitas, %2$s: %3$s, kai pajudėsite</string>

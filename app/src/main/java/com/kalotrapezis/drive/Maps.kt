@@ -101,8 +101,6 @@ internal object MapsFiles {
     const val FOLDER = "Maps"
     const val MAP = "greece.pmtiles"
     const val GRAPH = "greece-gh"
-    /** The roads of every map at once (the desktop map builder's all-gh; its maps.txt lists them), so a route crosses a border. */
-    const val ALL = "all-gh"
     const val PLACES = "Places"
     /** Home's Maps card: twelve places on a tablet, the first six on a phone (the user, 20 Oct: "slots for 6 locations"; 21 Oct, the tablet: "very big … we can double them"). */
     const val SLOTS = 12
@@ -153,26 +151,45 @@ internal object MapsFiles {
     }.getOrNull()
 
     /**
-     * The roads of every map when they hold the map [lat],[lng] is on (the user, 27 Oct: "When we have both the neighbouring
-     * maps, it should be able to cross the border"), else that map's own, else the first map's. One graph for every route and
-     * limit, as opening another one takes seconds on a phone.
+     * The roads of the map [lat],[lng] is on, else the first map's — or the two maps' joined roads open now, when they hold
+     * that map (limits along a route across a border stay on its graph: opening another one takes seconds on a phone).
      */
     fun graphAt(root: File, lat: Double, lng: Double): File {
         val all = maps(root)
         val here = all.filter { it.has(lat, lng) }
-        val joined = File(root, ALL).takeIf { File(it, "properties").isFile }?.let { runCatching { File(it, "maps.txt").readLines() }.getOrNull() }.orEmpty()
-        if (here.any { it.id in joined }) return File(root, ALL)
+        MapsRouting.current?.takeIf { it.absoluteFile.parentFile == root.absoluteFile && here.any { m -> m.id in joined(it) } }?.let { return it }
         return (here.firstOrNull() ?: all.firstOrNull())?.let { File(root, "${it.id}-gh") } ?: graph(root)
+    }
+
+    /** The roads of two neighbouring maps joined at their border (the desktop map builder's borders step): "greece_macedonia-gh". */
+    fun pair(root: File, a: String, b: String) = File(root, listOf(a, b).sorted().joinToString("_") + "-gh")
+
+    /** The maps a pair graph joins, else none. */
+    fun joined(g: File): List<String> = g.name.takeIf { '_' in it && it.endsWith("-gh") }?.removeSuffix("-gh")?.split('_').orEmpty()
+
+    /**
+     * The graph a route from the map of [dir] runs on (the user, 27 Oct: "When we have both the neighbouring maps, it should
+     * be able to cross the border"): the start's and the end's maps' pair graph when they are two, else [dir] as before.
+     * Two maps not joined, or a route through a third country, fail in [w]'s words. shortcut: one border a route; three
+     * countries need a pair graph of pairs, or the route split at a border.
+     */
+    fun graphFor(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, w: Words): File {
+        val root = dir.absoluteFile.parentFile ?: return dir
+        val all = maps(root)
+        val a = all.filter { it.has(fromLat, fromLng) }; val b = all.filter { it.has(toLat, toLng) }
+        val pairs = a.flatMap { x -> b.filter { it.id != x.id }.map { y -> pair(root, x.id, y.id) } }.filter { File(it, "properties").isFile }
+        if (pairs.isNotEmpty()) return pairs.firstOrNull { it.absoluteFile == MapsRouting.current?.absoluteFile } ?: pairs.first()
+        if (a.isEmpty() || b.isEmpty() || a.any { it in b }) return dir
+        error(w.s(R.string.maps_error_not_joined, a.first().name, b.first().name))
     }
 
     /** Each map's <id>-[kind].tsv that is there (places, addresses, streets, lanes). */
     fun lists(root: File, kind: String): List<File> = ids(root).map { File(root, "$it-$kind.tsv") }.filter { it.isFile }
 
-    /** Every file of map [id] to Tetra's Trash, so the removal reaches the other devices; the saved places stay; all-gh too when one map is left. */
+    /** Every file of map [id] to Tetra's Trash, so the removal reaches the other devices, its pair graphs too; the saved places stay. */
     fun removeMap(root: File, id: String) {
         val own = Regex(Regex.escape(id) + "(\\.pmtiles|\\.json|-gh|-[a-z]+\\.tsv)")
-        root.list().orEmpty().filter { own.matches(it) }.forEach { trash(root, File(root, it)) }
-        if (ids(root).size < 2 && File(root, ALL).exists()) trash(root, File(root, ALL))
+        root.list().orEmpty().filter { own.matches(it) || id in joined(File(root, it)) }.forEach { trash(root, File(root, it)) }
     }
 
     /**

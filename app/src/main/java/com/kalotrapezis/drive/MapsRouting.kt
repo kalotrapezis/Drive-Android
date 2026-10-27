@@ -91,6 +91,8 @@ internal object MapsRouting {
 
     private var hopper: GraphHopper? = null
     private var loaded: File? = null
+    /** The graph open now. */
+    val current: File? get() = loaded
 
     /** The graph in [dir], opened once and kept (opening maps the files, it reads nothing much). */
     @Synchronized fun open(dir: File): GraphHopper {
@@ -142,6 +144,7 @@ internal object MapsRouting {
      */
     fun routes(dir: File, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, mode: String, w: Words,
                heading: Double = Double.NaN, main: Boolean = false): List<Route> {
+        val dir = MapsFiles.graphFor(dir, fromLat, fromLng, toLat, toLng, w)
         val gh = open(dir)
         val main = main && mode == "car"
         val tr = translation(w.lang); val locale = tr.locale

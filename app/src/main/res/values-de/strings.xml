@@ -4600,6 +4600,7 @@
     <string name="maps_ferry">Fähre</string>
     <string name="maps_error_not_near_you">Du bist nicht in der Nähe einer Straße, die die Karte kennt (oder außerhalb der Karten hier).</string>
     <string name="maps_error_destination_not_near">Das Ziel ist nicht in der Nähe einer Straße, die die Karte kennt (oder auf einer Karte, deren Straßen nicht mit dieser verbunden sind: Aktualisieren Sie eine Karte in Tetra auf dem Computer, um sie zu verbinden).</string>
+    <string name="maps_error_not_joined">%1$s und %2$s sind für die Navigation nicht verbunden. Eine Karte in Tetra auf dem Computer zu aktualisieren (Einstellungen › Karten) verbindet sie mit ihren Nachbarn; eine Route durch ein drittes Land ist noch nicht möglich: Fahren Sie zuerst zu einem Ort nahe der Grenze.</string>
     <string name="maps_error_no_way">Mit diesem Verkehrsmittel gibt es keinen Weg dorthin.</string>
     <string name="maps_error_no_route">Keine Route.</string>
     <string name="maps_say_stop">Halt %1$s. Als Nächstes %2$s: %3$s, sobald du weiterfährst</string>

@@ -4692,6 +4692,7 @@
     <string name="maps_ferry">Ferri</string>
     <string name="maps_error_not_near_you">No estás cerca de una carretera que conozca el mapa (o estás fuera de los mapas de aquí).</string>
     <string name="maps_error_destination_not_near">El destino no está cerca de una carretera que conozca el mapa (o está en un mapa cuyas carreteras no están unidas a este: actualiza un mapa en Tetra en el ordenador para unirlas).</string>
+    <string name="maps_error_not_joined">%1$s y %2$s no están unidos para las indicaciones. Al actualizar un mapa en Tetra en el ordenador (Ajustes › Mapas) se une con sus vecinos; una ruta por un tercer país aún no es posible: ve primero a un lugar cerca de la frontera.</string>
     <string name="maps_error_no_way">No hay camino hasta allí con este medio.</string>
     <string name="maps_error_no_route">No hay ruta.</string>
     <string name="maps_say_stop">Parada %1$s. Siguiente, %2$s: %3$s, cuando arranques</string>

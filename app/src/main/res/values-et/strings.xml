@@ -360,10 +360,6 @@
     <string name="settings_directions">Juhised</string>
     <string name="settings_directions_note">Hääl on Androidi kõnesüntees; selle hääled on Androidi seadetes.</string>
     <string name="settings_directions_in_summary">Pöörete juhiste sõnad ja hääl</string>
-    <string name="settings_greek">Kreeka</string>
-    <string name="settings_english">Inglise</string>
-    <string name="settings_no_english_voice">Ingliskeelset häält pole: lisage see Androidi hääleseadetes.</string>
-    <string name="settings_no_greek_voice">Kreekakeelset häält pole: lisage see Androidi hääleseadetes.</string>
     <string name="settings_voice_settings_summary">Androidi kõnesüntees</string>
     <string name="settings_sharp_bends_summary">Autoga „Ees järsk kurv paremale“ veidi enne iga järsku kurvi, kus pööret ei öelda, nagu mägiteedel</string>
     <string name="settings_parking">Parkimine</string>
@@ -4595,4 +4591,61 @@
     <string name="settings_remove_map">Eemalda</string>
     <string name="settings_remove_map_title">Kas eemaldada kaart: %1$s?</string>
     <string name="settings_remove_map_body">Selle failid lähevad prügikasti, siin ja teie teistes seadmetes. Teie salvestatud kohad jäävad alles.</string>
+    <string name="maps_lane_middle">keskmiselt sõidurajalt</string>
+    <string name="maps_bend_right">Ees on järsk kurv paremale</string>
+    <string name="maps_bend_left">Ees on järsk kurv vasakule</string>
+    <string name="maps_keep_straight">Jätkake otse</string>
+    <string name="maps_towards">%1$s suunas %2$s</string>
+    <string name="maps_take_ferry">minge praamile</string>
+    <string name="maps_ferry">Praam</string>
+    <string name="maps_error_not_near_you">Te ei ole kaardil oleva tee lähedal (või olete siinsetest kaartidest väljas).</string>
+    <string name="maps_error_destination_not_near">Sihtkoht ei ole kaardil oleva tee lähedal (või on teisel kaardil: marsruut jääb ühe riigi kaardile).</string>
+    <string name="maps_error_no_way">Selle liikumisviisiga sinna teed ei ole.</string>
+    <string name="maps_error_no_route">Marsruuti ei leitud.</string>
+    <string name="maps_say_stop">Peatus %1$s. Järgmine, %2$s: %3$s, kui edasi sõidate</string>
+    <string name="maps_say_next_stop">Järgmine peatus %1$s: %2$s, kui edasi sõidate</string>
+    <string name="maps_say_gps_lost">GPS-signaal kadus</string>
+    <string name="maps_say_wrong_way">Vale suund. Pöörake ümber, kui see on ohutu</string>
+    <string name="maps_say_toll">teemaks</string>
+    <string name="maps_say_new_route">Uus marsruut</string>
+    <string name="maps_sample_turn">pöörake paremale</string>
+    <string name="maps_no_voice">Selles telefonis pole häält keelele %1$s, seega juhiseid näidatakse, kuid ei loeta ette. Hääle saate lisada Androidi kõneseadetes.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">%1$s kilomeetri pärast, %2$s</item>
+        <item quantity="other">%1$s kilomeetri pärast, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">%1$s meetri pärast, %2$s</item>
+        <item quantity="other">%1$s meetri pärast, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">%1$s miili pärast, %2$s</item>
+        <item quantity="other">%1$s miili pärast, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">%1$s jala pärast, %2$s</item>
+        <item quantity="other">%1$s jala pärast, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">%1$s jardi pärast, %2$s</item>
+        <item quantity="other">%1$s jardi pärast, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">parempoolselt sõidurajalt</item>
+        <item quantity="other">%1$d parempoolselt sõidurajalt</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">vasakpoolselt sõidurajalt</item>
+        <item quantity="other">%1$d vasakpoolselt sõidurajalt</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Sihtkoha lähedal on %1$d parkimiskoht puudega inimestele. Sinna minekuks vajutage parkimisnuppu.</item>
+        <item quantity="other">Sihtkoha lähedal on %1$d parkimiskohta puudega inimestele. Ühte neist minekuks vajutage parkimisnuppu.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Marsruudil on %1$d teemaksupunkt</item>
+        <item quantity="other">Marsruudil on %1$d teemaksupunkti</item>
+    </plurals>
+    <string name="maps_in_km_fraction">%1$s kilomeetri pärast, %2$s</string>
+    <string name="maps_in_mi_fraction">%1$s miili pärast, %2$s</string>
 </resources>

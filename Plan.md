@@ -14,6 +14,19 @@ How to write here:
 ## Now — who is doing what
 - [~] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive) **A route crosses from one
       installed map into its neighbour** (the user: "When we have both the neighbouring maps, it should be able to cross the border").
+- [x] (directions-languages session, 27 Oct; branches `claude/reverent-lederberg-489439` here (20155551) and `directions-languages` in Drive
+      (dfc246a), not merged) **Maps' directions in every language Tetra has** (the user: "Why it's only Greek? Isn't that an Android
+      feature? It shouldn't be hard to be in all the languages we have."): Tetra's own words (warnings, lanes, bends, stops, tolls,
+      parking, errors, ferry, "towards") are strings in all 24 (`Words` in MapsGuide.kt; JVM tests read the real files, TestWords.kt);
+      GraphHopper's turn words asked in the chosen language (`MapsRouting.translation`), Tetra's own lines in GraphHopper's format
+      (app/src/main/resources/tetra/graphhopper/<lang>.txt) for what 10.2 lacks: et, ga, lv, mt whole, "toward" etc. for es fi hr lt nl
+      pt ro sl; Portuguese is Portugal's. Settings › Maps › Directions in lists the 24 (the app's language by default). No voice for it on
+      the phone: a dialog once (car: a toast) with Voice settings. Miles + feet (US) / yards (UK) by the phone's region (Android's
+      measurement system), spoken, on the turn card and the car's screen. Desktop router.js asks in the app's language. Greek wording
+      unchanged. 675 Android unit / 164 desktop tests pass. **Not seen on a device** (voices, the dialog, the car's miles); the desktop
+      gets English for et/ga/lv/mt and GraphHopper's gaps (its server can't take Tetra's files) and still shows km. Then (the user
+      approved): a half (1.5 km) takes its CLDR category by android.icu — a whole number of that category, or maps_in_km/mi_fraction
+      where none has it (cs, sk, lt "many", pl "other"); ro, sl, fr, da were off too. Checked in all 24 against ICU (icu4j, tests only).
 - [~] (call-speaker session, 27 Oct; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
       phone-speaker button** (the user: "the call pop up on the PC from the phone to have a speaker option so instead of hearing the call from
       bluetooth to my PC to hear it from the phone's speaker"). Bubble: a speaker icon (while Tetra is the phone app, as Mute/Hold) sends

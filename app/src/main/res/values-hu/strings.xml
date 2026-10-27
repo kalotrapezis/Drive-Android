@@ -360,10 +360,6 @@
     <string name="settings_directions">Útbaigazítás</string>
     <string name="settings_directions_note">A hang az Android szövegfelolvasója; a hangjai az Android beállításaiban vannak.</string>
     <string name="settings_directions_in_summary">Az útbaigazítás szövege és hangja</string>
-    <string name="settings_greek">Görög</string>
-    <string name="settings_english">Angol</string>
-    <string name="settings_no_english_voice">Nincs angol hang: add hozzá az Android hangbeállításaiban.</string>
-    <string name="settings_no_greek_voice">Nincs görög hang: add hozzá az Android hangbeállításaiban.</string>
     <string name="settings_voice_settings_summary">Az Android szövegfelolvasója</string>
     <string name="settings_sharp_bends_summary">Autóval „Éles kanyar jobbra” minden olyan szűk kanyar előtt, ahol nincs bemondott kanyarodás, például hegyi utakon</string>
     <string name="settings_parking">Parkolás</string>
@@ -4595,4 +4591,61 @@
     <string name="settings_remove_map">Eltávolítás</string>
     <string name="settings_remove_map_title">Eltávolítod a térképet: %1$s?</string>
     <string name="settings_remove_map_body">A fájljai a Kukába kerülnek, itt és a többi eszközödön is. A mentett helyeid megmaradnak.</string>
+    <string name="maps_lane_middle">a középső sávból</string>
+    <string name="maps_bend_right">Éles jobbkanyar következik</string>
+    <string name="maps_bend_left">Éles balkanyar következik</string>
+    <string name="maps_keep_straight">Haladjon egyenesen</string>
+    <string name="maps_towards">%1$s, %2$s irányába</string>
+    <string name="maps_take_ferry">szálljon fel a kompra</string>
+    <string name="maps_ferry">Komp</string>
+    <string name="maps_error_not_near_you">Nem vagy a térkép által ismert út közelében (vagy az itteni térképeken kívül vagy).</string>
+    <string name="maps_error_destination_not_near">Az úti cél nincs a térkép által ismert út közelében (vagy egy másik térképen van: egy útvonal egy ország térképén marad).</string>
+    <string name="maps_error_no_way">Ezzel a közlekedési móddal nincs oda út.</string>
+    <string name="maps_error_no_route">Nincs útvonal.</string>
+    <string name="maps_say_stop">%1$s megálló. Következő: %2$s: %3$s, amint továbbindul</string>
+    <string name="maps_say_next_stop">Következő megálló %1$s: %2$s, amint továbbindul</string>
+    <string name="maps_say_gps_lost">Megszűnt a GPS-jel</string>
+    <string name="maps_say_wrong_way">Rossz irány. Forduljon meg, amikor biztonságos</string>
+    <string name="maps_say_toll">fizetőkapu</string>
+    <string name="maps_say_new_route">Új útvonal</string>
+    <string name="maps_sample_turn">forduljon jobbra</string>
+    <string name="maps_no_voice">Ezen a telefonon nincs %1$s hang, ezért az útbaigazítás megjelenik, de nem hangzik el. Hangot az Android beszédbeállításaiban adhatsz hozzá.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">%1$s kilométer múlva, %2$s</item>
+        <item quantity="other">%1$s kilométer múlva, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">%1$s méter múlva, %2$s</item>
+        <item quantity="other">%1$s méter múlva, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">%1$s mérföld múlva, %2$s</item>
+        <item quantity="other">%1$s mérföld múlva, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">%1$s láb múlva, %2$s</item>
+        <item quantity="other">%1$s láb múlva, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">%1$s yard múlva, %2$s</item>
+        <item quantity="other">%1$s yard múlva, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">a jobb oldali sávból</item>
+        <item quantity="other">a %1$d jobb oldali sáv egyikéből</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">a bal oldali sávból</item>
+        <item quantity="other">a %1$d bal oldali sáv egyikéből</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Az úti cél közelében %1$d mozgáskorlátozott parkolóhely van. Nyomja meg a parkolás gombot, hogy odamenjen.</item>
+        <item quantity="other">Az úti cél közelében %1$d mozgáskorlátozott parkolóhely van. Nyomja meg a parkolás gombot, hogy az egyikhez menjen.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Az útvonalon %1$d fizetőkapu van</item>
+        <item quantity="other">Az útvonalon %1$d fizetőkapu van</item>
+    </plurals>
+    <string name="maps_in_km_fraction">%1$s kilométer múlva, %2$s</string>
+    <string name="maps_in_mi_fraction">%1$s mérföld múlva, %2$s</string>
 </resources>

@@ -2,6 +2,7 @@ package com.kalotrapezis.drive
 
 import java.io.File
 import java.nio.file.Files
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -9,6 +10,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
 import org.junit.Ignore
 import org.junit.Test
+
+/** Tetra's words in Greek and English, as the tests below hear them. */
+private val el = testWords("el")
+private val en = testWords("en")
 
 /** Maps (Plan.md § Maps): saved places as files, Home's six slots, and offline routing on the computer's graph. */
 class MapsTest {
@@ -69,22 +74,22 @@ class MapsTest {
         val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         for (mode in Place.MODES) {
-            val r = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, mode)
+            val r = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, mode, el)
             println("$mode: ${r.metres.toInt()} m, ${r.millis / 1000} s, ${r.steps.size} steps: ${r.steps.take(3).map { it.text }}")
             assertTrue(r.metres in 800.0..3000.0)
             assertTrue(r.steps.isNotEmpty() && r.lats.size == r.lngs.size)
         }
         // Rolling: the wheelchair profile, when the graph has it — no steps, so never shorter than on foot
         if ("wheelchair" in MapsRouting.profiles(dir)) {
-            val foot = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, "foot")
-            val roll = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, "wheelchair")
+            val foot = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, "foot", el)
+            val roll = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, "wheelchair", el)
             println("wheelchair: ${roll.metres.toInt()} m, ${roll.millis / 1000} s (foot ${foot.metres.toInt()} m)")
             assertTrue(roll.metres >= foot.metres - 1 && roll.millis >= foot.millis)
         }
         // the hand-written custom models give GraphHopper's own answers (its server on the same graph, 21 Oct)
         val gh = mapOf("car" to (471079.0 to 19950L), "foot" to (359126.0 to 230982L), "bike" to (463242.0 to 98452L))
         for ((mode, want) in gh) {
-            val r = MapsRouting.route(dir, 37.9838, 23.7275, 40.6401, 22.9444, mode)
+            val r = MapsRouting.route(dir, 37.9838, 23.7275, 40.6401, 22.9444, mode, el)
             println("$mode Athens–Thessaloniki: ${r.metres.toInt()} m, ${r.millis / 1000} s")
             assertEquals(want.first, r.metres, 2.0)
             assertEquals(want.second * (if (mode == "car") MapsRouting.CAR_TIME else 1.0), r.millis / 1000.0, 3.0)
@@ -148,8 +153,8 @@ class MapsWarningTest {
         said = emptySet(); heard.clear()
         for (d in 1500 downTo 0 step 10) dueWarning(1, d.toDouble(), 12.0, true, said)?.let { heard += d to it; said = said + "${it}1" }
         assertEquals(listOf(500 to "f", 120 to "n"), heard)
-        assertEquals(2.0 to true, spokenDistance(2140.0, true)); assertEquals(650.0 to false, spokenDistance(660.0, true))
-        assertEquals(1.5 to true, spokenDistance(1400.0, true))
+        assertEquals(2.0 to "km", spokenDistance(2140.0, true)); assertEquals(650.0 to "m", spokenDistance(660.0, true))
+        assertEquals(1.5 to "km", spokenDistance(1400.0, true))
         // an exit whose lane begins 300 m before it: "take the exit" there, where the broken line starts
         said = emptySet(); heard.clear()
         for (d in 4000 downTo 0 step 10) dueWarning(5, d.toDouble(), 33.0, true, said, begins = 300.0)?.let { heard += d to it; said = said + "${it}5" }
@@ -162,7 +167,7 @@ class MapsMotorwayTest {
     @Test fun aRampSaysWhereItLeads() {
         val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
-        val r = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car")
+        val r = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car", el)
         r.steps.forEach { println("${it.sign}\t${it.metres.toInt()} m\t${it.text}\t[${it.ref}] ${it.street}") }
         assertTrue(r.steps.none { it.metres > 20_000 && it.street.isEmpty() })
     }
@@ -216,7 +221,7 @@ class MapsLimitFerryTest {
         val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         // Egnatia near Kavala, and Panepistimiou in Athens
-        val r = MapsRouting.route(dir, 41.149912, 24.146884, 40.475293, 25.473550, "car")
+        val r = MapsRouting.route(dir, 41.149912, 24.146884, 40.475293, 25.473550, "car", el)
         // along the route to Samothraki: the limits known on the way (on a road, not beside it)
         val limits = (0 until r.lats.size step maxOf(1, r.lats.size / 40)).map { MapsRouting.limitAt(dir, r.lats[it], r.lngs[it]) }
         println("limits: $limits")
@@ -232,7 +237,7 @@ class MapsAlternativesTest {
     @Ignore("its places were made up before publishing; put your own back locally to run it") @Test fun twoWaysThere() {
         val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile)
-        val rs = MapsRouting.routes(dir, 37.277768, 22.585572, 37.3713423, 22.4651517, "car")
+        val rs = MapsRouting.routes(dir, 37.277768, 22.585572, 37.3713423, 22.4651517, "car", el)
         rs.forEach { println("${it.millis / 60000} min ${(it.metres / 100).toInt() / 10.0} km ${it.roads}") }
         assertTrue(rs.size >= 2 && rs.none { it.roads == "track" })
         assertEquals(rs.sortedBy { it.millis }, rs)
@@ -243,7 +248,7 @@ class MapsAlternativesTest {
         // (OSM has no toll station near Σχηματάρι or Οινόφυτα: the local roads have none, the motorway none known)
         assertTrue(rs.all { r -> tollsOn(r, cumulative(r), all).isEmpty() })
         // Σχηματάρι to Ναύπλιο: Ολυμπία Οδός's at Ελευσίνα and Μορέας' on the Α7 are on the way
-        val far = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car")
+        val far = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car", el)
         val t = tollsOn(far, cumulative(far), all)
         println("Σχηματάρι → Ναύπλιο tolls: ${t.map { "${it.first.name} (${it.first.more}) at ${(it.second / 1000).toInt()} km" }}")
         assertTrue(t.size >= 2 && t.any { "Ελευσίνας" in it.first.name })
@@ -328,7 +333,7 @@ class MapsEdgeCaseTest {
         val problems = ArrayList<String>()
         for (c in cases) {
             val t0 = System.nanoTime()
-            val rs = runCatching { MapsRouting.routes(dir, c.from.first, c.from.second, c.to.first, c.to.second, c.mode) }
+            val rs = runCatching { MapsRouting.routes(dir, c.from.first, c.from.second, c.to.first, c.to.second, c.mode, el) }
             val ms = (System.nanoTime() - t0) / 1_000_000
             rs.onFailure { e ->
                 println("✗ ${c.name}: ${e.javaClass.simpleName}: ${e.message} ($ms ms)")
@@ -404,21 +409,21 @@ class MapsTripTest {
         }
         fun apart(a: Double, b: Double) = Math.abs(((a - b) % 360 + 540) % 360 - 180)
         // from Σκάλα to the school of Άγιος Λουκάς; then from points along that way, facing back where it came from
-        val plain = MapsRouting.route(dir, 37.2115, 22.5470, 37.2777, 22.5877, "car")
+        val plain = MapsRouting.route(dir, 37.2115, 22.5470, 37.2777, 22.5877, "car", el)
         var turned = 0; var tried = 0
         for (k in listOf(plain.lats.size / 5, plain.lats.size / 3, plain.lats.size / 2, plain.lats.size * 2 / 3)) {
             val lat = (plain.lats[k] + plain.lats[k + 1]) / 2; val lng = (plain.lngs[k] + plain.lngs[k + 1]) / 2 // between two points: on the road
-            val on = MapsRouting.route(dir, lat, lng, 37.2777, 22.5877, "car")
+            val on = MapsRouting.route(dir, lat, lng, 37.2777, 22.5877, "car", el)
             val back = (bearing(on) + 180) % 360
             val t0 = System.nanoTime()
-            val headed = MapsRouting.route(dir, lat, lng, 37.2777, 22.5877, "car", heading = back)
+            val headed = MapsRouting.route(dir, lat, lng, 37.2777, 22.5877, "car", el, heading = back)
             println("at $k: ${on.metres.toInt()} m at ${bearing(on).toInt()}°; facing ${back.toInt()}°: ${headed.metres.toInt()} m at " +
                 "${bearing(headed).toInt()}° in ${(System.nanoTime() - t0) / 1_000_000} ms")
             tried++; if (apart(bearing(headed), back) < 60) turned++
         }
         assertTrue("$turned of $tried went on the way they faced", turned >= tried / 2)
         val t1 = System.nanoTime() // too far for the headed search: the shortcuts' route, at once
-        val far = MapsRouting.route(dir, 37.9838, 23.7275, 40.6401, 22.9444, "car", heading = 0.0)
+        val far = MapsRouting.route(dir, 37.9838, 23.7275, 40.6401, 22.9444, "car", el, heading = 0.0)
         println("Athens–Thessaloniki facing north: ${far.metres.toInt()} m in ${(System.nanoTime() - t1) / 1_000_000} ms")
         assertTrue(far.metres in 400_000.0..600_000.0)
     }
@@ -466,7 +471,7 @@ class MapsJunctionTest {
             "Νικήσιανη" to doubleArrayOf(40.9430, 24.1350, 40.9540, 24.1500), "Νικήσιανη " to doubleArrayOf(40.9540, 24.1350, 40.9430, 24.1500))
         var busy = 0; var rings = 0; var all = 0
         for ((name, d) in drives) {
-            val r = MapsRouting.route(dir, d[0], d[1], d[2], d[3], "car")
+            val r = MapsRouting.route(dir, d[0], d[1], d[2], d[3], "car", el)
             for (s in r.steps) {
                 val j = s.junction ?: continue
                 all++; if (j.busy) busy++; if (j.roundabout) rings++
@@ -490,14 +495,14 @@ class MapsLanesTest {
         val exit = MapsLanes.parse("through|through|slight_right")
         assertEquals(setOf(2), MapsLanes.use(exit, 7)) // keep right: the exit lane
         assertEquals(setOf(0, 1), MapsLanes.use(exit, -7)) // keep left: the road goes on
-        assertEquals("από τη δεξιά λωρίδα", MapsLanes.words(Lanes(exit, setOf(2)), "el"))
-        assertEquals("από τις 2 αριστερές λωρίδες", MapsLanes.words(Lanes(exit, setOf(0, 1)), "el"))
+        assertEquals("από τη δεξιά λωρίδα", MapsLanes.words(Lanes(exit, setOf(2)), el))
+        assertEquals("από τις 2 αριστερές λωρίδες", MapsLanes.words(Lanes(exit, setOf(0, 1)), el))
         val corinth = MapsLanes.parse("slight_left|slight_left|through|through") // Α7 to Τρίπολη leaves on the left
         assertEquals(setOf(0, 1), MapsLanes.use(corinth, -7))
-        assertEquals("from the 2 left lanes", MapsLanes.words(Lanes(corinth, setOf(0, 1)), "en"))
+        assertEquals("from the 2 left lanes", MapsLanes.words(Lanes(corinth, setOf(0, 1)), en))
         assertEquals(listOf(listOf("left"), listOf("through"), listOf("through", "right")), MapsLanes.parse("left|none|through;right"))
-        assertEquals("από τη μεσαία λωρίδα", MapsLanes.words(Lanes(MapsLanes.parse("left|through|right"), setOf(1)), "el"))
-        assertNull(MapsLanes.words(Lanes(exit, setOf(0, 1, 2)), "el")) // all of them: nothing to say
+        assertEquals("από τη μεσαία λωρίδα", MapsLanes.words(Lanes(MapsLanes.parse("left|through|right"), setOf(1)), el))
+        assertNull(MapsLanes.words(Lanes(exit, setOf(0, 1, 2)), el)) // all of them: nothing to say
         assertTrue(MapsLanes.use(MapsLanes.parse("left|through"), 2).isEmpty()) // a right turn the lanes do not show
     }
 
@@ -505,7 +510,7 @@ class MapsLanesTest {
     @Test fun lanesOnRealRoutes() {
         val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
         assumeTrue(File(dir, "properties").isFile && File(dir.parentFile, "greece-lanes.tsv").isFile)
-        val tripoli = MapsRouting.route(dir, 37.9838, 23.7275, 37.5100, 22.3720, "car")
+        val tripoli = MapsRouting.route(dir, 37.9838, 23.7275, 37.5100, 22.3720, "car", el)
         val corinth = tripoli.steps.first { "Τρίπολη" in it.text && it.sign == -7 }
         println("Κόρινθος: ${corinth.text} — ${corinth.lanes}")
         assertEquals(setOf(0, 1), corinth.lanes?.use)
@@ -514,9 +519,9 @@ class MapsLanesTest {
         println("Κόρινθος fork: $fork")
         assertTrue(fork != null && fork.busy && fork.arms[fork.taken] < 0)
         assertTrue(corinth.lanes!!.begins in 100.0..700.0) // where the exit's lanes begin, for "take the exit" there
-        val elaionas = MapsRouting.route(dir, 37.2777, 22.5877, 38.4140, 23.2270, "car")
+        val elaionas = MapsRouting.route(dir, 37.2777, 22.5877, 38.4140, 23.2270, "car", el)
         val with = elaionas.steps.filter { it.lanes != null }
-        with.forEach { println("Ελαιώνας: ${MapsLanes.said(it, "el")} — ${it.lanes}") }
+        with.forEach { println("Ελαιώνας: ${MapsLanes.said(it, el)} — ${it.lanes}") }
         assertTrue(with.isNotEmpty())
     }
 }
@@ -532,7 +537,7 @@ class MapsReplayTest {
 
     private fun replay(d: MapsTrace.Drive, heading: Boolean): Played {
         val target = Place("", d.name, d.lat, d.lng, "pin", mode = d.mode)
-        fun route(f: MapsTrace.Fix) = MapsRouting.route(dir, f.lat, f.lng, d.lat, d.lng, d.mode,
+        fun route(f: MapsTrace.Fix) = MapsRouting.route(dir, f.lat, f.lng, d.lat, d.lng, d.mode, el,
             heading = if (heading && f.speed > 2.5 && f.bearing >= 0) f.bearing else Double.NaN)
         var r = route(d.fixes.first())
         var n = Nav(target, d.mode, r, cumulative(r), d.fixes.first().time)
@@ -545,8 +550,8 @@ class MapsReplayTest {
                 continue
             }
             if (g.arrived) return Played(reroutes, said, true)
-            g.words("el", d.mode == "car")?.let { said += it }
-            g.bend?.let { said += MapsPrefs.bendWords("el", n.bends[it].right) }
+            g.words(el, d.mode == "car")?.let { said += it }
+            g.bend?.let { said += MapsPrefs.bendWords(el, n.bends[it].right) }
             n = n.copy(index = g.index, p = g.p, offFixes = 0, said = g.said(n.said))
         }
         return Played(reroutes, said, false)
@@ -568,7 +573,7 @@ class MapsReplayTest {
     /** Directions to Άγιος Λουκάς from Σκάλα, the driver going towards Πύλη instead (23 Oct: "a new route" every 11 s). */
     @Test fun aDriverWhoGoesElsewhere() {
         assumeTrue(File(dir, "properties").isFile)
-        val elsewhere = MapsRouting.route(dir, 37.2115, 22.5470, 37.2180, 22.4100, "car") // Σκάλα → west, to Πύλη
+        val elsewhere = MapsRouting.route(dir, 37.2115, 22.5470, 37.2180, 22.4100, "car", el) // Σκάλα → west, to Πύλη
         val d = drive(elsewhere, 15.0, Place("", "Δημοτικό Σχολείο Αγίου Λουκά", 37.2777, 22.5877, "pin"))
         val plain = replay(d, heading = false); val headed = replay(d, heading = true)
         println("${d.fixes.size} s of driving away: without the heading ${plain.reroutes} new routes, with it ${headed.reroutes}")
@@ -579,7 +584,7 @@ class MapsReplayTest {
     @Test fun aDriverWhoFollows() {
         assumeTrue(File(dir, "properties").isFile)
         val to = Place("", "Δημοτικό Σχολείο Αγίου Λουκά", 37.2777, 22.5877, "pin")
-        val r = MapsRouting.route(dir, 37.2115, 22.5470, to.lat, to.lng, "car")
+        val r = MapsRouting.route(dir, 37.2115, 22.5470, to.lat, to.lng, "car", el)
         val played = replay(drive(r, 14.0, to), heading = true)
         played.said.forEach { println("  $it") }
         assertEquals(0, played.reroutes)
@@ -654,7 +659,7 @@ class MapsMainRoadsTest {
         assumeTrue(File(dir, "properties").isFile)
         val home = 37.27639 to 22.58912; val market = 37.349324 to 22.584650; val skala = 37.212858 to 22.551289
         for ((name, to) in listOf("My Market" to market, "Σκάλα school" to skala)) for (main in listOf(false, true)) {
-            val r = MapsRouting.route(dir, home.first, home.second, to.first, to.second, "car", main = main)
+            val r = MapsRouting.route(dir, home.first, home.second, to.first, to.second, "car", el, main = main)
             val km = classes(home, to, main)
             println("$name ${if (main) "main roads" else "shortest"}: ${"%.1f".format(r.metres / 1000)} km, ${r.millis / 60_000} min, ${r.roads}; " +
                 km.entries.sortedByDescending { it.value }.joinToString { "${it.key} ${"%.1f".format(it.value)}" })
@@ -741,5 +746,115 @@ class MapsBorderTest {
         val off = runCatching { MapsRouting.route(dir, 40.6401, 22.9444, 42.6977, 23.3219, "car", "en") }
         println("to Sofia: ${off.exceptionOrNull()?.message}")
         assertTrue(off.isFailure)
+    }
+}
+
+/**
+ * Directions in every language Tetra has (the user, 27 Oct: "Why it's only Greek? … It shouldn't be hard to be in all the
+ * languages we have"): Tetra's own words from the string resources, GraphHopper's turn words beside them (Tetra's own where
+ * it has none), and miles with feet or yards where the phone's region measures so.
+ */
+class MapsWordsTest {
+    @Test fun greekAsBefore() {
+        assertEquals("Σε 2 χιλιόμετρα, στρίψτε δεξιά", MapsPrefs.inDistance(el, 2140.0, true, "στρίψτε δεξιά"))
+        assertEquals("Σε 1 χιλιόμετρο, x", MapsPrefs.inDistance(el, 1000.0, true, "x"))
+        assertEquals("Σε 1,5 χιλιόμετρα, x", MapsPrefs.inDistance(el, 1400.0, true, "x"))
+        assertEquals("Σε 650 μέτρα, x", MapsPrefs.inDistance(el, 660.0, true, "x"))
+        assertEquals("Ακολουθεί απότομη στροφή δεξιά", MapsPrefs.bendWords(el, true))
+        assertEquals("Συνεχίστε ευθεία προς Θεσπιές", MapsLanes.straight(Step("Μείνετε δεξιά και οδηγείστε προς Θεσπιές", 7, 0.0, 1, "", toward = "Θεσπιές"), el))
+    }
+
+    @Test fun german() {
+        val de = testWords("de")
+        assertEquals("In 2 Kilometern, rechts abbiegen", MapsPrefs.inDistance(de, 2140.0, true, "rechts abbiegen"))
+        assertEquals("In 1 Kilometer, x", MapsPrefs.inDistance(de, 1000.0, true, "x"))
+        assertEquals("In 1,5 Kilometern, x", MapsPrefs.inDistance(de, 1400.0, true, "x"))
+        assertEquals("über die 2 rechten Fahrstreifen", MapsLanes.words(Lanes(MapsLanes.parse("left|through|right"), setOf(1, 2)), de))
+        assertEquals("über den mittleren Fahrstreifen", MapsLanes.words(Lanes(MapsLanes.parse("left|through|right"), setOf(1)), de))
+        assertEquals("Geradeaus weiterfahren Richtung Theben", MapsLanes.straight(Step("Rechts halten", 7, 0.0, 1, "", toward = "Theben"), de))
+        assertEquals("Achtung, scharfe Linkskurve", MapsPrefs.bendWords(de, false))
+        assertEquals("Keine Route.", MapsRouting.words(null, de))
+        assertEquals("In 300 Metern, rechts abbiegen", MapsPrefs.sample(de))
+    }
+
+    @Test fun graphHopperWords() {
+        assertEquals("rechts abbiegen", MapsRouting.translation("de").tr("turn_right"))
+        assertEquals("στρίψτε δεξιά", MapsRouting.translation("el").tr("turn_right"))
+        // none in GraphHopper: Tetra's own, and English for a line neither has
+        assertEquals("pagriezieties pa labi", MapsRouting.translation("lv").tr("turn_right"))
+        assertEquals("Ag an timpeallán, tóg slí amach 2", MapsRouting.translation("ga").tr("roundabout_exit", 2))
+        // GraphHopper's Spanish without "toward": Tetra's line; Portugal's Portuguese, its U-turn Tetra's
+        assertEquals("gira a la derecha y continúa hacia Y", MapsRouting.translation("es").tr("toward_destination", "gira a la derecha", "Y"))
+        assertEquals("faça inversão de marcha", MapsRouting.translation("pt").tr("u_turn"))
+        assertEquals("pt", MapsRouting.translation("pt").locale.language)
+    }
+
+    @Test fun miles() {
+        val us = testWords("en", "us"); val uk = testWords("en", "uk")
+        assertEquals("In 2 miles, turn right", MapsPrefs.inDistance(us, 3300.0, true, "turn right"))
+        assertEquals("In 1 mile, x", MapsPrefs.inDistance(uk, 1609.0, true, "x"))
+        assertEquals("In 0.5 miles, x", MapsPrefs.inDistance(uk, 800.0, true, "x"))
+        assertEquals("In 500 feet, x", MapsPrefs.inDistance(us, 150.0, true, "x"))
+        assertEquals("In 150 yards, x", MapsPrefs.inDistance(uk, 140.0, true, "x"))
+        assertEquals("In 30 yards, x", MapsPrefs.inDistance(uk, 30.0, false, "x")) // on foot, to 10 yards
+        assertEquals("In 350 yards, turn right", MapsPrefs.sample(uk))
+        // shown the same way
+        assertEquals("0.3 mi", metresText(500.0, "us")); assertEquals("300 ft", metresText(91.0, "us"))
+        assertEquals("100 yd", metresText(91.0, "uk")); assertEquals("12 mi", metresText(20_000.0, "uk"))
+        assertEquals("350 m", metresText(347.0, "metric"))
+        // in another language too
+        assertEquals("In 2 Meilen, x", MapsPrefs.inDistance(testWords("de", "us"), 3300.0, true, "x"))
+    }
+
+    /**
+     * A half (1.5 km) as each language says a fraction (the user, 27 Oct, approving the fix): CLDR's category for the real number
+     * by ICU — Czech, Slovak, Lithuanian "many", Polish "other", which no whole number has — and whole numbers as before.
+     */
+    @Test fun halves() {
+        fun say(lang: String, m: Double) = MapsPrefs.inDistance(testWords(lang), m, true, "x")
+        val want = mapOf(
+            "cs" to listOf("Za 1,5 kilometru, x", "Za 2 kilometry, x", "Za 5 kilometrů, x"),
+            "sk" to listOf("O 1,5 kilometra, x", "O 2 kilometre, x", "O 5 kilometrov, x"),
+            "pl" to listOf("Za 1,5 kilometra, x", "Za 2 kilometry, x", "Za 5 kilometrów, x"),
+            "lt" to listOf("Po 1,5 kilometro, x", "Po 2 kilometrų, x", "Po 5 kilometrų, x"),
+            "ro" to listOf("Peste 1,5 kilometri, x", "Peste 2 kilometri, x", "Peste 5 kilometri, x"),
+            "sl" to listOf("Čez 1,5 kilometre, x", "Čez 2 kilometra, x", "Čez 5 kilometrov, x"),
+            "fr" to listOf("Dans 1,5 kilomètre, x", "Dans 2 kilomètres, x", "Dans 5 kilomètres, x"),
+            "pt" to listOf("Dentro de 1,5 quilómetros, x", "Dentro de 2 quilómetros, x", "Dentro de 5 quilómetros, x"))
+        for ((lang, w) in want) assertEquals(lang, w, listOf(1400.0, 2000.0, 5000.0).map { say(lang, it) })
+        assertEquals("Za 2,5 kilometru, x", say("cs", 2600.0)); assertEquals("Za 1 kilometr, x", say("cs", 1000.0))
+        assertEquals("Za 1,5 mili, x", MapsPrefs.inDistance(testWords("pl", "uk"), 1.5 * MILE, true, "x"))
+    }
+
+    /** In all 24, a half's words are those of its CLDR category: the plural's own item, or the fraction string that has it. */
+    @Test fun halvesInEveryLanguage() {
+        for (lang in File("src/main/res").list()!!.filter { it.matches(Regex("values-[a-z]{2}")) }.map { it.removePrefix("values-") } + "en") {
+            val w = testWords(lang)
+            val rules = com.ibm.icu.text.PluralRules.forLocale(Words.pluralLocale(lang))
+            val xml = File("src/main/res/values${if (lang == "en") "" else "-$lang"}/strings.xml").readText()
+            fun item(unit: String, c: String) = Regex("""<plurals name="maps_in_$unit">(.*?)</plurals>""", RegexOption.DOT_MATCHES_ALL).find(xml)!!.groupValues[1]
+                .let { Regex("""<item quantity="$c">(.*?)</item>""").find(it)?.groupValues?.get(1) }
+            val miles = testWords(lang, "uk")
+            fun form(unit: String, x: Double): String {
+                val c = rules.select(x)
+                val f = item(unit, c) ?: error("$lang has no $c for $x $unit")
+                return String.format(Locale.forLanguageTag(lang), f.replace("\\'", "'"), w.number(x), "x")
+            }
+            for (x in listOf(1.5, 2.5, 5.5, 11.5, 21.5)) assertEquals("$lang $x km", form("km", x), MapsPrefs.inDistance(w, x * 1000, true, "x"))
+            for (x in listOf(0.5, 1.5, 2.5, 5.5)) assertEquals("$lang $x mi", form("mi", x), MapsPrefs.inDistance(miles, x * MILE, true, "x"))
+        }
+    }
+
+    /** Every language's warning fills in, and GraphHopper's words for it are its own (StringsTest checks every key is there). */
+    @Test fun everyLanguageFills() {
+        for (lang in File("src/main/res").list()!!.filter { it.matches(Regex("values-[a-z]{2}")) }.map { it.removePrefix("values-") } + "en") {
+            val w = testWords(lang)
+            val said = MapsPrefs.inDistance(w, 2000.0, true, "X")
+            assertTrue("$lang: $said", "2" in said && "X" in said)
+            // and GraphHopper's turn words in it, no English left among those Tetra says
+            val tr = MapsRouting.translation(lang)
+            if (lang != "en") for (k in listOf("turn_right", "keep_left", "u_turn", "continue_onto", "toward_destination", "roundabout_exit_onto", "finish"))
+                assertTrue("$lang $k: ${tr.tr(k, "A", "B")}", tr.tr(k, "A", "B") != MapsRouting.translation("en").tr(k, "A", "B"))
+        }
     }
 }

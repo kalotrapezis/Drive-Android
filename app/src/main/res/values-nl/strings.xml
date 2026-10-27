@@ -360,10 +360,6 @@
     <string name="settings_directions">Routebeschrijving</string>
     <string name="settings_directions_note">De stem is de tekst-naar-spraak van Android; de stemmen staan in de Android-instellingen.</string>
     <string name="settings_directions_in_summary">De aanwijzingen en de stem</string>
-    <string name="settings_greek">Grieks</string>
-    <string name="settings_english">Engels</string>
-    <string name="settings_no_english_voice">Geen Engelse stem: voeg die toe in de steminstellingen van Android.</string>
-    <string name="settings_no_greek_voice">Geen Griekse stem: voeg die toe in de steminstellingen van Android.</string>
     <string name="settings_voice_settings_summary">Tekst-naar-spraak van Android</string>
     <string name="settings_sharp_bends_summary">Met de auto: “Scherpe bocht naar rechts” kort voor elke krappe bocht waar geen afslag wordt genoemd, zoals op bergwegen</string>
     <string name="settings_parking">Parkeren</string>
@@ -4595,4 +4591,61 @@
     <string name="settings_remove_map">Verwijderen</string>
     <string name="settings_remove_map_title">De kaart van %1$s verwijderen?</string>
     <string name="settings_remove_map_body">De bestanden gaan naar de Prullenbak, hier en op je andere apparaten. Je opgeslagen plaatsen blijven staan.</string>
+    <string name="maps_lane_middle">via de middelste rijstrook</string>
+    <string name="maps_bend_right">Scherpe bocht naar rechts</string>
+    <string name="maps_bend_left">Scherpe bocht naar links</string>
+    <string name="maps_keep_straight">Ga rechtdoor</string>
+    <string name="maps_towards">%1$s richting %2$s</string>
+    <string name="maps_take_ferry">neem de veerboot</string>
+    <string name="maps_ferry">Veerboot</string>
+    <string name="maps_error_not_near_you">Je bent niet in de buurt van een weg die de kaart kent (of buiten de kaarten hier).</string>
+    <string name="maps_error_destination_not_near">De bestemming is niet in de buurt van een weg die de kaart kent (of ligt op een andere kaart: een route blijft op de kaart van één land).</string>
+    <string name="maps_error_no_way">Met dit vervoermiddel is er geen weg daarheen.</string>
+    <string name="maps_error_no_route">Geen route.</string>
+    <string name="maps_say_stop">Stop %1$s. Volgende, %2$s: %3$s, zodra je verder rijdt</string>
+    <string name="maps_say_next_stop">Volgende stop %1$s: %2$s, zodra je verder rijdt</string>
+    <string name="maps_say_gps_lost">GPS-signaal verloren</string>
+    <string name="maps_say_wrong_way">Verkeerde richting. Keer om wanneer het veilig is</string>
+    <string name="maps_say_toll">een tolpoort</string>
+    <string name="maps_say_new_route">Nieuwe route</string>
+    <string name="maps_sample_turn">sla rechtsaf</string>
+    <string name="maps_no_voice">Deze telefoon heeft geen stem voor het %1$s, dus de aanwijzingen worden getoond maar niet uitgesproken. Je kunt er een toevoegen in de spraakinstellingen van Android.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">Over %1$s kilometer, %2$s</item>
+        <item quantity="other">Over %1$s kilometer, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">Over %1$s meter, %2$s</item>
+        <item quantity="other">Over %1$s meter, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">Over %1$s mijl, %2$s</item>
+        <item quantity="other">Over %1$s mijl, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">Over %1$s voet, %2$s</item>
+        <item quantity="other">Over %1$s voet, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">Over %1$s yard, %2$s</item>
+        <item quantity="other">Over %1$s yard, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">via de rechterrijstrook</item>
+        <item quantity="other">via de %1$d rechterrijstroken</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">via de linkerrijstrook</item>
+        <item quantity="other">via de %1$d linkerrijstroken</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Er is %1$d gehandicaptenparkeerplaats bij je bestemming. Druk op de parkeerknop om erheen te gaan.</item>
+        <item quantity="other">Er zijn %1$d gehandicaptenparkeerplaatsen bij je bestemming. Druk op de parkeerknop om naar een ervan te gaan.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">De route heeft %1$d tolpoort</item>
+        <item quantity="other">De route heeft %1$d tolpoorten</item>
+    </plurals>
+    <string name="maps_in_km_fraction">Over %1$s kilometer, %2$s</string>
+    <string name="maps_in_mi_fraction">Over %1$s mijl, %2$s</string>
 </resources>

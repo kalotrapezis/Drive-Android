@@ -360,10 +360,6 @@
     <string name="settings_directions">Treoracha</string>
     <string name="settings_directions_note">Is é téacs-go-cainteoir Android an guth; tá a gcuid guthanna i socruithe Android.</string>
     <string name="settings_directions_in_summary">Na focail treoracha ó chas go cas agus an guth</string>
-    <string name="settings_greek">Gréigis</string>
-    <string name="settings_english">Béarla</string>
-    <string name="settings_no_english_voice">Níl guth Béarla ann: cuir leis i socruithe gutha Android.</string>
-    <string name="settings_no_greek_voice">Níl guth Gréigise ann: cuir leis i socruithe gutha Android.</string>
     <string name="settings_voice_settings_summary">Téacs-go-cainteoir Android</string>
     <string name="settings_sharp_bends_summary">Sa charr, \"Lúb géar ar dheis romhainn\" beagán roimh gach lúb theann nach luaitear casadh di, mar a bhíonn ar bhóithre sléibhe</string>
     <string name="settings_parking">Páirceáil</string>
@@ -4871,4 +4867,88 @@
     <string name="settings_remove_map">Bain</string>
     <string name="settings_remove_map_title">An mbainfear léarscáil %1$s?</string>
     <string name="settings_remove_map_body">Téann a comhaid isteach sa Bhruscar, anseo agus ar do ghléasanna eile. Fanann do chuid áiteanna sábháilte.</string>
+    <string name="maps_lane_middle">ón lána láir</string>
+    <string name="maps_bend_right">Casadh géar ar dheis romhat</string>
+    <string name="maps_bend_left">Casadh géar ar chlé romhat</string>
+    <string name="maps_keep_straight">Lean ar aghaidh díreach</string>
+    <string name="maps_towards">%1$s i dtreo %2$s</string>
+    <string name="maps_take_ferry">tóg an bád farantóireachta</string>
+    <string name="maps_ferry">Bád farantóireachta</string>
+    <string name="maps_error_not_near_you">Níl tú gar do bhóthar atá ar eolas ag an léarscáil (nó tá tú lasmuigh de na léarscáileanna anseo).</string>
+    <string name="maps_error_destination_not_near">Níl an ceann scríbe gar do bhóthar atá ar eolas ag an léarscáil (nó tá sé ar léarscáil eile: fanann bealach ar léarscáil tíre amháin).</string>
+    <string name="maps_error_no_way">Níl aon bhealach ann leis an modh taistil seo.</string>
+    <string name="maps_error_no_route">Níl aon bhealach ann.</string>
+    <string name="maps_say_stop">Stad %1$s. An chéad cheann eile, %2$s: %3$s, nuair a thiomáineann tú ar aghaidh</string>
+    <string name="maps_say_next_stop">An chéad stad eile %1$s: %2$s, nuair a thiomáineann tú ar aghaidh</string>
+    <string name="maps_say_gps_lost">Cailleadh an comhartha GPS</string>
+    <string name="maps_say_wrong_way">Treo mícheart. Cas timpeall nuair is sábháilte é</string>
+    <string name="maps_say_toll">dola</string>
+    <string name="maps_say_new_route">Bealach nua</string>
+    <string name="maps_sample_turn">cas ar dheis</string>
+    <string name="maps_no_voice">Níl guth le haghaidh %1$s ar an bhfón seo, mar sin taispeántar na treoracha ach ní deirtear iad. Is féidir leat ceann a chur leis i socruithe gutha Android.</string>
+    <plurals name="maps_in_km">
+        <item quantity="one">I gceann %1$s ciliméadar, %2$s</item>
+        <item quantity="two">I gceann %1$s ciliméadar, %2$s</item>
+        <item quantity="few">I gceann %1$s ciliméadar, %2$s</item>
+        <item quantity="many">I gceann %1$s ciliméadar, %2$s</item>
+        <item quantity="other">I gceann %1$s ciliméadar, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_m">
+        <item quantity="one">I gceann %1$s méadar, %2$s</item>
+        <item quantity="two">I gceann %1$s méadar, %2$s</item>
+        <item quantity="few">I gceann %1$s méadar, %2$s</item>
+        <item quantity="many">I gceann %1$s méadar, %2$s</item>
+        <item quantity="other">I gceann %1$s méadar, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_mi">
+        <item quantity="one">I gceann %1$s míle, %2$s</item>
+        <item quantity="two">I gceann %1$s míle, %2$s</item>
+        <item quantity="few">I gceann %1$s míle, %2$s</item>
+        <item quantity="many">I gceann %1$s míle, %2$s</item>
+        <item quantity="other">I gceann %1$s míle, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_ft">
+        <item quantity="one">I gceann %1$s troigh, %2$s</item>
+        <item quantity="two">I gceann %1$s troigh, %2$s</item>
+        <item quantity="few">I gceann %1$s troigh, %2$s</item>
+        <item quantity="many">I gceann %1$s troigh, %2$s</item>
+        <item quantity="other">I gceann %1$s troigh, %2$s</item>
+    </plurals>
+    <plurals name="maps_in_yd">
+        <item quantity="one">I gceann %1$s slat, %2$s</item>
+        <item quantity="two">I gceann %1$s slat, %2$s</item>
+        <item quantity="few">I gceann %1$s slat, %2$s</item>
+        <item quantity="many">I gceann %1$s slat, %2$s</item>
+        <item quantity="other">I gceann %1$s slat, %2$s</item>
+    </plurals>
+    <plurals name="maps_lanes_right">
+        <item quantity="one">ón lána ar dheis</item>
+        <item quantity="two">ó cheann de na %1$d lána ar dheis</item>
+        <item quantity="few">ó cheann de na %1$d lána ar dheis</item>
+        <item quantity="many">ó cheann de na %1$d lána ar dheis</item>
+        <item quantity="other">ó cheann de na %1$d lána ar dheis</item>
+    </plurals>
+    <plurals name="maps_lanes_left">
+        <item quantity="one">ón lána ar chlé</item>
+        <item quantity="two">ó cheann de na %1$d lána ar chlé</item>
+        <item quantity="few">ó cheann de na %1$d lána ar chlé</item>
+        <item quantity="many">ó cheann de na %1$d lána ar chlé</item>
+        <item quantity="other">ó cheann de na %1$d lána ar chlé</item>
+    </plurals>
+    <plurals name="maps_say_parking">
+        <item quantity="one">Tá %1$d spás páirceála do dhaoine faoi mhíchumas gar do do cheann scríbe. Brúigh an cnaipe páirceála chun dul ann.</item>
+        <item quantity="two">Tá %1$d spás páirceála do dhaoine faoi mhíchumas gar do do cheann scríbe. Brúigh an cnaipe páirceála chun dul chuig ceann acu.</item>
+        <item quantity="few">Tá %1$d spás páirceála do dhaoine faoi mhíchumas gar do do cheann scríbe. Brúigh an cnaipe páirceála chun dul chuig ceann acu.</item>
+        <item quantity="many">Tá %1$d spás páirceála do dhaoine faoi mhíchumas gar do do cheann scríbe. Brúigh an cnaipe páirceála chun dul chuig ceann acu.</item>
+        <item quantity="other">Tá %1$d spás páirceála do dhaoine faoi mhíchumas gar do do cheann scríbe. Brúigh an cnaipe páirceála chun dul chuig ceann acu.</item>
+    </plurals>
+    <plurals name="maps_say_route_tolls">
+        <item quantity="one">Tá %1$d dola ar an mbealach</item>
+        <item quantity="two">Tá %1$d dola ar an mbealach</item>
+        <item quantity="few">Tá %1$d dola ar an mbealach</item>
+        <item quantity="many">Tá %1$d dola ar an mbealach</item>
+        <item quantity="other">Tá %1$d dola ar an mbealach</item>
+    </plurals>
+    <string name="maps_in_km_fraction">I gceann %1$s ciliméadar, %2$s</string>
+    <string name="maps_in_mi_fraction">I gceann %1$s míle, %2$s</string>
 </resources>

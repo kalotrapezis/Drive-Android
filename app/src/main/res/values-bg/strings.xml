@@ -1208,10 +1208,9 @@
     <string name="notes_no_versions">Все още няма версии.</string>
     <string name="notes_untitled">Без заглавие</string>
     <string name="notes_export_markdown">Експортирай като Markdown</string>
-    <string name="notes_export_hint">Архивираните бележки и тези в кошчето не се експортират.</string>
-    <string name="notes_exported">Експортирани бележки: %1$d</string>
+    <string name="notes_export_hint">Всички бележки, включително архивираните и тези в кошчето, отиват в нова папка във Файлове.</string>
+    <string name="notes_exported">Експортирани бележки: %1$d, във Файлове › %2$s</string>
     <string name="notes_note_exported">Бележката е експортирана</string>
-    <string name="notes_export_not_here">Изберете папка на това устройство.</string>
     <string name="notes_item_done">Готово</string>
     <string name="notes_item_not_done">Не е готово</string>
     <string name="notes_remove_item">Премахни елемента</string>

@@ -1208,10 +1208,9 @@
     <string name="notes_no_versions">Ancora nessuna versione.</string>
     <string name="notes_untitled">Senza titolo</string>
     <string name="notes_export_markdown">Esporta come Markdown</string>
-    <string name="notes_export_hint">Le note archiviate e quelle nel cestino non vengono esportate.</string>
-    <string name="notes_exported">Note esportate: %1$d</string>
+    <string name="notes_export_hint">Tutte le note, anche quelle archiviate e nel cestino, vanno in una nuova cartella in File.</string>
+    <string name="notes_exported">Note esportate: %1$d, in File › %2$s</string>
     <string name="notes_note_exported">Nota esportata</string>
-    <string name="notes_export_not_here">Scegli una cartella su questo dispositivo.</string>
     <string name="notes_item_done">Fatto</string>
     <string name="notes_item_not_done">Da fare</string>
     <string name="notes_remove_item">Rimuovi elemento</string>

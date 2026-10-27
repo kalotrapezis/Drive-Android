@@ -24,7 +24,8 @@ class NoteExportTest {
     }
 
     @Test fun `a title a file system refuses is made safe, and an untitled note has no heading`() {
-        assertEquals("Plans 2026 week 3", NoteExport.markdown(note("Plans/2026: week 3"), "Untitled").first)
+        assertEquals("Ideas - week 3-4", NoteExport.markdown(note("Ideas: week 3/4"), "Untitled").first)
+        assertEquals("a-b c", NoteExport.markdown(note("a\\b*c"), "Untitled").first)
         assertEquals("hidden", NoteExport.markdown(note(".hidden"), "Untitled").first)
         val (name, text) = NoteExport.markdown(note("", "just text"), "Χωρίς τίτλο")
         assertEquals("Χωρίς τίτλο", name)
@@ -32,7 +33,11 @@ class NoteExportTest {
         assertEquals("# Same\n\nmore\n", NoteExport.markdown(note("Same", "# Same\n\nmore"), "Untitled").second.substringAfter("---\n\n"))
     }
 
-    @Test fun `all notes go in a folder per label, untagged at the top, equal titles numbered, archived and trashed left out`() {
+    @Test fun `an export's folder is named by its local time, in English`() {
+        assertEquals("Tetra-Notes-export-2026-10-27-2105", NoteExport.folder(java.time.LocalDateTime.of(2026, 10, 27, 21, 5)))
+    }
+
+    @Test fun `all notes go in a folder per label, nested by its slashes, untagged at the top, archived and trashed in their own`() {
         val files = NoteExport.files(listOf(
             note("Ideas", "two", labels = listOf("Work", "Home"), created = day + 2),
             note("Ideas", "one", labels = listOf("Work"), created = day + 1),
@@ -40,9 +45,10 @@ class NoteExportTest {
             note("Loose"),
             note("Old", archived = true),
             note("Gone", labels = listOf("Work"), trashed = true),
-            note("Half", labels = listOf("a/b")),
+            note("Bed", labels = listOf("Home/Garden", "/Work//")),
         ), "Untitled")
-        assertEquals(listOf("Loose.md", "a b/Half.md", "Work/Ideas.md", "Work/Ideas (2).md", "Home/Ideas.md", "Work/ideas (3).md"), files.map { it.path })
+        assertEquals(listOf("Loose.md", "Archive/Old.md", "Trash/Work/Gone.md", "Home/Garden/Bed.md", "Work/Bed.md",
+            "Work/Ideas.md", "Work/Ideas (2).md", "Home/Ideas.md", "Work/ideas (3).md"), files.map { it.path })
         assertEquals("one\n", files.first { it.path == "Work/Ideas.md" }.text.substringAfter("# Ideas\n\n"))
         assertEquals(day + 2 + 60_000, files.first { it.path == "Home/Ideas.md" }.at)
     }

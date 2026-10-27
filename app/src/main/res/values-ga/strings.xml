@@ -1307,10 +1307,9 @@
     <string name="notes_no_versions">Níl leaganacha ann fós.</string>
     <string name="notes_untitled">Gan teideal</string>
     <string name="notes_export_markdown">Easpórtáil mar Markdown</string>
-    <string name="notes_export_hint">Ní easpórtáiltear nótaí cartlannaithe ná nótaí sa bhruscar.</string>
-    <string name="notes_exported">Nótaí easpórtáilte: %1$d</string>
+    <string name="notes_export_hint">Téann gach nóta, cartlannaithe agus sa bhruscar san áireamh, i bhfillteán nua i gComhaid.</string>
+    <string name="notes_exported">Nótaí easpórtáilte: %1$d, i gComhaid › %2$s</string>
     <string name="notes_note_exported">Nóta easpórtáilte</string>
-    <string name="notes_export_not_here">Roghnaigh fillteán ar an ngléas seo.</string>
     <string name="notes_item_done">Déanta</string>
     <string name="notes_item_not_done">Gan déanamh</string>
     <string name="notes_remove_item">Bain an mír</string>

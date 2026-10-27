@@ -1208,10 +1208,9 @@
     <string name="notes_no_versions">Ingen versioner endnu.</string>
     <string name="notes_untitled">Uden titel</string>
     <string name="notes_export_markdown">Eksportér som Markdown</string>
-    <string name="notes_export_hint">Arkiverede noter og noter i papirkurven eksporteres ikke.</string>
-    <string name="notes_exported">Noter eksporteret: %1$d</string>
+    <string name="notes_export_hint">Alle noter, også arkiverede og dem i papirkurven, gemmes i en ny mappe i Filer.</string>
+    <string name="notes_exported">Noter eksporteret: %1$d, i Filer › %2$s</string>
     <string name="notes_note_exported">Note eksporteret</string>
-    <string name="notes_export_not_here">Vælg en mappe på denne enhed.</string>
     <string name="notes_item_done">Færdig</string>
     <string name="notes_item_not_done">Ikke færdig</string>
     <string name="notes_remove_item">Fjern punkt</string>

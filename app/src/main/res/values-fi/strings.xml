@@ -1208,10 +1208,9 @@
     <string name="notes_no_versions">Ei vielä versioita.</string>
     <string name="notes_untitled">Nimetön</string>
     <string name="notes_export_markdown">Vie Markdownina</string>
-    <string name="notes_export_hint">Arkistoituja ja roskakorissa olevia muistiinpanoja ei viedä.</string>
-    <string name="notes_exported">Muistiinpanoja viety: %1$d</string>
+    <string name="notes_export_hint">Kaikki muistiinpanot, myös arkistoidut ja roskakorissa olevat, viedään uuteen kansioon Tiedostoissa.</string>
+    <string name="notes_exported">Muistiinpanoja viety: %1$d, Tiedostot › %2$s</string>
     <string name="notes_note_exported">Muistiinpano viety</string>
-    <string name="notes_export_not_here">Valitse kansio tältä laitteelta.</string>
     <string name="notes_item_done">Valmis</string>
     <string name="notes_item_not_done">Ei valmis</string>
     <string name="notes_remove_item">Poista kohde</string>

@@ -1208,10 +1208,9 @@
     <string name="notes_no_versions">Noch keine Versionen.</string>
     <string name="notes_untitled">Ohne Titel</string>
     <string name="notes_export_markdown">Als Markdown exportieren</string>
-    <string name="notes_export_hint">Archivierte Notizen und Notizen im Papierkorb werden nicht exportiert.</string>
-    <string name="notes_exported">Notizen exportiert: %1$d</string>
+    <string name="notes_export_hint">Alle Notizen, auch archivierte und die im Papierkorb, kommen in einen neuen Ordner in Dateien.</string>
+    <string name="notes_exported">Notizen exportiert: %1$d, in Dateien › %2$s</string>
     <string name="notes_note_exported">Notiz exportiert</string>
-    <string name="notes_export_not_here">Wähle einen Ordner auf diesem Gerät.</string>
     <string name="notes_item_done">Erledigt</string>
     <string name="notes_item_not_done">Nicht erledigt</string>
     <string name="notes_remove_item">Eintrag entfernen</string>

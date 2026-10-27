@@ -1208,10 +1208,9 @@
     <string name="notes_no_versions">Versioone veel pole.</string>
     <string name="notes_untitled">Pealkirjata</string>
     <string name="notes_export_markdown">Ekspordi Markdownina</string>
-    <string name="notes_export_hint">Arhiveeritud ja prügikastis olevaid märkmeid ei ekspordita.</string>
-    <string name="notes_exported">Eksporditud märkmeid: %1$d</string>
+    <string name="notes_export_hint">Kõik märkmed, ka arhiveeritud ja prügikastis olevad, lähevad uude kausta Failides.</string>
+    <string name="notes_exported">Eksporditud märkmeid: %1$d, Failid › %2$s</string>
     <string name="notes_note_exported">Märge eksporditud</string>
-    <string name="notes_export_not_here">Valige kaust selles seadmes.</string>
     <string name="notes_item_done">Tehtud</string>
     <string name="notes_item_not_done">Tegemata</string>
     <string name="notes_remove_item">Eemalda üksus</string>

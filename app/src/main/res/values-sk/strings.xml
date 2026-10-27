@@ -1274,10 +1274,9 @@
     <string name="notes_no_versions">Zatiaľ žiadne verzie.</string>
     <string name="notes_untitled">Bez názvu</string>
     <string name="notes_export_markdown">Exportovať ako Markdown</string>
-    <string name="notes_export_hint">Archivované poznámky a poznámky v koši sa neexportujú.</string>
-    <string name="notes_exported">Exportované poznámky: %1$d</string>
+    <string name="notes_export_hint">Všetky poznámky, aj archivované a v koši, sa uložia do nového priečinka v Súboroch.</string>
+    <string name="notes_exported">Exportované poznámky: %1$d, v Súboroch › %2$s</string>
     <string name="notes_note_exported">Poznámka exportovaná</string>
-    <string name="notes_export_not_here">Vyberte priečinok v tomto zariadení.</string>
     <string name="notes_item_done">Hotovo</string>
     <string name="notes_item_not_done">Nehotovo</string>
     <string name="notes_remove_item">Odobrať položku</string>

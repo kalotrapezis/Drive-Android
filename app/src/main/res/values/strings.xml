@@ -1209,10 +1209,9 @@
     <string name="notes_no_versions">No versions yet.</string>
     <string name="notes_untitled">Untitled</string>
     <string name="notes_export_markdown">Export as Markdown</string>
-    <string name="notes_export_hint">Archived and trashed notes are not exported.</string>
-    <string name="notes_exported">Notes exported: %1$d</string>
+    <string name="notes_export_hint">Every note, archived and trashed too, goes into a new folder in Files.</string>
+    <string name="notes_exported">Notes exported: %1$d, in Files › %2$s</string>
     <string name="notes_note_exported">Note exported</string>
-    <string name="notes_export_not_here">Choose a folder on this device.</string>
     <string name="notes_item_done">Done</string>
     <string name="notes_item_not_done">Not done</string>
     <string name="notes_remove_item">Remove item</string>

@@ -1208,10 +1208,9 @@
     <string name="notes_no_versions">Még nincs verzió.</string>
     <string name="notes_untitled">Névtelen</string>
     <string name="notes_export_markdown">Exportálás Markdownként</string>
-    <string name="notes_export_hint">Az archivált és a kukában lévő jegyzetek kimaradnak.</string>
-    <string name="notes_exported">Exportált jegyzetek: %1$d</string>
+    <string name="notes_export_hint">Minden jegyzet, az archiváltak és a kukában lévők is, egy új mappába kerül a Fájlokban.</string>
+    <string name="notes_exported">Exportált jegyzetek: %1$d, Fájlok › %2$s</string>
     <string name="notes_note_exported">Jegyzet exportálva</string>
-    <string name="notes_export_not_here">Válassz mappát ezen az eszközön.</string>
     <string name="notes_item_done">Kész</string>
     <string name="notes_item_not_done">Nincs kész</string>
     <string name="notes_remove_item">Elem eltávolítása</string>

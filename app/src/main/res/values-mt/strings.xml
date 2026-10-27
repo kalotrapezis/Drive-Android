@@ -1274,10 +1274,9 @@
     <string name="notes_no_versions">Għadu m’hemm l-ebda verżjoni.</string>
     <string name="notes_untitled">Bla titlu</string>
     <string name="notes_export_markdown">Esporta bħala Markdown</string>
-    <string name="notes_export_hint">In-noti fl-arkivju u fl-iskart ma jiġux esportati.</string>
-    <string name="notes_exported">Noti esportati: %1$d</string>
+    <string name="notes_export_hint">In-noti kollha, anke dawk fl-arkivju u fl-iskart, imorru f’kartella ġdida f’Fajls.</string>
+    <string name="notes_exported">Noti esportati: %1$d, f’Fajls › %2$s</string>
     <string name="notes_note_exported">Nota esportata</string>
-    <string name="notes_export_not_here">Agħżel kartella f’dan l-apparat.</string>
     <string name="notes_item_done">Lest</string>
     <string name="notes_item_not_done">Mhux lest</string>
     <string name="notes_remove_item">Neħħi l-oġġett</string>

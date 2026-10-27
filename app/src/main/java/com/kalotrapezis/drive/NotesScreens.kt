@@ -120,17 +120,6 @@ private val accents = Regex("\\p{M}")
 private fun fold(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(accents, "").lowercase()
 private fun searchText(n: Note) = fold(listOf(n.title, n.content, n.labels.joinToString(" "), n.items.joinToString(" ") { it.text }).joinToString(" "))
 
-/**
- * The folder the system's picker gave, as a path: Tetra has access to all files, so it writes there itself and each
- * file keeps its note's time, which the picker's own way of writing cannot set.
- * shortcut: a cloud app's folder is refused rather than written through the picker; add DocumentsContract writes if one is wanted.
- */
-private fun treeFolder(uri: android.net.Uri): File? {
-    if (uri.authority != "com.android.externalstorage.documents") return null
-    val (volume, path) = android.provider.DocumentsContract.getTreeDocumentId(uri).split(':', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
-    return File(if (volume == "primary") Environment.getExternalStorageDirectory() else File("/storage", volume), path)
-}
-
 /** `start`: true opens a new checklist, false a new note, null the list (the home card's three doors). */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -177,17 +166,16 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
         open = withContext(Dispatchers.IO) { store.create(checklist, listOfNotNull(label)) }
     }
     LaunchedEffect(start) { if (hasAccess && start != null) create(start) }
-    // Export as Markdown (the user, 27 Oct): every note but the archived and the trashed, into a folder the person picks
-    val exportAll = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val dir = uri?.let(::treeFolder)
-        if (uri != null && dir == null) message = context.getString(R.string.notes_export_not_here)
-        else if (dir != null) scope.launch {
-            message = withContext(Dispatchers.IO) { runCatching {
-                val kept = store.whole(store.list().filter { it.trashedAt == null && it.archivedAt == null }.map { it.id })
-                NoteExport.files(kept, context.getString(R.string.notes_untitled)).forEach { f -> File(dir, f.path).apply { parentFile?.mkdirs(); writeText(f.text); setLastModified(f.at) } }
-                context.getString(R.string.notes_exported, kept.size)
-            }.getOrElse { context.getString(R.string.settings_not_exported, it.message ?: it.javaClass.simpleName) } }
-        }
+    // Export as Markdown (the user, 27 Oct): every note, into a new folder at the top of Files, so nothing is written over
+    fun exportAll() = scope.launch {
+        message = withContext(Dispatchers.IO) { runCatching {
+            val all = store.whole(store.list().map { it.id })
+            val name = NoteExport.folder(java.time.LocalDateTime.now())
+            val tetra = TetraFolder.root(Environment.getExternalStorageDirectory())
+            val dir = generateSequence(1) { it + 1 }.map { File(tetra, if (it == 1) name else "$name ($it)") }.first { !it.exists() } // two in one minute
+            NoteExport.files(all, context.getString(R.string.notes_untitled)).forEach { f -> File(dir, f.path).apply { parentFile?.mkdirs(); writeText(f.text); setLastModified(f.at) } }
+            context.getString(R.string.notes_exported, all.size, dir.name)
+        }.getOrElse { context.getString(R.string.settings_not_exported, it.message ?: it.javaClass.simpleName) } }
     }
     LaunchedEffect(message) { if (message != null) { delay(3000); message = null } }
 
@@ -338,7 +326,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                DriveWideAction(R.drawable.ic_file_text, stringResource(R.string.notes_export_markdown)) { drawer = false; exportAll.launch(null) }
+                DriveWideAction(R.drawable.ic_file_text, stringResource(R.string.notes_export_markdown)) { drawer = false; exportAll() }
                 Text(stringResource(R.string.notes_export_hint), style = MaterialTheme.typography.bodySmall, color = islandContentColor().copy(alpha = 0.7f), modifier = Modifier.padding(horizontal = 22.dp))
             }
         }

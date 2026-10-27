@@ -1241,10 +1241,9 @@
     <string name="notes_no_versions">Versiju vēl nav.</string>
     <string name="notes_untitled">Bez nosaukuma</string>
     <string name="notes_export_markdown">Eksportēt kā Markdown</string>
-    <string name="notes_export_hint">Arhivētās un miskastē esošās piezīmes netiek eksportētas.</string>
-    <string name="notes_exported">Eksportētās piezīmes: %1$d</string>
+    <string name="notes_export_hint">Visas piezīmes, arī arhivētās un miskastē esošās, nonāk jaunā mapē sadaļā Faili.</string>
+    <string name="notes_exported">Eksportētās piezīmes: %1$d, Faili › %2$s</string>
     <string name="notes_note_exported">Piezīme eksportēta</string>
-    <string name="notes_export_not_here">Izvēlieties mapi šajā ierīcē.</string>
     <string name="notes_item_done">Paveikts</string>
     <string name="notes_item_not_done">Nav paveikts</string>
     <string name="notes_remove_item">Noņemt vienumu</string>

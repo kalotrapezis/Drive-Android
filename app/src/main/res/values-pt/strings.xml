@@ -4749,4 +4749,9 @@
     </plurals>
     <string name="maps_in_km_fraction">Dentro de %1$s quilómetros, %2$s</string>
     <string name="maps_in_mi_fraction">Dentro de %1$s milhas, %2$s</string>
+    <string name="maps_old">Mais de 3 meses</string>
+    <string name="maps_old_remake">Volte a criá-lo no computador: Tetra › Definições › Mapas.</string>
+    <string name="maps_old_channel">Mapas antigos</string>
+    <string name="maps_old_title">O mapa de %1$s tem mais de 3 meses</string>
+    <string name="maps_old_body">As estradas e os lugares mudam. O computador volta a criá-lo com dados novos do OpenStreetMap: Tetra › Definições › Mapas.</string>
 </resources>

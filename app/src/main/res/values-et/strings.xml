@@ -4648,4 +4648,9 @@
     </plurals>
     <string name="maps_in_km_fraction">%1$s kilomeetri pärast, %2$s</string>
     <string name="maps_in_mi_fraction">%1$s miili pärast, %2$s</string>
+    <string name="maps_old">Üle 3 kuu vana</string>
+    <string name="maps_old_remake">Tee see arvutis uuesti: Tetra › Seaded › Kaardid.</string>
+    <string name="maps_old_channel">Vanad kaardid</string>
+    <string name="maps_old_title">Kaart %1$s on üle 3 kuu vana</string>
+    <string name="maps_old_body">Teed ja kohad muutuvad. Arvuti teeb selle värsketest OpenStreetMapi andmetest uuesti: Tetra › Seaded › Kaardid.</string>
 </resources>

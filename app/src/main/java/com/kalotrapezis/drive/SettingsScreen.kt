@@ -88,9 +88,12 @@ internal fun SettingsTab(
     setFolderIncluded: (String, Boolean) -> Unit,
     openPart: (String) -> Unit,
     openGuide: () -> Unit,
+    start: SettingsPage? = null,
+    started: () -> Unit = {},
 ) {
     val wide = LocalConfiguration.current.screenWidthDp >= 700
     var open by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
+    LaunchedEffect(start) { start?.let { open = it; started() } } // a notification's page (MapsAge: Maps)
     var query by remember { mutableStateOf("") }
     val shown = open ?: if (wide) SettingsPage.Sync else null
     BackHandler { when { !wide && open != null -> open = null; query.isNotEmpty() -> query = ""; else -> back() } }
@@ -552,13 +555,15 @@ internal fun SettingsTab(
     // the maps here, one a country (desktop Tetra's map builder makes them; sync brings them), each removable
     val mapsRoot = remember { MapsFiles.root(driveRoot()) }
     var mapsVersion by remember { mutableIntStateOf(0) }
-    val files by produceState<List<Triple<String, String, String>>?>(null, mapsVersion) { value = withContext(Dispatchers.IO) { MapsFiles.installed(mapsContext, mapsRoot) } }
+    val files by produceState<List<MapsFiles.Installed>?>(null, mapsVersion) { value = withContext(Dispatchers.IO) { MapsFiles.installed(mapsContext, mapsRoot) } }
     var removing by remember { mutableStateOf<Pair<String, String>?>(null) }
     val removeScope = rememberCoroutineScope()
     SettingsSection(stringResource(R.string.settings_installed_maps), stringResource(R.string.settings_installed_maps_note)) {
         if (files?.isEmpty() == true) SettingRow(stringResource(R.string.maps_no_map))
-        files?.forEach { (id, name, about) -> SettingRow(name, about) {
-            TextButton(onClick = { removing = id to name }) { Text(stringResource(R.string.settings_remove_map), maxLines = 1) }
+        // an old map says so beside its button: the computer remakes it (Settings › Maps there)
+        files?.forEach { m -> SettingRow(m.name, if (m.old) m.about + "\n" + stringResource(R.string.maps_old_remake) else m.about) {
+            if (m.old) Text(stringResource(R.string.maps_old), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            TextButton(onClick = { removing = m.id to m.name }) { Text(stringResource(R.string.settings_remove_map), maxLines = 1) }
         } }
     }
     removing?.let { (id, name) -> AlertDialog(onDismissRequest = { removing = null }, title = { Text(stringResource(R.string.settings_remove_map_title, name)) },

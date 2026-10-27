@@ -40,24 +40,49 @@ class PhoneLogTest {
     }
 
     @Test fun `unknown Greek numbers say what they are`() {
-        assertEquals(R.string.contacts_label_mobile, PhoneArea.of("+30 697 000 0002"))
-        assertEquals(R.string.phone_area_landline, PhoneArea.of("2310 123456"))
-        assertEquals(R.string.phone_area_landline, PhoneArea.of("0030 210 1234567"))
-        assertEquals(R.string.phone_area_abroad, PhoneArea.of("+44 20 7946 0000"))
-        assertEquals(null, PhoneArea.of("112"))
+        assertEquals(R.string.contacts_label_mobile, PhoneArea.of("+30 697 000 0002", "GR"))
+        assertEquals(R.string.phone_area_landline, PhoneArea.of("2310 123456", "GR"))
+        assertEquals(R.string.phone_area_landline, PhoneArea.of("0030 210 1234567", "GR"))
+        assertEquals(R.string.phone_area_abroad, PhoneArea.of("+44 20 7946 0000", "GR"))
+        assertEquals(null, PhoneArea.of("112", "GR"))
+    }
+
+    @Test fun `a number without + or 00 is the phone's own country's`() {
+        // Germany and North Macedonia: a trunk 0 before the area code
+        assertEquals(R.string.contacts_label_mobile, PhoneArea.of("0171 1234567", "DE"))
+        assertEquals(R.string.phone_area_landline, PhoneArea.of("030 12345678", "DE"))
+        assertEquals(R.string.phone_area_landline, PhoneArea.of("02 3123456", "MK"))
+        assertEquals(R.string.contacts_label_mobile, PhoneArea.of("070 123456", "MK"))
+        // Italy keeps its 0: it is part of the number, +39 06…
+        assertEquals(R.string.phone_area_landline, PhoneArea.of("06 1234 5678", "IT"))
+        assertEquals("+390612345678", PhoneCountry.international("06 1234 5678", "IT"))
+        assertEquals("+4930123456", PhoneCountry.international("030 123456", "DE"))
+        // abroad is another country than the phone's: a Greek number is abroad in Germany, a German one at home there
+        assertEquals(R.string.phone_area_abroad, PhoneArea.of("+30 697 000 0002", "DE"))
+        assertEquals(R.string.phone_area_abroad, PhoneArea.of("0030 697 000 0002", "DE"))
+        assertEquals(R.string.contacts_label_mobile, PhoneArea.of("+49 171 1234567", "DE"))
+        // the US's 011 for abroad; its numbers may be mobile or landline alike: only a place is said
+        assertEquals(R.string.phone_area_abroad, PhoneArea.of("011 30 697 000 0002", "US"))
+        assertEquals(0, PhoneArea.of("650 253 0000", "US"))
     }
 
     @Test fun `the maps' phone tables name the place, the longest prefix winning`() {
         val gr = PhoneArea.read("#prefix\ten\tel\n3021\tAthens\tΑθήνα\n30231\tThessaloniki\tΘεσσαλονίκη\n302313\tNorth Thessaloniki\t\n")
         val be = PhoneArea.read("#prefix\ten\tfr\tnl\n3210\tWavre\tWavre\tWaver\n")
         val all = listOf(gr, be)
-        assertEquals("Θεσσαλονίκη", PhoneArea.place("2310 123456", "el", all))
-        assertEquals("Θεσσαλονίκη", PhoneArea.place("+30 2310 123456", "el", all))
-        assertEquals("North Thessaloniki", PhoneArea.place("0030 2313 012345", "el", all)) // longer, no Greek name: English
-        assertEquals("Athens", PhoneArea.place("210 1234567", "de", all)) // a language the table lacks: English
-        assertEquals("Waver", PhoneArea.place("+32 10 123456", "nl", all))
-        assertEquals(null, PhoneArea.place("+44 20 7946 0000", "el", all))
-        assertEquals(null, PhoneArea.place("2810 123456", "el", emptyList()))
+        assertEquals("Θεσσαλονίκη", PhoneArea.place("2310 123456", "GR", "el", all))
+        assertEquals("Θεσσαλονίκη", PhoneArea.place("+30 2310 123456", "GR", "el", all))
+        assertEquals("North Thessaloniki", PhoneArea.place("0030 2313 012345", "GR", "el", all)) // longer, no Greek name: English
+        assertEquals("Athens", PhoneArea.place("210 1234567", "GR", "de", all)) // a language the table lacks: English
+        assertEquals("Waver", PhoneArea.place("+32 10 123456", "GR", "nl", all))
+        assertEquals(null, PhoneArea.place("+44 20 7946 0000", "GR", "el", all))
+        assertEquals(null, PhoneArea.place("2810 123456", "GR", "el", emptyList()))
+        val mk = PhoneArea.read("#prefix\ten\n3892\tSkopje\n")
+        val it = PhoneArea.read("#prefix\ten\tit\n3906\tRome\tRoma\n")
+        assertEquals("Skopje", PhoneArea.place("02 3123456", "MK", "en", listOf(mk)))
+        assertEquals("Roma", PhoneArea.place("06 1234 5678", "IT", "it", listOf(it)))
+        assertEquals("Rome", PhoneArea.place("0039 06 1234 5678", "GR", "en", listOf(gr, it)))
+        assertEquals("Athens", PhoneArea.place("+30 210 1234567", "IT", "en", listOf(gr, it)))
     }
 
     @Test fun `a phone table is read only beside its map`() {

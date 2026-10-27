@@ -147,7 +147,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
     LaunchedEffect(blockedAsk.value) {
         val n = blockedAsk.value ?: return@LaunchedEffect
         blockedAsk.value = null
-        PhoneSpam.matches(PhoneSpam.read(), n)?.let { page = PhonePage.Blocking; blockedPage = it }
+        PhoneSpam.matches(PhoneSpam.read(), n, PhoneCountry.of(context))?.let { page = PhonePage.Blocking; blockedPage = it }
     }
     val askCall = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     fun call(n: String) {
@@ -169,7 +169,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
             val open = page
             val blocked = blockedPage
             if (blocked != null) PhonePageScreen((if (blocked.number.endsWith("*")) null else who(blocked.number)?.name) ?: blocked.number, back = { blockedPage = null }) {
-                BlockedCard(blocked, calls.filter { PhoneSpam.matches(listOf(blocked), it.number) != null }, if (blocked.number.endsWith("*")) null else who(blocked.number)) { blockedPage = null; version++ }
+                BlockedCard(blocked, calls.filter { PhoneSpam.matches(listOf(blocked), it.number, PhoneCountry.of(context)) != null }, if (blocked.number.endsWith("*")) null else who(blocked.number)) { blockedPage = null; version++ }
             } else if (open != null) PhonePageScreen(stringResource(open.title), back = { page = null }, if (open == PhonePage.Blocking) blockingScroll else rememberScrollState()) {
                 when (open) {
                     PhonePage.Blocking -> CallBlocking(version, ::who, open = { blockedPage = it }) { version++ }
@@ -178,7 +178,7 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
             } else {
                 if (keypadShown) Keypad(number, contacts, call = ::call)
                 else when (tab) {
-                    PhoneTab.Recents -> Recents(calls, ::who, { PhoneSpam.matches(spam, it) != null }, dialer, missed.value, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
+                    PhoneTab.Recents -> Recents(calls, ::who, { PhoneSpam.matches(spam, it, PhoneCountry.of(context)) != null }, dialer, missed.value, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
                         askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
                     }
                     PhoneTab.Favourites -> Favourites(contacts.filter { it.favourite && (query.isBlank() || it.name.contains(query, true)) }.sortedBy { ContactsFiles.sortKey(it, false) }, top, call = ::call)
@@ -688,7 +688,7 @@ private fun SpeedDialSettings(contacts: List<ContactInfo>) {
 private fun NumberActions(number: String, changed: () -> Unit) {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
-    val spam = remember(version) { PhoneSpam.matches(PhoneSpam.read(), number) }
+    val spam = remember(version) { PhoneSpam.matches(PhoneSpam.read(), number, PhoneCountry.of(context)) }
     val tablet = remember { PhoneRelay.noCalls(context) }
     val known = remember { PhoneRingtone.known(context, number) }
     val tone = remember(version) { if (known) PhoneRingtone.get(context, number) else null }
@@ -710,7 +710,7 @@ private fun NumberActions(number: String, changed: () -> Unit) {
             Icon(painterResource(R.drawable.ic_block), contentDescription = null, tint = if (spam != null) islandContentColor() else CALL_RED, modifier = Modifier.size(18.dp))
             Text("  " + if (spam != null) stringResource(R.string.phone_not_spam) else stringResource(R.string.phone_spam), color = if (spam != null) islandContentColor() else CALL_RED, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        PhoneSpam.lookUp(number)?.let { url ->
+        PhoneSpam.lookUp(number, PhoneCountry.of(context))?.let { url ->
             TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) {
                 Text("CallInsider", color = islandContentColor())
             }

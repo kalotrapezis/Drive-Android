@@ -4749,4 +4749,9 @@
     </plurals>
     <string name="maps_in_km_fraction">Pēc %1$s kilometriem, %2$s</string>
     <string name="maps_in_mi_fraction">Pēc %1$s jūdzēm, %2$s</string>
+    <string name="maps_old">Vecāka par 3 mēnešiem</string>
+    <string name="maps_old_remake">Izveidojiet to no jauna datorā: Tetra › Iestatījumi › Kartes.</string>
+    <string name="maps_old_channel">Vecas kartes</string>
+    <string name="maps_old_title">%1$s karte ir vecāka par 3 mēnešiem</string>
+    <string name="maps_old_body">Ceļi un vietas mainās. Dators to izveido no jauna no svaigiem OpenStreetMap datiem: Tetra › Iestatījumi › Kartes.</string>
 </resources>

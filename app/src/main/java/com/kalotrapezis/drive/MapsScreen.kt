@@ -514,7 +514,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         fast = if (loc.hasSpeed() && loc.speed > 11f) fast + 1 else 0
         if (fast == 3 && nav?.mode != "foot" && nav?.mode != "bike") unpark("driving")
         mapRef?.locationComponent?.takeIf { it.isLocationComponentActivated }?.forceLocationUpdate(loc)
-        road = roadAt(mapRef, loc)
+        road = roadAt(mapRef, loc, labelLang(context))
         speed = if (loc.hasSpeed()) Math.round(loc.speed * 3.6f) else null
         // the limit at most every two seconds, off the main thread (the graph is opened the first time)
         if (System.currentTimeMillis() - limitAsked > 2000) {
@@ -730,7 +730,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
                             detail = p; selected = p.place(context)
                         }
                         else -> {
-                            val r = roadAtPoint(map, pt)
+                            val r = roadAtPoint(map, pt, labelLang(context))
                             tapRoad = r?.first?.ifEmpty { null }
                             detail = null
                             selected = Place("", r?.first?.ifEmpty { null } ?: droppedPin, at.latitude, at.longitude)
@@ -897,14 +897,14 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         if (n != null && narrow) {
             // a narrow screen: one pill, the road above and the next turn below (the user, 21 Oct)
             // one card: the road I am on at its top (the user, 22 Oct: the pill and the card "seam from a diferent planet")
-            NavBanner(n, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(), roadName, roadCode)
+            NavBanner(n, root, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(12.dp).fillMaxWidth(), roadName, roadCode)
         } else {
             Row(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (n == null) Island(R.drawable.ic_chevron_left, stringResource(R.string.common_back), back)
                 RoadPill()
             }
             // top right: the next turn in a small window (the user: "A small window will open at the top right to tell me what lane to take")
-            if (n != null) NavBanner(n, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
+            if (n != null) NavBanner(n, root, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
         }
         // bottom right, above the island: P and where I am (the user, 21 Oct: at the top they covered the map's compass);
         // away while a panel or a place's page is open
@@ -1166,7 +1166,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
  * keeps the style's own names ("protomaps", "roads_…"), which [roadAtPoint] looks for.
  */
 internal fun mapStyle(context: Context, root: File): String {
-    val text = context.assets.open("maps/${MapsPrefs.mapTheme(context)}.json").bufferedReader().use { it.readText() }
+    val text = labelsIn(context.assets.open("maps/${MapsPrefs.mapTheme(context)}.json").bufferedReader().use { it.readText() }, labelLang(context))
     val ids = MapsFiles.ids(root).ifEmpty { listOf(MapsFiles.MAP.removeSuffix(".pmtiles")) }
     val url = { id: String -> "pmtiles://file://${File(root, "$id.pmtiles").absolutePath}" }
     if (ids.size == 1) return text.replace("pmtiles://MAP_FILE", url(ids[0]))
@@ -1183,6 +1183,19 @@ internal fun mapStyle(context: Context, root: File): String {
             out.put(org.json.JSONObject(l.toString()).put("id", "${l.getString("id")}__$id").put("source", "protomaps__$id"))
     }
     return style.put("layers", out).toString()
+}
+
+/** The language the map's names are in: Tetra's own (Settings › Appearance › Language). */
+internal fun labelLang(context: Context) = AppLocale.get(context).ifEmpty { AppLocale.systemTag() }.substringBefore('-')
+
+/**
+ * Protomaps' style, made for Greek (name:el, a name in another script shown under it), for [lang]: its name:<lang> and
+ * its script, as Protomaps' own style for that language is; a place without a name in it keeps its local name.
+ */
+internal fun labelsIn(style: String, lang: String): String {
+    if (lang == "el") return style
+    val script = when (lang) { "bg", "ru", "uk", "sr", "mk" -> "Cyrillic"; else -> "Latin" }
+    return style.replace("\"name:el\"", "\"name:$lang\"").replace("\"Greek\"", "\"$script\"")
 }
 
 /** The route being driven, a line with a dark edge, from the source "route". */
@@ -1206,18 +1219,18 @@ internal fun activateArrow(context: Context, map: MapLibreMap, style: Style, sca
 /** The next turn's arrow, turned from straight ahead by a GraphHopper sign. */
 internal fun turnDegrees(sign: Int) = when (sign) { 1 -> 45f; 2 -> 90f; 3 -> 135f; 7 -> 20f; -1 -> -45f; -2 -> -90f; -3 -> -135f; -7 -> -20f; 8, -8, -98 -> 180f; else -> 0f }
 
-internal fun roadAtPoint(map: MapLibreMap, pt: android.graphics.PointF): Pair<String, String>? {
+internal fun roadAtPoint(map: MapLibreMap, pt: android.graphics.PointF, lang: String): Pair<String, String>? {
     val ids = map.style?.layers.orEmpty().map { it.id }.filter { it.startsWith("roads_") && listOf("casing", "labels", "shields", "oneway", "rail", "runway", "taxiway", "pier").none { x -> x in it } }
     if (ids.isEmpty()) return null
     val f = map.queryRenderedFeatures(android.graphics.RectF(pt.x - 12, pt.y - 12, pt.x + 12, pt.y + 12), *ids.toTypedArray())
         .firstOrNull { it.hasProperty("name") || it.hasProperty("ref") } ?: return null
-    val name = (f.getStringProperty("name:el")?.takeIf { it.isNotEmpty() } ?: f.getStringProperty("name")).orEmpty()
+    val name = (f.getStringProperty("name:$lang")?.takeIf { it.isNotEmpty() } ?: f.getStringProperty("name")).orEmpty()
     val ref = (if (f.hasProperty("ref")) f.getStringProperty("ref") else if (f.hasProperty("shield_text")) f.getStringProperty("shield_text") else null).orEmpty()
     return (name to ref.substringBefore(';')).takeIf { it.first.isNotEmpty() || it.second.isNotEmpty() }
 }
 
-private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
-    map?.let { m -> runCatching { roadAtPoint(m, m.projection.toScreenLocation(LatLng(loc.latitude, loc.longitude))) }.getOrNull() }
+private fun roadAt(map: MapLibreMap?, loc: Location, lang: String): Pair<String, String>? =
+    map?.let { m -> runCatching { roadAtPoint(m, m.projection.toScreenLocation(LatLng(loc.latitude, loc.longitude)), lang) }.getOrNull() }
 
 /** A road's code as on its signs: motorways green, the rest blue. */
 @Composable private fun RoadCode(code: String) = Surface(shape = MaterialTheme.shapes.small,
@@ -1267,7 +1280,7 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
  * The next turn, in the car's card style (MapsCar's turn card): the arrow and the distance big, the street, the instruction
  * smaller; [road] and [code], the road I am on, as a small line at its top.
  */
-@Composable private fun NavBanner(n: Nav, modifier: Modifier, road: String? = null, code: String? = null) {
+@Composable private fun NavBanner(n: Nav, root: File, modifier: Modifier, road: String? = null, code: String? = null) {
     val step = n.route.steps.getOrNull(n.p?.next ?: 0) ?: return
     val white = androidx.compose.ui.graphics.Color.White
     Surface(color = androidx.compose.ui.graphics.Color(0xF0303134), contentColor = white, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.widthIn(max = 560.dp)) {
@@ -1294,7 +1307,7 @@ private fun roadAt(map: MapLibreMap?, loc: Location): Pair<String, String>? =
             // a busy crossing near: its picture, the way on in blue (the user, 23 Oct)
             val j = step.junction?.takeIf { showJunction(it, n.p?.toNext ?: Double.MAX_VALUE) }
             if (j != null) {
-                val picture = remember(j) { junctionPicture(j, 480).asImageBitmap() }
+                val picture = remember(j) { junctionPicture(j, 480, MapsFiles.driveLeftAt(root, n.route, step.at)).asImageBitmap() }
                 androidx.compose.foundation.Image(picture, contentDescription = null, modifier = Modifier.padding(top = 4.dp).size(120.dp).align(Alignment.CenterHorizontally))
             }
         }

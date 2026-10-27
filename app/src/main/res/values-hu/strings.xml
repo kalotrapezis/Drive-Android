@@ -4648,4 +4648,9 @@
     </plurals>
     <string name="maps_in_km_fraction">%1$s kilométer múlva, %2$s</string>
     <string name="maps_in_mi_fraction">%1$s mérföld múlva, %2$s</string>
+    <string name="maps_old">3 hónapnál régebbi</string>
+    <string name="maps_old_remake">Készítse el újra a számítógépen: Tetra › Beállítások › Térképek.</string>
+    <string name="maps_old_channel">Régi térképek</string>
+    <string name="maps_old_title">%1$s térképe 3 hónapnál régebbi</string>
+    <string name="maps_old_body">Az utak és a helyek változnak. A számítógép friss OpenStreetMap-adatokból újra elkészíti: Tetra › Beállítások › Térképek.</string>
 </resources>

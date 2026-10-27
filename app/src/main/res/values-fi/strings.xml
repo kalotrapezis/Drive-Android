@@ -4648,4 +4648,9 @@
     </plurals>
     <string name="maps_in_km_fraction">%1$s kilometrin päästä, %2$s</string>
     <string name="maps_in_mi_fraction">%1$s mailin päästä, %2$s</string>
+    <string name="maps_old">Yli 3 kuukautta vanha</string>
+    <string name="maps_old_remake">Tee se uudelleen tietokoneella: Tetra › Asetukset › Kartat.</string>
+    <string name="maps_old_channel">Vanhat kartat</string>
+    <string name="maps_old_title">Kartta %1$s on yli 3 kuukautta vanha</string>
+    <string name="maps_old_body">Tiet ja paikat muuttuvat. Tietokone tekee sen uudelleen tuoreista OpenStreetMap-tiedoista: Tetra › Asetukset › Kartat.</string>
 </resources>

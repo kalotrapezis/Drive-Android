@@ -4648,4 +4648,9 @@
     </plurals>
     <string name="maps_in_km_fraction">Om %1$s kilometer, %2$s</string>
     <string name="maps_in_mi_fraction">Om %1$s engelsk mil, %2$s</string>
+    <string name="maps_old">Over 3 måneder gammelt</string>
+    <string name="maps_old_remake">Lav det igen på computeren: Tetra › Indstillinger › Kort.</string>
+    <string name="maps_old_channel">Gamle kort</string>
+    <string name="maps_old_title">Kortet over %1$s er over 3 måneder gammelt</string>
+    <string name="maps_old_body">Veje og steder ændrer sig. Computeren laver det igen ud fra friske OpenStreetMap-data: Tetra › Indstillinger › Kort.</string>
 </resources>

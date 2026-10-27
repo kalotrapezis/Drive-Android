@@ -40,6 +40,18 @@ How to write here:
       gets English for et/ga/lv/mt and GraphHopper's gaps (its server can't take Tetra's files) and still shows km. Then (the user
       approved): a half (1.5 km) takes its CLDR category by android.icu — a whole number of that category, or maps_in_km/mi_fraction
       where none has it (cs, sk, lt "many", pl "other"); ro, sl, fr, da were off too. Checked in all 24 against ICU (icu4j, tests only).
+- [x] (map-age session, 27 Oct; branches `claude/nifty-cohen-161677` here and `map-age` in Drive, not merged) **Old maps say so; the
+      map follows the country** (the user: "a notification right next to these buttons … a system notification, and a button to call
+      for an update or a remake, because we make the maps, we don't simply update them"). A map is old 3 months after its <id>.json
+      "built" (Greece's older pack: its .pmtiles date) — MapsFiles.isOld / mapbuild.js isOld. Desktop Settings › Maps: "Over 3 months
+      old" beside the buttons, Update is now **Remake** (mapsBuild, fresh downloads); a notification once per map per time it is due
+      (setting mapsOldSaid, 30 s after start and every 6 h), its click opens Settings › Maps. Phone/tablet Settings › Maps: the same
+      note and "Remake it on the computer"; an Android notification once (MapsAge, at start and with the Calendar's quarter-hourly
+      look), a tap opens Settings › Maps. Roundabout picture clockwise on a left-driving map (ringSweep, MapsFiles.driveLeftAt at the
+      junction). Map names in Tetra's language (labelsIn: name:<lang> and its script in Protomaps' style, Greek unchanged; the road
+      under a tap too), phone and desktop. 24 languages. 674 Android unit / 165 desktop tests pass; desktop screenshots (Greek and
+      German, a hidden copy on a scratch profile). **Open:** not seen on the phone/tablet; the desktop notification's click not tried;
+      a point inside two maps' bounds takes the first map's side; Android Auto's unused maneuver() still says CCW.
 - [~] (call-speaker session, 27 Oct; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
       phone-speaker button** (the user: "the call pop up on the PC from the phone to have a speaker option so instead of hearing the call from
       bluetooth to my PC to hear it from the phone's speaker"). Bubble: a speaker icon (while Tetra is the phone app, as Mute/Hold) sends
@@ -49,6 +61,16 @@ How to write here:
       read 8 characters ("unspeaker" is 9). Both branches have main merged in; 670 Android unit / 162 desktop tests pass. **Not tried on
       the real phone + PC yet** (the phone was not on USB); not merged into main. Not done: the tablet's relayed call notification has
       no Speaker action.
+- [x] (phone-country session, 27 Oct; branches `claude/awesome-goldwasser-472e81` here and `phone-country` in Drive, not merged)
+      **A number without + or 00 is the phone's own country's, not Greek** (the user: "Greece is +30 or 0030. All the other
+      countries have their own codes. They are standard. Use them."). Android: libphonenumber 9.0.42 (Apache-2.0, 360 KB, the
+      release maps-phone.py reads) — `PhoneCountry.of` is the SIM's country, else the network's, else the system's;
+      `PhoneArea.of/place`, the spam list's ranges and CallInsider (Greek numbers only) read numbers in it: Mobile / Landline from
+      libphonenumber's types (a US number, either: its place or nothing), Abroad = another country than the SIM's; Germany's
+      0171… is +49171…, Italy's 06… keeps its 0, the US's 011 is its way out. The phone sends its country with each call's state;
+      the desktop (libphonenumber-js, MIT) keeps it as the phoneCountry setting, else the computer's locale, for its spam list.
+      Unit tests both sides. **Not tried on a device**: needs a call (or Recents) on the phone to see the labels and screening.
+      Left as it was: contacts still match by the last nine digits (no country in it); PDF › Redact's phone pattern is Greek.
 - [x] (phone-area-codes session, 27 Oct; merged into main) **The Phone names every landline's place from
       the installed maps** (the user: "could we take that into maps to get the codes for the map the user has installed?";
       "it has to be built side by side with map manager so with the map gets the numbers as well"): each map gets

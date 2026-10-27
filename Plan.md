@@ -26,9 +26,14 @@ How to write here:
       same player now gets the new file. Fixtures: test/resources/media.py → media.pptx, media.docx, media.odp and
       androidTest/assets/media.pdf. Unit 662/0/12; PdfMediaDeviceTest on the tablet; tablet: the deck's film started by
       itself and its sound on the click, the .docx's film and both sounds, the PDF's film and sound all played (audio focus
-      taken each time). Files kept: the media parts byte-identical after saving (tests). **Not done:** PowerPoint OLE packages
-      (p:oleObj, not drawn in Slides at all), a RichMedia with no picture of its own is an invisible tap spot, a PDF on the
-      pdf-like-words branch needs the hook moved when that branch is merged.
+      taken each time). Files kept: the media parts byte-identical after saving (tests). Merged into main 27 Oct (b2541542).
+      Then (the user: "Words is correct do the same on PDF"; "I move the video and the page moves with it"; "Fix … oversights";
+      "when I am inserting a PDF can I choose more than one?"): PDF Edit as Words — a tap chooses a film (framed), its Video
+      (Audio) tab has Play, a tap elsewhere lets go, dragging moves it (one undo step, `PdfDoc.moveMedia`); a film or sound with
+      no picture of its own drawn (dark frame, speaker); Slides reads PowerPoint's embedded-object films and sounds (p:oleObj
+      Package) and LibreOffice's copy (draw:object-ole), Words LibreOffice's .odt copy of Word's; Insert PDF takes several, in
+      the order chosen. Tablet: all seen. **Open:** a PDF film is moved but not resized; on a turned page it moves the page's way;
+      `claude/pdf-like-words` needs these PdfScreen touches carried over (notes: office-media.md).
 - [x] (setup-guide session, 26 Oct; merged into main in both repos) **(5b) the graphical guide**, in all 24 languages.
       Android Guide.kt: on first start (it replaced the photo screen; the photo question is a Permissions step) and
       Settings › Guide; chapters Welcome, Your computer (works alone; Local Sync › Scan a code), Permissions (9, each with

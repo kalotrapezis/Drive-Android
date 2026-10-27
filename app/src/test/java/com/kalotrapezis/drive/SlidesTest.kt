@@ -1041,6 +1041,10 @@ class SlidesTest {
             assertTrue("$name: ${film.media}", film.media!!.endsWith(".mp4")); assertTrue("$name: ${sound.media}", OfficeVideo.audio(sound.media!!))
             assertTrue(name, (film as SlideItem.Picture).bytes() != null && (sound as SlideItem.Picture).bytes() != null)
             java.util.zip.ZipFile(src).use { z -> assertEquals(name, 8990, z.getInputStream(z.getEntry(film.media)).readBytes().size) }
+            // slide 1's beep embedded as an object (PowerPoint's Insert › Object; LibreOffice keeps its package): played from the package
+            val beep = deck.slides[0].items.single { it.media != null }.media!!
+            assertTrue("$name: $beep", beep.endsWith("#beep.wav"))
+            java.util.zip.ZipFile(src).use { z -> assertEquals(name, 844, OfficeVideo.ole(z.getInputStream(z.getEntry(beep.substringBefore('#'))).readBytes())!!.second!!.size) }
             for (d in listOf(deck, Slides.read(File("build/office-roundtrip").apply { mkdirs() }.resolve("media-$name").also { out ->
                     // saved with slide 2's and 4's animations written again (as when they are changed)
                     val e = SlidesEdit.start(deck).let { e -> e.copy(anims = mapOf(1 to SlidesEdit.flat(deck.slides[1].steps), 3 to SlidesEdit.flat(deck.slides[3].steps))) }

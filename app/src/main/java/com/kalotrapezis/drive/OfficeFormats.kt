@@ -2856,7 +2856,10 @@ private class OdtReader(val parts: Map<String, ByteArray>) {
             }
             return DocImage("f${imageCount++}", null, gb[2], gb[3], raw, look = look, group = parts.ifEmpty { null })
         }
-        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box, chart = chart, look = look)
+        // a film or sound embedded as an object (LibreOffice keeps Word's package as it was): "its part#its file's name"
+        val film = (e.getElementsByTagNameNS("*", "object-ole").item(0) as Element?)?.getAttributeNS(XLINK, "href")?.removePrefix("./")?.let { o ->
+            parts[o]?.let { OfficeVideo.ole(it, nameOnly = true) }?.first?.takeIf(OfficeVideo::media)?.let { "$o#$it" } }
+        return DocImage("f${imageCount++}", href, length(e.getAttributeNS(SVG, "width")) ?: 144f, length(e.getAttributeNS(SVG, "height")) ?: 96f, OfficeFormats.xml(e), box = box, chart = chart, look = look, film = film)
     }
     var imageCount = 0
 

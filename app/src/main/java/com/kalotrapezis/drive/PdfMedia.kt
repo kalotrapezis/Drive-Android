@@ -1,7 +1,14 @@
 package com.kalotrapezis.drive
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,14 +39,15 @@ import java.io.File
  * RichMedia annotation's asset, a Movie's file — when the file is in the PDF — and a Sound annotation's samples (made a WAV).
  */
 internal object PdfMedia {
-    /** One on a page: the annotation's place among the page's, where it is (points from the page's top left), its file's name. */
-    class Spot(val index: Int, val x: Float, val y: Float, val w: Float, val h: Float, val name: String)
+    /** One on a page: the annotation's place among the page's, where it is (points from the page's top left), its file's name;
+     *  [drawn]: it has a picture of its own (an appearance; MuPDF draws a Sound its speaker), else Tetra draws a dark frame or a speaker there. */
+    class Spot(val index: Int, val x: Float, val y: Float, val w: Float, val h: Float, val name: String, val drawn: Boolean = true)
 
     private fun PDFObject.at(key: String): PDFObject? = get(key)?.takeUnless { it.isNull }
 
     /** The films and sounds on [p] whose files are in the PDF (blocking); where each is its bounds (MuPDF has no Rect for a Screen annotation). */
     fun spots(p: PDFPage): List<Spot> { val o = p.bounds
-        return p.annotations.orEmpty().withIndex().mapNotNull { (n, a) -> file(a)?.let { (name, _) -> a.bounds.let { r -> Spot(n, r.x0 - o.x0, r.y0 - o.y0, r.x1 - r.x0, r.y1 - r.y0, name) } } }
+        return p.annotations.orEmpty().withIndex().mapNotNull { (n, a) -> file(a)?.let { (name, _) -> a.bounds.let { r -> Spot(n, r.x0 - o.x0, r.y0 - o.y0, r.x1 - r.x0, r.y1 - r.y0, name, a.type == PDFAnnotation.TYPE_SOUND || a.`object`.at("AP") != null) } } }
     }
 
     /** The [n]th annotation's film or sound on [p] written into [dir] to play (blocking); null: none there. */
@@ -84,18 +92,36 @@ internal object PdfMedia {
     }
 }
 
-/** Page [i]'s films and sounds over it (its size [s] in points): a film with Words' play mark; a tap plays it in its place, ✕ stops it. */
+/** A PDF's films and sounds being chosen and played: in Edit, as in Words, a tap chooses one ([chosen]: its page and it) and its
+ *  Video tab's Play plays it; outside Edit a tap plays it. [playing]: its page, it and its file. */
+internal class PdfMediaState {
+    var chosen by mutableStateOf<Pair<Int, PdfMedia.Spot>?>(null)
+    var playing by mutableStateOf<Triple<Int, PdfMedia.Spot, String>?>(null)
+    suspend fun play(doc: PdfDoc, i: Int, sp: PdfMedia.Spot, cache: File) =
+        withContext(Dispatchers.IO) { doc.mediaFile(i, sp.index, cache) }?.let { playing = Triple(i, sp, it); WriterLog.i("PDF: a film played") }
+}
+
+/** Page [i]'s films and sounds over it (its size [s] in points): a film with Words' play mark, the chosen one framed, the one playing in its place (✕ stops it). */
 @Composable
-internal fun PdfMediaLayer(doc: PdfDoc, i: Int, s: Size) {
+internal fun PdfMediaLayer(doc: PdfDoc, i: Int, s: Size, editing: Boolean, media: PdfMediaState, version: Int, moved: (PdfMedia.Spot, Float, Float) -> Unit) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
-    val spots by produceState(emptyList<PdfMedia.Spot>(), doc, i) { value = withContext(Dispatchers.IO) { doc.media(i) } }
+    val spots by produceState(emptyList<PdfMedia.Spot>(), doc, i, version) { value = withContext(Dispatchers.IO) { doc.media(i) } }
+    // the chosen one read again after a change (moved: its new place)
+    LaunchedEffect(spots) { media.chosen?.takeIf { it.first == i }?.let { c -> spots.firstOrNull { it.index == c.second.index }?.let { media.chosen = i to it } } }
     if (spots.isEmpty()) return
-    var playing by remember { mutableStateOf<Pair<PdfMedia.Spot, String>?>(null) }
+    var drag by remember { mutableStateOf<Pair<Int, Offset>?>(null) } // a film being moved (its index) and how far, in points
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val k = maxWidth / s.width
-        for (sp in spots) Box(Modifier.offset(k * sp.x, k * sp.y).size(k * sp.w, k * sp.h).clickable {
-            scope.launch { withContext(Dispatchers.IO) { doc.mediaFile(i, sp.index, context.cacheDir) }?.let { playing = sp to it; WriterLog.i("PDF: a film played") } }
-        }) { if (!OfficeVideo.audio(sp.name)) Canvas(Modifier.fillMaxSize()) { drawIntoCanvas { OfficeVideo.mark(it.nativeCanvas, 0f, 0f, size.width, size.height) } } }
-        playing?.let { (sp, f) -> VideoFrame(f, Modifier.offset(k * sp.x, k * sp.y).size(k * sp.w, k * sp.h)) { playing = null } }
+        val k = maxWidth / s.width; val px = with(LocalDensity.current) { k.toPx() }
+        for (sp in spots) Box(Modifier.offset(k * (sp.x + (drag?.takeIf { it.first == sp.index }?.second?.x ?: 0f)), k * (sp.y + (drag?.takeIf { it.first == sp.index }?.second?.y ?: 0f))).size(k * sp.w, k * sp.h)
+            .then(if (media.chosen?.let { it.first == i && it.second.index == sp.index } == true) Modifier.border(2.dp, WORD_BLUE) else Modifier)
+            // in Edit, as a picture in Words: pressed and dragged it moves (chosen if it was not), not the page under it
+            .pointerInput(editing, sp) { if (editing) detectDragGestures(onDragStart = { media.chosen = i to sp; drag = sp.index to Offset.Zero },
+                onDragEnd = { drag?.second?.let { d -> if (d != Offset.Zero) moved(sp, d.x, d.y) }; drag = null }, onDragCancel = { drag = null }) { ch, by -> ch.consume()
+                drag = sp.index to ((drag?.second ?: Offset.Zero) + by / px) } }
+            .clickable { if (editing) media.chosen = i to sp else scope.launch { media.play(doc, i, sp, context.cacheDir) } }
+        ) { Canvas(Modifier.fillMaxSize()) { drawIntoCanvas { c ->
+            if (!sp.drawn) OfficeVideo.stand(sp.name).run { setBounds(0, 0, size.width.toInt(), size.height.toInt()); draw(c.nativeCanvas) }
+            if (!OfficeVideo.audio(sp.name)) OfficeVideo.mark(c.nativeCanvas, 0f, 0f, size.width, size.height) } } }
+        media.playing?.takeIf { it.first == i }?.let { (_, sp, f) -> VideoFrame(f, Modifier.offset(k * sp.x, k * sp.y).size(k * sp.w, k * sp.h)) { media.playing = null } }
     }
 }

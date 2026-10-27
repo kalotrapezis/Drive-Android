@@ -26,43 +26,7 @@ beep = io.BytesIO()
 with wave.open(beep, "wb") as w: w.setnchannels(1); w.setsampwidth(1); w.setframerate(8000); w.writeframes(bytes(128 + (40 if (i // 9) % 2 else -40) for i in range(800)))
 BEEP = beep.getvalue()
 
-# --- media.pptx: slides.pptx with a film on slide 2 and a sound on slide 4 ---
-P14 = "{DAA4B4D4-6D71-4841-9C94-3DA1E1DFA6BE}"
-R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-def pic(spid, name, tag, x, y, w, h):
-    return (f'<p:pic><p:nvPicPr><p:cNvPr id="{spid}" name="{name}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'
-            f'<p:nvPr><a:{tag} r:link="rId91"/><p:extLst><p:ext uri="{P14}"><p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" r:embed="rId90"/></p:ext></p:extLst></p:nvPr></p:nvPicPr>'
-            f'<p:blipFill><a:blip r:embed="rId92"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>')
-def timing(spid, node, media):
-    begin = '<p:cond delay="indefinite"/><p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond>' if node == "afterEffect" else '<p:cond delay="indefinite"/>'
-    return ('<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>'
-            f'<p:par><p:cTn id="3" fill="hold"><p:stCondLst>{begin}</p:stCondLst><p:childTnLst><p:par><p:cTn id="4" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>'
-            f'<p:par><p:cTn id="5" presetID="1" presetClass="mediacall" presetSubtype="0" fill="hold" nodeType="{node}"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>'
-            f'<p:cmd type="call" cmd="playFrom(0.0)"><p:cBhvr><p:cTn id="6" dur="2000" fill="hold"/><p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl></p:cBhvr></p:cmd>'
-            '</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn>'
-            '<p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst><p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq>'
-            f'<p:{media}><p:cMediaNode vol="80000"><p:cTn id="7" fill="hold" display="0"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst></p:cTn><p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl></p:cMediaNode></p:{media}>'
-            '</p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>')
-media = {2: ("media1.mp4", "video", "videoFile", "image91.png", pic(90, "clip", "videoFile", 2286000, 1714500, 4572000, 2571750), timing(90, "afterEffect", "video")),
-         4: ("media2.m4a", "audio", "audioFile", "image92.png", pic(91, "tone", "audioFile", 4114800, 3200400, 914400, 914400), timing(91, "clickEffect", "audio"))}
-out = os.path.join(here, "media.pptx")
-with zipfile.ZipFile(os.path.join(here, "slides.pptx")) as zi, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zo:
-    for it in zi.infolist():
-        d = zi.read(it.filename)
-        for n, (part, rel, _, image, shape, t) in media.items():
-            if it.filename == f"ppt/slides/slide{n}.xml":
-                d = d.decode().replace("</p:spTree>", shape + "</p:spTree>").replace("</p:clrMapOvr>", "</p:clrMapOvr>" + t).encode()
-            if it.filename == f"ppt/slides/_rels/slide{n}.xml.rels":
-                d = d.decode().replace("</Relationships>", f'<Relationship Id="rId90" Type="http://schemas.microsoft.com/office/2007/relationships/media" Target="../media/{part}"/>'
-                    f'<Relationship Id="rId91" Type="{R}/{rel}" Target="../media/{part}"/><Relationship Id="rId92" Type="{R}/image" Target="../media/{image}"/></Relationships>').encode()
-        if it.filename == "[Content_Types].xml":
-            d = d.decode().replace("<Default ", '<Default Extension="mp4" ContentType="video/mp4"/><Default Extension="m4a" ContentType="audio/mp4"/><Default ', 1)
-            if 'Extension="png"' not in d: d = d.replace("<Default ", '<Default Extension="png" ContentType="image/png"/><Default ', 1)
-            d = d.encode()
-        zo.writestr(it, d)
-    for name, b in (("media1.mp4", CLIP), ("media2.m4a", TONE), ("image91.png", POSTER), ("image92.png", ICON)): zo.writestr("ppt/media/" + name, b)
-
-# --- media.docx: two OLE packages ---
+# --- OLE packages (Word's and PowerPoint's Insert › Object) ---
 def cfb(streams):
     """A compound file (version 3, 512-byte sectors) holding [streams] {name: bytes}; one under 4096 bytes in the mini stream."""
     END, FREE, FATSECT = 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFD
@@ -98,6 +62,55 @@ def package(name, b):
     path = ("C:\\Users\\Example\\Videos\\" + name).encode() + b"\0"
     body = struct.pack("<H", 2) + name.encode() + b"\0" + path + struct.pack("<HHI", 0, 3, len(path)) + path + struct.pack("<I", len(b)) + b
     return cfb({"\x01Ole10Native": struct.pack("<I", len(body)) + body})
+# --- media.pptx: slides.pptx with a film on slide 2, a sound on slide 4, and a beep embedded as an object on slide 1 ---
+P14 = "{DAA4B4D4-6D71-4841-9C94-3DA1E1DFA6BE}"
+R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+def pic(spid, name, tag, x, y, w, h):
+    return (f'<p:pic><p:nvPicPr><p:cNvPr id="{spid}" name="{name}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>'
+            f'<p:nvPr><a:{tag} r:link="rId91"/><p:extLst><p:ext uri="{P14}"><p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" r:embed="rId90"/></p:ext></p:extLst></p:nvPr></p:nvPicPr>'
+            f'<p:blipFill><a:blip r:embed="rId92"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>')
+def timing(spid, node, media):
+    begin = '<p:cond delay="indefinite"/><p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond>' if node == "afterEffect" else '<p:cond delay="indefinite"/>'
+    return ('<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>'
+            f'<p:par><p:cTn id="3" fill="hold"><p:stCondLst>{begin}</p:stCondLst><p:childTnLst><p:par><p:cTn id="4" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>'
+            f'<p:par><p:cTn id="5" presetID="1" presetClass="mediacall" presetSubtype="0" fill="hold" nodeType="{node}"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>'
+            f'<p:cmd type="call" cmd="playFrom(0.0)"><p:cBhvr><p:cTn id="6" dur="2000" fill="hold"/><p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl></p:cBhvr></p:cmd>'
+            '</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn>'
+            '<p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst><p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq>'
+            f'<p:{media}><p:cMediaNode vol="80000"><p:cTn id="7" fill="hold" display="0"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst></p:cTn><p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl></p:cMediaNode></p:{media}>'
+            '</p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>')
+media = {2: ("media1.mp4", "video", "videoFile", "image91.png", pic(90, "clip", "videoFile", 2286000, 1714500, 4572000, 2571750), timing(90, "afterEffect", "video")),
+         4: ("media2.m4a", "audio", "audioFile", "image92.png", pic(91, "tone", "audioFile", 4114800, 3200400, 914400, 914400), timing(91, "clickEffect", "audio"))}
+out = os.path.join(here, "media.pptx")
+with zipfile.ZipFile(os.path.join(here, "slides.pptx")) as zi, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zo:
+    for it in zi.infolist():
+        d = zi.read(it.filename)
+        for n, (part, rel, _, image, shape, t) in media.items():
+            if it.filename == f"ppt/slides/slide{n}.xml":
+                d = d.decode().replace("</p:spTree>", shape + "</p:spTree>").replace("</p:clrMapOvr>", "</p:clrMapOvr>" + t).encode()
+            if it.filename == f"ppt/slides/_rels/slide{n}.xml.rels":
+                d = d.decode().replace("</Relationships>", f'<Relationship Id="rId90" Type="http://schemas.microsoft.com/office/2007/relationships/media" Target="../media/{part}"/>'
+                    f'<Relationship Id="rId91" Type="{R}/{rel}" Target="../media/{part}"/><Relationship Id="rId92" Type="{R}/image" Target="../media/{image}"/></Relationships>').encode()
+        if it.filename == "ppt/slides/slide1.xml":
+            d = d.decode().replace("</p:spTree>", '<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="92" name="Object 91"/><p:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>'
+                '<p:xfrm><a:off x="457200" y="457200"/><a:ext cx="609600" cy="609600"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/presentationml/2006/ole">'
+                '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Choice xmlns:v="urn:schemas-microsoft-com:vml" Requires="v"><p:oleObj spid="_x0000_s1026" name="Packager Shell Object" showAsIcon="1" r:id="rId93" imgW="914400" imgH="914400" progId="Package"><p:embed/></p:oleObj></mc:Choice>'
+                '<mc:Fallback><p:oleObj name="Packager Shell Object" showAsIcon="1" r:id="rId93" imgW="914400" imgH="914400" progId="Package"><p:embed/><p:pic><p:nvPicPr><p:cNvPr id="0" name=""/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>'
+                '<p:blipFill><a:blip r:embed="rId94"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="457200" y="457200"/><a:ext cx="609600" cy="609600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic></p:oleObj></mc:Fallback></mc:AlternateContent>'
+                '</a:graphicData></a:graphic></p:graphicFrame></p:spTree>').encode()
+        if it.filename == "ppt/slides/_rels/slide1.xml.rels":
+            d = d.decode().replace("</Relationships>", f'<Relationship Id="rId93" Type="{R}/oleObject" Target="../embeddings/oleObject1.bin"/><Relationship Id="rId94" Type="{R}/image" Target="../media/image93.emf"/></Relationships>').encode()
+        if it.filename == "[Content_Types].xml":
+            d = d.decode().replace("<Default ", '<Default Extension="mp4" ContentType="video/mp4"/><Default Extension="m4a" ContentType="audio/mp4"/><Default ', 1)
+            if 'Extension="png"' not in d: d = d.replace("<Default ", '<Default Extension="png" ContentType="image/png"/><Default ', 1)
+            d = d.replace("<Default ", '<Default Extension="emf" ContentType="image/x-emf"/><Default ', 1)
+            d = d.replace("</Types>", '<Override PartName="/ppt/embeddings/oleObject1.bin" ContentType="application/vnd.openxmlformats-officedocument.oleObject"/></Types>')
+            d = d.encode()
+        zo.writestr(it, d)
+    for name, b in (("media1.mp4", CLIP), ("media2.m4a", TONE), ("image91.png", POSTER), ("image92.png", ICON)): zo.writestr("ppt/media/" + name, b)
+    zo.writestr("ppt/media/image93.emf", EMF); zo.writestr("ppt/embeddings/oleObject1.bin", package("beep.wav", BEEP))
+
+# --- media.docx: three OLE packages ---
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 def obj(n, w, h):
     return (f'<w:p><w:r><w:object w:dxaOrig="{w * 20}" w:dyaOrig="{h * 20}"><v:shape id="_x0000_i10{n}" type="#_x0000_t75" style="width:{w}pt;height:{h}pt" o:ole=""><v:imagedata r:id="rIdI{n}" o:title=""/></v:shape>'

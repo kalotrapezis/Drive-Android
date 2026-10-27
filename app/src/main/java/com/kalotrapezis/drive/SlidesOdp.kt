@@ -275,6 +275,10 @@ internal object SlidesOdp {
                                     hex(g("stroke-color"))?.and(0xFFFFFF)?.takeIf { g("stroke") == "solid" }, pt(g("stroke-width"))?.takeIf { g("stroke") == "solid" } ?: 0f,
                                     g("shadow") == "visible").takeIf { l -> l != PictureLook() } } }
                             "table" -> out += table(inner, b)
+                            // a film or sound embedded as an object (LibreOffice keeps PowerPoint's package as it was): its picture, played from it
+                            "object-ole" -> inner.a(XLINK, "href")?.removePrefix("./")?.let { o -> part(o)?.let { OfficeVideo.ole(it, nameOnly = true) }?.first?.takeIf(OfficeVideo::media)?.let { name ->
+                                val p = e.kids().firstOrNull { it.localName == "image" }?.a(XLINK, "href")?.removePrefix("./")
+                                out += SlideItem.Picture(b[0], b[1], b[2], b[3], rot) { p?.let { part(it) } }.also { it.media = "$o#$name" } } }
                             "object" -> {
                                 val c = inner.a(XLINK, "href")?.removePrefix("./")?.let { p -> part("$p/content.xml") }
                                 val chart = c?.let(OfficeCharts::readOdf)

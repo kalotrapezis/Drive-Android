@@ -534,6 +534,11 @@ internal object Slides {
                     "graphicFrame" -> {
                         e.below("chart").firstOrNull()?.rid("id")?.let(rels::get)?.let(part)?.let(OfficeCharts::readDrawingml)?.let { out += SlideItem.Chart(box[0], box[1], box[2], box[3], it) }
                         e.below("tbl").firstOrNull()?.let { out += table(it, box) }
+                        // a film or sound embedded as an object (Insert › Object › Create from file): its icon, played from its package ("part#name")
+                        e.below("oleObj").firstNotNullOfOrNull { it.rid("id") }?.let(rels::get)?.let { p ->
+                            part(p)?.let { OfficeVideo.ole(it, nameOnly = true) }?.first?.takeIf(OfficeVideo::media)?.let { name ->
+                                val icon = e.below("blip").firstOrNull()?.rid("embed")?.let(rels::get)
+                                out += SlideItem.Picture(box[0], box[1], box[2], box[3], rot) { icon?.let(part) }.also { it.media = "$p#$name" } } }
                     }
                     "grpSp" -> {
                         val ch = xfrm?.kid("chOff"); val che = xfrm?.kid("chExt")
@@ -815,7 +820,8 @@ internal object Slides {
                         var sample = 1; while (o.outWidth / (sample * 2) >= item.w * 3) sample *= 2
                         android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
                     } }.getOrNull()?.let { cropped(it, item.crop) }?.also { pictures.put(item, it) }
-                    bmp?.let { framed(c, it, item, paint) }
+                    // a film's or sound's icon Android cannot draw (an embedded object's EMF): a dark frame, a speaker
+                    bmp?.let { framed(c, it, item, paint) } ?: item.media?.let(OfficeVideo::stand)?.run { setBounds(item.x.toInt(), item.y.toInt(), (item.x + item.w).toInt(), (item.y + item.h).toInt()); draw(c) }
                 }
                 is SlideItem.Chart -> ChartDrawable(item.chart).apply { setBounds(item.x.toInt(), item.y.toInt(), (item.x + item.w).toInt(), (item.y + item.h).toInt()) }.draw(c)
                 is SlideItem.Table -> table(c, item, paint)

@@ -135,6 +135,13 @@ class OfficeFormatsTest {
         val again = OfficeFormats.write(OfficeDoc(OfficeFormats.read(src, OfficeKind.Docx).paras), OfficeKind.Docx, src).let(OfficeFormats::unzip)
         for (p in parts.keys.filter { it.startsWith("word/embeddings/") || it.startsWith("word/media/") }) assertTrue(p, parts.getValue(p).contentEquals(again[p]))
         assertEquals(3, Regex("<o:OLEObject ").findAll(String(again.getValue("word/document.xml"))).count())
+        // LibreOffice's .odt of it keeps the packages (draw:object-ole): the same three found
+        if (runCatching { ProcessBuilder("soffice", "--version").start().waitFor() }.getOrNull() == 0) {
+            val dir = scratchDir("odt-objects")
+            ProcessBuilder("soffice", "--headless", "-env:UserInstallation=file://${dir.path}/profile", "--convert-to", "odt", "--outdir", dir.path, File("src/test/resources/media.docx").absolutePath).redirectErrorStream(true).start().waitFor()
+            val odt = OfficeFormats.read(File(dir, "media.odt").readBytes(), OfficeKind.Odt).paras.flatMap { p -> p.runs.mapNotNull { it.image } }
+            assertEquals(listOf("clip.mp4", "tone.m4a", "beep.wav"), odt.mapNotNull { PictureXml.video(it)?.substringAfter('#') })
+        }
     }
 
     @Test fun `a picture's size and wrapping are saved, and can go back in line`() {

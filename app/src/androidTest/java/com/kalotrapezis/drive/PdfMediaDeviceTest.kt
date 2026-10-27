@@ -31,6 +31,12 @@ class PdfMediaDeviceTest {
         assertEquals(44 + 800, files[2].size); assertTrue(String(files[2], 0, 4) == "RIFF" && String(files[2], 8, 4) == "WAVE")
         assertEquals(8000, java.nio.ByteBuffer.wrap(files[2], 24, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int)
         assertTrue(OfficeVideo.length(d.mediaFile(0, spots[0].index, dir)!!)!! in 1500..2500)
+        // the RichMedia has no picture of its own (Tetra draws one); the Screen has, and MuPDF draws the Sound's speaker
+        assertEquals(listOf(true, false, true), spots.map { it.drawn })
+        // moved in Edit (as a picture in Words): 10 points right, 20 down, one undo step
+        d.moveMedia(0, spots[0].index, 10f, 20f)
+        d.media(0)[0].let { assertEquals(110f, it.x, 0.5f); assertEquals(182f, it.y, 0.5f); assertEquals(320f, it.w, 0.5f) }
+        d.undo(); assertEquals(162f, d.media(0)[0].y, 0.5f)
         d.close()
     }
 }

@@ -12,7 +12,7 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
-- [~] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive, on main) **Routes across
+- [x] (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive, not merged) **Routes across
       borders on each country's own graph, through the border crossings** (the user: "When we have both the neighbouring maps, it should
       be able to cross the border"; then "Drive to the edge and then start from the other edge"; "at the border … the main road", not
       "through the fields"; "three or more one by one so we don't need AI level of memory"). Replaces the pair graphs merged earlier today
@@ -25,7 +25,8 @@ How to write here:
       the five crossings nearest the way (three through a third country) timed on both sides, the fastest kept, each leg on its own graph,
       joined as one route. Up to three graphs open (phone) / GraphHopper servers (desktop). Checked on the real GR, MK, BG graphs: Thessaloniki
       → Skopje 222.9 km, 188 min by Evzonoi (as the pair graph); → Sofia 286 km by Promachonas; Athens → Plovdiv by Nymfaia; Thessaloniki →
-      Sofia forced through North Macedonia 343 min; 687 Android unit / 171 desktop tests. **Open:** the pair graph greece_macedonia-gh in
+      Sofia forced through North Macedonia 343 min; a real Remake of North Macedonia beside GR and BG: 9.5 min, its crossings step
+      2 min 20 s, all three crossings files, the same routes on them; 687 Android unit / 171 desktop tests. **Open:** the pair graph greece_macedonia-gh in
       Files/Maps and on the phone is no longer read (the main session removes it); a route through three countries tries fewer crossings;
       nothing tried on the phone/tablet.
       Before (superseded): (maps-borders session, 27 Oct; branches `claude/optimistic-noyce-f83551` here and `maps-borders` in Drive, main merged into both;

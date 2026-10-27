@@ -388,7 +388,7 @@
     <string name="settings_imported">Importerat</string>
     <string name="settings_imported_shared">%1$d platser och %2$d karttillägg; %3$d fanns redan eller saknar position.</string>
     <string name="settings_not_placed">Dessa kunde inte placeras – sök efter dem i Kartor och Spara:</string>
-    <string name="settings_installed_maps_note">Kartor skapas på datorn och kommer hit med Synk, till Tetra/Maps: tools/maps-greece.sh hämtar den senaste kartan över Grekland och bygger vägvalet för den (en Uppdatera-knapp i Tetra för datorn är planerad).</string>
+    <string name="settings_installed_maps_note">Varje lands karta görs på datorn, i Tetra på datorn › Inställningar › Kartor › Lägg till en karta. Synk för den hit, till Tetra/Maps.</string>
     <string name="settings_problems">Problem</string>
     <string name="settings_send_log_summary">Tetras logg och spåren från dina körningar de senaste 7 dagarna, som en zip; de stannar på enheten tills du skickar dem</string>
     <string name="settings_contacts_note">Dina kontakter är filer i Tetra/Contacts, en per person: de synkas med datorn, där Kontakter också visar dem.</string>
@@ -1509,7 +1509,7 @@
     <string name="maps_my_car">Min bil</string>
     <string name="maps_parking_saved">Parkering sparad</string>
     <string name="maps_on_car_screen">På bilens skärm: %1$s</string>
-    <string name="maps_no_graph">Inget vägnät än: lägg greece-gh i Tetra/Maps (datorns tools/maps-greece.sh skapar det).</string>
+    <string name="maps_no_graph">Den här kartan har inga vägar för vägbeskrivning ännu: uppdatera den i Tetra på datorn › Inställningar › Kartor.</string>
     <string name="maps_finding">Söker vägen…</string>
     <string name="maps_no_way_graph">Ingen väg hittades: vägnätet kunde inte läsas</string>
     <string name="maps_arrived">Framme: %1$s</string>
@@ -1517,8 +1517,8 @@
     <string name="maps_dropped_pin">Nål</string>
     <string name="maps_amea_parking">Handikapparkering</string>
     <string name="maps_amea_placed">Handikapplats utplacerad: %1$s</string>
-    <string name="maps_no_map">Kartan över Grekland finns inte på enheten än</string>
-    <string name="maps_no_map_how">Den kommer från datorn: tools/maps-greece.sh skapar greece.pmtiles (cirka 500 MB) och vägnätet greece-gh, och Synk för dem hit till Tetra/Maps.</string>
+    <string name="maps_no_map">Det finns ingen karta på den här enheten än</string>
+    <string name="maps_no_map_how">Kartor görs på datorn: Tetra på datorn › Inställningar › Kartor › Lägg till en karta, och sedan för Synk dem hit, till Tetra/Maps.</string>
     <string name="maps_parked_here">Jag parkerade här</string>
     <string name="maps_waiting_location">Väntar på din plats…</string>
     <string name="maps_location_off">Plats är avstängd för Tetra.</string>
@@ -1613,7 +1613,7 @@
     <string name="car_map">Karta</string>
     <string name="car_places">Platser</string>
     <string name="car_allow_location">Öppna Tetra Kartor på telefonen en gång för att tillåta plats</string>
-    <string name="car_no_map">Ingen karta än: greece.pmtiles kommer från datorn till Tetra/Maps</string>
+    <string name="car_no_map">Ingen karta än: gör en i Tetra på datorn › Inställningar › Kartor</string>
     <string name="car_end">Avsluta</string>
     <string name="car_routes">Rutter</string>
     <string name="car_add_stop_button">Stopp</string>
@@ -1652,10 +1652,6 @@
         <item quantity="one">%1$d vägtull</item>
         <item quantity="other">%1$d vägtullar</item>
     </plurals>
-    <string name="maps_installed_map">Karta över Grekland</string>
-    <string name="maps_installed_routing">Vägval (bil, gång, cykel)</string>
-    <string name="maps_installed_places">Sparade platser</string>
-    <string name="maps_installed_not_yet">inte här än</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Favoriter</string>
@@ -4594,4 +4590,9 @@
     <string name="pdf_no_bookmarks">Inga bokmärken i filen.</string>
     <string name="pdf_page_lower">sida %1$d</string>
     <string name="pdf_quoted">”%1$s”</string>
+    <string name="maps_with_roads">med vägar</string>
+    <string name="maps_no_roads">bara karta, inga vägar</string>
+    <string name="settings_remove_map">Ta bort</string>
+    <string name="settings_remove_map_title">Ta bort kartan över %1$s?</string>
+    <string name="settings_remove_map_body">Dess filer hamnar i Papperskorgen, här och på dina andra enheter. Dina sparade platser blir kvar.</string>
 </resources>

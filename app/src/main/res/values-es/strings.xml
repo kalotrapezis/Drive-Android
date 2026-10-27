@@ -388,7 +388,7 @@
     <string name="settings_imported">Importado</string>
     <string name="settings_imported_shared">%1$d lugares y %2$d añadidos al mapa; %3$d ya estaban o no tienen posición.</string>
     <string name="settings_not_placed">No se han podido situar estos; búscalos en Mapas y Guarda:</string>
-    <string name="settings_installed_maps_note">Los mapas se crean en el ordenador y llegan aquí con Sincronizar, a Tetra/Maps: tools/maps-greece.sh descarga el mapa más reciente de Grecia y crea su enrutamiento (está previsto un botón Actualizar en Tetra para ordenador).</string>
+    <string name="settings_installed_maps_note">El mapa de cada país se crea en el ordenador, en Tetra del ordenador › Ajustes › Mapas › Añadir un mapa. Sincronizar lo trae aquí, a Tetra/Maps.</string>
     <string name="settings_problems">Problemas</string>
     <string name="settings_send_log_summary">El registro de Tetra y los trazados de tus viajes de los últimos 7 días, en un zip; se quedan en este dispositivo hasta que los envíes</string>
     <string name="settings_contacts_note">Tus contactos son archivos en Tetra/Contacts, uno por persona: se sincronizan con el ordenador, donde Contactos también los muestra.</string>
@@ -1552,7 +1552,7 @@
     <string name="maps_my_car">Mi coche</string>
     <string name="maps_parking_saved">Aparcamiento guardado</string>
     <string name="maps_on_car_screen">En la pantalla del coche: %1$s</string>
-    <string name="maps_no_graph">Aún no hay grafo de rutas: pon greece-gh en Tetra/Maps (lo crea tools/maps-greece.sh en el ordenador).</string>
+    <string name="maps_no_graph">Este mapa aún no tiene carreteras para las indicaciones: actualízalo en Tetra del ordenador › Ajustes › Mapas.</string>
     <string name="maps_finding">Buscando el camino…</string>
     <string name="maps_no_way_graph">No se ha encontrado camino: no se ha podido leer el grafo de rutas</string>
     <string name="maps_arrived">Has llegado: %1$s</string>
@@ -1560,8 +1560,8 @@
     <string name="maps_dropped_pin">Chincheta</string>
     <string name="maps_amea_parking">Aparcamiento PMR</string>
     <string name="maps_amea_placed">Plaza PMR colocada: %1$s</string>
-    <string name="maps_no_map">El mapa de Grecia aún no está en este dispositivo</string>
-    <string name="maps_no_map_how">Llega desde el ordenador: tools/maps-greece.sh crea greece.pmtiles (unos 500 MB) y el grafo de rutas greece-gh, y Sincronizar los trae aquí, a Tetra/Maps.</string>
+    <string name="maps_no_map">Aún no hay ningún mapa en este dispositivo</string>
+    <string name="maps_no_map_how">Los mapas se crean en el ordenador: Tetra del ordenador › Ajustes › Mapas › Añadir un mapa, y luego Sincronizar los trae aquí, a Tetra/Maps.</string>
     <string name="maps_parked_here">He aparcado aquí</string>
     <string name="maps_waiting_location">Esperando tu ubicación…</string>
     <string name="maps_location_off">La ubicación está desactivada para Tetra.</string>
@@ -1656,7 +1656,7 @@
     <string name="car_map">Mapa</string>
     <string name="car_places">Lugares</string>
     <string name="car_allow_location">Abre Tetra Mapas en el teléfono una vez para permitir la ubicación</string>
-    <string name="car_no_map">Aún no hay mapa: greece.pmtiles llega del ordenador a Tetra/Maps</string>
+    <string name="car_no_map">Aún no hay mapa: crea uno en Tetra del ordenador › Ajustes › Mapas</string>
     <string name="car_end">Terminar</string>
     <string name="car_routes">Rutas</string>
     <string name="car_add_stop_button">Parada</string>
@@ -1696,10 +1696,6 @@
         <item quantity="many">%1$d peajes</item>
         <item quantity="other">%1$d peajes</item>
     </plurals>
-    <string name="maps_installed_map">Mapa de Grecia</string>
-    <string name="maps_installed_routing">Rutas (coche, a pie, bici)</string>
-    <string name="maps_installed_places">Lugares guardados</string>
-    <string name="maps_installed_not_yet">aún no está aquí</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Favoritos</string>
@@ -4686,4 +4682,9 @@
     <string name="pdf_no_bookmarks">No hay marcadores en este archivo.</string>
     <string name="pdf_page_lower">página %1$d</string>
     <string name="pdf_quoted">«%1$s»</string>
+    <string name="maps_with_roads">con carreteras</string>
+    <string name="maps_no_roads">solo mapa, sin carreteras</string>
+    <string name="settings_remove_map">Quitar</string>
+    <string name="settings_remove_map_title">¿Quitar el mapa de %1$s?</string>
+    <string name="settings_remove_map_body">Sus archivos van a la Papelera, aquí y en tus otros dispositivos. Tus lugares guardados se quedan.</string>
 </resources>

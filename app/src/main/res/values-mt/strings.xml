@@ -388,7 +388,7 @@
     <string name="settings_imported">Ġie importat</string>
     <string name="settings_imported_shared">%1$d postijiet u %2$d żidiet tal-mappa; %3$d diġà hemm jew mingħajr pożizzjoni.</string>
     <string name="settings_not_placed">Dawn ma setgħux jitqiegħdu — fittexhom fil-Mappi u Ħżen:</string>
-    <string name="settings_installed_maps_note">Il-mappi jsiru fuq il-kompjuter u jaslu hawn permezz tas-sinkronizzazzjoni lokali, fit-Tetra/Maps: tools/maps-greece.sh jniżżel l-aħħar mappa tal-Greċja u jibni r-routing għaliha (buttuna Aġġorna fit-Tetra tad-desktop hija ppjanata).</string>
+    <string name="settings_installed_maps_note">Il-mappa ta\' kull pajjiż issir fuq il-kompjuter, f\'Tetra tal-kompjuter › Settings › Mapep › Żid mappa. Sinkronizza iġibha hawn, f\'Tetra/Maps.</string>
     <string name="settings_problems">Problemi</string>
     <string name="settings_send_log_summary">Il-log ta’ Tetra u t-traċċi tal-vjaġġi tiegħek tal-aħħar 7 ijiem, f’zip wieħed; jibqgħu f’dan l-apparat sakemm tibgħathom</string>
     <string name="settings_contacts_note">Il-kuntatti tiegħek huma fajls fit-Tetra/Contacts, wieħed għal kull persuna: jisinkronizzaw mal-kompjuter, fejn il-Kuntatti juruhom ukoll.</string>
@@ -1595,7 +1595,7 @@
     <string name="maps_my_car">Il-karozza tiegħi</string>
     <string name="maps_parking_saved">Parkeġġ imħażen</string>
     <string name="maps_on_car_screen">Fuq l-iskrin tal-karozza: %1$s</string>
-    <string name="maps_no_graph">Għadu m’hemm l-ebda graff tal-instradar: poġġi greece-gh f’Tetra/Maps (tools/maps-greece.sh tal-kompjuter jagħmlu).</string>
+    <string name="maps_no_graph">Din il-mappa għad m\'għandhiex toroq għad-direzzjonijiet: aġġornaha f\'Tetra tal-kompjuter › Settings › Mapep.</string>
     <string name="maps_finding">Qed insib it-triq…</string>
     <string name="maps_no_way_graph">Ma nstabet l-ebda triq: il-graff tal-instradar ma setax jinqara</string>
     <string name="maps_arrived">Wasal: %1$s</string>
@@ -1603,8 +1603,8 @@
     <string name="maps_dropped_pin">Pin mqiegħed</string>
     <string name="maps_amea_parking">Parkeġġ għal persuni b’diżabilità</string>
     <string name="maps_amea_placed">Post għal persuni b’diżabilità mqiegħed: %1$s</string>
-    <string name="maps_no_map">Il-mappa tal-Greċja għadha mhix fuq dan l-apparat</string>
-    <string name="maps_no_map_how">Ġejja mill-kompjuter: tools/maps-greece.sh jagħmel greece.pmtiles (madwar 500 MB) u l-graff tal-instradar greece-gh, u s-sinkronizzazzjoni lokali tgħaddihom hawn f’Tetra/Maps.</string>
+    <string name="maps_no_map">Għad m\'hemm l-ebda mappa fuq dan l-apparat</string>
+    <string name="maps_no_map_how">Il-mappi jsiru fuq il-kompjuter: Tetra tal-kompjuter › Settings › Mapep › Żid mappa, u mbagħad Sinkronizza iġibhom hawn f\'Tetra/Maps.</string>
     <string name="maps_parked_here">Ipparkjajt hawn</string>
     <string name="maps_waiting_location">Qed nistenna l-pożizzjoni tiegħek…</string>
     <string name="maps_location_off">Il-pożizzjoni hi mitfija għal Tetra.</string>
@@ -1699,7 +1699,7 @@
     <string name="car_map">Mappa</string>
     <string name="car_places">Postijiet</string>
     <string name="car_allow_location">Iftaħ Tetra Maps fuq it-telefon darba biex tippermetti l-pożizzjoni</string>
-    <string name="car_no_map">Għadu m’hemm l-ebda mappa: greece.pmtiles ġej mill-kompjuter f’Tetra/Maps</string>
+    <string name="car_no_map">Għad m\'hemm l-ebda mappa: agħmel waħda f\'Tetra tal-kompjuter › Settings › Mapep</string>
     <string name="car_end">Itmm</string>
     <string name="car_routes">Rotot</string>
     <string name="car_add_stop_button">Waqfa</string>
@@ -1740,10 +1740,6 @@
         <item quantity="many">%1$d tariffa tat-triq</item>
         <item quantity="other">%1$d tariffa tat-triq</item>
     </plurals>
-    <string name="maps_installed_map">Mappa tal-Greċja</string>
-    <string name="maps_installed_routing">Instradar (karozza, mixi, rota)</string>
-    <string name="maps_installed_places">Postijiet imħażna</string>
-    <string name="maps_installed_not_yet">għadu mhux hawn</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Favoriti</string>
@@ -4778,4 +4774,9 @@
     <string name="pdf_no_bookmarks">Ebda bookmark f’dan il-fajl.</string>
     <string name="pdf_page_lower">paġna %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="maps_with_roads">bit-toroq</string>
+    <string name="maps_no_roads">mappa biss, mingħajr toroq</string>
+    <string name="settings_remove_map">Neħħi</string>
+    <string name="settings_remove_map_title">Tneħħi l-mappa ta\' %1$s?</string>
+    <string name="settings_remove_map_body">Il-fajls tagħha jmorru fl-Iskart, hawn u fuq l-apparati l-oħra tiegħek. Postijiet maħżuna tiegħek jibqgħu.</string>
 </resources>

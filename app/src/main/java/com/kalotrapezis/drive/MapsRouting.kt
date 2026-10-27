@@ -159,8 +159,8 @@ internal object MapsRouting {
         return when {
             e is com.graphhopper.util.exceptions.PointNotFoundException || "Cannot find point" in m ->
                 if ((e as? com.graphhopper.util.exceptions.PointNotFoundException)?.pointIndex == 0 || "point 0" in m)
-                    (if (en) "You are not near a road the map knows (or outside Greece)." else "Δεν είστε κοντά σε δρόμο του χάρτη (ή είστε εκτός Ελλάδας).")
-                else (if (en) "The destination is not near a road the map knows (or outside Greece)." else "Ο προορισμός δεν είναι κοντά σε δρόμο του χάρτη (ή είναι εκτός Ελλάδας).")
+                    (if (en) "You are not near a road the map knows (or outside the maps here)." else "Δεν είστε κοντά σε δρόμο του χάρτη (ή είστε έξω από τους χάρτες εδώ).")
+                else (if (en) "The destination is not near a road the map knows (or on another map: a route stays on one country's map)." else "Ο προορισμός δεν είναι κοντά σε δρόμο του χάρτη (ή είναι σε άλλον χάρτη: μια διαδρομή μένει στον χάρτη μίας χώρας).")
             "Connection between locations not found" in m -> if (en) "No way there by this means." else "Δεν υπάρχει δρόμος ως εκεί με αυτό το μέσο."
             else -> m.ifEmpty { if (en) "No route." else "Δεν βρέθηκε διαδρομή." }
         }

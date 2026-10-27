@@ -8,8 +8,11 @@ import java.io.File
  * Files like the Calendar and the Timer, synced): the computer makes them (tools/maps-greece.sh) and sync carries them,
  * so the desktop can use the same ones later.
  *
- *   greece.pmtiles   the offline map (Protomaps' basemap cut to Greece), drawn by MapLibre
- *   greece-gh/       the offline routing graph for car, foot and bike (GraphHopper 10.2, the app's own version)
+ *   <id>.pmtiles     a country's offline map (Protomaps' basemap cut to it), drawn by MapLibre: greece.pmtiles, and any
+ *                    other desktop Tetra's map builder made (its mapbuild.js; the user, 27 Oct: "a map builder that downloads
+ *                    the map, does the roads stuff and installs it in the app and then uploads to the android devices"),
+ *                    with <id>.json beside it ({"name","region","built","bounds":[w,s,e,n],"drive"})
+ *   <id>-gh/         its offline routing graph for car, foot and bike (GraphHopper 10.2, the app's own version)
  *   Places/<id>.json one saved place each:
  *     {"id":"k3f9a2","name":"Home","lat":37.9715,"lng":23.7257,"icon":"home","slot":1,"mode":"car","lists":["fav"]}
  *     slot 1–12 puts it on Home's Maps card (0: not there; a phone shows 1–6); mode is how its one tap there goes (car,
@@ -18,7 +21,8 @@ import java.io.File
  *   added-places.tsv places put into the map's own data by hand, in the search list's form (the user's schools, 21 Oct)
  *   Lists/<id>.json  one list each, {"id":"fav","name":"Favourites","emoji":"❤️"} (the user, 21 Oct: "make lists with names
  *     and emojes and add favs in there")
- *   greece-places.tsv the offline search list (tools/maps-places.py): towns and places of Search's kinds
+ *   <id>-places.tsv  the offline search list (tools/maps-places.py): towns and places of Search's kinds; with it
+ *                    <id>-addresses.tsv, <id>-streets.tsv and <id>-lanes.tsv
  */
 internal data class Place(
     val id: String,
@@ -107,8 +111,51 @@ internal object MapsFiles {
     const val PARKING = "parking"
 
     fun root(tetra: File) = File(tetra, FOLDER)
-    fun map(root: File) = File(root, MAP)
+    /** The first map (a map is there when it is a file); [maps] are all of them. */
+    fun map(root: File) = ids(root).firstOrNull()?.let { File(root, "$it.pmtiles") } ?: File(root, MAP)
     fun graph(root: File) = File(root, GRAPH)
+
+    /** The maps here, one id each ("greece", "cyprus"), sorted so their layers draw the same way each time. */
+    fun ids(root: File): List<String> = root.list().orEmpty().filter { it.endsWith(".pmtiles") && !it.startsWith(".") }.map { it.removeSuffix(".pmtiles") }.sorted()
+
+    /** A map: its id, its name, [bounds] west, south, east, north, and the side traffic keeps to there. */
+    class MapPack(val id: String, val name: String, val bounds: DoubleArray?, val driveLeft: Boolean) {
+        fun has(lat: Double, lng: Double) = bounds != null && lng >= bounds[0] && lat >= bounds[1] && lng <= bounds[2] && lat <= bounds[3]
+    }
+
+    /** Each map with its manifest (the map builder's <id>.json) or, without one (Greece's), its own file's bounds. */
+    fun maps(root: File): List<MapPack> = ids(root).map { id ->
+        val m = runCatching { JSONObject(File(root, "$id.json").readText()) }.getOrNull()
+        val b = m?.optJSONArray("bounds")?.takeIf { it.length() == 4 }?.let { a -> DoubleArray(4) { a.getDouble(it) } } ?: bounds(File(root, "$id.pmtiles"))
+        MapPack(id, m?.optString("name")?.ifEmpty { null } ?: id.replaceFirstChar { it.uppercase() }, b, m?.optString("drive") == "left")
+    }
+
+    /** A .pmtiles file's own bounds: its v3 header's west, south, east, north (×10⁷, from byte 102). */
+    fun bounds(f: File): DoubleArray? = runCatching {
+        java.io.RandomAccessFile(f, "r").use { r ->
+            val b = ByteArray(127); r.readFully(b)
+            if (String(b, 0, 7, Charsets.ISO_8859_1) != "PMTiles") null
+            else java.nio.ByteBuffer.wrap(b).order(java.nio.ByteOrder.LITTLE_ENDIAN).let { bb -> DoubleArray(4) { bb.getInt(102 + 4 * it) / 1e7 } }
+        }
+    }.getOrNull()
+
+    /**
+     * The roads of the map [lat],[lng] is on, else the first map's. shortcut: one map's graph a route; a route across a
+     * border needs one map of both countries (a bigger region in the map builder), or a second graph at the border.
+     */
+    fun graphAt(root: File, lat: Double, lng: Double): File {
+        val all = maps(root)
+        return (all.firstOrNull { it.has(lat, lng) } ?: all.firstOrNull())?.let { File(root, "${it.id}-gh") } ?: graph(root)
+    }
+
+    /** Each map's <id>-[kind].tsv that is there (places, addresses, streets, lanes). */
+    fun lists(root: File, kind: String): List<File> = ids(root).map { File(root, "$it-$kind.tsv") }.filter { it.isFile }
+
+    /** Every file of map [id] to Tetra's Trash, so the removal reaches the other devices; the saved places stay. */
+    fun removeMap(root: File, id: String) {
+        val own = Regex(Regex.escape(id) + "(\\.pmtiles|\\.json|-gh|-[a-z]+\\.tsv)")
+        root.list().orEmpty().filter { own.matches(it) }.forEach { trash(root, File(root, it)) }
+    }
 
     /**
      * The saved places, one per id: a sync that found a place changed on both sides keeps both files ("parking (2).json"),
@@ -171,15 +218,17 @@ internal object MapsFiles {
     /** Every file of [p] to the Trash. */
     fun delete(root: File, p: Place) = files(root, p.id).forEach { trash(root, it) }
 
-    /** What is in Tetra/Maps, for Settings: the map and the routing, each with its size and date. */
-    fun installed(context: android.content.Context, root: File): List<Pair<String, String>> {
+    /** What is in Tetra/Maps, for Settings › Maps: each map's id, name and "128 MB · with roads · 27 Oct 2026". */
+    fun installed(context: android.content.Context, root: File): List<Triple<String, String, String>> {
         val day = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.getDefault())
-        fun about(f: File, size: Long) = if (!f.exists()) context.getString(R.string.maps_installed_not_yet) else
-            "${size / 1_000_000} MB, ${java.time.Instant.ofEpochMilli(f.lastModified()).atZone(java.time.ZoneId.systemDefault()).format(day)}"
-        val g = graph(root)
-        return listOf(context.getString(R.string.maps_installed_map) to about(map(root), map(root).length()),
-            context.getString(R.string.maps_installed_routing) to about(File(g, "properties"), g.listFiles().orEmpty().sumOf { it.length() }),
-            context.getString(R.string.maps_installed_places) to "${places(root).size}")
+        return maps(root).map { m ->
+            val f = File(root, "${m.id}.pmtiles"); val g = File(root, "${m.id}-gh")
+            val size = f.length() + g.listFiles().orEmpty().sumOf { it.length() } +
+                listOf("places", "addresses", "streets", "lanes").sumOf { File(root, "${m.id}-$it.tsv").length() }
+            val date = java.time.Instant.ofEpochMilli(f.lastModified()).atZone(java.time.ZoneId.systemDefault()).format(day)
+            val roads = context.getString(if (File(g, "properties").isFile) R.string.maps_with_roads else R.string.maps_no_roads)
+            Triple(m.id, m.name, "${size / 1_000_000} MB · $roads · $date")
+        }
     }
 
     fun lists(root: File): List<PlaceList> = File(root, LISTS).listFiles().orEmpty()
@@ -462,7 +511,6 @@ internal data class Poi(
  * supermarkets or petrol stations or charging stations add disability parking … button pills in the search page").
  */
 internal object MapsSearch {
-    const val FILE = "greece-places.tsv"
     /** EOPYY's own pharmacies (tools/maps-eopyy.py), kind "eopyy" (the user, 21 Oct: "add them as a list as well as a pill"). */
     const val EOPYY = "greece-eopyy.tsv"
     /** Cities' own disabled parking spots from data.gov.gr (tools/maps-amea.py), kind disabled_parking. */
@@ -541,19 +589,20 @@ internal object MapsSearch {
      * and a route waited for it (the user's "Finding the way…" that stayed, 23 Oct).
      */
     @Synchronized fun tolls(root: File): List<Poi> {
-        val f = File(root, FILE)
-        if (!f.isFile) return emptyList()
-        tollCache?.let { (at, list) -> if (at == f.lastModified()) return list }
-        val list = f.bufferedReader().useLines { lines -> lines.filter { it.startsWith("toll\t") }.mapNotNull(::parse).toList() }
-        tollCache = f.lastModified() to list
+        val files = MapsFiles.lists(root, "places")
+        if (files.isEmpty()) return emptyList()
+        val stamp = files.sumOf { it.lastModified() } + files.size
+        tollCache?.let { (at, list) -> if (at == stamp) return list }
+        val list = files.flatMap { f -> f.bufferedReader().useLines { lines -> lines.filter { it.startsWith("toll\t") }.mapNotNull(::parse).toList() } }
+        tollCache = stamp to list
         return list
     }
 
     /** The search list in [root] with EOPYY's, read once (about 140 000 places) and kept while the files are the same. */
     @Synchronized fun load(root: File): List<Poi> {
-        val files = listOf(File(root, FILE), File(root, EOPYY), File(root, AMEA), File(root, AMEA_DECISIONS), File(root, ADDED)).filter { it.isFile }
+        val files = MapsFiles.lists(root, "places") + listOf(File(root, EOPYY), File(root, AMEA), File(root, AMEA_DECISIONS), File(root, ADDED)).filter { it.isFile }
         if (files.isEmpty()) return emptyList()
-        val stamp = files.sumOf { it.lastModified() }
+        val stamp = files.sumOf { it.lastModified() } + files.size
         cache?.let { (path, at, all) -> if (path == root.path && at == stamp) return all }
         val all = files.flatMap { f -> f.bufferedReader().useLines { lines -> lines.mapNotNull(::parse).toList() } }
         cache = Triple(root.path, stamp, all)
@@ -597,24 +646,24 @@ internal object MapsSearch {
 }
 
 /**
- * Addresses (greece-addresses.tsv, tools/maps-places.py): the street, number, postcode and town of a spot (the user, 21 Oct:
+ * Addresses (each map's <id>-addresses.tsv, tools/maps-places.py): the street, number, postcode and town of a spot (the user, 21 Oct:
  * "To click on a spot show the address the number the postcode … Google maps has no adress for my hpuse this has").
  */
 internal object MapsAddresses {
-    const val FILE = "greece-addresses.tsv"
     private class All(val path: String, val at: Long, val lat: DoubleArray, val lng: DoubleArray, val rest: Array<String>)
     private var cache: All? = null
 
     @Synchronized private fun load(root: File): All? {
-        val f = File(root, FILE)
-        if (!f.isFile) return null
-        cache?.let { if (it.path == f.path && it.at == f.lastModified()) return it }
+        val files = MapsFiles.lists(root, "addresses")
+        if (files.isEmpty()) return null
+        val stamp = files.sumOf { it.lastModified() } + files.size
+        cache?.let { if (it.path == root.path && it.at == stamp) return it }
         val lat = ArrayList<Double>(); val lng = ArrayList<Double>(); val rest = ArrayList<String>()
-        f.bufferedReader().useLines { lines -> lines.forEach { line ->
+        for (f in files) f.bufferedReader().useLines { lines -> lines.forEach { line ->
             val a = line.indexOf('\t'); val b = line.indexOf('\t', a + 1)
             if (a > 0 && b > a) { lat += line.substring(0, a).toDoubleOrNull() ?: return@forEach; lng += line.substring(a + 1, b).toDoubleOrNull() ?: 0.0; rest += line.substring(b + 1) }
         } }
-        return All(f.path, f.lastModified(), lat.toDoubleArray(), lng.toDoubleArray(), rest.toTypedArray()).also { cache = it }
+        return All(root.path, stamp, lat.toDoubleArray(), lng.toDoubleArray(), rest.toTypedArray()).also { cache = it }
     }
 
     /**
@@ -672,24 +721,24 @@ internal object MapsAddresses {
 }
 
 /**
- * The named roads (greece-streets.tsv, tools/maps-places.py: a name and the middle of each road piece), for the street of
+ * The named roads (each map's <id>-streets.tsv, tools/maps-places.py: a name and the middle of each road piece), for the street of
  * a spot where no house has a number.
  */
 internal object MapsStreets {
-    const val FILE = "greece-streets.tsv"
     private class All(val path: String, val at: Long, val lat: DoubleArray, val lng: DoubleArray, val name: Array<String>)
     private var cache: All? = null
 
     @Synchronized private fun load(root: File): All? {
-        val f = File(root, FILE)
-        if (!f.isFile) return null
-        cache?.let { if (it.path == f.path && it.at == f.lastModified()) return it }
+        val files = MapsFiles.lists(root, "streets")
+        if (files.isEmpty()) return null
+        val stamp = files.sumOf { it.lastModified() } + files.size
+        cache?.let { if (it.path == root.path && it.at == stamp) return it }
         val lat = ArrayList<Double>(); val lng = ArrayList<Double>(); val name = ArrayList<String>()
-        f.bufferedReader().useLines { lines -> lines.forEach { line ->
+        for (f in files) f.bufferedReader().useLines { lines -> lines.forEach { line ->
             val a = line.indexOf('\t'); val b = line.indexOf('\t', a + 1)
             if (a > 0 && b > a) { lat += line.substring(a + 1, b).toDoubleOrNull() ?: return@forEach; lng += line.substring(b + 1).toDoubleOrNull() ?: 0.0; name += line.substring(0, a) }
         } }
-        return All(f.path, f.lastModified(), lat.toDoubleArray(), lng.toDoubleArray(), name.toTypedArray()).also { cache = it }
+        return All(root.path, stamp, lat.toDoubleArray(), lng.toDoubleArray(), name.toTypedArray()).also { cache = it }
     }
 
     /** The name of the road piece whose middle is nearest [lat],[lng], within [within] metres. */

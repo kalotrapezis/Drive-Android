@@ -388,7 +388,7 @@
     <string name="settings_imported">Importiert</string>
     <string name="settings_imported_shared">%1$d Orte und %2$d Kartenergänzungen; %3$d schon vorhanden oder ohne Position.</string>
     <string name="settings_not_placed">Diese konnten nicht platziert werden – suche sie in Karten und speichere sie:</string>
-    <string name="settings_installed_maps_note">Karten werden am Computer erstellt und kommen per Sync hierher, in Tetra/Maps: tools/maps-greece.sh lädt die neueste Karte Griechenlands und erstellt das Routing dafür (eine Aktualisieren-Taste im Desktop-Tetra ist geplant).</string>
+    <string name="settings_installed_maps_note">Die Karte jedes Landes wird am Computer erstellt, unter Tetra am Computer › Einstellungen › Karten › Karte hinzufügen. Sync bringt sie hierher, nach Tetra/Maps.</string>
     <string name="settings_problems">Probleme</string>
     <string name="settings_send_log_summary">Das Protokoll von Tetra und die Aufzeichnungen deiner Fahrten der letzten 7 Tage als eine ZIP; sie bleiben auf diesem Gerät, bis du sie sendest</string>
     <string name="settings_contacts_note">Deine Kontakte sind Dateien in Tetra/Contacts, eine pro Person: Sie werden mit dem Computer synchronisiert, wo Kontakte sie ebenfalls zeigt.</string>
@@ -1509,7 +1509,7 @@
     <string name="maps_my_car">Mein Auto</string>
     <string name="maps_parking_saved">Parkplatz gespeichert</string>
     <string name="maps_on_car_screen">Auf dem Autodisplay: %1$s</string>
-    <string name="maps_no_graph">Noch kein Routing-Graph: lege greece-gh in Tetra/Maps (tools/maps-greece.sh auf dem Computer erstellt ihn).</string>
+    <string name="maps_no_graph">Diese Karte hat noch keine Straßen für die Routenführung: Aktualisiere sie unter Tetra am Computer › Einstellungen › Karten.</string>
     <string name="maps_finding">Route wird gesucht…</string>
     <string name="maps_no_way_graph">Keine Route gefunden: der Routing-Graph konnte nicht gelesen werden</string>
     <string name="maps_arrived">Angekommen: %1$s</string>
@@ -1517,8 +1517,8 @@
     <string name="maps_dropped_pin">Markierter Ort</string>
     <string name="maps_amea_parking">Behindertenparkplatz</string>
     <string name="maps_amea_placed">Behindertenparkplatz platziert: %1$s</string>
-    <string name="maps_no_map">Die Karte Griechenlands ist noch nicht auf diesem Gerät</string>
-    <string name="maps_no_map_how">Sie kommt vom Computer: tools/maps-greece.sh erstellt greece.pmtiles (etwa 500 MB) und den Routing-Graphen greece-gh, und Sync bringt sie hierher in Tetra/Maps.</string>
+    <string name="maps_no_map">Auf diesem Gerät gibt es noch keine Karte</string>
+    <string name="maps_no_map_how">Karten werden am Computer erstellt: Tetra am Computer › Einstellungen › Karten › Karte hinzufügen, danach bringt Sync sie hierher, nach Tetra/Maps.</string>
     <string name="maps_parked_here">Hier geparkt</string>
     <string name="maps_waiting_location">Warte auf deinen Standort…</string>
     <string name="maps_location_off">Standort ist für Tetra aus.</string>
@@ -1613,7 +1613,7 @@
     <string name="car_map">Karte</string>
     <string name="car_places">Orte</string>
     <string name="car_allow_location">Öffne Tetra Karten einmal auf dem Telefon, um den Standort zu erlauben</string>
-    <string name="car_no_map">Noch keine Karte: greece.pmtiles kommt vom Computer in Tetra/Maps</string>
+    <string name="car_no_map">Noch keine Karte: Erstelle eine unter Tetra am Computer › Einstellungen › Karten</string>
     <string name="car_end">Ende</string>
     <string name="car_routes">Routen</string>
     <string name="car_add_stop_button">Stopp</string>
@@ -1652,10 +1652,6 @@
         <item quantity="one">%1$d Mautstelle</item>
         <item quantity="other">%1$d Mautstellen</item>
     </plurals>
-    <string name="maps_installed_map">Karte Griechenlands</string>
-    <string name="maps_installed_routing">Routing (Auto, zu Fuß, Rad)</string>
-    <string name="maps_installed_places">Gespeicherte Orte</string>
-    <string name="maps_installed_not_yet">noch nicht hier</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Favoriten</string>
@@ -4594,4 +4590,9 @@
     <string name="pdf_no_bookmarks">Keine Lesezeichen in dieser Datei.</string>
     <string name="pdf_page_lower">Seite %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="maps_with_roads">mit Straßen</string>
+    <string name="maps_no_roads">nur Karte, ohne Straßen</string>
+    <string name="settings_remove_map">Entfernen</string>
+    <string name="settings_remove_map_title">Karte von %1$s entfernen?</string>
+    <string name="settings_remove_map_body">Ihre Dateien kommen in den Papierkorb, hier und auf deinen anderen Geräten. Deine gespeicherten Orte bleiben erhalten.</string>
 </resources>

@@ -388,7 +388,7 @@
     <string name="settings_imported">Tuotu</string>
     <string name="settings_imported_shared">%1$d paikkaa ja %2$d karttalisäystä; %3$d oli jo täällä tai ilman sijaintia.</string>
     <string name="settings_not_placed">Näitä ei voitu sijoittaa – hae ne Kartoista ja tallenna:</string>
-    <string name="settings_installed_maps_note">Kartat tehdään tietokoneella ja tulevat tänne synkronoinnilla kansioon Tetra/Maps: tools/maps-greece.sh lataa Kreikan uusimman kartan ja rakentaa sille reitityksen (Päivitä-painike työpöydän Tetraan on suunnitteilla).</string>
+    <string name="settings_installed_maps_note">Jokaisen maan kartta tehdään tietokoneella kohdassa Tetra tietokoneella › Asetukset › Kartat › Lisää kartta. Synkronointi tuo sen tänne, kansioon Tetra/Maps.</string>
     <string name="settings_problems">Ongelmat</string>
     <string name="settings_send_log_summary">Tetran loki ja viimeisen 7 päivän ajojesi jäljet yhtenä zipinä; ne pysyvät tällä laitteella, kunnes lähetät ne</string>
     <string name="settings_contacts_note">Yhteystietosi ovat tiedostoja kansiossa Tetra/Contacts, yksi henkilöä kohden: ne synkronoituvat tietokoneen kanssa, jossa Yhteystiedot näyttää ne myös.</string>
@@ -1509,7 +1509,7 @@
     <string name="maps_my_car">Autoni</string>
     <string name="maps_parking_saved">Pysäköinti tallennettu</string>
     <string name="maps_on_car_screen">Auton näytöllä: %1$s</string>
-    <string name="maps_no_graph">Reititysverkkoa ei vielä ole: laita greece-gh kansioon Tetra/Maps (tietokoneen tools/maps-greece.sh tekee sen).</string>
+    <string name="maps_no_graph">Tällä kartalla ei ole vielä teitä reittiohjeita varten: päivitä se kohdassa Tetra tietokoneella › Asetukset › Kartat.</string>
     <string name="maps_finding">Etsitään reittiä…</string>
     <string name="maps_no_way_graph">Reittiä ei löytynyt: reititysverkkoa ei voitu lukea</string>
     <string name="maps_arrived">Perillä: %1$s</string>
@@ -1517,8 +1517,8 @@
     <string name="maps_dropped_pin">Pudotettu nasta</string>
     <string name="maps_amea_parking">Invapysäköinti</string>
     <string name="maps_amea_placed">Invapaikka sijoitettu: %1$s</string>
-    <string name="maps_no_map">Kreikan kartta ei ole vielä tällä laitteella</string>
-    <string name="maps_no_map_how">Se tulee tietokoneelta: tools/maps-greece.sh tekee tiedoston greece.pmtiles (noin 500 MB) ja reititysverkon greece-gh, ja synkronointi tuo ne tänne kansioon Tetra/Maps.</string>
+    <string name="maps_no_map">Tällä laitteella ei ole vielä karttaa</string>
+    <string name="maps_no_map_how">Kartat tehdään tietokoneella: Tetra tietokoneella › Asetukset › Kartat › Lisää kartta, ja sitten Synkronointi tuo ne tänne, kansioon Tetra/Maps.</string>
     <string name="maps_parked_here">Pysäköin tähän</string>
     <string name="maps_waiting_location">Odotetaan sijaintiasi…</string>
     <string name="maps_location_off">Sijainti on pois päältä Tetralta.</string>
@@ -1613,7 +1613,7 @@
     <string name="car_map">Kartta</string>
     <string name="car_places">Paikat</string>
     <string name="car_allow_location">Avaa Tetra Kartat kerran puhelimessa sijainnin sallimiseksi</string>
-    <string name="car_no_map">Ei vielä karttaa: greece.pmtiles tulee tietokoneelta kansioon Tetra/Maps</string>
+    <string name="car_no_map">Karttaa ei vielä ole: tee sellainen kohdassa Tetra tietokoneella › Asetukset › Kartat</string>
     <string name="car_end">Lopeta</string>
     <string name="car_routes">Reitit</string>
     <string name="car_add_stop_button">Pysähdys</string>
@@ -1652,10 +1652,6 @@
         <item quantity="one">%1$d tietulli</item>
         <item quantity="other">%1$d tietullia</item>
     </plurals>
-    <string name="maps_installed_map">Kreikan kartta</string>
-    <string name="maps_installed_routing">Reititys (auto, kävely, pyörä)</string>
-    <string name="maps_installed_places">Tallennetut paikat</string>
-    <string name="maps_installed_not_yet">ei vielä täällä</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Suosikit</string>
@@ -4594,4 +4590,9 @@
     <string name="pdf_no_bookmarks">Tässä tiedostossa ei ole kirjanmerkkejä.</string>
     <string name="pdf_page_lower">sivu %1$d</string>
     <string name="pdf_quoted">”%1$s”</string>
+    <string name="maps_with_roads">teiden kanssa</string>
+    <string name="maps_no_roads">vain kartta, ei teitä</string>
+    <string name="settings_remove_map">Poista</string>
+    <string name="settings_remove_map_title">Poistetaanko kartta: %1$s?</string>
+    <string name="settings_remove_map_body">Sen tiedostot siirretään roskakoriin, täällä ja muilla laitteillasi. Tallennetut paikkasi säilyvät.</string>
 </resources>

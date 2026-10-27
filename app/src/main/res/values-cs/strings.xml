@@ -388,7 +388,7 @@
     <string name="settings_imported">Importováno</string>
     <string name="settings_imported_shared">Míst: %1$d, doplňků mapy: %2$d; %3$d už tu bylo nebo nemá polohu.</string>
     <string name="settings_not_placed">Tato se nepodařilo umístit — vyhledejte je v Mapách a uložte:</string>
-    <string name="settings_installed_maps_note">Mapy se vytvářejí na počítači a přicházejí sem přes Synchronizaci do Tetra/Maps: tools/maps-greece.sh stáhne nejnovější mapu Řecka a sestaví pro ni trasování (tlačítko Aktualizovat v desktopové Tetře se plánuje).</string>
+    <string name="settings_installed_maps_note">Mapa každé země se vytváří v počítači, v Tetra v počítači › Nastavení › Mapy › Přidat mapu. Synchronizace ji sem přenese, do Tetra/Maps.</string>
     <string name="settings_problems">Problémy</string>
     <string name="settings_send_log_summary">Protokol Tetry a záznamy vašich jízd za posledních 7 dní v jednom zipu; zůstávají na tomto zařízení, dokud je neodešlete</string>
     <string name="settings_contacts_note">Vaše kontakty jsou soubory v Tetra/Contacts, jeden na osobu: synchronizují se s počítačem, kde je zobrazují i Kontakty.</string>
@@ -1595,7 +1595,7 @@
     <string name="maps_my_car">Moje auto</string>
     <string name="maps_parking_saved">Parkování uloženo</string>
     <string name="maps_on_car_screen">Na obrazovce auta: %1$s</string>
-    <string name="maps_no_graph">Zatím žádný graf tras: dejte greece-gh do Tetra/Maps (vytvoří ho tools/maps-greece.sh na počítači).</string>
+    <string name="maps_no_graph">Tato mapa zatím nemá silnice pro navigaci: aktualizujte ji v Tetra v počítači › Nastavení › Mapy.</string>
     <string name="maps_finding">Hledání cesty…</string>
     <string name="maps_no_way_graph">Cesta nenalezena: graf tras nelze přečíst</string>
     <string name="maps_arrived">Na místě: %1$s</string>
@@ -1603,8 +1603,8 @@
     <string name="maps_dropped_pin">Umístěný špendlík</string>
     <string name="maps_amea_parking">Parkování pro ZTP</string>
     <string name="maps_amea_placed">Místo pro ZTP umístěno: %1$s</string>
-    <string name="maps_no_map">Mapa Řecka v tomto zařízení zatím není</string>
-    <string name="maps_no_map_how">Přichází z počítače: tools/maps-greece.sh vytvoří greece.pmtiles (asi 500 MB) a graf tras greece-gh a Synchronizace je přenese sem do Tetra/Maps.</string>
+    <string name="maps_no_map">V tomto zařízení zatím není žádná mapa</string>
+    <string name="maps_no_map_how">Mapy se vytvářejí v počítači: Tetra v počítači › Nastavení › Mapy › Přidat mapu, poté je Synchronizace přenese sem do Tetra/Maps.</string>
     <string name="maps_parked_here">Parkuji tady</string>
     <string name="maps_waiting_location">Čekání na vaši polohu…</string>
     <string name="maps_location_off">Poloha je pro Tetru vypnutá.</string>
@@ -1699,7 +1699,7 @@
     <string name="car_map">Mapa</string>
     <string name="car_places">Místa</string>
     <string name="car_allow_location">Jednou otevřete Tetra Mapy v telefonu a povolte polohu</string>
-    <string name="car_no_map">Zatím žádná mapa: greece.pmtiles přijde z počítače do Tetra/Maps</string>
+    <string name="car_no_map">Zatím žádná mapa: vytvořte ji v Tetra v počítači › Nastavení › Mapy</string>
     <string name="car_end">Konec</string>
     <string name="car_routes">Trasy</string>
     <string name="car_add_stop_button">Zastávka</string>
@@ -1740,10 +1740,6 @@
         <item quantity="many">%1$d mýtné brány</item>
         <item quantity="other">%1$d mýtných bran</item>
     </plurals>
-    <string name="maps_installed_map">Mapa Řecka</string>
-    <string name="maps_installed_routing">Trasování (auto, pěšky, kolo)</string>
-    <string name="maps_installed_places">Uložená místa</string>
-    <string name="maps_installed_not_yet">zatím tu není</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Oblíbené</string>
@@ -4778,4 +4774,9 @@
     <string name="pdf_no_bookmarks">V tomto souboru nejsou žádné záložky.</string>
     <string name="pdf_page_lower">stránka %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="maps_with_roads">se silnicemi</string>
+    <string name="maps_no_roads">jen mapa, bez silnic</string>
+    <string name="settings_remove_map">Odebrat</string>
+    <string name="settings_remove_map_title">Odebrat mapu: %1$s?</string>
+    <string name="settings_remove_map_body">Její soubory se přesunou do Koše, tady i na vašich dalších zařízeních. Vaše uložená místa zůstanou.</string>
 </resources>

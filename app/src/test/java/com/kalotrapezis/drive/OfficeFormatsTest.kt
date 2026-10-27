@@ -117,6 +117,26 @@ class OfficeFormatsTest {
         }
     }
 
+    /** Word's Insert › Object › Create from file (an OLE package): a film and two sounds (one in the package's mini stream) found, taken out whole, and kept as they were when saved. */
+    @Test fun `films and sounds embedded as objects in a docx`() {
+        val src = File("src/test/resources/media.docx").readBytes(); val parts = OfficeFormats.unzip(src)
+        val objects = OfficeFormats.read(src, OfficeKind.Docx).paras.flatMap { p -> p.runs.mapNotNull { it.image } }
+        assertEquals(listOf("word/embeddings/oleObject1.bin#clip.mp4", "word/embeddings/oleObject2.bin#tone.m4a", "word/embeddings/oleObject3.bin#beep.wav"), objects.map { PictureXml.video(it) })
+        assertEquals(listOf("Video", "Audio", "Audio"), objects.map { PictureXml.kind(it) })
+        for ((n, film) in objects.map { PictureXml.video(it)!! }.withIndex()) {
+            val (name, bytes) = OfficeVideo.ole(parts.getValue(film.substringBefore('#')))!!
+            assertEquals(film.substringAfter('#'), name)
+            // an mp4's and an m4a's "ftyp", a wav's RIFF, and the whole file (its last bytes too)
+            assertEquals(film, if (n < 2) "ftyp" else "RIFF", String(bytes!!, if (n < 2) 4 else 0, 4, Charsets.ISO_8859_1))
+            assertEquals(film, listOf(8990, 5629, 844)[n], bytes.size)
+        }
+        assertEquals(null, OfficeVideo.ole(parts.getValue("word/media/image1.png")))
+        // saved again: every part as it was, the objects' XML kept
+        val again = OfficeFormats.write(OfficeDoc(OfficeFormats.read(src, OfficeKind.Docx).paras), OfficeKind.Docx, src).let(OfficeFormats::unzip)
+        for (p in parts.keys.filter { it.startsWith("word/embeddings/") || it.startsWith("word/media/") }) assertTrue(p, parts.getValue(p).contentEquals(again[p]))
+        assertEquals(3, Regex("<o:OLEObject ").findAll(String(again.getValue("word/document.xml"))).count())
+    }
+
     @Test fun `a picture's size and wrapping are saved, and can go back in line`() {
         val png = java.io.ByteArrayOutputStream().also { javax.imageio.ImageIO.write(java.awt.image.BufferedImage(4, 2, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", it) }.toByteArray()
         for (kind in OfficeKind.entries) {

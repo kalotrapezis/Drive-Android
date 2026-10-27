@@ -12,6 +12,23 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [x] (office-media session, 27 Oct; branch `claude/office-media`, not merged; its build is on the tablet 971f6b37) **Local video and audio
+      embedded in documents play** (the user: "I know it has Video from YouTube but what about local files embedded into the
+      documents?"). Already there: Slides read and played PowerPoint's p:videoFile/p:audioFile + p14:media and Impress's
+      draw:plugin; Words its own films and Online Video; Tables none (Excel has no media). New: **Words** reads a film or sound
+      embedded as an object (Word's Insert › Object › Create from file: an OLE package, `OfficeVideo.ole` reads its Ole10Native
+      stream, mini stream too) — Word's EMF icon drawn as a dark frame with the play mark, a sound as the speaker, kind "Audio";
+      a tap plays it in place. **Slides** plays a film or sound by its slide's timing (PowerPoint's mediacall, LibreOffice's
+      media-call: Start Automatically / In Click Sequence), read, played in the show, written back when animations are changed;
+      an Impress sound with no picture gets the speaker. **PDF** (PdfMedia.kt + a 2-line hook in PdfScreen, view mode only):
+      Screen renditions, RichMedia assets, Movie files and Sound samples (made a WAV), with the play mark, a tap plays in
+      place. **Fix** in `VideoFrame`: a second film tapped while a frame was open showed the first one / stayed silent; the
+      same player now gets the new file. Fixtures: test/resources/media.py → media.pptx, media.docx, media.odp and
+      androidTest/assets/media.pdf. Unit 662/0/12; PdfMediaDeviceTest on the tablet; tablet: the deck's film started by
+      itself and its sound on the click, the .docx's film and both sounds, the PDF's film and sound all played (audio focus
+      taken each time). Files kept: the media parts byte-identical after saving (tests). **Not done:** PowerPoint OLE packages
+      (p:oleObj, not drawn in Slides at all), a RichMedia with no picture of its own is an invisible tap spot, a PDF on the
+      pdf-like-words branch needs the hook moved when that branch is merged.
 - [x] (setup-guide session, 26 Oct; merged into main in both repos) **(5b) the graphical guide**, in all 24 languages.
       Android Guide.kt: on first start (it replaced the photo screen; the photo question is a Permissions step) and
       Settings › Guide; chapters Welcome, Your computer (works alone; Local Sync › Scan a code), Permissions (9, each with

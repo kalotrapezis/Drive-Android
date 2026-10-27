@@ -555,6 +555,8 @@ internal object SlidesOdpEdit {
         fun secs(ms: Int) = String.format(Locale.ROOT, "%.3fs", ms / 1000f)
         /** [fx] on [target], in LibreOffice's presets, starting [node] (on-click, with-previous, after-previous). */
         fun effect(fx: SlideEffect, target: String, node: String): String {
+            // a film or sound played, as LibreOffice writes PowerPoint's media call
+            if (fx.kind == "play") return """<anim:par smil:begin="0s" smil:fill="hold" presentation:node-type="$node" presentation:preset-class="media-call" presentation:preset-id=""><anim:command smil:dur="${secs(fx.ms)}" smil:fill="hold" smil:targetElement="$target" anim:command="play"/></anim:par>"""
             val kind = when (fx.kind) { "appear" -> if (fx.exit) "disappear" else "appear"; "fly" -> if (fx.exit) "fly-out" else "fly-in"; "wipe" -> "wipe"; "zoom" -> "zoom"
                 "spin" -> "spin"; "grow" -> "grow-and-shrink"; "pulse" -> "flash-bulb"; else -> if (fx.exit) "fade-out" else "fade-in" }
             val cls = if (fx.emphasis) "emphasis" else if (fx.exit) "exit" else "entrance"

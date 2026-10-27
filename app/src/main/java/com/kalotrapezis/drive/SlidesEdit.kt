@@ -939,6 +939,8 @@ internal object SlidesEdit {
                     val node = when { last == null -> if (step.auto) "afterEffect" else "clickEffect"; fx.start == 'a' -> "afterEffect"; else -> "withEffect" }
                     last = fx
                     val s = fx.target; val ms = fx.ms.coerceAtLeast(1)
+                    // a film or sound played, as PowerPoint's Video › Start writes it (a media call, its length the film's)
+                    if (fx.kind == "play") return@joinToString """<p:par><p:cTn id="${id()}" presetID="1" presetClass="mediacall" presetSubtype="0" fill="hold" nodeType="$node"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst><p:cmd type="call" cmd="playFrom(0.0)"><p:cBhvr><p:cTn id="${id()}" dur="$ms" fill="hold"/>${tgt(s)}</p:cBhvr></p:cmd></p:childTnLst></p:cTn></p:par>"""
                     val grp = groups.count { it.first == s }.also { if (s in sps) groups += s to it }
                     val side = when (fx.from) { 'u' -> 1; 'r' -> 2; 'l' -> 8; else -> 4 }
                     val (preset, sub) = when (fx.kind) { "appear" -> 1 to 0; "fly" -> 2 to side; "wipe" -> 22 to side; "zoom" -> 53 to 16

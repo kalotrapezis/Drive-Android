@@ -66,6 +66,10 @@ internal object OfficeVideo {
         File(dir.apply { mkdirs() }, "${System.nanoTime()}.$ext").also { f -> context.contentResolver.openInputStream(uri)!!.use { i -> f.outputStream().use { i.copyTo(it) } } }.path
     }.onFailure { WriterLog.e("audio", it) }.getOrNull()
 
+    /** A film's or a sound's own picture when its file's cannot be drawn (Word draws an object's icon as EMF): a speaker, or a dark frame. */
+    fun stand(film: String): android.graphics.drawable.Drawable = if (audio(film)) android.graphics.drawable.BitmapDrawable(null, speaker().let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) })
+        else android.graphics.drawable.ColorDrawable(0xFF202124.toInt())
+
     /** A sound's picture on the slide, as PowerPoint's: a speaker on a light square (PNG bytes). */
     fun speaker(): ByteArray {
         val b = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888); val c = android.graphics.Canvas(b)
@@ -80,9 +84,59 @@ internal object OfficeVideo {
     /** A video's film to play (blocking): a web address as it is, a copy on the phone, else its part taken out of [file] (a zip) into [cache]. */
     fun film(m: String, file: File?, cache: File): String? = when {
         m.startsWith("http") || File(m).isFile -> m
-        else -> file?.let { f -> runCatching { java.util.zip.ZipFile(f).use { z -> z.getEntry(m.removePrefix("./"))?.let { en ->
-            File(cache, "film-${m.substringAfterLast('/')}").also { out -> z.getInputStream(en).use { i -> out.outputStream().use { i.copyTo(it) } } }.path } } }.getOrNull() }
+        else -> file?.let { f -> runCatching { java.util.zip.ZipFile(f).use { z -> z.getEntry(m.substringBefore('#').removePrefix("./"))?.let { en ->
+            cached(m, z.getInputStream(en).use { it.readBytes() }, cache) } } }.getOrNull() }
     }
+
+    /** A film's part's [bytes] written into [cache] to play: an object's ("part#name", Word's Insert › Object) its file taken out of its package. */
+    fun cached(m: String, bytes: ByteArray, cache: File): String? = (if ('#' in m) ole(bytes)?.second else bytes)?.let { b ->
+        File(cache, "film-${m.substringAfterLast('/').replace('#', '-')}").apply { writeBytes(b) }.path }
+
+    /** The kinds of film Android plays; [media]: a film's or a sound's file name. */
+    val FILMS = setOf("mp4", "m4v", "mov", "3gp", "webm", "mkv")
+    fun media(name: String) = audio(name) || name.substringAfterLast('.', "").lowercase() in FILMS
+
+    /**
+     * A file embedded as an object (Windows' Packager, what Word's and PowerPoint's Insert › Object › Create from file make):
+     * the OLE compound file's Ole10Native stream — its file's name and, unless [nameOnly], its bytes. Null: not such a package.
+     */
+    fun ole(b: ByteArray, nameOnly: Boolean = false): Pair<String, ByteArray?>? = runCatching {
+        val bb = java.nio.ByteBuffer.wrap(b).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        if (bb.getLong(0) != -0x1ee54e5e1fee3030L) return null // D0 CF 11 E0 A1 B1 1A E1
+        val ss = 1 shl bb.getShort(0x1E).toInt(); val per = ss / 4
+        fun at(s: Int) = (s + 1) * ss
+        // the FAT's own sectors: 109 named in the header, the rest in the DIFAT's chain
+        val fats = ArrayList<Int>(); val nFat = bb.getInt(0x2C)
+        for (i in 0 until 109) fats += bb.getInt(0x4C + 4 * i)
+        var d = bb.getInt(0x44); var guard = 0
+        while (fats.size < nFat && d >= 0 && guard++ < b.size / ss) { for (i in 0 until per - 1) fats += bb.getInt(at(d) + 4 * i); d = bb.getInt(at(d) + ss - 4) }
+        fun next(s: Int) = bb.getInt(at(fats[s / per]) + 4 * (s % per))
+        fun chain(start: Int, size: Int): ByteArray {
+            val out = java.io.ByteArrayOutputStream(size.coerceAtMost(b.size)); var s = start; var n = 0
+            while (s >= 0 && out.size() < size && n++ < b.size / ss + 1) { out.write(b, at(s), minOf(ss, size - out.size())); s = next(s) }
+            return out.toByteArray()
+        }
+        val dir = chain(bb.getInt(0x30), Int.MAX_VALUE).let { java.nio.ByteBuffer.wrap(it).order(java.nio.ByteOrder.LITTLE_ENDIAN) }
+        fun entry(k: Int) = String(dir.array(), 128 * k, (dir.getShort(128 * k + 0x40) - 2).coerceIn(0, 62), Charsets.UTF_16LE)
+        val k = (0 until dir.capacity() / 128).first { dir.get(128 * it + 0x42).toInt() == 2 && entry(it) == "\u0001Ole10Native" }
+        val size = dir.getInt(128 * k + 0x78); val start = dir.getInt(128 * k + 0x74)
+        // a small stream lives in the mini stream (the root's), in 64-byte sectors chained by the mini FAT
+        // (its name is in its first sectors: name and source path are at most 260 letters each)
+        val stream = if (size >= bb.getInt(0x38)) chain(start, if (nameOnly) minOf(size, 4096) else size) else {
+            val mini = chain(dir.getInt(0x74), dir.getInt(0x78)); val miniFat = java.nio.ByteBuffer.wrap(chain(bb.getInt(0x3C), bb.getInt(0x40) * ss)).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            val ms = 1 shl bb.getShort(0x20).toInt(); val o = java.io.ByteArrayOutputStream(size); var s = start
+            while (s >= 0 && o.size() < size) { o.write(mini, s * ms, minOf(ms, size - o.size())); s = miniFat.getInt(4 * s) }
+            o.toByteArray()
+        }
+        // its size, 2, the label (the file's name), the source path, 8 bytes, the temp path, the file's size and the file
+        var i = 6; fun text() = String(stream, i, (i until stream.size).first { stream[it].toInt() == 0 } - i, Charsets.ISO_8859_1).also { i += it.length + 1 }
+        val name = text().ifEmpty { null }; val path = text()
+        val label = name ?: path.substringAfterLast('\\')
+        if (nameOnly) return label to null
+        i += 8; text()
+        val n = java.nio.ByteBuffer.wrap(stream, i, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+        label to stream.copyOfRange(i + 4, i + 4 + n)
+    }.getOrNull()
 
     /** Where a video's picture is (points, on its page or slide), [turn] degrees about its middle, and its [film]. */
     class Spot(val film: String, val x: Float, val y: Float, val w: Float, val h: Float, val turn: Float = 0f, /** ms left out at its start and end */ val trim: List<Int>? = null)
@@ -98,10 +152,10 @@ internal object OfficeVideo {
         p.color = 0xF2FFFFFF.toInt(); c.drawPath(android.graphics.Path().apply { moveTo(cx - r * 0.35f, cy - r * 0.5f); lineTo(cx + r * 0.55f, cy); lineTo(cx - r * 0.35f, cy + r * 0.5f); close() }, p)
     }
 
-    /** A video's picture on the pages: drawn with its play mark; [film] what a tap on it plays. */
+    /** A video's picture on the pages: drawn with its play mark (a sound's speaker without); [film] what a tap on it plays. */
     class Marked(val inner: android.graphics.drawable.Drawable, val film: String) : android.graphics.drawable.Drawable() {
         override fun draw(canvas: android.graphics.Canvas) { inner.bounds = bounds; inner.draw(canvas)
-            mark(canvas, bounds.left.toFloat(), bounds.top.toFloat(), bounds.width().toFloat(), bounds.height().toFloat()) }
+            if (!audio(film)) mark(canvas, bounds.left.toFloat(), bounds.top.toFloat(), bounds.width().toFloat(), bounds.height().toFloat()) }
         override fun setAlpha(alpha: Int) = inner.setAlpha(alpha)
         override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) = inner.setColorFilter(colorFilter)
         @Deprecated("Deprecated in Java") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
@@ -112,7 +166,9 @@ internal object OfficeVideo {
  *  a film in Android's player with its controls, an online one in a web frame (YouTube's own player, as Word's Online Video plays it); ✕ stops it. */
 @Composable
 internal fun VideoFrame(film: String, modifier: Modifier, trim: List<Int>? = null, close: () -> Unit) = Box(modifier.background(Color.Black)) {
-    androidx.compose.ui.viewinterop.AndroidView({ c ->
+    // another film tapped while this frame is open: a web one gets a new page; a file is given to the same player (a new
+    // SurfaceView put in as the last one is taken out gets no surface, and stays silent)
+    androidx.compose.runtime.key(film.takeIf { it.startsWith("http") }) { androidx.compose.ui.viewinterop.AndroidView({ c ->
         if (film.startsWith("http")) android.webkit.WebView(c).apply {
             settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.mediaPlaybackRequiresUserGesture = false
             webChromeClient = android.webkit.WebChromeClient(); webViewClient = android.webkit.WebViewClient()
@@ -121,19 +177,18 @@ internal fun VideoFrame(film: String, modifier: Modifier, trim: List<Int>? = nul
             OfficeVideo.youtube(film)?.let { id -> loadDataWithBaseURL("https://kalotrapezis.github.io/",
                 """<html><head><style>html,body{margin:0;height:100%;background:#000}iframe{position:fixed;top:0;left:0;width:100%;height:100%;border:0}</style></head><body><iframe src="https://www.youtube.com/embed/$id?autoplay=1&playsinline=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe></body></html>""",
                 "text/html", "utf-8", null) } ?: loadUrl(film)
-        } else android.widget.VideoView(c).apply {
-            setMediaController(android.widget.MediaController(c).also { it.setAnchorView(this) })
-            setVideoPath(film)
-            // a trimmed film: from its start, paused at its end (PowerPoint's Trim Video)
-            setOnPreparedListener { p -> val from = trim?.getOrNull(0) ?: 0; val cut = trim?.getOrNull(1) ?: 0
-                // to the very frame, not the keyframe before it (a film may have one only at its start)
-                if (from > 0) p.seekTo(from.toLong(), android.media.MediaPlayer.SEEK_CLOSEST); start()
-                if (cut > 0) { val end = p.duration - cut
-                    val watch = object : Runnable { override fun run() { if (!isAttachedToWindow) return
-                        if (currentPosition >= end) pause() else postDelayed(this, 100) } }
-                    postDelayed(watch, 100) } }
-        }
-    }, Modifier.matchParentSize(), onRelease = { v -> (v as? android.webkit.WebView)?.destroy(); (v as? android.widget.VideoView)?.stopPlayback() })
+        } else android.widget.VideoView(c).apply { setMediaController(android.widget.MediaController(c).also { it.setAnchorView(this) }) }
+    }, Modifier.matchParentSize(), update = { v -> (v as? android.widget.VideoView)?.takeIf { it.tag != film }?.run { tag = film
+        // a trimmed film: from its start, paused at its end (PowerPoint's Trim Video)
+        setOnPreparedListener { p -> val from = trim?.getOrNull(0) ?: 0; val cut = trim?.getOrNull(1) ?: 0
+            // to the very frame, not the keyframe before it (a film may have one only at its start)
+            if (from > 0) p.seekTo(from.toLong(), android.media.MediaPlayer.SEEK_CLOSEST); start()
+            if (cut > 0) { val end = p.duration - cut
+                val watch = object : Runnable { override fun run() { if (!isAttachedToWindow || tag != film) return
+                    if (currentPosition >= end) pause() else postDelayed(this, 100) } }
+                postDelayed(watch, 100) } }
+        setVideoPath(film)
+    } }, onRelease = { v -> (v as? android.webkit.WebView)?.destroy(); (v as? android.widget.VideoView)?.stopPlayback() }) }
     Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color.Black.copy(alpha = 0.6f)).clickable(onClickLabel = stringResource(R.string.office_video_stop), onClick = close),
         contentAlignment = Alignment.Center) { Text("✕", color = Color.White) }
 }

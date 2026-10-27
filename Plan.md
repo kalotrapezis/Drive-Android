@@ -12,6 +12,15 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (call-speaker session, 27 Oct; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
+      phone-speaker button** (the user: "the call pop up on the PC from the phone to have a speaker option so instead of hearing the call from
+      bluetooth to my PC to hear it from the phone's speaker"). Bubble: a speaker icon (while Tetra is the phone app, as Mute/Hold) sends
+      `speaker`/`unspeaker` the way Mute travels (sync.js callAction → SyncServer /call/action → PhoneCalls.act → setAudioRoute); the phone
+      reports its route in /call/state ("route"), the bubble's sound line says "Sound on the phone's loudspeaker", recording is off there.
+      Back: the Bluetooth device it was on (the computer), else Bluetooth, else the earpiece. Fixed on the way: SyncServer /call/action
+      read 8 characters ("unspeaker" is 9). Both branches have main merged in; 670 Android unit / 162 desktop tests pass. **Not tried on
+      the real phone + PC yet** (the phone was not on USB); not merged into main. Not done: the tablet's relayed call notification has
+      no Speaker action.
 - [x] (phone-area-codes session, 27 Oct; merged into main) **The Phone names every landline's place from
       the installed maps** (the user: "could we take that into maps to get the codes for the map the user has installed?";
       "it has to be built side by side with map manager so with the map gets the numbers as well"): each map gets

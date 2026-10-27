@@ -4778,4 +4778,12 @@
     <string name="pdf_no_bookmarks">Brak zakładek w tym pliku.</string>
     <string name="pdf_page_lower">strona %1$d</string>
     <string name="pdf_quoted">„%1$s”</string>
+    <string name="phone_blocking">Blokowanie połączeń</string>
+    <string name="phone_blocking_about">Niechciane numery i zakresy oraz zablokowane połączenia</string>
+    <string name="phone_blocked_calls">Zablokowane połączenia</string>
+    <string name="phone_no_blocked_calls">Nie zablokowano jeszcze żadnego połączenia.</string>
+    <string name="phone_raise_answer">Podnieś, aby odebrać</string>
+    <string name="phone_raise_answer_about">Przyłóż dzwoniący telefon do ucha, aby odebrać.</string>
+    <string name="phone_flip_silence">Odwróć, aby wyciszyć</string>
+    <string name="phone_flip_silence_about">Odwróć dzwoniący telefon ekranem w dół, aby go wyciszyć.</string>
 </resources>

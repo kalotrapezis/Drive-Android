@@ -4686,4 +4686,12 @@
     <string name="pdf_no_bookmarks">U ovoj datoteci nema knjižnih oznaka.</string>
     <string name="pdf_page_lower">stranica %1$d</string>
     <string name="pdf_quoted">„%1$s”</string>
+    <string name="phone_blocking">Blokiranje poziva</string>
+    <string name="phone_blocking_about">Neželjeni brojevi i rasponi te blokirani pozivi</string>
+    <string name="phone_blocked_calls">Blokirani pozivi</string>
+    <string name="phone_no_blocked_calls">Još nijedan poziv nije blokiran.</string>
+    <string name="phone_raise_answer">Podigni za javljanje</string>
+    <string name="phone_raise_answer_about">Prinesite telefon koji zvoni uhu da biste se javili.</string>
+    <string name="phone_flip_silence">Okreni za utišavanje</string>
+    <string name="phone_flip_silence_about">Okrenite telefon koji zvoni zaslonom prema dolje da ga utišate.</string>
 </resources>

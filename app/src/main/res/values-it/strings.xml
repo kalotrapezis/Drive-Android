@@ -4594,4 +4594,12 @@
     <string name="pdf_no_bookmarks">Nessun segnalibro in questo file.</string>
     <string name="pdf_page_lower">pagina %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="phone_blocking">Blocco chiamate</string>
+    <string name="phone_blocking_about">Numeri e intervalli indesiderati e le chiamate bloccate</string>
+    <string name="phone_blocked_calls">Chiamate bloccate</string>
+    <string name="phone_no_blocked_calls">Nessuna chiamata ancora bloccata.</string>
+    <string name="phone_raise_answer">Solleva per rispondere</string>
+    <string name="phone_raise_answer_about">Porta all\'orecchio un telefono che squilla per rispondere.</string>
+    <string name="phone_flip_silence">Capovolgi per silenziare</string>
+    <string name="phone_flip_silence_about">Capovolgi un telefono che squilla per silenziarlo.</string>
 </resources>

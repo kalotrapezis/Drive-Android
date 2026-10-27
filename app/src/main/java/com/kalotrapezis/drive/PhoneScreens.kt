@@ -374,6 +374,10 @@ internal fun PhoneSettings() {
     toggle(stringResource(R.string.phone_buzz_end), stringResource(R.string.phone_buzz_end_about), end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
     toggle(stringResource(R.string.phone_silence_unknown), stringResource(R.string.phone_silence_unknown_about), unknown) { unknown = it; PhonePrefs.setSilenceUnknown(context, it) }
     toggle(stringResource(R.string.phone_decline_hidden), stringResource(R.string.phone_decline_hidden_about), hidden) { hidden = it; PhonePrefs.setDeclineHidden(context, it) }
+    var raise by remember { mutableStateOf(PhonePrefs.raiseAnswer(context)) }
+    var flip by remember { mutableStateOf(PhonePrefs.flipSilence(context)) }
+    toggle(stringResource(R.string.phone_raise_answer), stringResource(R.string.phone_raise_answer_about), raise) { raise = it; PhonePrefs.setRaiseAnswer(context, it) }
+    toggle(stringResource(R.string.phone_flip_silence), stringResource(R.string.phone_flip_silence_about), flip) { flip = it; PhonePrefs.setFlipSilence(context, it) }
     // HyperOS keeps two of its own permissions from apps it did not install: without them a ringing call cannot open its
     // screen over the lock screen, or from the background (Xiaomi's own Security app, not Android's settings)
     if (android.os.Build.MANUFACTURER.equals("Xiaomi", true) && dialer) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

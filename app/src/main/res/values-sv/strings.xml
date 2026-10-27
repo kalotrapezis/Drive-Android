@@ -4594,4 +4594,12 @@
     <string name="pdf_no_bookmarks">Inga bokmärken i filen.</string>
     <string name="pdf_page_lower">sida %1$d</string>
     <string name="pdf_quoted">”%1$s”</string>
+    <string name="phone_blocking">Samtalsblockering</string>
+    <string name="phone_blocking_about">Oönskade nummer och nummerserier, och de blockerade samtalen</string>
+    <string name="phone_blocked_calls">Blockerade samtal</string>
+    <string name="phone_no_blocked_calls">Inga samtal har blockerats än.</string>
+    <string name="phone_raise_answer">Lyft för att svara</string>
+    <string name="phone_raise_answer_about">Lyft en ringande telefon till örat för att svara.</string>
+    <string name="phone_flip_silence">Vänd för att tysta</string>
+    <string name="phone_flip_silence_about">Vänd en ringande telefon med skärmen nedåt för att tysta den.</string>
 </resources>

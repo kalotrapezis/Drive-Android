@@ -4778,4 +4778,12 @@
     <string name="pdf_no_bookmarks">Ebda bookmark f’dan il-fajl.</string>
     <string name="pdf_page_lower">paġna %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="phone_blocking">Imblukkar tas-sejħiet</string>
+    <string name="phone_blocking_about">Numri u firxiet mhux mixtieqa, u s-sejħiet li ġew imblukkati</string>
+    <string name="phone_blocked_calls">Sejħiet imblukkati</string>
+    <string name="phone_no_blocked_calls">Għadha ma ġiet imblukkata l-ebda sejħa.</string>
+    <string name="phone_raise_answer">Għolli biex twieġeb</string>
+    <string name="phone_raise_answer_about">Għolli t-telefon li qed idoqq lejn widintek biex twieġeb.</string>
+    <string name="phone_flip_silence">Aqleb biex issikket</string>
+    <string name="phone_flip_silence_about">Aqleb it-telefon li qed idoqq wiċċu ’l isfel biex issikktu.</string>
 </resources>

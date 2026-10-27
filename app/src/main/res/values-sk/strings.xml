@@ -4778,4 +4778,12 @@
     <string name="pdf_no_bookmarks">V tomto súbore nie sú záložky.</string>
     <string name="pdf_page_lower">strana %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Blokovanie hovorov</string>
+    <string name="phone_blocking_about">Nechcené čísla a rozsahy a zablokované hovory</string>
+    <string name="phone_blocked_calls">Zablokované hovory</string>
+    <string name="phone_no_blocked_calls">Zatiaľ nebol zablokovaný žiadny hovor.</string>
+    <string name="phone_raise_answer">Prijať zdvihnutím</string>
+    <string name="phone_raise_answer_about">Priložte zvoniaci telefón k uchu a hovor sa prijme.</string>
+    <string name="phone_flip_silence">Stíšiť otočením</string>
+    <string name="phone_flip_silence_about">Otočte zvoniaci telefón displejom nadol a stíši sa.</string>
 </resources>

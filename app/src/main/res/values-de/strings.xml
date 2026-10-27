@@ -4594,4 +4594,12 @@
     <string name="pdf_no_bookmarks">Keine Lesezeichen in dieser Datei.</string>
     <string name="pdf_page_lower">Seite %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Anrufsperre</string>
+    <string name="phone_blocking_about">Unerwünschte Nummern und Bereiche und die gesperrten Anrufe</string>
+    <string name="phone_blocked_calls">Gesperrte Anrufe</string>
+    <string name="phone_no_blocked_calls">Noch kein Anruf gesperrt.</string>
+    <string name="phone_raise_answer">Zum Annehmen anheben</string>
+    <string name="phone_raise_answer_about">Ein klingelndes Telefon ans Ohr halten, um den Anruf anzunehmen.</string>
+    <string name="phone_flip_silence">Zum Stummschalten umdrehen</string>
+    <string name="phone_flip_silence_about">Ein klingelndes Telefon mit dem Display nach unten legen, um es stummzuschalten.</string>
 </resources>

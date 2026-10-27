@@ -4870,4 +4870,12 @@
     <string name="pdf_no_bookmarks">Gan leabharmharcanna sa chomhad seo.</string>
     <string name="pdf_page_lower">leathanach %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="phone_blocking">Bacadh glaonna</string>
+    <string name="phone_blocking_about">Uimhreacha agus raonta nach dteastaíonn, agus na glaonna a bacadh</string>
+    <string name="phone_blocked_calls">Glaonna bactha</string>
+    <string name="phone_no_blocked_calls">Níor bacadh aon ghlao fós.</string>
+    <string name="phone_raise_answer">Ardaigh chun freagairt</string>
+    <string name="phone_raise_answer_about">Ardaigh fón atá ag bualadh chuig do chluas chun é a fhreagairt.</string>
+    <string name="phone_flip_silence">Iompaigh chun ciúnú</string>
+    <string name="phone_flip_silence_about">Iompaigh fón atá ag bualadh bunoscionn chun é a chiúnú.</string>
 </resources>

@@ -4686,4 +4686,12 @@
     <string name="pdf_no_bookmarks">Šajā failā nav grāmatzīmju.</string>
     <string name="pdf_page_lower">%1$d. lappuse</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Zvanu bloķēšana</string>
+    <string name="phone_blocking_about">Nevēlamie numuri un diapazoni, kā arī bloķētie zvani</string>
+    <string name="phone_blocked_calls">Bloķētie zvani</string>
+    <string name="phone_no_blocked_calls">Vēl nav bloķēts neviens zvans.</string>
+    <string name="phone_raise_answer">Pacelt, lai atbildētu</string>
+    <string name="phone_raise_answer_about">Pielieciet zvanošu tālruni pie auss, lai atbildētu.</string>
+    <string name="phone_flip_silence">Apgriezt, lai apklusinātu</string>
+    <string name="phone_flip_silence_about">Apgrieziet zvanošu tālruni ar ekrānu uz leju, lai to apklusinātu.</string>
 </resources>

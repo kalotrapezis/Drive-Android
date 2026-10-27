@@ -4594,4 +4594,12 @@
     <string name="pdf_no_bookmarks">Selles failis pole järjehoidjaid.</string>
     <string name="pdf_page_lower">lehekülg %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Kõnede blokeerimine</string>
+    <string name="phone_blocking_about">Soovimatud numbrid ja vahemikud ning blokeeritud kõned</string>
+    <string name="phone_blocked_calls">Blokeeritud kõned</string>
+    <string name="phone_no_blocked_calls">Ühtegi kõnet pole veel blokeeritud.</string>
+    <string name="phone_raise_answer">Vastamiseks tõsta</string>
+    <string name="phone_raise_answer_about">Vastamiseks tõsta helisev telefon kõrva äärde.</string>
+    <string name="phone_flip_silence">Vaigistamiseks pööra</string>
+    <string name="phone_flip_silence_about">Vaigistamiseks pööra helisev telefon ekraaniga alla.</string>
 </resources>

@@ -4778,4 +4778,12 @@
     <string name="pdf_no_bookmarks">Šiame faile žymų nėra.</string>
     <string name="pdf_page_lower">%1$d puslapis</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Skambučių blokavimas</string>
+    <string name="phone_blocking_about">Nepageidaujami numeriai ir intervalai bei užblokuoti skambučiai</string>
+    <string name="phone_blocked_calls">Užblokuoti skambučiai</string>
+    <string name="phone_no_blocked_calls">Dar neužblokuotas nė vienas skambutis.</string>
+    <string name="phone_raise_answer">Pakelkite, kad atsilieptumėte</string>
+    <string name="phone_raise_answer_about">Priglauskite skambantį telefoną prie ausies, kad atsilieptumėte.</string>
+    <string name="phone_flip_silence">Apverskite, kad nutildytumėte</string>
+    <string name="phone_flip_silence_about">Apverskite skambantį telefoną ekranu žemyn, kad jis nutiltų.</string>
 </resources>

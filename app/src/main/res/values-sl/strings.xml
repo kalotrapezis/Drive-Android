@@ -4778,4 +4778,12 @@
     <string name="pdf_no_bookmarks">V tej datoteki ni zaznamkov.</string>
     <string name="pdf_page_lower">stran %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Blokiranje klicev</string>
+    <string name="phone_blocking_about">Neželene številke in obsegi ter blokirani klici</string>
+    <string name="phone_blocked_calls">Blokirani klici</string>
+    <string name="phone_no_blocked_calls">Noben klic še ni bil blokiran.</string>
+    <string name="phone_raise_answer">Dvigni za sprejem</string>
+    <string name="phone_raise_answer_about">Zvoneči telefon prislonite k ušesu, da sprejmete klic.</string>
+    <string name="phone_flip_silence">Obrni za utišanje</string>
+    <string name="phone_flip_silence_about">Zvoneči telefon obrnite z zaslonom navzdol, da ga utišate.</string>
 </resources>

@@ -4595,4 +4595,12 @@
     <string name="pdf_no_bookmarks">No bookmarks in this file.</string>
     <string name="pdf_page_lower">page %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="phone_blocking">Call blocking</string>
+    <string name="phone_blocking_about">Spam numbers and ranges, and the calls that were blocked</string>
+    <string name="phone_blocked_calls">Blocked calls</string>
+    <string name="phone_no_blocked_calls">No call has been blocked yet.</string>
+    <string name="phone_raise_answer">Raise to answer</string>
+    <string name="phone_raise_answer_about">Lift a ringing phone to your ear to answer it.</string>
+    <string name="phone_flip_silence">Turn over to silence</string>
+    <string name="phone_flip_silence_about">Turn a ringing phone face down to silence it.</string>
 </resources>

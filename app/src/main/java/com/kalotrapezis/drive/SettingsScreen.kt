@@ -648,6 +648,10 @@ internal fun SettingsTab(
             SwitchRow(stringResource(R.string.settings_buzz_end), stringResource(R.string.settings_buzz_end_summary), end) { end = it; PhonePrefs.setBuzzEnd(context, it) }
             SwitchRow(stringResource(R.string.settings_silence_unknown), stringResource(R.string.settings_silence_unknown_summary), unknown) { unknown = it; PhonePrefs.setSilenceUnknown(context, it) }
             SwitchRow(stringResource(R.string.settings_decline_hidden), stringResource(R.string.settings_decline_hidden_summary), hidden) { hidden = it; PhonePrefs.setDeclineHidden(context, it) }
+            var raise by remember { mutableStateOf(PhonePrefs.raiseAnswer(context)) }
+            var flip by remember { mutableStateOf(PhonePrefs.flipSilence(context)) }
+            SwitchRow(stringResource(R.string.phone_raise_answer), stringResource(R.string.phone_raise_answer_about), raise) { raise = it; PhonePrefs.setRaiseAnswer(context, it) }
+            SwitchRow(stringResource(R.string.phone_flip_silence), stringResource(R.string.phone_flip_silence_about), flip) { flip = it; PhonePrefs.setFlipSilence(context, it) }
         }
     }
     // calls from the computer (was in Settings › Contacts): one permission for Tetra (Android's "Phone"), not one per contact

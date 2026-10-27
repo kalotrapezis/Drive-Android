@@ -4686,4 +4686,12 @@
     <string name="pdf_no_bookmarks">Aucun signet dans ce fichier.</string>
     <string name="pdf_page_lower">page %1$d</string>
     <string name="pdf_quoted">« %1$s »</string>
+    <string name="phone_blocking">Blocage d\'appels</string>
+    <string name="phone_blocking_about">Numéros et plages indésirables, et les appels bloqués</string>
+    <string name="phone_blocked_calls">Appels bloqués</string>
+    <string name="phone_no_blocked_calls">Aucun appel bloqué pour l\'instant.</string>
+    <string name="phone_raise_answer">Lever pour répondre</string>
+    <string name="phone_raise_answer_about">Portez à l\'oreille un téléphone qui sonne pour répondre.</string>
+    <string name="phone_flip_silence">Retourner pour couper la sonnerie</string>
+    <string name="phone_flip_silence_about">Retournez un téléphone qui sonne, écran vers le bas, pour le faire taire.</string>
 </resources>

@@ -4593,4 +4593,12 @@
     <string name="pdf_no_bookmarks">Δεν υπάρχουν σελιδοδείκτες σε αυτό το αρχείο.</string>
     <string name="pdf_page_lower">σελίδα %1$d</string>
     <string name="pdf_quoted">«%1$s»</string>
+    <string name="phone_blocking">Φραγή κλήσεων</string>
+    <string name="phone_blocking_about">Ανεπιθύμητοι αριθμοί και σειρές, και οι κλήσεις που μπλοκαρίστηκαν</string>
+    <string name="phone_blocked_calls">Μπλοκαρισμένες κλήσεις</string>
+    <string name="phone_no_blocked_calls">Καμία κλήση δεν έχει μπλοκαριστεί ακόμα.</string>
+    <string name="phone_raise_answer">Σήκωμα για απάντηση</string>
+    <string name="phone_raise_answer_about">Φέρτε το τηλέφωνο στο αυτί ενώ χτυπά για να απαντήσετε.</string>
+    <string name="phone_flip_silence">Αναποδογύρισμα για σίγαση</string>
+    <string name="phone_flip_silence_about">Γυρίστε το τηλέφωνο ανάποδα ενώ χτυπά για να σωπάσει.</string>
 </resources>

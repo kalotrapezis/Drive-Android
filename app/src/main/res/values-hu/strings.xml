@@ -4594,4 +4594,12 @@
     <string name="pdf_no_bookmarks">Ebben a fájlban nincs könyvjelző.</string>
     <string name="pdf_page_lower">%1$d. oldal</string>
     <string name="pdf_quoted">„%1$s”</string>
+    <string name="phone_blocking">Hívásletiltás</string>
+    <string name="phone_blocking_about">Nem kívánt számok és tartományok, és a letiltott hívások</string>
+    <string name="phone_blocked_calls">Letiltott hívások</string>
+    <string name="phone_no_blocked_calls">Még egy hívás sem lett letiltva.</string>
+    <string name="phone_raise_answer">Felvétel emeléssel</string>
+    <string name="phone_raise_answer_about">Emelje a csörgő telefont a füléhez a hívás fogadásához.</string>
+    <string name="phone_flip_silence">Némítás megfordítással</string>
+    <string name="phone_flip_silence_about">Fordítsa a csörgő telefont kijelzővel lefelé a némításhoz.</string>
 </resources>

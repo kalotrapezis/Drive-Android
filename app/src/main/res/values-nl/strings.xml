@@ -4594,4 +4594,12 @@
     <string name="pdf_no_bookmarks">Geen bladwijzers in dit bestand.</string>
     <string name="pdf_page_lower">pagina %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="phone_blocking">Oproepen blokkeren</string>
+    <string name="phone_blocking_about">Ongewenste nummers en reeksen, en de geblokkeerde oproepen</string>
+    <string name="phone_blocked_calls">Geblokkeerde oproepen</string>
+    <string name="phone_no_blocked_calls">Nog geen oproep geblokkeerd.</string>
+    <string name="phone_raise_answer">Optillen om op te nemen</string>
+    <string name="phone_raise_answer_about">Breng een rinkelende telefoon naar je oor om op te nemen.</string>
+    <string name="phone_flip_silence">Omdraaien voor stil</string>
+    <string name="phone_flip_silence_about">Leg een rinkelende telefoon met het scherm naar beneden om hem stil te zetten.</string>
 </resources>

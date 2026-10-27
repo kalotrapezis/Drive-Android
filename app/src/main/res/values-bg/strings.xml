@@ -4594,4 +4594,12 @@
     <string name="pdf_no_bookmarks">Няма отметки в този файл.</string>
     <string name="pdf_page_lower">страница %1$d</string>
     <string name="pdf_quoted">„%1$s“</string>
+    <string name="phone_blocking">Блокиране на обаждания</string>
+    <string name="phone_blocking_about">Нежелани номера и диапазони и блокираните обаждания</string>
+    <string name="phone_blocked_calls">Блокирани обаждания</string>
+    <string name="phone_no_blocked_calls">Още няма блокирани обаждания.</string>
+    <string name="phone_raise_answer">Вдигане за отговор</string>
+    <string name="phone_raise_answer_about">Доближете звънящия телефон до ухото си, за да отговорите.</string>
+    <string name="phone_flip_silence">Обръщане за заглушаване</string>
+    <string name="phone_flip_silence_about">Обърнете звънящия телефон с екрана надолу, за да го заглушите.</string>
 </resources>

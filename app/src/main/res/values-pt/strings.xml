@@ -4686,4 +4686,12 @@
     <string name="pdf_no_bookmarks">Não há marcadores neste ficheiro.</string>
     <string name="pdf_page_lower">página %1$d</string>
     <string name="pdf_quoted">“%1$s”</string>
+    <string name="phone_blocking">Bloqueio de chamadas</string>
+    <string name="phone_blocking_about">Números e intervalos indesejados, e as chamadas bloqueadas</string>
+    <string name="phone_blocked_calls">Chamadas bloqueadas</string>
+    <string name="phone_no_blocked_calls">Ainda nenhuma chamada foi bloqueada.</string>
+    <string name="phone_raise_answer">Levantar para atender</string>
+    <string name="phone_raise_answer_about">Leve ao ouvido um telefone a tocar para atender.</string>
+    <string name="phone_flip_silence">Virar para silenciar</string>
+    <string name="phone_flip_silence_about">Vire um telefone a tocar com o ecrã para baixo para o silenciar.</string>
 </resources>

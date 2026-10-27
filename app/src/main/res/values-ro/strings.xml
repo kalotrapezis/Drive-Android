@@ -4686,4 +4686,12 @@
     <string name="pdf_no_bookmarks">Niciun marcaj în acest fișier.</string>
     <string name="pdf_page_lower">pagina %1$d</string>
     <string name="pdf_quoted">„%1$s”</string>
+    <string name="phone_blocking">Blocarea apelurilor</string>
+    <string name="phone_blocking_about">Numere și intervale nedorite, și apelurile blocate</string>
+    <string name="phone_blocked_calls">Apeluri blocate</string>
+    <string name="phone_no_blocked_calls">Încă nu a fost blocat niciun apel.</string>
+    <string name="phone_raise_answer">Ridică pentru a răspunde</string>
+    <string name="phone_raise_answer_about">Duceți la ureche un telefon care sună pentru a răspunde.</string>
+    <string name="phone_flip_silence">Întoarce pentru silențios</string>
+    <string name="phone_flip_silence_about">Întoarceți cu ecranul în jos un telefon care sună pentru a-l reduce la tăcere.</string>
 </resources>

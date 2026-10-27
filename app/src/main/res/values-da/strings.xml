@@ -1514,7 +1514,6 @@
     <string name="maps_amea_parking">Handicapparkering</string>
     <string name="maps_amea_placed">Handicapplads placeret: %1$s</string>
     <string name="maps_no_map">Der er endnu intet kort på denne enhed</string>
-    <string name="maps_no_map_how">Kort laves på computeren: Tetra på computeren › Indstillinger › Kort › Tilføj et kort, og derefter bringer Synk dem hertil i Tetra/Maps.</string>
     <string name="maps_parked_here">Jeg parkerede her</string>
     <string name="maps_waiting_location">Venter på din placering…</string>
     <string name="maps_location_off">Placering er slået fra for Tetra.</string>
@@ -4654,4 +4653,7 @@
     <string name="maps_old_channel">Gamle kort</string>
     <string name="maps_old_title">Kortet over %1$s er over 3 måneder gammelt</string>
     <string name="maps_old_body">Veje og steder ændrer sig. Computeren laver det igen ud fra friske OpenStreetMap-data: Tetra › Indstillinger › Kort.</string>
+    <string name="maps_welcome_title">Velkommen til Kort</string>
+    <string name="maps_welcome_intro">Tetra kommer uden kort, så alle får det kort, de vil have, offline og deres eget. Du laver det én gang, på din computer:</string>
+    <string name="maps_welcome_steps">1. Åbn Tetra › Indstillinger › Kort › Tilføj et kort på din computer.\n2. Vælg dit land. Computeren skal bruge internet til det.\n3. Lad computeren være tændt og sat i stikkontakten, mens kortet laves: nogle få minutter for et lille land, en time eller mere for et stort.\n4. Hold Tetra åben på denne enhed, på samme Wi-Fi som computeren: kortet kommer hertil af sig selv.</string>
 </resources>

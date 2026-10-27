@@ -1514,7 +1514,6 @@
     <string name="maps_amea_parking">Parcheggio disabili</string>
     <string name="maps_amea_placed">Posto disabili collocato: %1$s</string>
     <string name="maps_no_map">Nessuna mappa su questo dispositivo per ora</string>
-    <string name="maps_no_map_how">Le mappe si creano sul computer: Tetra sul computer › Impostazioni › Mappe › Aggiungi una mappa, poi Sincronizza le porta qui, in Tetra/Maps.</string>
     <string name="maps_parked_here">Ho parcheggiato qui</string>
     <string name="maps_waiting_location">In attesa della posizione…</string>
     <string name="maps_location_off">La posizione è disattivata per Tetra.</string>
@@ -4654,4 +4653,7 @@
     <string name="maps_old_channel">Mappe vecchie</string>
     <string name="maps_old_title">La mappa di %1$s ha più di 3 mesi</string>
     <string name="maps_old_body">Strade e luoghi cambiano. Il computer la rifà da dati OpenStreetMap freschi: Tetra › Impostazioni › Mappe.</string>
+    <string name="maps_welcome_title">Ti diamo il benvenuto in Mappe</string>
+    <string name="maps_welcome_intro">Tetra arriva senza una mappa, così ognuno ha la mappa che vuole, offline e tutta sua. La crei una volta sola, sul tuo computer:</string>
+    <string name="maps_welcome_steps">1. Sul tuo computer, apri Tetra › Impostazioni › Mappe › Aggiungi una mappa.\n2. Scegli il tuo paese. Il computer ha bisogno di internet per questo.\n3. Tieni il computer acceso e collegato alla corrente mentre la mappa viene creata: pochi minuti per un paese piccolo, un\'ora o più per uno grande.\n4. Tieni Tetra aperto su questo dispositivo, sulla stessa rete Wi-Fi del computer: la mappa arriva qui da sola.</string>
 </resources>

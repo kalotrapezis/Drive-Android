@@ -1514,7 +1514,6 @@
     <string name="maps_amea_parking">♿ паркинг</string>
     <string name="maps_amea_placed">♿ място поставено: %1$s</string>
     <string name="maps_no_map">Все още няма карта на това устройство</string>
-    <string name="maps_no_map_how">Картите се създават на компютъра: Tetra на компютъра › Настройки › Карти › Добавяне на карта, след което Синхронизация ги донася тук, в Tetra/Maps.</string>
     <string name="maps_parked_here">Паркирах тук</string>
     <string name="maps_waiting_location">Изчакване на местоположението ви…</string>
     <string name="maps_location_off">Местоположението е изключено за Tetra.</string>
@@ -4654,4 +4653,7 @@
     <string name="maps_old_channel">Стари карти</string>
     <string name="maps_old_title">Картата на %1$s е по-стара от 3 месеца</string>
     <string name="maps_old_body">Пътищата и местата се променят. Компютърът я прави отново от нови данни на OpenStreetMap: Tetra › Настройки › Карти.</string>
+    <string name="maps_welcome_title">Добре дошли в Карти</string>
+    <string name="maps_welcome_intro">Tetra идва без карта, така че всеки получава картата, която иска, офлайн и своя. Създавате я веднъж, на компютъра:</string>
+    <string name="maps_welcome_steps">1. На компютъра отворете Tetra › Настройки › Карти › Добавяне на карта.\n2. Изберете държавата си. За това компютърът има нужда от интернет.\n3. Дръжте компютъра включен и в контакта, докато се създава картата: няколко минути за малка държава, час или повече за голяма.\n4. Дръжте Tetra отворено на това устройство, в същата Wi-Fi мрежа като компютъра: картата идва тук сама.</string>
 </resources>

@@ -865,3 +865,16 @@ class MapsWordsTest {
         }
     }
 }
+
+/** A foreign place's name in the app's language (the user, 27 Oct: "the Greek names … show the normal one and the other below it"). */
+class MapsOtherNamesTest {
+    @Test fun aBulgarianTownByItsGreekName() {
+        val p = MapsSearch.parse("town\t41.567\t23.729\tГоце Делчев\tGotse Delchev\t2900\t\t\t\t\t\tel=Νευροκόπι|de=Goze Deltschew")!!
+        assertEquals("Νευροκόπι", p.named("el")); assertEquals("Gotse Delchev", p.named("en")); assertEquals("Goze Deltschew", p.named("de"))
+        assertNull(p.named("fr")) // none in French: the card shows only its own
+        assertEquals(listOf("Гоце Делчев"), MapsSearch.search(listOf(p), "νευροκοπι", 41.5, 23.7).map { it.name }) // accent-blind
+        assertEquals(listOf("Гоце Делчев"), MapsSearch.search(listOf(p), "Gotse", 41.5, 23.7).map { it.name })
+        // an older list without the column, and a name the same as its own, show nothing under it
+        assertNull(MapsSearch.parse("town\t41.0\t23.0\tΣέρρες\tSerres")!!.named("el"))
+    }
+}

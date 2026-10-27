@@ -1514,7 +1514,6 @@
     <string name="maps_amea_parking">Invalidenparkeren</string>
     <string name="maps_amea_placed">Invalidenplek geplaatst: %1$s</string>
     <string name="maps_no_map">Nog geen kaart op dit apparaat</string>
-    <string name="maps_no_map_how">Kaarten worden op de computer gemaakt: Tetra op de computer › Instellingen › Kaarten › Kaart toevoegen, daarna brengt Sync ze hierheen, naar Tetra/Maps.</string>
     <string name="maps_parked_here">Ik heb hier geparkeerd</string>
     <string name="maps_waiting_location">Wachten op je locatie…</string>
     <string name="maps_location_off">Locatie staat uit voor Tetra.</string>
@@ -4654,4 +4653,7 @@
     <string name="maps_old_channel">Oude kaarten</string>
     <string name="maps_old_title">De kaart van %1$s is ouder dan 3 maanden</string>
     <string name="maps_old_body">Wegen en plaatsen veranderen. De computer maakt hem opnieuw uit verse OpenStreetMap-gegevens: Tetra › Instellingen › Kaarten.</string>
+    <string name="maps_welcome_title">Welkom bij Kaarten</string>
+    <string name="maps_welcome_intro">Tetra wordt zonder kaart geleverd, zodat iedereen de kaart krijgt die hij wil, offline en helemaal eigen. Dat doe je één keer, op je computer:</string>
+    <string name="maps_welcome_steps">1. Open op je computer Tetra › Instellingen › Kaarten › Kaart toevoegen.\n2. Kies je land. De computer heeft hiervoor internet nodig.\n3. Laat de computer aan en op het stopcontact aangesloten terwijl de kaart wordt gemaakt: een paar minuten voor een klein land, een uur of langer voor een groot land.\n4. Houd Tetra open op dit apparaat, op hetzelfde Wi-Fi als de computer: de kaart komt vanzelf hierheen.</string>
 </resources>

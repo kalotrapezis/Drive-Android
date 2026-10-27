@@ -121,7 +121,7 @@ internal enum class MapsTab(@androidx.annotation.StringRes val label: Int, val i
     Column(Modifier.weight(1f)) {
         val context = LocalContext.current
         Text(p.title(context), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(listOf(MapsSearch.label(p.kind, context), p.more).filter { it.isNotEmpty() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+        Text(listOfNotNull(p.named(context), MapsSearch.label(p.kind, context), p.more).filter { it.isNotEmpty() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
             maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.White.copy(alpha = 0.7f))
     }
     metres?.let { Text(metresText(it), style = MaterialTheme.typography.labelMedium) }
@@ -245,6 +245,8 @@ internal fun minutesText(c: android.content.Context, minutes: Long): String =
                 if (saved) Icon(painterResource(placeIcon(place.icon)), contentDescription = null) else Text(poi?.let { MapsSearch.emoji(it.kind) } ?: "📍", style = MaterialTheme.typography.titleLarge)
                 Column(Modifier.weight(1f)) {
                     Text(place.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    // its name in the app's language under its own: Νευροκόπι under Гоце Делчев
+                    poi?.named(context)?.takeIf { it != place.name }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                     val sub = listOfNotNull(poi?.let { MapsSearch.label(it.kind, context) }, metres?.let { context.getString(R.string.maps_away, metresText(it)) }, lists.filter { it.id in place.lists }.joinToString(" ") { it.emoji }.ifEmpty { null })
                     if (sub.isNotEmpty()) Text(sub.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f))
                 }

@@ -1515,7 +1515,6 @@
     <string name="maps_amea_parking">ΑμεΑ parking</string>
     <string name="maps_amea_placed">ΑμεΑ spot placed: %1$s</string>
     <string name="maps_no_map">No map on this device yet</string>
-    <string name="maps_no_map_how">Maps are made on the computer: desktop Tetra › Settings › Maps › Add a map, then Local Sync brings them here into Tetra/Maps.</string>
     <string name="maps_parked_here">I parked here</string>
     <string name="maps_waiting_location">Waiting for your location…</string>
     <string name="maps_location_off">Location is off for Tetra.</string>
@@ -4655,4 +4654,7 @@
     <string name="maps_old_channel">Old maps</string>
     <string name="maps_old_title">The map of %1$s is over 3 months old</string>
     <string name="maps_old_body">Roads and places change. The computer remakes it from fresh OpenStreetMap data: Tetra › Settings › Maps.</string>
+    <string name="maps_welcome_title">Welcome to Maps</string>
+    <string name="maps_welcome_intro">Tetra comes without a map, so everyone gets the map they want, offline and their own. You make it once, on your computer:</string>
+    <string name="maps_welcome_steps">1. On your computer, open Tetra › Settings › Maps › Add a map.\n2. Choose your country. The computer needs internet for this.\n3. Keep the computer on and plugged in while the map is made: a few minutes for a small country, an hour or more for a big one.\n4. Keep Tetra open on this device, on the same Wi-Fi as the computer: the map comes here by itself.</string>
 </resources>

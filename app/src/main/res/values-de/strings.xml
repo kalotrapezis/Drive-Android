@@ -1514,7 +1514,6 @@
     <string name="maps_amea_parking">Behindertenparkplatz</string>
     <string name="maps_amea_placed">Behindertenparkplatz platziert: %1$s</string>
     <string name="maps_no_map">Auf diesem Gerät gibt es noch keine Karte</string>
-    <string name="maps_no_map_how">Karten werden am Computer erstellt: Tetra am Computer › Einstellungen › Karten › Karte hinzufügen, danach bringt Sync sie hierher, nach Tetra/Maps.</string>
     <string name="maps_parked_here">Hier geparkt</string>
     <string name="maps_waiting_location">Warte auf deinen Standort…</string>
     <string name="maps_location_off">Standort ist für Tetra aus.</string>
@@ -4654,4 +4653,7 @@
     <string name="maps_old_channel">Alte Karten</string>
     <string name="maps_old_title">Die Karte von %1$s ist über 3 Monate alt</string>
     <string name="maps_old_body">Straßen und Orte ändern sich. Der Computer erstellt sie aus frischen OpenStreetMap-Daten neu: Tetra › Einstellungen › Karten.</string>
+    <string name="maps_welcome_title">Willkommen bei Karten</string>
+    <string name="maps_welcome_intro">Tetra kommt ohne Karte, damit jeder die Karte bekommt, die er möchte, offline und ganz seine eigene. Du erstellst sie einmal, an deinem Computer:</string>
+    <string name="maps_welcome_steps">1. Öffne an deinem Computer Tetra › Einstellungen › Karten › Karte hinzufügen.\n2. Wähle dein Land. Der Computer braucht dafür Internet.\n3. Lass den Computer eingeschaltet und am Strom angeschlossen, während die Karte erstellt wird: ein paar Minuten für ein kleines Land, eine Stunde oder mehr für ein großes.\n4. Lass Tetra auf diesem Gerät geöffnet, im selben Wi-Fi wie der Computer: Die Karte kommt von selbst hierher.</string>
 </resources>

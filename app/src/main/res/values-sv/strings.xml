@@ -1514,7 +1514,6 @@
     <string name="maps_amea_parking">Handikapparkering</string>
     <string name="maps_amea_placed">Handikapplats utplacerad: %1$s</string>
     <string name="maps_no_map">Det finns ingen karta på den här enheten än</string>
-    <string name="maps_no_map_how">Kartor görs på datorn: Tetra på datorn › Inställningar › Kartor › Lägg till en karta, och sedan för Synk dem hit, till Tetra/Maps.</string>
     <string name="maps_parked_here">Jag parkerade här</string>
     <string name="maps_waiting_location">Väntar på din plats…</string>
     <string name="maps_location_off">Plats är avstängd för Tetra.</string>
@@ -4654,4 +4653,7 @@
     <string name="maps_old_channel">Gamla kartor</string>
     <string name="maps_old_title">Kartan över %1$s är över 3 månader gammal</string>
     <string name="maps_old_body">Vägar och platser ändras. Datorn gör om den från färska OpenStreetMap-data: Tetra › Inställningar › Kartor.</string>
+    <string name="maps_welcome_title">Välkommen till Kartor</string>
+    <string name="maps_welcome_intro">Tetra kommer utan karta, så att alla får den karta de vill ha, offline och sin egen. Du gör den en gång, på din dator:</string>
+    <string name="maps_welcome_steps">1. Öppna Tetra › Inställningar › Kartor › Lägg till en karta på din dator.\n2. Välj ditt land. Datorn behöver internet för det.\n3. Låt datorn vara på och ansluten till eluttaget medan kartan görs: några minuter för ett litet land, en timme eller mer för ett stort.\n4. Låt appen Tetra vara öppen på den här enheten, på samma Wi-Fi som datorn: kartan kommer hit av sig själv.</string>
 </resources>

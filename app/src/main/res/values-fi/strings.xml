@@ -1514,7 +1514,6 @@
     <string name="maps_amea_parking">Invapysäköinti</string>
     <string name="maps_amea_placed">Invapaikka sijoitettu: %1$s</string>
     <string name="maps_no_map">Tällä laitteella ei ole vielä karttaa</string>
-    <string name="maps_no_map_how">Kartat tehdään tietokoneella: Tetra tietokoneella › Asetukset › Kartat › Lisää kartta, ja sitten Synkronointi tuo ne tänne, kansioon Tetra/Maps.</string>
     <string name="maps_parked_here">Pysäköin tähän</string>
     <string name="maps_waiting_location">Odotetaan sijaintiasi…</string>
     <string name="maps_location_off">Sijainti on pois päältä Tetralta.</string>
@@ -4654,4 +4653,7 @@
     <string name="maps_old_channel">Vanhat kartat</string>
     <string name="maps_old_title">Kartta %1$s on yli 3 kuukautta vanha</string>
     <string name="maps_old_body">Tiet ja paikat muuttuvat. Tietokone tekee sen uudelleen tuoreista OpenStreetMap-tiedoista: Tetra › Asetukset › Kartat.</string>
+    <string name="maps_welcome_title">Tervetuloa Karttoihin</string>
+    <string name="maps_welcome_intro">Tetra tulee ilman karttaa, jotta jokainen saa juuri haluamansa kartan, offline-tilassa ja omanaan. Teet sen kerran, tietokoneellasi:</string>
+    <string name="maps_welcome_steps">1. Avaa tietokoneellasi Tetra › Asetukset › Kartat › Lisää kartta.\n2. Valitse maasi. Tietokone tarvitsee siihen internetin.\n3. Pidä tietokone päällä ja kiinni virtalähteessä, kun karttaa tehdään: muutama minuutti pienelle maalle, tunti tai enemmän isolle.\n4. Pidä Tetra auki tässä laitteessa, samassa Wi-Fi-verkossa kuin tietokone: kartta tulee tänne itsestään.</string>
 </resources>

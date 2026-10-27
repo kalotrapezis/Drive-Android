@@ -1557,7 +1557,6 @@
     <string name="maps_amea_parking">Aparcamiento PMR</string>
     <string name="maps_amea_placed">Plaza PMR colocada: %1$s</string>
     <string name="maps_no_map">Aún no hay ningún mapa en este dispositivo</string>
-    <string name="maps_no_map_how">Los mapas se crean en el ordenador: Tetra del ordenador › Ajustes › Mapas › Añadir un mapa, y luego Sincronizar los trae aquí, a Tetra/Maps.</string>
     <string name="maps_parked_here">He aparcado aquí</string>
     <string name="maps_waiting_location">Esperando tu ubicación…</string>
     <string name="maps_location_off">La ubicación está desactivada para Tetra.</string>
@@ -4755,4 +4754,7 @@
     <string name="maps_old_channel">Mapas antiguos</string>
     <string name="maps_old_title">El mapa de %1$s tiene más de 3 meses</string>
     <string name="maps_old_body">Las carreteras y los lugares cambian. El ordenador lo vuelve a crear con datos nuevos de OpenStreetMap: Tetra › Ajustes › Mapas.</string>
+    <string name="maps_welcome_title">Te damos la bienvenida a Mapas</string>
+    <string name="maps_welcome_intro">Tetra viene sin mapa, para que cada uno tenga el mapa que quiere, sin conexión y propio. Lo haces una vez, en tu ordenador:</string>
+    <string name="maps_welcome_steps">1. En tu ordenador, abre Tetra › Ajustes › Mapas › Añadir un mapa.\n2. Elige tu país. El ordenador necesita internet para esto.\n3. Mantén el ordenador encendido y enchufado mientras se hace el mapa: unos minutos para un país pequeño, una hora o más para uno grande.\n4. Mantén Tetra abierto en este dispositivo, con la misma Wi-Fi que el ordenador: el mapa llega aquí solo.</string>
 </resources>

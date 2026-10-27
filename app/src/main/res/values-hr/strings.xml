@@ -1557,7 +1557,6 @@
     <string name="maps_amea_parking">Parkiranje za OSI</string>
     <string name="maps_amea_placed">Mjesto za OSI postavljeno: %1$s</string>
     <string name="maps_no_map">Na ovom uređaju još nema karte</string>
-    <string name="maps_no_map_how">Karte se izrađuju na računalu: Tetra na računalu › Postavke › Karte › Dodaj kartu, a zatim ih Sinkronizacija donosi ovamo, u Tetra/Maps.</string>
     <string name="maps_parked_here">Parkirao sam ovdje</string>
     <string name="maps_waiting_location">Čeka se vaša lokacija…</string>
     <string name="maps_location_off">Lokacija je isključena za Tetru.</string>
@@ -4755,4 +4754,7 @@
     <string name="maps_old_channel">Stare karte</string>
     <string name="maps_old_title">Karta %1$s starija je od 3 mjeseca</string>
     <string name="maps_old_body">Ceste i mjesta se mijenjaju. Računalo je izrađuje ponovno iz svježih podataka OpenStreetMapa: Tetra › Postavke › Karte.</string>
+    <string name="maps_welcome_title">Dobro došli u Karte</string>
+    <string name="maps_welcome_intro">Tetra dolazi bez karte, tako da svatko dobije kartu koju želi, izvan mreže i svoju. Izrađujete je jednom, na računalu:</string>
+    <string name="maps_welcome_steps">1. Na računalu otvorite Tetra › Postavke › Karte › Dodaj kartu.\n2. Odaberite svoju zemlju. Računalu je za to potreban internet.\n3. Neka računalo ostane uključeno i priključeno na struju dok se karta izrađuje: nekoliko minuta za malu zemlju, sat vremena ili više za veliku.\n4. Neka Tetra ostane otvorena na ovom uređaju, na istoj Wi-Fi mreži kao i računalo: karta dolazi ovamo sama.</string>
 </resources>

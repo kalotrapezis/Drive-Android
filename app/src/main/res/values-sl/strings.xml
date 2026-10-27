@@ -1600,7 +1600,6 @@
     <string name="maps_amea_parking">Parkirišče za invalide</string>
     <string name="maps_amea_placed">Invalidsko mesto postavljeno: %1$s</string>
     <string name="maps_no_map">V tej napravi še ni zemljevida</string>
-    <string name="maps_no_map_how">Zemljevidi nastanejo v računalniku: Tetra v računalniku › Nastavitve › Zemljevidi › Dodaj zemljevid, nato jih Sinhronizacija prenese sem, v Tetra/Maps.</string>
     <string name="maps_parked_here">Tu sem parkiral</string>
     <string name="maps_waiting_location">Čakanje na vašo lokacijo…</string>
     <string name="maps_location_off">Lokacija je za Tetro izklopljena.</string>
@@ -4856,4 +4855,7 @@
     <string name="maps_old_channel">Stari zemljevidi</string>
     <string name="maps_old_title">Zemljevid %1$s je starejši od 3 mesecev</string>
     <string name="maps_old_body">Ceste in kraji se spreminjajo. Računalnik ga izdela znova iz svežih podatkov OpenStreetMap: Tetra › Nastavitve › Zemljevidi.</string>
+    <string name="maps_welcome_title">Dobrodošli v Zemljevidih</string>
+    <string name="maps_welcome_intro">Tetra pride brez zemljevida, da vsak dobi zemljevid, ki ga želi, brez povezave in svojega. Naredite ga enkrat, na računalniku:</string>
+    <string name="maps_welcome_steps">1. Na računalniku odprite Tetra › Nastavitve › Zemljevidi › Dodaj zemljevid.\n2. Izberite svojo državo. Računalnik za to potrebuje internet.\n3. Računalnik naj ostane vklopljen in priključen na električno omrežje, medtem ko se zemljevid ustvarja: nekaj minut za majhno državo, ura ali več za veliko.\n4. Tetra naj ostane odprta na tej napravi, v istem omrežju Wi-Fi kot računalnik: zemljevid pride sem sam.</string>
 </resources>

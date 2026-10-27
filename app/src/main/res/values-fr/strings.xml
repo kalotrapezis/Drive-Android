@@ -1557,7 +1557,6 @@
     <string name="maps_amea_parking">Place PMR</string>
     <string name="maps_amea_placed">Place PMR placée : %1$s</string>
     <string name="maps_no_map">Aucune carte sur cet appareil pour le moment</string>
-    <string name="maps_no_map_how">Les cartes se créent sur l\'ordinateur : Tetra sur ordinateur › Paramètres › Cartes › Ajouter une carte, puis Synchro les apporte ici, dans Tetra/Maps.</string>
     <string name="maps_parked_here">Je suis garé ici</string>
     <string name="maps_waiting_location">En attente de votre position…</string>
     <string name="maps_location_off">La localisation est désactivée pour Tetra.</string>
@@ -4755,4 +4754,7 @@
     <string name="maps_old_channel">Cartes anciennes</string>
     <string name="maps_old_title">La carte de %1$s a plus de 3 mois</string>
     <string name="maps_old_body">Les routes et les lieux changent. L’ordinateur la refait à partir de données OpenStreetMap récentes : Tetra › Paramètres › Cartes.</string>
+    <string name="maps_welcome_title">Bienvenue dans Cartes</string>
+    <string name="maps_welcome_intro">Tetra arrive sans carte, pour que chacun ait la carte qu’il veut, hors connexion et bien à lui. Vous la faites une seule fois, sur votre ordinateur :</string>
+    <string name="maps_welcome_steps">1. Sur votre ordinateur, ouvrez Tetra › Paramètres › Cartes › Ajouter une carte.\n2. Choisissez votre pays. L’ordinateur a besoin d’internet pour cela.\n3. Gardez l’ordinateur allumé et branché pendant la création de la carte : quelques minutes pour un petit pays, une heure ou plus pour un grand.\n4. Gardez Tetra ouvert sur cet appareil, sur le même Wi-Fi que l’ordinateur : la carte arrive ici toute seule.</string>
 </resources>

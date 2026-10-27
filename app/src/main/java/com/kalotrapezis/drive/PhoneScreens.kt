@@ -188,7 +188,7 @@ private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, ad
             RoundButton(if (keys) R.drawable.ic_close else R.drawable.ic_dialpad, if (keys) stringResource(R.string.phone_hide_keys) else stringResource(R.string.phone_keypad), null, 64.dp, click = toggleKeys)
             // more than earpiece and speaker (a headset, the buds, the computer): choose; else Speaker turns on and off
             RoundButton(routeIcon, if (devices.isNotEmpty() || mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) "$routeName ▾" else routeName, if (loud) Color.White else null, 64.dp, dark = loud) {
-                if (devices.isEmpty()) PhoneCalls.service?.setAudioRoute(if (route == CallAudioState.ROUTE_SPEAKER) CallAudioState.ROUTE_WIRED_OR_EARPIECE else CallAudioState.ROUTE_SPEAKER)
+                if (devices.isEmpty()) PhoneCalls.route(if (route == CallAudioState.ROUTE_SPEAKER) CallAudioState.ROUTE_WIRED_OR_EARPIECE else CallAudioState.ROUTE_SPEAKER)
                 else if (android.os.Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) askNames.launch(Manifest.permission.BLUETOOTH_CONNECT)
                 else picking = true
             }
@@ -209,12 +209,12 @@ private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, ad
                     .clickable { pick(); picking = false }.padding(horizontal = 12.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Icon(painterResource(icon), contentDescription = null); Text(name, style = MaterialTheme.typography.bodyLarge)
                 }
-            if (mask and CallAudioState.ROUTE_EARPIECE != 0) option(R.drawable.ic_call, stringResource(R.string.phone_route_phone), route == CallAudioState.ROUTE_EARPIECE) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_EARPIECE) }
-            if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) option(R.drawable.ic_volume_up, stringResource(R.string.phone_headset), route == CallAudioState.ROUTE_WIRED_HEADSET) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_WIRED_HEADSET) }
-            option(R.drawable.ic_volume_up, stringResource(R.string.phone_speaker), route == CallAudioState.ROUTE_SPEAKER) { PhoneCalls.service?.setAudioRoute(CallAudioState.ROUTE_SPEAKER) }
+            if (mask and CallAudioState.ROUTE_EARPIECE != 0) option(R.drawable.ic_call, stringResource(R.string.phone_route_phone), route == CallAudioState.ROUTE_EARPIECE) { PhoneCalls.route(CallAudioState.ROUTE_EARPIECE) }
+            if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) option(R.drawable.ic_volume_up, stringResource(R.string.phone_headset), route == CallAudioState.ROUTE_WIRED_HEADSET) { PhoneCalls.route(CallAudioState.ROUTE_WIRED_HEADSET) }
+            option(R.drawable.ic_volume_up, stringResource(R.string.phone_speaker), route == CallAudioState.ROUTE_SPEAKER) { PhoneCalls.route(CallAudioState.ROUTE_SPEAKER) }
             devices.forEach { d ->
                 option(R.drawable.ic_bluetooth_audio, PhoneRoutes.name(context, d), route == CallAudioState.ROUTE_BLUETOOTH && audio?.activeBluetoothDevice?.address == d.address) {
-                    PhoneCalls.service?.requestBluetoothAudio(d)
+                    PhoneCalls.route(CallAudioState.ROUTE_BLUETOOTH, d)
                 }
             }
         }

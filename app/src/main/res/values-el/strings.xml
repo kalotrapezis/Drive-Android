@@ -1985,16 +1985,6 @@
     <string name="phone_channel_where_about">Οι Χάρτες του υπολογιστή ρωτούν πού είναι αυτό το τηλέφωνο</string>
     <string name="phone_where_title">Ο υπολογιστής ρωτά πού είναι αυτό το τηλέφωνο</string>
     <string name="phone_where_text">Πατήστε για να του στείλετε την τοποθεσία</string>
-    <string name="phone_area_athens">Αθήνα</string>
-    <string name="phone_area_thessaloniki">Θεσσαλονίκη</string>
-    <string name="phone_area_patras">Πάτρα</string>
-    <string name="phone_area_heraklion">Ηράκλειο</string>
-    <string name="phone_area_larissa">Λάρισα</string>
-    <string name="phone_area_volos">Βόλος</string>
-    <string name="phone_area_kavala">Καβάλα</string>
-    <string name="phone_area_ioannina">Ιωάννινα</string>
-    <string name="phone_area_syros">Σύρος</string>
-    <string name="phone_area_chania">Χανιά</string>
     <string name="phone_area_abroad">Εξωτερικό</string>
     <string name="phone_area_landline">Σταθερό</string>
     <string name="phone_reply_cant_talk">Δεν μπορώ να μιλήσω τώρα. Θα σε πάρω αργότερα.</string>

@@ -1986,16 +1986,6 @@
     <string name="phone_channel_where_about">Arvuti Kaardid küsivad, kus see telefon on</string>
     <string name="phone_where_title">Arvuti küsib, kus see telefon on</string>
     <string name="phone_where_text">Puudutage, et saata asukoht</string>
-    <string name="phone_area_athens">Ateena</string>
-    <string name="phone_area_thessaloniki">Thessaloníki</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Iráklio</string>
-    <string name="phone_area_larissa">Lárisa</string>
-    <string name="phone_area_volos">Vólos</string>
-    <string name="phone_area_kavala">Kavála</string>
-    <string name="phone_area_ioannina">Ioánnina</string>
-    <string name="phone_area_syros">Síros</string>
-    <string name="phone_area_chania">Chaniá</string>
     <string name="phone_area_abroad">Välismaa</string>
     <string name="phone_area_landline">Lauatelefon</string>
     <string name="phone_reply_cant_talk">Ei saa praegu rääkida. Helistan tagasi.</string>

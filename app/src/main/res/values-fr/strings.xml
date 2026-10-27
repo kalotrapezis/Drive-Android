@@ -2045,16 +2045,6 @@
     <string name="phone_channel_where_about">Cartes sur l’ordinateur demande où est ce téléphone</string>
     <string name="phone_where_title">L’ordinateur demande où est ce téléphone</string>
     <string name="phone_where_text">Touchez pour lui envoyer la position</string>
-    <string name="phone_area_athens">Athènes</string>
-    <string name="phone_area_thessaloniki">Thessalonique</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Héraklion</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Syros</string>
-    <string name="phone_area_chania">La Canée</string>
     <string name="phone_area_abroad">Étranger</string>
     <string name="phone_area_landline">Fixe</string>
     <string name="phone_reply_cant_talk">Je ne peux pas parler. Je vous rappelle.</string>

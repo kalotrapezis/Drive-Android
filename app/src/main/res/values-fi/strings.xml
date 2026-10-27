@@ -1986,16 +1986,6 @@
     <string name="phone_channel_where_about">Tietokoneen Kartat kysyy, missä tämä puhelin on</string>
     <string name="phone_where_title">Tietokone kysyy, missä tämä puhelin on</string>
     <string name="phone_where_text">Lähetä sijainti napauttamalla</string>
-    <string name="phone_area_athens">Ateena</string>
-    <string name="phone_area_thessaloniki">Thessaloniki</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Heraklion</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Syros</string>
-    <string name="phone_area_chania">Chania</string>
     <string name="phone_area_abroad">Ulkomaat</string>
     <string name="phone_area_landline">Lankapuhelin</string>
     <string name="phone_reply_cant_talk">En voi puhua nyt. Soitan sinulle takaisin.</string>

@@ -2104,16 +2104,6 @@
     <string name="phone_channel_where_about">Kompiuterio Žemėlapiai klausia, kur yra šis telefonas</string>
     <string name="phone_where_title">Kompiuteris klausia, kur yra šis telefonas</string>
     <string name="phone_where_text">Bakstelėkite, kad nusiųstumėte vietą</string>
-    <string name="phone_area_athens">Atėnai</string>
-    <string name="phone_area_thessaloniki">Salonikai</string>
-    <string name="phone_area_patras">Patrai</string>
-    <string name="phone_area_heraklion">Heraklionas</string>
-    <string name="phone_area_larissa">Larisa</string>
-    <string name="phone_area_volos">Volas</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Joanina</string>
-    <string name="phone_area_syros">Siros</string>
-    <string name="phone_area_chania">Chanija</string>
     <string name="phone_area_abroad">Užsienis</string>
     <string name="phone_area_landline">Fiksuotasis ryšys</string>
     <string name="phone_reply_cant_talk">Dabar negaliu kalbėti. Perskambinsiu.</string>

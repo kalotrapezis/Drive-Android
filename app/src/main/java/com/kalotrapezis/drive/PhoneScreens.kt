@@ -115,7 +115,7 @@ private fun PhoneCallScreen(done: () -> Unit) {
         val number = PhoneCalls.number(call)
         val label = contact?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(number.orEmpty()) }?.label
         if (contact != null && number != null) Text(listOfNotNull(label?.ifBlank { null }?.let { contactLabel(context, it) }, number).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        else if (number != null) PhoneArea.of(number)?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        else if (number != null) PhoneArea.label(number)?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         else if (call.details.hasProperty(Call.Details.PROPERTY_CONFERENCE)) Text(pluralStringResource(R.plurals.phone_conference_n, call.children.size, call.children.size), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(if (ended) stringResource(R.string.phone_call_ended) else PhoneCalls.stateText(context, call, now), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         if (keys) Text(typed, style = MaterialTheme.typography.headlineSmall, maxLines = 1, modifier = Modifier.padding(top = 8.dp))

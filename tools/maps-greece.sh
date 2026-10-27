@@ -2,7 +2,8 @@
 # Builds Tetra's offline map of Greece on the computer (Plan.md § Maps): the Protomaps basemap cut to Greece's border
 # (greece.pmtiles — one file MapLibre opens on Android and, later, on the desktop) and Geofabrik's OSM extract of Greece
 # (greece-latest.osm.pbf), and from it the routing graph for car, foot, bike and wheelchair (greece-gh/, GraphHopper 10.2)
-# and the search list and addresses (greece-places.tsv, greece-addresses.tsv) and the lanes (greece-lanes.tsv).
+# and the search list and addresses (greece-places.tsv, greece-addresses.tsv), the lanes (greece-lanes.tsv) and the area
+# codes' places for the Phone (greece-phone.tsv).
 # Long and heavy: ~0.5 GB + 0.35 GB of downloads, then several minutes and ~4 GB of memory for the graph.
 # Usage: tools/maps-greece.sh [out-dir]   (default ~/Tetra-maps; MAXZOOM=15 by default)
 set -euo pipefail
@@ -71,6 +72,8 @@ if [ ! -f greece-lanes.tsv ] || [ greece-latest.osm.pbf -nt greece-lanes.tsv ]; 
   venv/bin/python -I "$HERE/maps-lanes.py" greece-latest.osm.pbf greece-lanes.tsv
 fi
 
+# the Phone's places of Greece's area codes (tools/maps-phone.py, libphonenumber's data); a failed fetch keeps the last table
+python3 -I "$HERE/maps-phone.py" GR greece-phone.tsv || echo "The phone table not refreshed"
 # EOPYY's own pharmacies, from EOPYY's site (tools/maps-eopyy.py); a failed fetch keeps the last list
 venv/bin/python -I "$HERE/maps-eopyy.py" greece-eopyy.tsv || echo "EOPYY's list not refreshed"
 # cities' own disabled (ΑμεΑ) parking spots from data.gov.gr (tools/maps-amea.py); a failed fetch keeps the last list

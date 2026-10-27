@@ -2104,16 +2104,6 @@
     <string name="phone_channel_where_about">Mapy v počítači sa pýtajú, kde je tento telefón</string>
     <string name="phone_where_title">Počítač sa pýta, kde je tento telefón</string>
     <string name="phone_where_text">Ťuknutím mu pošlete polohu</string>
-    <string name="phone_area_athens">Atény</string>
-    <string name="phone_area_thessaloniki">Solún</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Heraklion</string>
-    <string name="phone_area_larissa">Larisa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Syros</string>
-    <string name="phone_area_chania">Chania</string>
     <string name="phone_area_abroad">Zahraničie</string>
     <string name="phone_area_landline">Pevná linka</string>
     <string name="phone_reply_cant_talk">Teraz nemôžem hovoriť. Zavolám vám späť.</string>

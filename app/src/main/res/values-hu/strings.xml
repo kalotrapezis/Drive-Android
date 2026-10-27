@@ -1986,16 +1986,6 @@
     <string name="phone_channel_where_about">A számítógép Térképei lekérdezik, hol van ez a telefon</string>
     <string name="phone_where_title">A számítógép kérdezi, hol van ez a telefon</string>
     <string name="phone_where_text">Koppints a helyadat elküldéséhez</string>
-    <string name="phone_area_athens">Athén</string>
-    <string name="phone_area_thessaloniki">Szaloniki</string>
-    <string name="phone_area_patras">Pátrasz</string>
-    <string name="phone_area_heraklion">Iráklio</string>
-    <string name="phone_area_larissa">Lárisza</string>
-    <string name="phone_area_volos">Vólosz</string>
-    <string name="phone_area_kavala">Kavála</string>
-    <string name="phone_area_ioannina">Joánina</string>
-    <string name="phone_area_syros">Szírosz</string>
-    <string name="phone_area_chania">Haniá</string>
     <string name="phone_area_abroad">Külföld</string>
     <string name="phone_area_landline">Vezetékes</string>
     <string name="phone_reply_cant_talk">Most nem tudok beszélni. Visszahívlak.</string>

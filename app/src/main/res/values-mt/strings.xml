@@ -2104,16 +2104,6 @@
     <string name="phone_channel_where_about">Il-Mappi tal-kompjuter jistaqsi fejn hu dan it-telefon</string>
     <string name="phone_where_title">Il-kompjuter jistaqsi fejn hu dan it-telefon</string>
     <string name="phone_where_text">Agħfas biex tibgħatlu l-pożizzjoni</string>
-    <string name="phone_area_athens">Atene</string>
-    <string name="phone_area_thessaloniki">Saloniki</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Irakljon</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Siros</string>
-    <string name="phone_area_chania">Ħanja</string>
     <string name="phone_area_abroad">Barra</string>
     <string name="phone_area_landline">Linja fissa</string>
     <string name="phone_reply_cant_talk">Ma nistax nitkellem issa. Nerġa’ nċemplek.</string>

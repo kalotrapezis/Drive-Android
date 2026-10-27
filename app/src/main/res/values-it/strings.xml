@@ -1986,16 +1986,6 @@
     <string name="phone_channel_where_about">Mappe del computer chiede dove si trova questo telefono</string>
     <string name="phone_where_title">Il computer chiede dove si trova questo telefono</string>
     <string name="phone_where_text">Tocca per inviargli la posizione</string>
-    <string name="phone_area_athens">Atene</string>
-    <string name="phone_area_thessaloniki">Salonicco</string>
-    <string name="phone_area_patras">Patrasso</string>
-    <string name="phone_area_heraklion">Candia</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volo</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Giannina</string>
-    <string name="phone_area_syros">Siro</string>
-    <string name="phone_area_chania">La Canea</string>
     <string name="phone_area_abroad">Estero</string>
     <string name="phone_area_landline">Fisso</string>
     <string name="phone_reply_cant_talk">Non posso parlare ora. Ti richiamo.</string>

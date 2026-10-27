@@ -82,11 +82,16 @@ internal object PhoneT9 {
     }
 }
 
-/** What an unknown Greek number is: Mobile, Athens, Thessaloniki… (a small table, offline; the words' strings); Abroad for other countries. */
+/**
+ * What an unknown number is: the place of its area code (Θεσσαλονίκη, …) from the installed maps' phone tables, else
+ * Mobile, Landline or Abroad (the words' strings).
+ */
 internal object PhoneArea {
-    private val AREAS = listOf("210" to R.string.phone_area_athens, "2310" to R.string.phone_area_thessaloniki, "2610" to R.string.phone_area_patras, "2810" to R.string.phone_area_heraklion,
-        "2410" to R.string.phone_area_larissa, "24210" to R.string.phone_area_volos, "2510" to R.string.phone_area_kavala, "2651" to R.string.phone_area_ioannina,
-        "22810" to R.string.phone_area_syros, "28210" to R.string.phone_area_chania)
+    /** One map's <id>-phone.tsv (tools/maps-phone.py): its languages, en first, and prefix with the country code → a name in each. */
+    class Table(val langs: List<String>, val names: Map<String, List<String>>)
+    private var cache: Triple<Long, String, List<Table>>? = null
+
+    /** Mobile, Landline or Abroad; null for what is not a whole number (112, a number half typed). */
     @androidx.annotation.StringRes fun of(number: String): Int? {
         val n = number.filter { it.isDigit() || it == '+' }
         val national = when {
@@ -97,7 +102,44 @@ internal object PhoneArea {
         }
         if (national.length != 10) return null
         if (national.startsWith("69")) return R.string.contacts_label_mobile
-        return AREAS.filter { national.startsWith(it.first) }.maxByOrNull { it.first.length }?.second ?: if (national.startsWith("2")) R.string.phone_area_landline else null
+        return if (national.startsWith("2")) R.string.phone_area_landline else null
+    }
+
+    /** What [of] says, with a landline's or a foreign number's place when a table has it, in the app's language else English. */
+    @androidx.compose.runtime.Composable fun label(number: String): String? {
+        val kind = of(number) ?: return null
+        val lang = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language
+        val place = if (kind == R.string.contacts_label_mobile) null
+            else place(number, lang, tables(MapsFiles.root(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()))))
+        return place ?: androidx.compose.ui.res.stringResource(kind)
+    }
+
+    /** The longest prefix any table has. shortcut: a number without +/00 is taken as Greek (+30), as [of] does; the SIM's country when Tetra leaves Greece. */
+    fun place(number: String, lang: String, tables: List<Table>): String? {
+        val n = number.filter { it.isDigit() || it == '+' }
+        val digits = when { n.startsWith("+") -> n.drop(1); n.startsWith("00") -> n.drop(2); else -> "30$n" }
+        for (len in minOf(digits.length, 12) downTo 1) for (t in tables) {
+            val names = t.names[digits.take(len)] ?: continue
+            return names.getOrNull(t.langs.indexOf(lang))?.ifEmpty { null } ?: names.firstOrNull()?.ifEmpty { null } ?: continue
+        }
+        return null
+    }
+
+    /** The tables beside the maps in [root] (a table without its map is not read), read once and looked at again at most each minute. */
+    @Synchronized fun tables(root: java.io.File): List<Table> {
+        val now = System.currentTimeMillis()
+        cache?.let { (at, _, t) -> if (now - at < 60_000) return t }
+        val files = root.listFiles { f -> f.name.endsWith("-phone.tsv") && java.io.File(root, f.name.removeSuffix("-phone.tsv") + ".pmtiles").isFile }.orEmpty().sortedBy { it.name }
+        val stamp = files.joinToString { "${it.name}${it.lastModified()}" }
+        val t = cache?.takeIf { it.second == stamp }?.third ?: files.mapNotNull { f -> runCatching { read(f.readText()) }.getOrNull() }
+        cache = Triple(now, stamp, t)
+        return t
+    }
+
+    fun read(text: String): Table {
+        val lines = text.lineSequence().filter { it.isNotBlank() }
+        val langs = lines.first().removePrefix("#").split('\t').drop(1)
+        return Table(langs, lines.drop(1).associate { line -> line.split('\t').let { it[0] to it.drop(1) } })
     }
 }
 

@@ -12,6 +12,18 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [x] (phone-area-codes session, 27 Oct; merged into main) **The Phone names every landline's place from
+      the installed maps** (the user: "could we take that into maps to get the codes for the map the user has installed?";
+      "it has to be built side by side with map manager so with the map gets the numbers as well"): each map gets
+      `<id>-phone.tsv` (tools/maps-phone.py, libphonenumber's geocoding data, Apache-2.0: prefix with the country code →
+      the place, en first, then every language libphonenumber has); `PhoneArea.label` reads the tables beside the
+      installed maps (a table without its .pmtiles is not read), the longest prefix wins, the app's language else English;
+      Mobile / Landline / Abroad stay the fallback. The 10 city strings went (place names are data). The desktop map
+      builder writes the table in its search step: commit on Drive's `claude/map-builder` (merges with it); maps-greece.sh
+      too; Greece's table put in the computer's Files/Maps, so sync carries it before any rebuild. 669 unit tests pass;
+      tablet (Greek): 2313012345 → Θεσσαλονίκη, 2231012345 → Λαμία (the table pushed there by adb: the tablet was off
+      the computer's Wi-Fi). **Open:** the builder's phone step not run inside the app (maps-phone.py run alone for GR
+      and BE); a number without +/00 is taken as Greek; a +1 or +7 map names all of its code's areas.
 - [x] (phone-tablet-two-pane session, 27 Oct; branch `claude/phone-tablet-two-pane-5f7348`, not merged: main's checkout holds the map-manager
       session's uncommitted work in the same files) **Phone on the tablet: two panes** (the user: "now it's just black bars everywhere"):
       the list on the left, the keypad always open on the right (smallest width ≥ 600 dp; the phone unchanged); seen on the tablet,

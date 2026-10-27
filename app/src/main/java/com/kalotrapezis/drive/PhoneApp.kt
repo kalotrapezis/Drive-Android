@@ -305,7 +305,7 @@ private fun BlockedCard(e: PhoneSpam.Entry, history: List<LoggedCall>, c: Contac
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         CallAvatar(c, 88.dp)
         Text(e.number, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-        (if (range) null else PhoneArea.of(e.number))?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current.copy(alpha = 0.7f)) }
+        (if (range) null else PhoneArea.label(e.number))?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current.copy(alpha = 0.7f)) }
         // the user's own note; not "blocked before", Tetra's mark on the numbers it took from Android's list (SpamSettings)
         if (e.note.isNotBlank() && e.note != "blocked before") Text(e.note, style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.7f), textAlign = TextAlign.Center)
         Button(onClick = {
@@ -392,7 +392,7 @@ private fun Recents(calls: List<LoggedCall>, who: (String) -> ContactInfo?, isSp
                             maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             CallTypeIcon(g.newest.type, 20.dp)
-                            val where = c?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(g.number) }?.label?.ifBlank { null }?.let { contactLabel(context, it) } ?: PhoneArea.of(g.number)?.let { stringResource(it) }
+                            val where = c?.phones?.firstOrNull { ContactsWays.key(it.value) == ContactsWays.key(g.number) }?.label?.ifBlank { null }?.let { contactLabel(context, it) } ?: PhoneArea.label(g.number)
                             if (g.number.isNotBlank() && isSpam(g.number)) Text(stringResource(R.string.phone_spam) + " ·", style = MaterialTheme.typography.bodySmall, color = CALL_RED, fontWeight = FontWeight.Bold)
                             Text(listOfNotNull(where, whenText(g.newest.at, zone, today, androidx.compose.ui.platform.LocalConfiguration.current.locales[0])).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -523,7 +523,7 @@ private fun CallDetails(g: CallGroup, all: List<LoggedCall>, c: ContactInfo?, ca
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 CallAvatar(c, 88.dp)
                 Text(c?.name ?: g.number.ifBlank { stringResource(R.string.phone_hidden_number) }, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 10.dp), textAlign = TextAlign.Center)
-                if (g.number.isNotBlank()) Text(listOfNotNull(c?.let { g.number }, PhoneArea.of(g.number)?.let { stringResource(it) }).joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = islandContentColor().copy(alpha = 0.7f))
+                if (g.number.isNotBlank()) Text(listOfNotNull(c?.let { g.number }, PhoneArea.label(g.number)).joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = islandContentColor().copy(alpha = 0.7f))
                 if (g.number.isNotBlank()) Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     RoundButton(R.drawable.ic_call, stringResource(R.string.contacts_call), CALL_GREEN, 56.dp) { call(g.number) }
                     RoundButton(R.drawable.ic_chat, stringResource(R.string.contacts_message), null, 56.dp) {
@@ -605,7 +605,7 @@ private fun Keypad(number: MutableState<String>, contacts: List<ContactInfo>, ca
                 context.getSystemService(android.content.ClipboardManager::class.java).primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
                     ?.filter { it.isDigit() || it in "+*#" }?.takeIf { it.isNotEmpty() }?.let { number.value = it }
             }) {})
-        Text(PhoneArea.of(typed)?.takeIf { found.isEmpty() }?.let { stringResource(it) } ?: " ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(PhoneArea.label(typed)?.takeIf { found.isEmpty() } ?: " ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         DialKeys(press = { ch -> number.value += ch; PhoneCodes.typed(context, number.value)?.let { number.value = "" } }, hold = { ch ->
             when (ch) {

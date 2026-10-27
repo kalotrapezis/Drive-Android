@@ -1986,16 +1986,6 @@
     <string name="phone_channel_where_about">Карти на компютъра пита къде е този телефон</string>
     <string name="phone_where_title">Компютърът пита къде е този телефон</string>
     <string name="phone_where_text">Докоснете, за да изпратите местоположението</string>
-    <string name="phone_area_athens">Атина</string>
-    <string name="phone_area_thessaloniki">Солун</string>
-    <string name="phone_area_patras">Патра</string>
-    <string name="phone_area_heraklion">Ираклион</string>
-    <string name="phone_area_larissa">Лариса</string>
-    <string name="phone_area_volos">Волос</string>
-    <string name="phone_area_kavala">Кавала</string>
-    <string name="phone_area_ioannina">Янина</string>
-    <string name="phone_area_syros">Сирос</string>
-    <string name="phone_area_chania">Ханя</string>
     <string name="phone_area_abroad">Чужбина</string>
     <string name="phone_area_landline">Стационарен</string>
     <string name="phone_reply_cant_talk">Не мога да говоря сега. Ще ти се обадя.</string>

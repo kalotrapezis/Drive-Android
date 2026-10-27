@@ -1986,16 +1986,6 @@
     <string name="phone_channel_where_about">Kaarten op de computer vraagt waar deze telefoon is</string>
     <string name="phone_where_title">De computer vraagt waar deze telefoon is</string>
     <string name="phone_where_text">Tik om de locatie te sturen</string>
-    <string name="phone_area_athens">Athene</string>
-    <string name="phone_area_thessaloniki">Thessaloniki</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Heraklion</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Syros</string>
-    <string name="phone_area_chania">Chania</string>
     <string name="phone_area_abroad">Buitenland</string>
     <string name="phone_area_landline">Vaste lijn</string>
     <string name="phone_reply_cant_talk">Kan nu niet praten. Ik bel je terug.</string>

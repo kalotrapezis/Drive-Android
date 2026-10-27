@@ -2045,16 +2045,6 @@
     <string name="phone_channel_where_about">Karte na računalu pitaju gdje je ovaj telefon</string>
     <string name="phone_where_title">Računalo pita gdje je ovaj telefon</string>
     <string name="phone_where_text">Dodirnite da mu pošaljete lokaciju</string>
-    <string name="phone_area_athens">Atena</string>
-    <string name="phone_area_thessaloniki">Solun</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Heraklion</string>
-    <string name="phone_area_larissa">Larisa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Siros</string>
-    <string name="phone_area_chania">Hanija</string>
     <string name="phone_area_abroad">Inozemstvo</string>
     <string name="phone_area_landline">Fiksna linija</string>
     <string name="phone_reply_cant_talk">Ne mogu sada razgovarati. Nazvat ću te.</string>

@@ -1987,16 +1987,6 @@
     <string name="phone_channel_where_about">The computer\'s Maps asks where this phone is</string>
     <string name="phone_where_title">The computer asks where this phone is</string>
     <string name="phone_where_text">Tap to send it the location</string>
-    <string name="phone_area_athens">Athens</string>
-    <string name="phone_area_thessaloniki">Thessaloniki</string>
-    <string name="phone_area_patras">Patras</string>
-    <string name="phone_area_heraklion">Heraklion</string>
-    <string name="phone_area_larissa">Larissa</string>
-    <string name="phone_area_volos">Volos</string>
-    <string name="phone_area_kavala">Kavala</string>
-    <string name="phone_area_ioannina">Ioannina</string>
-    <string name="phone_area_syros">Syros</string>
-    <string name="phone_area_chania">Chania</string>
     <string name="phone_area_abroad">Abroad</string>
     <string name="phone_area_landline">Landline</string>
     <string name="phone_reply_cant_talk">Can\'t talk now. I\'ll call you back.</string>

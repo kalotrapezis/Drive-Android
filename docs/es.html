@@ -346,6 +346,15 @@
   <div class="wrap">Tetra es software libre (GPL 3.0) y una beta: haz tus propias copias de seguridad. Las capturas usan datos de ejemplo inventados. Código: <a href="https://github.com/kalotrapezis/Drive-Android">Android</a> · <a href="https://github.com/kalotrapezis/Drive">escritorio</a></div>
 </footer>
 <script>
+  // The language: the one picked in the menu (remembered), else, on the English page, the browser's first language the
+  // site has. The browser's languages, not the country: no address leaves the visitor's computer, and a country can have several.
+  const langs = [...document.querySelectorAll('.lang a')].map(a => a.hreflang)
+  document.querySelectorAll('.lang a').forEach(a => a.addEventListener('click', () => { try { localStorage.setItem('lang', a.hreflang) } catch {} }))
+  let chosen = null; try { chosen = localStorage.getItem('lang') } catch {}
+  if (document.documentElement.lang === 'en' && !chosen) {
+    const want = navigator.languages.map(l => l.slice(0, 2).toLowerCase()).find(l => langs.includes(l))
+    if (want && want !== 'en') location.replace(want + '.html' + location.hash)
+  }
   // The applet tabs: click, arrow keys, and #name in the address keep the chosen one; the language switch keeps it too.
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   function show(tab, focus) {

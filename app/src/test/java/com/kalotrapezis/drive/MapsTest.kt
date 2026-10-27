@@ -5,6 +5,7 @@ import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
 import org.junit.Ignore
 import org.junit.Test
@@ -699,5 +700,46 @@ class MapsPacksTest {
         assertEquals(listOf("greece"), MapsFiles.ids(root))
         assertEquals(setOf("added-places.tsv", "greece-places.tsv", "greece.pmtiles", "lisbon-places.tsv"), root.list()!!.toSet())
         assertTrue(File(root.parentFile, "Trash/cyprus-gh/properties").isFile) // to the Trash, so the phone and tablet follow
+    }
+
+    /** The roads of every map (all-gh) when they hold the map a route starts on; gone with the last but one map. */
+    @Test fun acrossBorders() {
+        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps").apply { mkdirs() }
+        pmtiles(File(root, "greece.pmtiles"), 18.97, 34.59, 29.66, 41.75)
+        pmtiles(File(root, "macedonia.pmtiles"), 20.45, 40.85, 23.04, 42.37)
+        pmtiles(File(root, "cyprus.pmtiles"), 31.0, 34.0, 35.0, 36.0)
+        File(root, "all-gh").mkdirs(); File(root, "all-gh/maps.txt").writeText("macedonia\ngreece\n")
+        assertEquals("greece-gh", MapsFiles.graphAt(root, 40.64, 22.94).name) // no graph in it yet: half there
+        File(root, "all-gh/properties").writeText("x")
+        assertEquals("all-gh", MapsFiles.graphAt(root, 40.64, 22.94).name) // Thessaloniki
+        assertEquals("all-gh", MapsFiles.graphAt(root, 41.99, 21.43).name) // Skopje
+        assertEquals("cyprus-gh", MapsFiles.graphAt(root, 35.17, 33.36).name) // a map not joined: its own
+        MapsFiles.removeMap(root, "cyprus")
+        assertTrue(File(root, "all-gh").isDirectory) // two maps left: still joined
+        MapsFiles.removeMap(root, "macedonia")
+        assertFalse(File(root, "all-gh").exists())
+        assertEquals("greece-gh", MapsFiles.graphAt(root, 40.64, 22.94).name)
+    }
+}
+
+/**
+ * A route across a border on the combined roads (the desktop map builder's all-gh), when Files/Maps (or TETRA_MAPS) has
+ * Greece and North Macedonia joined: Thessaloniki to Skopje by car, and the way back.
+ */
+class MapsBorderTest {
+    @Test fun thessalonikiToSkopje() {
+        val root = File(System.getenv("TETRA_MAPS") ?: (System.getProperty("user.home") + "/Tetra/Files/Maps"))
+        val dir = MapsFiles.graphAt(root, 40.6401, 22.9444)
+        assumeTrue(dir.name == MapsFiles.ALL && File(dir, "properties").isFile && "macedonia" in File(dir, "maps.txt").readLines())
+        val there = MapsRouting.route(dir, 40.6401, 22.9444, 41.9973, 21.4280, "car", "en")
+        println("Thessaloniki–Skopje: ${there.metres.toInt()} m, ${there.millis / 60000} min, ${there.steps.size} steps")
+        assertTrue(there.metres in 200_000.0..300_000.0) // ~235 km by the A1 and the border at Evzonoi
+        assertTrue(there.lats.any { it > 41.2 } && there.lats.first() < 40.7) // it reaches North Macedonia
+        val back = MapsRouting.route(MapsFiles.graphAt(root, 41.9973, 21.4280), 41.9973, 21.4280, 40.6401, 22.9444, "car", "en")
+        assertEquals(there.metres, back.metres, 20_000.0)
+        // Sofia: on no map here, so no route, said in words
+        val off = runCatching { MapsRouting.route(dir, 40.6401, 22.9444, 42.6977, 23.3219, "car", "en") }
+        println("to Sofia: ${off.exceptionOrNull()?.message}")
+        assertTrue(off.isFailure)
     }
 }

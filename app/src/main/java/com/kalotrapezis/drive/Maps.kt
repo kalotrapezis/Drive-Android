@@ -101,6 +101,8 @@ internal object MapsFiles {
     const val FOLDER = "Maps"
     const val MAP = "greece.pmtiles"
     const val GRAPH = "greece-gh"
+    /** The roads of every map at once (the desktop map builder's all-gh; its maps.txt lists them), so a route crosses a border. */
+    const val ALL = "all-gh"
     const val PLACES = "Places"
     /** Home's Maps card: twelve places on a tablet, the first six on a phone (the user, 20 Oct: "slots for 6 locations"; 21 Oct, the tablet: "very big … we can double them"). */
     const val SLOTS = 12
@@ -140,21 +142,26 @@ internal object MapsFiles {
     }.getOrNull()
 
     /**
-     * The roads of the map [lat],[lng] is on, else the first map's. shortcut: one map's graph a route; a route across a
-     * border needs one map of both countries (a bigger region in the map builder), or a second graph at the border.
+     * The roads of every map when they hold the map [lat],[lng] is on (the user, 27 Oct: "When we have both the neighbouring
+     * maps, it should be able to cross the border"), else that map's own, else the first map's. One graph for every route and
+     * limit, as opening another one takes seconds on a phone.
      */
     fun graphAt(root: File, lat: Double, lng: Double): File {
         val all = maps(root)
-        return (all.firstOrNull { it.has(lat, lng) } ?: all.firstOrNull())?.let { File(root, "${it.id}-gh") } ?: graph(root)
+        val here = all.filter { it.has(lat, lng) }
+        val joined = File(root, ALL).takeIf { File(it, "properties").isFile }?.let { runCatching { File(it, "maps.txt").readLines() }.getOrNull() }.orEmpty()
+        if (here.any { it.id in joined }) return File(root, ALL)
+        return (here.firstOrNull() ?: all.firstOrNull())?.let { File(root, "${it.id}-gh") } ?: graph(root)
     }
 
     /** Each map's <id>-[kind].tsv that is there (places, addresses, streets, lanes). */
     fun lists(root: File, kind: String): List<File> = ids(root).map { File(root, "$it-$kind.tsv") }.filter { it.isFile }
 
-    /** Every file of map [id] to Tetra's Trash, so the removal reaches the other devices; the saved places stay. */
+    /** Every file of map [id] to Tetra's Trash, so the removal reaches the other devices; the saved places stay; all-gh too when one map is left. */
     fun removeMap(root: File, id: String) {
         val own = Regex(Regex.escape(id) + "(\\.pmtiles|\\.json|-gh|-[a-z]+\\.tsv)")
         root.list().orEmpty().filter { own.matches(it) }.forEach { trash(root, File(root, it)) }
+        if (ids(root).size < 2 && File(root, ALL).exists()) trash(root, File(root, ALL))
     }
 
     /**

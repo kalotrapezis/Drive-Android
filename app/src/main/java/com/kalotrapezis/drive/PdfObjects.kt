@@ -170,18 +170,53 @@ private fun PdfDoc.placeKeepingLook(a: PDFAnnotation, to: com.artifex.mupdf.fitz
 /** The object [o] on page [i] moved by [dx], [dy] points (one undo step): Tetra's put on again, another app's shifted. Its id. */
 internal fun PdfDoc.moveObject(i: Int, o: PdfObject, dx: Float, dy: Float): Int {
     o.words?.let { w -> return putWords(i, w, o.rect.centerX() + dx, o.rect.centerY() + dy, replacing = o.id) }
-    annotate(i, "Move") { p, _, _ ->
-        val a = p.annotation(o.id) ?: return@annotate false
-        fun pt(q: com.artifex.mupdf.fitz.Point) = com.artifex.mupdf.fitz.Point(q.x + dx, q.y + dy)
-        when (a.type) {
-            PDFAnnotation.TYPE_INK -> { a.setInkList(a.inkList.map { s -> s.map(::pt).toTypedArray() }.toTypedArray()); a.update() }
-            PDFAnnotation.TYPE_LINE -> { a.line.let { l -> a.setLine(pt(l[0]), pt(l[1])) }; a.update() }
-            PDFAnnotation.TYPE_POLYGON, PDFAnnotation.TYPE_POLY_LINE -> { a.setVertices(a.vertices.map(::pt).toTypedArray()); a.update() }
-            else -> a.rect.let { r -> placeKeepingLook(a, com.artifex.mupdf.fitz.Rect(r.x0 + dx, r.y0 + dy, r.x1 + dx, r.y1 + dy)) }
-        }
-        true
-    }
+    annotate(i, "Move") { p, _, _ -> p.annotation(o.id)?.let { shifted(it, dx, dy) } != null }
     return o.id
+}
+
+/** [a] moved [dx], [dy] points as it looks (any kind: its drawing kept, only its place changed). */
+private fun PdfDoc.shifted(a: PDFAnnotation, dx: Float, dy: Float) {
+    fun pt(q: com.artifex.mupdf.fitz.Point) = com.artifex.mupdf.fitz.Point(q.x + dx, q.y + dy)
+    when (a.type) {
+        PDFAnnotation.TYPE_INK -> { a.setInkList(a.inkList.map { s -> s.map(::pt).toTypedArray() }.toTypedArray()); a.update() }
+        PDFAnnotation.TYPE_LINE -> { a.line.let { l -> a.setLine(pt(l[0]), pt(l[1])) }; a.update() }
+        PDFAnnotation.TYPE_POLYGON, PDFAnnotation.TYPE_POLY_LINE -> { a.setVertices(a.vertices.map(::pt).toTypedArray()); a.update() }
+        else -> a.rect.let { r -> placeKeepingLook(a, com.artifex.mupdf.fitz.Rect(r.x0 + dx, r.y0 + dy, r.x1 + dx, r.y1 + dy)) }
+    }
+}
+
+/** Objects [ids] on page [i] moved [dy] points down (up when less than 0), as they look: what is stacked under a text that grew. */
+internal fun PdfDoc.shiftDown(i: Int, ids: Collection<Int>, dy: Float) = annotate(i, "Move") { p, _, _ ->
+    ids.forEach { id -> p.annotation(id)?.let { shifted(it, 0f, dy) } }; true }
+
+/**
+ * A text put on as [PdfDoc.putText], and what was stacked under it ([stack]: under [oldBottom], where it ended
+ * before) moved with its new end ([gap] more for a new text, which pushes them out of its way) — Words' flow, boxes
+ * stuck one under another. One undo step. Its id.
+ */
+internal fun PdfDoc.putTextStacked(i: Int, x: Float, y: Float, t: PdfText, room: Float, minHeight: Float, replacing: Int?,
+    stack: List<Int>, oldBottom: Float, gap: Float): Int {
+    var id = 0
+    edit("Text") { _ ->
+        id = putText(i, x, y, t, room, minHeight, replacing)
+        val end = objectById(i, id)?.rect?.bottom ?: return@edit
+        val dy = end + gap - oldBottom
+        if (stack.isNotEmpty() && kotlin.math.abs(dy) > 0.5f) shiftDown(i, stack, dy)
+    }
+    return id
+}
+
+/**
+ * What is stacked under [r] on page [i] (Words' flow in a PDF: a box starting at most 12 pt under it, across from it),
+ * and under those in turn; [except] left out (the text itself).
+ */
+internal fun stackedUnder(all: List<PdfObject>, r: android.graphics.RectF, except: Int?): List<PdfObject> {
+    val found = LinkedHashMap<Int, PdfObject>()
+    fun under(b: android.graphics.RectF) = all.filter { o -> o.id != except && o.id !in found && o.rect.left < b.right && o.rect.right > b.left &&
+        o.rect.top >= b.bottom - 2f && o.rect.top <= b.bottom + 12f }
+    var next = under(r)
+    while (next.isNotEmpty()) { next.forEach { found[it.id] = it }; next = next.flatMap { under(it.rect) }.distinctBy { it.id } }
+    return found.values.toList()
 }
 
 /** Another app's object [o] stretched from its top left to [w] × [h] points (one undo step). */

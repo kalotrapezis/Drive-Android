@@ -23,7 +23,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1262,6 +1261,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     // each page's objects, read once a change (a finger's touch asks which is under it)
     val pageObjects = remember(version, doc) { HashMap<Int, List<PdfObject>>() }
     fun objectsOn(i: Int) = pageObjects.getOrPut(i) { doc?.objects(i).orEmpty() }
+    /**
+     * The object under [pt] on page [i] (4 pt round it), as the page is now: the page's touch handlers are made once, and
+     * a list kept from then missed what was put on since (27 Oct: taps on a new text made another one on top of it).
+     */
+    fun objectUnder(i: Int, pt: Offset) = doc?.objects(i).orEmpty().lastOrNull { o -> o.rect.let { r -> pt.x >= r.left - 4 && pt.x <= r.right + 4 && pt.y >= r.top - 4 && pt.y <= r.bottom + 4 } }
     var organize by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) } // Back with changes not saved: Save or not
     var showVersions by remember { mutableStateOf(false) }
@@ -1333,6 +1337,29 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         typed.selection = androidx.compose.ui.text.TextRange(typed.annotatedString.text.length); typing = t
         tab = "Home"
     }
+    /**
+     * Where a text tapped at [a] on page [i] starts, stuck to what is there as a form's boxes (the user, 27 Oct: "boxes
+     * of elements stuck next, above or below"): just right of a box on that line, top to top; under a box just above,
+     * its left edge and 6 pt under it; else at the margin or a box's left edge when near one. As wide as there is room.
+     */
+    fun placed(i: Int, a: Offset, framed: Boolean): PdfTyping {
+        val s = doc?.sizes?.getOrNull(i) ?: Size(595f, 842f); val m = margins; val near = 24f; val gap = 6f
+        val rs = doc?.objects(i).orEmpty().map { it.rect } // as it is now (a text just put on included)
+        val beside = rs.filter { r -> a.y >= r.top && a.y <= r.bottom && a.x >= r.right && a.x - r.right < 2 * near }.maxByOrNull { it.right }
+        // under a box: from its left edge to the margin (a short line's words are as wide as they are, not their line)
+        val above = rs.filter { r -> a.y >= r.bottom && a.y - r.bottom < 2 * near && a.x >= r.left - near && a.x <= maxOf(r.right, s.width - m.right) + near }.maxByOrNull { it.bottom }
+        val (x, y) = when {
+            beside != null -> beside.right + gap to beside.top
+            above != null -> above.left to above.bottom + gap
+            else -> ((rs.map { it.left } + m.left).firstOrNull { kotlin.math.abs(it - a.x) < near } ?: a.x) to a.y - textLook.size * 0.8f
+        }
+        val x0 = x.coerceIn(0f, maxOf(0f, s.width - 36f)); var y0 = y.coerceIn(0f, maxOf(0f, s.height - 12f))
+        // never on top of another box: under it (and under the one under that…)
+        while (true) { val r = rs.firstOrNull { r -> x0 + 2f >= r.left && x0 + 2f <= r.right && y0 + 2f >= r.top && y0 + 2f <= r.bottom } ?: break; y0 = r.bottom + gap }
+        // to the right margin, or the next box on its line
+        val end = rs.filter { r -> r.left > x0 + 12f && r.top < y0 + textLook.size * 1.5f && r.bottom > y0 }.minOfOrNull { it.left - gap } ?: (s.width - m.right)
+        return PdfTyping(i, x0, y0, (if (end - x0 >= 36f) end - x0 else s.width - x0 - 6f).coerceAtLeast(24f), 0f, framed)
+    }
     /** A text put on before ([o]), tapped: typed in again in its place. */
     fun retype(o: PdfObject) { val old = o.text ?: return; val r = o.rect; val (uw, uh) = old.unturned(r)
         startTyping(PdfTyping(o.page, r.left, r.top, if (old.framed || old.turned) uw else maxOf(uw, (doc?.sizes?.getOrNull(o.page)?.width ?: 595f) - r.left - 18f),
@@ -1345,8 +1372,13 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
         // Words' own step from its editor to its paragraphs; the text's font on all its words, its colour on words with none
         val text = base.with(fonted(WriterBridge.fromEditorKeeping(base.doc.paras, typed.toRichTextDocument(), base.doc.basePt), textLook)).with(textLook)
         if (text.words.isBlank() && t.replacing == null) return
+        // what is stacked under it moves with its end (a new one pushes what starts where it does out of its way)
+        val all = d.objects(t.page)
+        val old = t.replacing?.let { r -> all.firstOrNull { it.id == r } }
+        val from = old?.rect ?: android.graphics.RectF(t.x, t.y, t.x + t.room, t.y)
+        val stack = stackedUnder(all, from, t.replacing).map { it.id }
         var id = 0
-        change { id = d.putText(t.page, t.x, t.y, text, t.room, t.minHeight, t.replacing) }
+        change { id = d.putTextStacked(t.page, t.x, t.y, text, t.room, t.minHeight, t.replacing, stack, from.bottom, if (old == null) 6f else 0f) }
         WriterLog.i("PDF: text ${if (t.replacing != null) "changed" else "put on"} (${textLook.font}, ${textLook.size} pt)")
         // it stays chosen, as a Slides box after typing: moved, sized, restyled from there
         if (id != 0) chosen = d.objectById(t.page, id)
@@ -1416,7 +1448,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     /** A tap at [pt] on page [i]: a link there shown as Words' "Go to" (not on an object being chosen). */
     fun tappedLink(i: Int, pt: Offset) {
         val d = doc ?: return
-        if (tool != null || typing != null || editing && objectsOn(i).any { o -> o.rect.contains(pt.x, pt.y) }) return
+        if (tool != null || typing != null || editing && objectUnder(i, pt) != null) return
         scope.launch { linkHere = withContext(Dispatchers.IO) { runCatching { d.linkAt(i, pt) }.getOrNull() } }
     }
     fun deleteChosen() {
@@ -1591,12 +1623,21 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
     BackHandler(enabled = editing || organize) { if (organize) organize = false else if (typing != null) putTyped() else if (chosen != null) chosen = null else if (tool != null) tool = null else if (doc?.dirty != true) editing = false else if (autoSave) save { editing = false } else leaving = true }
     /** What a finger did on page [i] with the tool on: [pts] its path in page points (a tap: one point). */
     fun onPage(i: Int, pts: List<Offset>) {
-        if (typing != null) { putTyped(); return } // a tap off the words being typed puts them on, as Words' click outside a box
+        // a tap off the words being typed puts them on, as Words' click outside a box; nothing typed yet in a new one: the
+        // cursor goes where tapped instead (no box was made)
+        typing?.let { t0 ->
+            if (t0.replacing == null && pts.size == 1 && typed.annotatedString.text.isBlank() && objectUnder(i, pts[0]) == null) { startTyping(placed(i, pts[0], t0.framed)); return }
+            putTyped(); chosen = null
+            // and the cursor where tapped, unless on an object (then that one chosen), as Words' click elsewhere
+            if (pts.size == 1 && tool == null) objectUnder(i, pts[0])?.let { chosen = it } ?: startTyping(placed(i, pts[0], false))
+            return
+        }
+        val had = chosen != null
         chosen = null // a tap off the chosen text: none chosen (on it, its frame takes the tap)
         val d = doc ?: return; val t = tool ?: run {
             if (pts.size != 1) return
             // an object tapped while editing: chosen, as Words' (a text: a second tap types in it)
-            if (editing) objectsOn(i).lastOrNull { o -> o.rect.let { r -> pts[0].x >= r.left - 4 && pts[0].x <= r.right + 4 && pts[0].y >= r.top - 4 && pts[0].y <= r.bottom + 4 } }?.let { chosen = it; return }
+            if (editing) objectUnder(i, pts[0])?.let { chosen = it; return }
             // no tool: a form's field is filled in (a box ticked at once), a note tapped shows its words
             d.fieldAt(i, pts[0])?.let { f ->
                 if (f.readOnly) { Toast.makeText(context, R.string.pdf_field_read_only, Toast.LENGTH_SHORT).show(); return }
@@ -1607,7 +1648,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                 }
                 return
             }
-            d.noteAt(i, pts[0])?.let { reading = it.ifBlank { context.getString(R.string.pdf_empty_note) } }; return }
+            d.noteAt(i, pts[0])?.let { reading = it.ifBlank { context.getString(R.string.pdf_empty_note) }; return }
+            // editing, on an empty spot: Words' click-and-type — the cursor there, a text made when something is typed (the
+            // user, 27 Oct); with something chosen, this tap only lets it go, as Words'
+            if (editing && !had) startTyping(placed(i, pts[0], false))
+            return }
         val a = pts.first(); val b = pts.last()
         when (t) {
             PdfTool.RedactText -> change {
@@ -1623,7 +1668,10 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
             }
             PdfTool.Note -> writing = i to a
             PdfTool.Redact -> if ((b - a).getDistance() > 4f) change { d.markRedaction(i, a, b) }
-            PdfTool.TextBox -> if ((b - a).getDistance() > 10f) startTyping(PdfTyping(i, minOf(a.x, b.x), minOf(a.y, b.y), kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y), true))
+            // Words' Insert › Text box: one box, drawn or put where tapped (its frame shows once something is typed)
+            PdfTool.TextBox -> { tool = null
+                if (pts.size == 1) startTyping(placed(i, a, true))
+                else if ((b - a).getDistance() > 10f) startTyping(PdfTyping(i, minOf(a.x, b.x), minOf(a.y, b.y), kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y), true)) }
             PdfTool.TextField -> if ((b - a).getDistance() > 10f) change { d.addField(i, a, b, checkbox = false) }
             PdfTool.CheckBox -> change { d.addField(i, a - Offset(7f, 7f), a + Offset(7f, 7f), checkbox = true) }
             PdfTool.Stamp -> change {
@@ -2565,7 +2613,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                                         // an object on this page as Words' (the user, 26 Oct): pressed and dragged it moves at once, a tap chooses it,
                                         // a long press opens Position, a tap on a chosen text types in it
                                         .pdfObjectGestures(s, editing && typing == null && (tool == null || tool == PdfTool.Text || tool == PdfTool.TextBox),
-                                            { pt -> objectsOn(i).lastOrNull { o -> o.rect.let { r -> pt.x >= r.left - 4 && pt.x <= r.right + 4 && pt.y >= r.top - 4 && pt.y <= r.bottom + 4 } } },
+                                            { pt -> objectUnder(i, pt) },
                                             { chosen?.takeIf { it.page == i } }, framePreview,
                                             { o -> chosen = o; tool = null },
                                             { chosen?.let(::retype) },
@@ -2674,12 +2722,27 @@ private fun androidx.compose.foundation.layout.BoxScope.PdfDrawLayer(page: Size,
     val c = Color(0xFF000000.toInt() or colour)
     Canvas(Modifier.matchParentSize().pointerInput(tool) {
         val k = size.width / page.width
-        if (tool == null || tool == PdfTool.Note || tool == PdfTool.Erase || tool == PdfTool.Stamp || tool == PdfTool.CheckBox || tool in PdfTool.Text..PdfTool.Sign) detectTapGestures { p -> done(listOf(p / k)) }
-        else detectDragGestures(
-            onDragStart = { p -> path = listOf(p) },
-            onDrag = { ch, _ -> ch.consume(); path = path + ch.position },
-            onDragEnd = { val pts = path.map { it / k }; path = emptyList(); done(pts) },
-            onDragCancel = { path = emptyList() })
+        val taps = tool == null || tool == PdfTool.Note || tool == PdfTool.Erase || tool == PdfTool.Stamp || tool == PdfTool.CheckBox || tool in PdfTool.Text..PdfTool.Sign
+        // one finger only: a second one makes it the page's pinch, nothing put on (the user, 27 Oct: zooming made text
+        // boxes); a text box is drawn, or put where tapped
+        awaitEachGesture {
+            val down = awaitFirstDown()
+            val pts = mutableListOf(down.position); var moved = false; var two = false
+            while (true) {
+                val ev = awaitPointerEvent()
+                if (ev.changes.count { it.pressed } > 1) { two = true; path = emptyList() }
+                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                if (!ch.pressed) { if (!two && !moved) ch.consume(); break }
+                if (two) continue
+                if (!moved && (ch.position - down.position).getDistance() > viewConfiguration.touchSlop) moved = true
+                if (moved && !taps) { ch.consume(); pts += ch.position; path = pts.toList() }
+            }
+            path = emptyList()
+            if (!two) when {
+                !moved -> if (taps || tool == PdfTool.TextBox) done(listOf(down.position / k))
+                !taps -> done(pts.map { it / k })
+            }
+        }
     }) {
         if (path.size < 2) return@Canvas
         val a = path.first(); val b = path.last()

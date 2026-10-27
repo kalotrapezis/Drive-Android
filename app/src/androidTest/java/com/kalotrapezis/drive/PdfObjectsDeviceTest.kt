@@ -259,4 +259,29 @@ class PdfObjectsDeviceTest {
     @Test fun screensLoad() {
         listOf("PdfScreenKt", "WriterKt", "SlidesScreenKt").forEach { Class.forName("com.kalotrapezis.drive.$it") }
     }
+
+    @Test fun aTextThatGrowsPushesWhatIsStackedUnderIt() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-objects-stack").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        val a = d.objectById(0, d.putText(0, 72f, 100f, PdfText("One line", PdfTextLook(), true), 300f))!!
+        // a shape stuck under it (6 pt), another under that, and one off to the side (not stacked)
+        val s1 = d.putWords(0, PdfWords.of(DocImage("s1", null, 100f, 40f, PictureXml.newShape("rect", OfficeKind.Docx, 0xFF0000, 0xFF0000, 1f, 100f, 40f), wrap = PictureWrap.InFront)), 122f, a.rect.bottom + 6f + 20f)
+        val s2 = d.putWords(0, PdfWords.of(DocImage("s2", null, 100f, 40f, PictureXml.newShape("rect", OfficeKind.Docx, 0x00FF00, 0x00FF00, 1f, 100f, 40f), wrap = PictureWrap.InFront)), 122f, a.rect.bottom + 6f + 40f + 6f + 20f)
+        val side = d.putWords(0, PdfWords.of(DocImage("s3", null, 60f, 40f, PictureXml.newShape("rect", OfficeKind.Docx, 0x0000FF, 0x0000FF, 1f, 60f, 40f), wrap = PictureWrap.InFront)), 500f, a.rect.bottom + 26f)
+        val stack = stackedUnder(d.objects(0), a.rect, a.id)
+        assertEquals(setOf(s1, s2), stack.map { it.id }.toSet())
+        val before = d.objects(0).associate { it.id to it.rect.top }
+        val id = d.putTextStacked(0, 72f, 100f, PdfText("One line\nTwo lines\nThree lines", PdfTextLook(), true), 300f, 0f, a.id, stack.map { it.id }, a.rect.bottom, 0f)
+        val grew = d.objectById(0, id)!!.rect.bottom - a.rect.bottom
+        assertTrue(grew > 10f)
+        assertEquals(before[s1]!! + grew, d.objectById(0, s1)!!.rect.top, 0.5f)
+        assertEquals(before[s2]!! + grew, d.objectById(0, s2)!!.rect.top, 0.5f)
+        assertEquals(before[side]!!, d.objectById(0, side)!!.rect.top, 0.5f)
+        // one undo step for the text and what moved with it
+        d.undo()
+        assertEquals(before[s1]!!, d.objectById(0, s1)!!.rect.top, 0.5f)
+        assertEquals(a.rect.bottom, d.objectById(0, a.id)!!.rect.bottom, 0.5f)
+        d.close(); dir.deleteRecursively()
+    }
 }

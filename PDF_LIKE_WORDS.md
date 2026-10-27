@@ -44,6 +44,20 @@ Done, one commit a step (`git log claude/pdf-like-words`):
   rows, the WordArt strip in its place); with the keyboard up: WordArt's and Add text's windows.
 - The honest-undo part is on `claude/pdf-save-fix` too (a0f5f421, its 5 PDF device tests pass on the tablet).
 
+**27 Oct, later — writing as in Words** (the user: Text box stayed on and made a box on every touch and zoom "until I
+write something"; "make it more invisible, like Word … boxes of elements stuck next, above or below"):
+- A tap on an empty spot while editing is Words' click-and-type: only the cursor, the text made with the first letter;
+  a tap elsewhere before typing moves the cursor; with something chosen, the tap only lets it go.
+- Insert › Text box: one box (tapped or drawn), then the tool is off; a second finger is the page's pinch, never a box
+  (every drawing tool).
+- Stuck boxes (PdfScreen `placed`, PdfObjects `stackedUnder`/`putTextStacked`): a tap just under a box starts at its
+  left edge 6 pt under it, just right of one top to top, else at the margin or a box's edge when near; never on top
+  of another. A text that grows or shrinks moves what is stacked under it, one undo step.
+- Fixed: the page's touch handlers kept the object list from when they were made — new texts could not be tapped.
+- Seen on the tablet (blank PDF): cursor only, moves, stacks, grows and pushes. Pinch not sendable from adb: unseen.
+- Next idea (the user): PDF like Words makes a 100% exporter possible — Tetra's boxes are Words' paragraphs and
+  objects, so Save as Word can write them back exactly (stacked boxes as paragraphs, free ones as text boxes).
+
 Left:
 - The phone 208c8192 (tools/phone-install.sh): not connected 27 Oct.
 - Group and Ungroup; Wrap's "behind the text".

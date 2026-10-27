@@ -222,6 +222,8 @@ internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t:
         val sp = with(density) { BASE_SP.sp.toPx() }
         val s = (k * basePt / sp).coerceAtLeast(0.05f) // Words' editor's size to the page's
         val pad = if (t.framed) 4f else 1f
+        // a new one with nothing typed yet: only the cursor (Words' click-and-type), its frame and fill with the first letter
+        val shown = t.replacing != null || state.annotatedString.text.isNotEmpty()
         val focus = remember { FocusRequester() }
         LaunchedEffect(t) { focus.requestFocus() } // the keyboard at once
         // the selection blue on the white page whatever the app's theme (dark: Ctrl+A's selection hardly showed, 24 Oct)
@@ -234,8 +236,8 @@ internal fun BoxScope.PdfTypingField(page: androidx.compose.ui.geometry.Size, t:
                     .graphicsLayer { scaleX = s; scaleY = s; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f) }
                     .requiredWidth((k * t.room / s).toDp()).heightIn(min = (k * maxOf(t.minHeight, basePt * 1.2f + 2 * pad) / s).toDp())
                     // the words as they were hidden while typed again; the box's own fill
-                    .background(look.fill?.let { Color(0xFF000000 or it.toLong()) } ?: if (t.replacing != null) Color.White else Color.Transparent)
-                    .border(1.dp, look.line?.let { Color(0xFF000000 or it.toLong()) } ?: Color(0x991A73E8)).padding((k * pad / s).toDp()).focusRequester(focus),
+                    .background(look.fill?.takeIf { shown }?.let { Color(0xFF000000 or it.toLong()) } ?: if (t.replacing != null) Color.White else Color.Transparent)
+                    .border(1.dp, if (!shown) Color.Transparent else look.line?.let { Color(0xFF000000 or it.toLong()) } ?: Color(0x991A73E8)).padding((k * pad / s).toDp()).focusRequester(focus),
                 textStyle = TextStyle(color = Color(0xFF000000 or look.color.toLong()), fontSize = BASE_SP.sp, fontFamily = OfficeFonts.family(look.font)))
         }
         }

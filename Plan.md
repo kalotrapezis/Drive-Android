@@ -12,6 +12,12 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (call-speaker session, 27 Oct; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
+      phone-speaker button** (the user: "the call pop up on the PC from the phone to have a speaker option so instead of hearing the call from
+      bluetooth to my PC to hear it from the phone's speaker"). Bubble: a speaker icon (while Tetra is the phone app, as Mute/Hold) sends
+      `speaker`/`unspeaker` the way Mute travels (sync.js callAction → SyncServer /call/action → PhoneCalls.act → setAudioRoute); the phone
+      reports its route in /call/state ("route"), the bubble's sound line says "Sound on the phone's loudspeaker", recording is off there.
+      Back: the Bluetooth device it was on (the computer), else Bluetooth, else the earpiece.
 - [x] (office-media session, 27 Oct; branch `claude/office-media`, not merged; its build is on the tablet 971f6b37) **Local video and audio
       embedded in documents play** (the user: "I know it has Video from YouTube but what about local files embedded into the
       documents?"). Already there: Slides read and played PowerPoint's p:videoFile/p:audioFile + p14:media and Impress's

@@ -35,9 +35,9 @@ class PhoneInCallService : InCallService() {
     override fun onCallRemoved(call: Call) = PhoneCalls.removed(this, call)
     @Deprecated("CallAudioState: still what Telecom sends on every Android Tetra runs on")
     override fun onCallAudioStateChanged(audioState: CallAudioState?) {
-        val muteChanged = PhoneCalls.audio?.isMuted != audioState?.isMuted
+        val told = PhoneCalls.audio?.isMuted != audioState?.isMuted || PhoneCalls.audio?.route != audioState?.route // the computer's bubble shows both
         PhoneCalls.audio = audioState; PhoneCalls.changed(this)
-        if (muteChanged) PhoneCalls.top()?.let { PhoneCalls.report(this, it) }
+        if (told) PhoneCalls.top()?.let { PhoneCalls.report(this, it) }
     }
 }
 
@@ -108,13 +108,16 @@ internal object PhoneCalls {
         }
         val body = org.json.JSONObject().put("state", state).put("direction", if (incoming) "in" else "out").put("number", number(call).orEmpty())
             .put("missed", state == "ended" && call.details.disconnectCause?.code == android.telecom.DisconnectCause.MISSED)
-            .put("muted", audio?.isMuted == true).put("phoneApp", true).put("at", System.currentTimeMillis())
+            .put("muted", audio?.isMuted == true).put("route", routeName(audio?.route)).put("phoneApp", true).put("at", System.currentTimeMillis())
         if (state == "ended") toComputer.remove(call)
         val app = c.applicationContext
         Thread { runCatching { SyncClient(app, SyncStore(app)).callState(body) }.onFailure { WriterLog.w("Phone: the call's state did not reach the computer (${it.message})") } }.start()
     }
 
-    /** The computer's bubble pressed: answer, decline, end, hold, unhold, mute, unmute, dtmf<digit>. Null while Tetra is not the phone app. */
+    /** The Bluetooth device the call was on when the computer's bubble moved it to the speaker: back there on "unspeaker". */
+    private var beforeSpeaker: android.bluetooth.BluetoothDevice? = null
+
+    /** The computer's bubble pressed: answer, decline, end, hold, unhold, mute, unmute, speaker, unspeaker, dtmf<digit>. Null while Tetra is not the phone app. */
     fun act(what: String): Boolean? {
         val s = service ?: return null
         val ringing = calls.firstOrNull { it.state == Call.STATE_RINGING }
@@ -126,6 +129,12 @@ internal object PhoneCalls {
             what == "hold" -> call.hold()
             what == "unhold" -> call.unhold()
             what == "mute" || what == "unmute" -> s.setMuted(what == "mute")
+            // the user, 27 Oct: the call's sound from the computer (the phone on its Bluetooth) to the phone's loudspeaker, and back
+            what == "speaker" -> { beforeSpeaker = audio?.activeBluetoothDevice; s.setAudioRoute(CallAudioState.ROUTE_SPEAKER) }
+            what == "unspeaker" -> {
+                val back = beforeSpeaker?.takeIf { d -> audio?.supportedBluetoothDevices?.contains(d) == true }
+                if (back != null) s.requestBluetoothAudio(back) else s.setAudioRoute(awayFromSpeaker(audio?.supportedRouteMask ?: 0))
+            }
             what.startsWith("dtmf") && what.length == 5 && what[4] in "0123456789*#" -> {
                 call.playDtmfTone(what[4]); android.os.Handler(s.mainLooper).postDelayed({ call.stopDtmfTone() }, 180)
             }
@@ -133,6 +142,13 @@ internal object PhoneCalls {
         }
         return true
     }
+
+    /** The route the computer's bubble shows: speaker, bluetooth, wired or earpiece. */
+    fun routeName(route: Int?) = when (route) {
+        CallAudioState.ROUTE_SPEAKER -> "speaker"; CallAudioState.ROUTE_BLUETOOTH -> "bluetooth"; CallAudioState.ROUTE_WIRED_HEADSET -> "wired"; else -> "earpiece"
+    }
+    /** Off the speaker: Bluetooth (the computer) when there is one, else the headset or the earpiece. */
+    fun awayFromSpeaker(mask: Int) = if (mask and CallAudioState.ROUTE_BLUETOOTH != 0) CallAudioState.ROUTE_BLUETOOTH else CallAudioState.ROUTE_WIRED_OR_EARPIECE
 
     fun changed(c: Context) { tick++; notify(c); proximity(c, wantsProximity()) }
 

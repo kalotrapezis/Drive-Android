@@ -2119,6 +2119,9 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.common_close), modifier = Modifier.size(16.dp)) }
                 }
                 @Composable fun ToolButton(t: PdfTool) = RibbonButton(stringResource(t.label), w, t.icon, on = tool == t) { tool = if (tool == t) null else t }
+                // Words' colours, white among them (the user, 25 Oct: to cover what was drawn), and its highlighters: the marks' and pens' colour
+                @Composable fun MarkColours() = Swatches(w, R.drawable.ic_palette, stringResource(R.string.words_colour), (HIGHLIGHT_COLOURS + TEXT_COLOURS).distinct()) { c ->
+                    c?.let { markColour = (it.toArgb() and 0xFFFFFF); penColour = markColour } }
                 key(tab) { RibbonLine(androidx.compose.foundation.rememberScrollState(), Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                     val c0 = chosen
                     // Words', Tables' and Slides' File: the file's own actions
@@ -2126,6 +2129,11 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         RibbonButton(stringResource(R.string.common_save), w, R.drawable.ic_save, enabled = d.dirty) { save() }
                         RibbonButton(stringResource(R.string.words_save_copy), w, R.drawable.ic_copy, enabled = file != null) {
                             file?.let { f -> save(to = generateSequence(1) { it + 1 }.map { File(f.parentFile, "${f.nameWithoutExtension} (copy${if (it == 1) "" else " $it"}).pdf") }.first { !it.exists() }, copy = true) } }
+                        // the whole file written smaller on its next save (a whole-file action: File's, beside Save a copy)
+                        RibbonButton(stringResource(R.string.pdf_reduce_size), w, R.drawable.ic_compress) {
+                            d.shrink(); version++
+                            Toast.makeText(context, context.getString(R.string.pdf_shrink_note, (file?.length() ?: 0) / 1024), Toast.LENGTH_LONG).show()
+                        }
                         RibbonButton(stringResource(R.string.words_autosave), w, R.drawable.ic_history, on = autoSave) {
                             autoSave = !autoSave; TextEditorStore(context).autoSave = autoSave
                             Toast.makeText(context, if (autoSave) R.string.words_autosave_on else R.string.words_autosave_off_msg, Toast.LENGTH_SHORT).show() }
@@ -2158,7 +2166,7 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     }
                     // Layout, as Words' and Tables': the pages' size and way round (all of them, as Word's without sections), the margins
                     if (tab == "Layout") {
-                        // Words' Layout: margins, orientation, the chosen text's paragraph, size; then the PDF's own pages
+                        // Words' Layout: margins, orientation, the chosen text's paragraph, size (a page's own turns, deletes and blanks: Pages)
                         val now = d.sizes.getOrNull(at)
                         RibbonButton(stringResource(R.string.words_margins), w, R.drawable.ic_margin) { inserting = "page" }
                         RibbonButton(stringResource(R.string.words_portrait), w, R.drawable.ic_crop_portrait, on = now != null && now.height >= now.width) {
@@ -2169,12 +2177,6 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         PdfParagraphBoxes(w, homeTarget)
                         RibbonDivider(w)
                         RibbonButton(stringResource(R.string.words_size), w, R.drawable.ic_fit_page) { inserting = "page" }
-                        RibbonDivider(w)
-                        val page = at
-                        RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
-                        RibbonButton(stringResource(R.string.pdf_delete_page), w, R.drawable.ic_delete, enabled = d.sizes.size > 1) { change { d.delete(listOf(page)) } }
-                        RibbonButton(stringResource(R.string.pdf_rotate_left), w, R.drawable.ic_rotate_left) { change { d.rotate(listOf(page), -90) } }
-                        RibbonButton(stringResource(R.string.pdf_rotate_right), w, R.drawable.ic_rotate_right) { change { d.rotate(listOf(page), 90) } }
                         return@RibbonLine
                     }
                     // View, as Words': the page list, comments, bookmarks; the zoom; one or two pages, as wide as the screen; rulers; the unit
@@ -2302,18 +2304,16 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         RibbonButton(stringResource(if (hc?.done == true) R.string.words_reopen else R.string.words_resolve), w, R.drawable.ic_check, enabled = hc != null) { hc?.let { c -> change { d.resolve(c, !c.done) } } }
                         RibbonButton(stringResource(R.string.words_delete_comment), w, R.drawable.ic_delete, enabled = hc != null) { hc?.let { c -> change { d.deleteComment(c) }; hereComment = null } }
                         RibbonDivider(w)
+                        // the page's own words marked (the pens and shapes are Draw's)
                         ToolButton(PdfTool.Highlight); ToolButton(PdfTool.Underline); ToolButton(PdfTool.Strike)
-                        ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
-                        ToolButton(PdfTool.Pen); ToolButton(PdfTool.Marker)
-                        // Words' colours, white among them (the user, 25 Oct: to cover what was drawn), and its highlighters; More… Words' table
-                        Swatches(w, R.drawable.ic_palette, stringResource(R.string.words_colour), (HIGHLIGHT_COLOURS + TEXT_COLOURS).distinct()) { c ->
-                            c?.let { markColour = (it.toArgb() and 0xFFFFFF); penColour = markColour } }
-                        ToolButton(PdfTool.Erase)
+                        MarkColours()
                         return@RibbonLine
                     }
                     if (tab == "Insert") {
-                        // Words' Insert, its groups in its order (the page break, table, video, link, drop cap and line break: a PDF's pages are fixed)
+                        // Words' Insert, its groups in its order (the page break, table, video, link, drop cap and line break: a PDF's pages are fixed);
+                        // its page group first: another PDF's pages after this one (the user, 27 Oct: "place it on insert at the beginning"), a blank page
                         val page = at
+                        RibbonButton(stringResource(R.string.pdf_insert_pdf), w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
                         RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
                         RibbonDivider(w)
                         RibbonButton(stringResource(R.string.words_picture), w, R.drawable.ic_gallery) { pickImage.launch(arrayOf("image/*")) }
@@ -2383,7 +2383,13 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                         return@RibbonLine
                     }
                     if (tab == "Draw") {
-                        // Words' Draw: on the page as it is (drawn over it, put on it), or in a box
+                        // Words' Draw: the pens, the shapes drawn by hand, the colour, the eraser; then on the page as it is (drawn over it, put
+                        // on it), or in a box (the pens and shapes were on Review: the user, 27 Oct, "do they make sense?")
+                        ToolButton(PdfTool.Pen); ToolButton(PdfTool.Marker)
+                        ToolButton(PdfTool.Rectangle); ToolButton(PdfTool.Oval); ToolButton(PdfTool.Arrow)
+                        MarkColours()
+                        ToolButton(PdfTool.Erase)
+                        RibbonDivider(w)
                         RibbonButton(stringResource(R.string.words_draw_on_page), w, R.drawable.ic_draw) { val page = at; scope.launch { drawingOn = page to d.page(page, 1200) } }
                         RibbonButton(stringResource(R.string.words_drawing_box), w, R.drawable.ic_ink_pen) { drawingBox = true }
                         return@RibbonLine
@@ -2410,8 +2416,6 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                     RibbonButton(stringResource(R.string.words_blank_page), w, R.drawable.ic_note_add) { change { d.insertBlank(page + 1) }; scope.launch { delay(100); goTo(page + 1) } }
                     RibbonButton(stringResource(R.string.pdf_duplicate_page), w, R.drawable.ic_add_to_collection) { change { d.duplicatePage(page) }; scope.launch { delay(100); goTo(page + 1) } }
                     RibbonDivider(w)
-                    RibbonButton(stringResource(R.string.pdf_insert_pdf), w, R.drawable.ic_add_to_collection) { pickPdf.launch(arrayOf("application/pdf")) }
-                    RibbonButton(stringResource(R.string.pdf_bookmarks), w, R.drawable.ic_bookmark, on = pane == "Bookmarks") { pane = if (pane == "Bookmarks") null else "Bookmarks" }
                     RibbonButton(stringResource(R.string.pdf_recognize_text), w, R.drawable.ic_text_fields) {
                         // every page without words of its own read (a scan, a photo), each one undo step; Find and Copy then work on it
                         ocrJob = scope.launch {
@@ -2428,10 +2432,6 @@ internal fun PdfScreen(back: () -> Unit, open: String, openWords: (String) -> Un
                             WriterLog.i("PDF: recognized ${todo.size} pages, $words words")
                             Toast.makeText(context, context.resources.getQuantityString(R.plurals.pdf_ocr_done, todo.size, words, todo.size), Toast.LENGTH_LONG).show()
                         }
-                    }
-                    RibbonButton(stringResource(R.string.pdf_reduce_size), w, R.drawable.ic_compress) {
-                        d.shrink(); version++
-                        Toast.makeText(context, context.getString(R.string.pdf_shrink_note, (file?.length() ?: 0) / 1024), Toast.LENGTH_LONG).show()
                     }
                     RibbonButton(stringResource(R.string.pdf_extract_page), w, R.drawable.ic_copy) {
                         val f = file ?: return@RibbonButton

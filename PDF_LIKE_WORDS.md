@@ -73,6 +73,12 @@ write something"; "make it more invisible, like Word … boxes of elements stuck
 - Known: the cursor's blue handle sits off the cursor at small zoom (the editor is drawn scaled; Android places the
   handle unscaled); close at 200%.
 
+- The ribbon tidied (the user, 27 Oct: "Insert PDF … place it on insert at the beginning, and take a look at the rest"):
+  Insert starts with Insert PDF and Blank page; Layout is Words' (margins, orientation, paragraph, size); the pens, hand
+  shapes, colour and eraser are Draw's; Review keeps spelling, read aloud, comments and the text's marks; Bookmarks only
+  on View; Reduce size on File. Pages keeps Organize, Rotate, Delete, Blank, Duplicate, Recognize text, Extract,
+  Split, Crop, Flatten.
+
 Left:
 - The phone 208c8192 (tools/phone-install.sh): not connected 27 Oct.
 - Wrap's "behind the text"; Insert › Table; Edit the PDF's own words; Reading mode; comment cards level with their words.

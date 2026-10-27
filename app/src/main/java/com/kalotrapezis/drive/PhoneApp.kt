@@ -139,14 +139,18 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
         if (tablet) scope.launch { val said = withContext(Dispatchers.IO) { PhoneRelay.place(context, n, who(n)?.name.orEmpty()) }; android.widget.Toast.makeText(context, said, android.widget.Toast.LENGTH_SHORT).show() }
         else if (!placePhoneCall(context, n)) askCall.launch(Manifest.permission.CALL_PHONE)
     }
-    BackHandler(keypad.value || selected.isNotEmpty() || query.isNotEmpty()) {
-        when { keypad.value -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> query = "" }
+    // a tablet: the list on the left and the keypad always open on the right, so no empty sides; a phone as before
+    val twoPane = androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >= 600
+    val keypadShown = keypad.value && !twoPane
+    BackHandler(keypadShown || selected.isNotEmpty() || query.isNotEmpty()) {
+        when { keypadShown -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> query = "" }
     }
     // the list's room under the pill and above the island
     val top = PaddingValues(top = 76.dp, bottom = 96.dp)
-    Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), contentAlignment = Alignment.TopCenter) {
+    Row(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
         Box(Modifier.fillMaxHeight().widthIn(max = 560.dp).fillMaxWidth()) {
-            if (keypad.value) Keypad(number, contacts, call = ::call)
+            if (keypadShown) Keypad(number, contacts, call = ::call)
             else when (tab) {
                 PhoneTab.Recents -> Recents(calls, ::who, { PhoneSpam.matches(spam, it) != null }, dialer, missed.value, query, selected, { if (!tablet) selected = it }, top, call = ::call, open = { details = it }) {
                     askRole.launch(context.getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_DIALER))
@@ -159,11 +163,11 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
             Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
-                    IconButton(onClick = { when { keypad.value -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> back() } }) {
+                    IconButton(onClick = { when { keypadShown -> keypad.value = false; selected.isNotEmpty() -> selected = emptySet(); else -> back() } }) {
                         Icon(painterResource(if (selected.isNotEmpty()) R.drawable.ic_close else R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.common_back))
                     }
                 }
-                if (!keypad.value) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.weight(1f)) {
+                if (!keypadShown) Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = Modifier.weight(1f)) {
                     if (selected.isNotEmpty()) Row(Modifier.padding(start = 18.dp, end = 4.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
                         selected.sumOf { it.calls.size }.let { n -> Text(pluralStringResource(R.plurals.phone_n_chosen, n, n), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         IconButton(onClick = { PhoneLog.delete(context, selected.flatMap { g -> g.calls.map { it.id } }); selected = emptySet() }) {
@@ -181,17 +185,21 @@ private fun PhoneApp(keypad: MutableState<Boolean>, tabState: MutableState<Phone
                 }
             }
             // the island in the middle, the keypad's round button beside it
-            if (!keypad.value) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!keypadShown) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 IslandBottomBar(expand = { drawer = true }, visible = !drawer) {
                     PhoneTab.entries.forEach { t -> IslandNavigationItem(stringResource(t.label), tab == t, t.icon) { tab = t; selected = emptySet() } }
                 }
-                IslandVisibility(!drawer) {
+                if (!twoPane) IslandVisibility(!drawer) {
                     Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape) {
                         IconButton(onClick = { keypad.value = true }, modifier = Modifier.size(56.dp)) { Icon(painterResource(R.drawable.ic_dialpad), contentDescription = stringResource(R.string.phone_keypad)) }
                     }
                 }
             }
         }
+    }
+    if (twoPane) Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.weight(1f).fillMaxHeight().padding(12.dp)) {
+        Keypad(number, contacts, call = ::call)
+    }
     }
     details?.let { g ->
         ModalBottomSheet(onDismissRequest = { details = null }, containerColor = SheetColor, contentColor = islandContentColor()) {

@@ -25,7 +25,9 @@ How to write here:
       nanoTime temp files from Slides/Writer, *-drafts, writer-history, logs/ and drive traces, filesDir/Files history).
       Waiting: the user's review and merge.
 - [~] (beta-release session, 27 Oct; branches `claude/admiring-pare-6a6a4a` here and `beta-release` in Drive; the site merged and pushed
-      27 Oct at the user's yes, live at kalotrapezis.github.io/Drive-Android in the 24 EU languages; packages not released)
+      27 Oct at the user's yes, live at kalotrapezis.github.io/Drive-Android in the 24 EU languages. Then .System, the desktop's
+      Clean up and Notes as Markdown (agents' branches) merged as Android 0.6.0-beta.4 / desktop 0.6.0-beta.32; beta.3/beta.31 never
+      went out (rain). The user: upload at 03:00 one file at a time, publish, switch the site; install on the devices in the morning)
       **The next beta for Linux and Android, and the site** (the user: "Are we ready to publish the new Beta For Linux and Android …
       AppImage for most Linux distros and Android 11+"; then, mid-way: "don't build packages yet just make the page"). Ready check:
       every finished branch is in main in both repos (Drive's old unmerged-looking branches are pre-scrub copies whose content is in

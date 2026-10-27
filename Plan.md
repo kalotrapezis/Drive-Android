@@ -36,6 +36,22 @@ How to write here:
       tap opens its card; on the phone only). Seen on the tablet; the notification itself not seen (needs a blocked call).
       **Open:** Unblock not pressed on a device (it would unblock a real number); the gestures need a real call on the phone;
       the keypad pane's upper part is empty until a number is typed.
+- [~] (map-manager session, 27 Oct; merged into main in both repos 27 Oct; a real build still to be tested with the user) **Map manager: maps of any country, made by the user's own computer** (the user:
+      "In the maps settings page add a map manager, responsible for downloading and updating Maps per county"; then "if we have B
+      they could sync the maps to their phone or tablet, we can make a guide for that as well. so the maintenance goes to the user
+      not me. Its an app not a service"). No ready packs online: desktop Tetra › Settings › Maps › Map manager picks a Geofabrik
+      region and builds its pack (map, routing, search, lanes) into Files/Maps as <id>.pmtiles, <id>-gh/, <id>-*.tsv, <id>.json —
+      Greece is the pack "greece" already; sync carries it; the phone's Settings › Maps lists, removes and explains; a guide.
+      Built (on the branch): desktop mapbuild.js + src/MapBuilder.tsx — Settings › Maps card (each map: size, date, Update,
+      Remove) and the wizard: credits with Donate (OpenStreetMap, Protomaps, MapLibre; GraphHopper, Geofabrik linked), a
+      country or region of Geofabrik's list (download size, memory needed, its parts when too big), the system packages it
+      lacks (openjdk-17-jre-headless, python3-pyosmium) explained with Install — pkexec's own password window — and "I don't
+      want", the steps with progress, done; pmtiles and the GraphHopper jar fetched into ~/Tetra-maps/bin. Desktop maps.js,
+      main.js: a source a map (layers interleaved), search/addresses/streets of every map, routing on the map the route
+      starts in. Android: MapsFiles.ids/maps/graphAt/lists/removeMap, mapStyle over every map, the camera over them all,
+      Settings › Maps lists each map with Remove. 24 languages both sides. Tests: MapsPacksTest, test/mapbuild.test.js.
+      **Open:** a route across a border (one map's graph a route); roundabouts drawn the Greek way on a left-driving map
+      (the manifest has "drive"); directions' words still Greek/English only; a real build not yet run (the user's password).
 - [x] (office-media session, 27 Oct; branch `claude/office-media`, not merged; its build is on the tablet 971f6b37) **Local video and audio
       embedded in documents play** (the user: "I know it has Video from YouTube but what about local files embedded into the
       documents?"). Already there: Slides read and played PowerPoint's p:videoFile/p:audioFile + p14:media and Impress's

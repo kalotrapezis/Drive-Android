@@ -103,8 +103,12 @@ import java.io.File
 import java.util.Locale
 
 private val MAPS_COLOR = androidx.compose.ui.graphics.Color(0xFF5C6BC0)
-/** Greece and its sea: the map holds nothing beyond, so the camera stays within. */
-private val GREECE = LatLngBounds.from(42.2, 30.2, 34.2, 18.6)
+/** The maps there are and a degree of sea round them (Greece's when none says): the camera stays within. */
+private fun cameraBounds(root: File): LatLngBounds {
+    val all = MapsFiles.maps(root).mapNotNull { it.bounds }
+    if (all.isEmpty()) return LatLngBounds.from(42.2, 30.2, 34.2, 18.6)
+    return LatLngBounds.from(all.maxOf { it[3] } + 1, all.maxOf { it[2] } + 1, all.minOf { it[1] } - 1, all.minOf { it[0] } - 1)
+}
 
 internal fun placeIcon(icon: String) = when (icon) {
     "star" -> R.drawable.ic_star
@@ -292,7 +296,6 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapFile = MapsFiles.map(root)
-    val graphDir = MapsFiles.graph(root)
     var places by remember { mutableStateOf(MapsFiles.places(root)) }
     var selected by remember { mutableStateOf<Place?>(null) }
     var editing by remember { mutableStateOf<Place?>(null) }
@@ -445,6 +448,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         }
         // directions start from a live fix: Android's stored last one can be hours old and towns away
         if (from == null || !live) { pending = target.copy(mode = mode); return }
+        val graphDir = MapsFiles.graphAt(root, from.latitude, from.longitude)
         if (!File(graphDir, "properties").isFile) {
             Toast.makeText(context, context.getString(R.string.maps_no_graph), Toast.LENGTH_LONG).show(); return
         }
@@ -491,9 +495,10 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
         road = roadAt(mapRef, loc)
         speed = if (loc.hasSpeed()) Math.round(loc.speed * 3.6f) else null
         // the limit at most every two seconds, off the main thread (the graph is opened the first time)
-        if (System.currentTimeMillis() - limitAsked > 2000 && File(graphDir, "properties").isFile) {
+        if (System.currentTimeMillis() - limitAsked > 2000) {
             limitAsked = System.currentTimeMillis()
-            scope.launch { limit = withContext(Dispatchers.IO) { runCatching { MapsRouting.limitAt(graphDir, loc.latitude, loc.longitude) }.getOrNull() } }
+            scope.launch { limit = withContext(Dispatchers.IO) { runCatching { MapsFiles.graphAt(root, loc.latitude, loc.longitude).takeIf { File(it, "properties").isFile }
+                ?.let { MapsRouting.limitAt(it, loc.latitude, loc.longitude) } }.getOrNull() } }
         }
         // a trip's next leg: once moving (15 km/h) or 150 m from the stop
         nextStop?.let { ns ->
@@ -620,9 +625,10 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     }
     LaunchedEffect(mapView) {
         if (!mapFile.isFile) return@LaunchedEffect
-        val json = mapStyle(context, mapFile)
+        val json = mapStyle(context, root)
+        val bounds = withContext(Dispatchers.IO) { cameraBounds(root) }
         mapView.getMapAsync { map ->
-            map.setLatLngBoundsForCameraTarget(GREECE)
+            map.setLatLngBoundsForCameraTarget(bounds)
             map.setMinZoomPreference(5.0); map.setMaxZoomPreference(19.0)
             map.cameraPosition = (go ?: here?.let { Place("", "", it.latitude, it.longitude) })
                 ?.let { CameraPosition.Builder().target(LatLng(it.lat, it.lng)).zoom(14.0).build() }
@@ -1128,10 +1134,30 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
 }
 
 /** The road the map draws under [pt] (screen pixels): its name and code (A2, EO1…), from the map's own roads. */
-/** The map's style (Settings › Maps' light or dark) reading [mapFile]; the phone's map and the car's alike. */
-internal fun mapStyle(context: Context, mapFile: File): String =
-    context.assets.open("maps/${MapsPrefs.mapTheme(context)}.json").bufferedReader().use { it.readText() }
-        .replace("pmtiles://MAP_FILE", "pmtiles://file://${mapFile.absolutePath}")
+/**
+ * The map's style (Settings › Maps' light or dark) reading every map in [root]; the phone's map and the car's alike. One
+ * source a map, each layer drawn for every map in turn, so two countries meet at their border as one map; the first map
+ * keeps the style's own names ("protomaps", "roads_…"), which [roadAtPoint] looks for.
+ */
+internal fun mapStyle(context: Context, root: File): String {
+    val text = context.assets.open("maps/${MapsPrefs.mapTheme(context)}.json").bufferedReader().use { it.readText() }
+    val ids = MapsFiles.ids(root).ifEmpty { listOf(MapsFiles.MAP.removeSuffix(".pmtiles")) }
+    val url = { id: String -> "pmtiles://file://${File(root, "$id.pmtiles").absolutePath}" }
+    if (ids.size == 1) return text.replace("pmtiles://MAP_FILE", url(ids[0]))
+    val style = org.json.JSONObject(text)
+    val sources = style.getJSONObject("sources")
+    val base = sources.getJSONObject("protomaps")
+    sources.put("protomaps", org.json.JSONObject(base.toString()).put("url", url(ids[0])))
+    for (id in ids.drop(1)) sources.put("protomaps__$id", org.json.JSONObject(base.toString()).put("url", url(id)))
+    val layers = style.getJSONArray("layers"); val out = org.json.JSONArray()
+    for (i in 0 until layers.length()) {
+        val l = layers.getJSONObject(i)
+        out.put(l)
+        if (l.optString("source") == "protomaps") for (id in ids.drop(1))
+            out.put(org.json.JSONObject(l.toString()).put("id", "${l.getString("id")}__$id").put("source", "protomaps__$id"))
+    }
+    return style.put("layers", out).toString()
+}
 
 /** The route being driven, a line with a dark edge, from the source "route". */
 internal fun addRouteLayer(style: Style) {

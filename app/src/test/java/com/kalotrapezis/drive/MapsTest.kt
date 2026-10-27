@@ -200,7 +200,8 @@ class MapsTakeoutRunTest {
         assumeTrue(zip != null && out != null)
         val maps = File(System.getProperty("user.home"), "Tetra-maps")
         val root = File(out!!).apply { mkdirs() }
-        listOf(MapsSearch.FILE, MapsSearch.EOPYY, MapsAddresses.FILE).forEach { n -> File(maps, n).takeIf { it.isFile }?.copyTo(File(root, n), overwrite = true) }
+        listOf("greece-places.tsv", MapsSearch.EOPYY, "greece-addresses.tsv").forEach { n -> File(maps, n).takeIf { it.isFile }?.copyTo(File(root, n), overwrite = true) }
+        File(root, "greece.pmtiles").createNewFile() // a map's lists are read beside its map
         val entries = File(zip!!).inputStream().use { MapsImport.read(File(zip).name, it) }
         println("entries: ${entries.size} " + entries.groupingBy { it.list }.eachCount())
         val r = MapsImport.into(root, MapsSearch.load(root), entries)
@@ -502,7 +503,7 @@ class MapsLanesTest {
     /** On the computer's graph and lanes file: the turns where the user met them (23 Oct). */
     @Test fun lanesOnRealRoutes() {
         val dir = File(System.getProperty("user.home"), "Tetra-maps/greece-gh")
-        assumeTrue(File(dir, "properties").isFile && File(dir.parentFile, MapsLanes.FILE).isFile)
+        assumeTrue(File(dir, "properties").isFile && File(dir.parentFile, "greece-lanes.tsv").isFile)
         val tripoli = MapsRouting.route(dir, 37.9838, 23.7275, 37.5100, 22.3720, "car")
         val corinth = tripoli.steps.first { "Τρίπολη" in it.text && it.sign == -7 }
         println("Κόρινθος: ${corinth.text} — ${corinth.lanes}")
@@ -601,7 +602,7 @@ class MapsAddressTest {
     /** The user's house in Άγιος Λουκάς (23 Oct): no house there has a number, so its street and the village's postcode. */
     @Ignore("its places were made up before publishing; put your own back locally to run it") @Test fun aVillageWithoutNumbers() {
         val root = File(System.getProperty("user.home"), "Tetra-maps")
-        assumeTrue(File(root, MapsAddresses.FILE).isFile && File(root, MapsStreets.FILE).isFile)
+        assumeTrue(File(root, "greece-addresses.tsv").isFile && File(root, "greece-streets.tsv").isFile)
         val pois = MapsSearch.load(root)
         assertEquals("Οδός Παραδείγματος, 12345 Άγιος Λουκάς", MapsAddresses.describe(root, pois, 37.27642, 22.58903))
         // a spot tapped on a road takes that road
@@ -661,5 +662,42 @@ class MapsMainRoadsTest {
         val small = { km: Map<String, Double> -> km.filterKeys { it !in setOf("motorway", "trunk", "primary", "secondary") }.values.sum() }
         for (to in listOf(market, skala)) assertTrue(small(classes(home, to, true)) < small(classes(home, to, false)))
         assertTrue((classes(home, skala, true)["track"] ?: 0.0) < 0.3)
+    }
+}
+
+/** Maps of several countries (the map builder, 27 Oct): each <id>.pmtiles with its lists and roads beside it. */
+class MapsPacksTest {
+    /** A .pmtiles file holding only its header, with [b] west, south, east, north. */
+    private fun pmtiles(f: File, vararg b: Double) {
+        val h = java.nio.ByteBuffer.allocate(127).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        h.put("PMTiles".toByteArray()); h.put(3)
+        b.forEachIndexed { i, v -> h.putInt(102 + 4 * i, Math.round(v * 1e7).toInt()) }
+        f.writeBytes(h.array())
+    }
+
+    @Test fun twoCountries() {
+        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps").apply { mkdirs() }
+        pmtiles(File(root, "greece.pmtiles"), 18.97, 34.59, 29.66, 41.75)
+        pmtiles(File(root, "cyprus.pmtiles"), 31.0, 34.0, 35.0, 36.0)
+        File(root, "cyprus.json").writeText("""{"name":"Cyprus","bounds":[32.2,34.5,34.7,35.8],"drive":"left"}""")
+        File(root, "greece-places.tsv").writeText("city\t37.98\t23.73\tΑθήνα\tAthens\n")
+        File(root, "cyprus-places.tsv").writeText("city\t35.17\t33.36\tΛευκωσία\tNicosia\n")
+        File(root, "added-places.tsv").writeText("school\t37.27\t22.58\tΣχολείο\t\n")
+        File(root, "lisbon-places.tsv").writeText("city\t38.72\t-9.14\tLisboa\t\n") // no map of its own: not read
+
+        assertEquals(listOf("cyprus", "greece"), MapsFiles.ids(root))
+        val (cy, gr) = MapsFiles.maps(root)
+        assertEquals("Cyprus", cy.name); assertTrue(cy.driveLeft); assertEquals(32.2, cy.bounds!![0], 1e-9)
+        assertEquals("Greece", gr.name); assertEquals(41.75, gr.bounds!![3], 1e-6) // from its own header
+        assertEquals("cyprus-gh", MapsFiles.graphAt(root, 35.17, 33.36).name)
+        assertEquals("greece-gh", MapsFiles.graphAt(root, 37.98, 23.73).name)
+        assertEquals("cyprus-gh", MapsFiles.graphAt(root, 0.0, 0.0).name) // on no map: the first's, which says it is off the roads
+        assertEquals(setOf("Αθήνα", "Λευκωσία", "Σχολείο"), MapsSearch.load(root).map { it.name }.toSet())
+
+        File(root, "cyprus-gh").mkdirs(); File(root, "cyprus-gh/properties").writeText("x")
+        MapsFiles.removeMap(root, "cyprus")
+        assertEquals(listOf("greece"), MapsFiles.ids(root))
+        assertEquals(setOf("added-places.tsv", "greece-places.tsv", "greece.pmtiles", "lisbon-places.tsv"), root.list()!!.toSet())
+        assertTrue(File(root.parentFile, "Trash/cyprus-gh/properties").isFile) // to the Trash, so the phone and tablet follow
     }
 }

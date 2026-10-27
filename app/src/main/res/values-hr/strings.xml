@@ -388,7 +388,7 @@
     <string name="settings_imported">Uvezeno</string>
     <string name="settings_imported_shared">Mjesta: %1$d, dodaci karti: %2$d; %3$d već postoji ili nema položaj.</string>
     <string name="settings_not_placed">Ova se nisu mogla smjestiti — potražite ih u Kartama i spremite:</string>
-    <string name="settings_installed_maps_note">Karte se izrađuju na računalu i stižu ovamo Sinkronizacijom, u Tetra/Maps: tools/maps-greece.sh preuzima najnoviju kartu Grčke i izrađuje usmjeravanje za nju (gumb Ažuriraj u Tetri za računalo je u planu).</string>
+    <string name="settings_installed_maps_note">Karta svake države izrađuje se na računalu, u Tetra na računalu › Postavke › Karte › Dodaj kartu. Sinkronizacija je donosi ovamo, u Tetra/Maps.</string>
     <string name="settings_problems">Problemi</string>
     <string name="settings_send_log_summary">Zapisnik Tetre i tragovi vaših vožnji u zadnjih 7 dana, kao jedan zip; ostaju na ovom uređaju dok ih ne pošaljete</string>
     <string name="settings_contacts_note">Vaši kontakti su datoteke u Tetra/Contacts, jedna po osobi: sinkroniziraju se s računalom, gdje ih Kontakti također prikazuju.</string>
@@ -1552,7 +1552,7 @@
     <string name="maps_my_car">Moj automobil</string>
     <string name="maps_parking_saved">Parkiranje spremljeno</string>
     <string name="maps_on_car_screen">Na zaslonu automobila: %1$s</string>
-    <string name="maps_no_graph">Još nema grafa usmjeravanja: stavite greece-gh u Tetra/Maps (izrađuje ga tools/maps-greece.sh na računalu).</string>
+    <string name="maps_no_graph">Ova karta još nema ceste za navigaciju: ažurirajte je u Tetra na računalu › Postavke › Karte.</string>
     <string name="maps_finding">Traženje puta…</string>
     <string name="maps_no_way_graph">Put nije pronađen: graf usmjeravanja nije se mogao pročitati</string>
     <string name="maps_arrived">Stigli ste: %1$s</string>
@@ -1560,8 +1560,8 @@
     <string name="maps_dropped_pin">Postavljena oznaka</string>
     <string name="maps_amea_parking">Parkiranje za OSI</string>
     <string name="maps_amea_placed">Mjesto za OSI postavljeno: %1$s</string>
-    <string name="maps_no_map">Karta Grčke još nije na ovom uređaju</string>
-    <string name="maps_no_map_how">Dolazi s računala: tools/maps-greece.sh izrađuje greece.pmtiles (oko 500 MB) i graf usmjeravanja greece-gh, a Sinkronizacija ih donosi ovamo u Tetra/Maps.</string>
+    <string name="maps_no_map">Na ovom uređaju još nema karte</string>
+    <string name="maps_no_map_how">Karte se izrađuju na računalu: Tetra na računalu › Postavke › Karte › Dodaj kartu, a zatim ih Sinkronizacija donosi ovamo, u Tetra/Maps.</string>
     <string name="maps_parked_here">Parkirao sam ovdje</string>
     <string name="maps_waiting_location">Čeka se vaša lokacija…</string>
     <string name="maps_location_off">Lokacija je isključena za Tetru.</string>
@@ -1656,7 +1656,7 @@
     <string name="car_map">Karta</string>
     <string name="car_places">Mjesta</string>
     <string name="car_allow_location">Jednom otvorite Tetra Karte na telefonu da biste dopustili lokaciju</string>
-    <string name="car_no_map">Još nema karte: greece.pmtiles dolazi s računala u Tetra/Maps</string>
+    <string name="car_no_map">Još nema karte: izradite je u Tetra na računalu › Postavke › Karte</string>
     <string name="car_end">Kraj</string>
     <string name="car_routes">Rute</string>
     <string name="car_add_stop_button">Stanica</string>
@@ -1696,10 +1696,6 @@
         <item quantity="few">%1$d naplatne postaje</item>
         <item quantity="other">%1$d naplatnih postaja</item>
     </plurals>
-    <string name="maps_installed_map">Karta Grčke</string>
-    <string name="maps_installed_routing">Usmjeravanje (automobil, pješice, bicikl)</string>
-    <string name="maps_installed_places">Spremljena mjesta</string>
-    <string name="maps_installed_not_yet">još nije ovdje</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Favoriti</string>
@@ -4686,4 +4682,9 @@
     <string name="phone_blocked_notify_about">Tiha obavijest kad zove blokirani broj.</string>
     <string name="phone_channel_blocked">Blokirani pozivi</string>
     <string name="phone_blocked_from">Blokirani poziv od %1$s</string>
+    <string name="maps_with_roads">s cestama</string>
+    <string name="maps_no_roads">samo karta, bez cesta</string>
+    <string name="settings_remove_map">Ukloni</string>
+    <string name="settings_remove_map_title">Ukloniti kartu: %1$s?</string>
+    <string name="settings_remove_map_body">Njezine datoteke idu u Otpad, ovdje i na vašim drugim uređajima. Vaša spremljena mjesta ostaju.</string>
 </resources>

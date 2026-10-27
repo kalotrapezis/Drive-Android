@@ -389,7 +389,7 @@
     <string name="settings_imported">Imported</string>
     <string name="settings_imported_shared">%1$d places and %2$d map additions; %3$d already here or without a position.</string>
     <string name="settings_not_placed">These could not be placed — search for them in Maps and Save:</string>
-    <string name="settings_installed_maps_note">Maps are made on the computer and come here with Local Sync, into Tetra/Maps: tools/maps-greece.sh downloads the newest map of Greece and builds the routing for it (an Update button in desktop Tetra is planned).</string>
+    <string name="settings_installed_maps_note">Each country\'s map is made on the computer, in desktop Tetra › Settings › Maps › Add a map. Local Sync brings it here, into Tetra/Maps.</string>
     <string name="settings_problems">Problems</string>
     <string name="settings_send_log_summary">Tetra\'s log and the traces of your drives of the last 7 days, as one zip; they stay on this device until you send them</string>
     <string name="settings_contacts_note">Your contacts are files in Tetra/Contacts, one per person: they sync with the computer, where Contacts shows them too.</string>
@@ -1510,7 +1510,7 @@
     <string name="maps_my_car">My car</string>
     <string name="maps_parking_saved">Parking saved</string>
     <string name="maps_on_car_screen">On the car\'s screen: %1$s</string>
-    <string name="maps_no_graph">No routing graph yet: put greece-gh in Tetra/Maps (the computer\'s tools/maps-greece.sh makes it).</string>
+    <string name="maps_no_graph">This map has no roads for directions yet: update it in desktop Tetra › Settings › Maps.</string>
     <string name="maps_finding">Finding the way…</string>
     <string name="maps_no_way_graph">No way found: the routing graph could not be read</string>
     <string name="maps_arrived">Arrived: %1$s</string>
@@ -1518,8 +1518,8 @@
     <string name="maps_dropped_pin">Dropped pin</string>
     <string name="maps_amea_parking">ΑμεΑ parking</string>
     <string name="maps_amea_placed">ΑμεΑ spot placed: %1$s</string>
-    <string name="maps_no_map">The map of Greece is not on this device yet</string>
-    <string name="maps_no_map_how">It comes from the computer: tools/maps-greece.sh makes greece.pmtiles (about 500 MB) and the routing graph greece-gh, and Local Sync brings them here into Tetra/Maps.</string>
+    <string name="maps_no_map">No map on this device yet</string>
+    <string name="maps_no_map_how">Maps are made on the computer: desktop Tetra › Settings › Maps › Add a map, then Local Sync brings them here into Tetra/Maps.</string>
     <string name="maps_parked_here">I parked here</string>
     <string name="maps_waiting_location">Waiting for your location…</string>
     <string name="maps_location_off">Location is off for Tetra.</string>
@@ -1614,7 +1614,7 @@
     <string name="car_map">Map</string>
     <string name="car_places">Places</string>
     <string name="car_allow_location">Open Tetra Maps on the phone once to allow location</string>
-    <string name="car_no_map">No map yet: greece.pmtiles comes from the computer into Tetra/Maps</string>
+    <string name="car_no_map">No map yet: make one in desktop Tetra › Settings › Maps</string>
     <string name="car_end">End</string>
     <string name="car_routes">Routes</string>
     <string name="car_add_stop_button">Stop</string>
@@ -1653,10 +1653,6 @@
         <item quantity="one">%1$d toll</item>
         <item quantity="other">%1$d tolls</item>
     </plurals>
-    <string name="maps_installed_map">Map of Greece</string>
-    <string name="maps_installed_routing">Routing (car, walk, bike)</string>
-    <string name="maps_installed_places">Saved places</string>
-    <string name="maps_installed_not_yet">not here yet</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Favourites</string>
@@ -4595,4 +4591,9 @@
     <string name="phone_blocked_notify_about">A quiet notification when a blocked number calls.</string>
     <string name="phone_channel_blocked">Blocked calls</string>
     <string name="phone_blocked_from">Blocked call from %1$s</string>
+    <string name="maps_with_roads">with roads</string>
+    <string name="maps_no_roads">map only, no roads</string>
+    <string name="settings_remove_map">Remove</string>
+    <string name="settings_remove_map_title">Remove the map of %1$s?</string>
+    <string name="settings_remove_map_body">Its files go to the Trash, here and on your other devices. Your saved places stay.</string>
 </resources>

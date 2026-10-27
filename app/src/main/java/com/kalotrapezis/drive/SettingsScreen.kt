@@ -548,10 +548,23 @@ internal fun SettingsTab(
             items(r.missed.size) { i -> Text("• " + r.missed[i], style = MaterialTheme.typography.bodySmall) }
         } },
         confirmButton = { TextButton(onClick = { imported = null }) { Text(stringResource(R.string.common_ok), maxLines = 1, overflow = TextOverflow.Ellipsis) } }) }
-    val files by produceState<List<Pair<String, String>>?>(null) { value = withContext(Dispatchers.IO) { MapsFiles.installed(mapsContext, MapsFiles.root(driveRoot())) } }
+    // the maps here, one a country (desktop Tetra's map builder makes them; sync brings them), each removable
+    val mapsRoot = remember { MapsFiles.root(driveRoot()) }
+    var mapsVersion by remember { mutableIntStateOf(0) }
+    val files by produceState<List<Triple<String, String, String>>?>(null, mapsVersion) { value = withContext(Dispatchers.IO) { MapsFiles.installed(mapsContext, mapsRoot) } }
+    var removing by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val removeScope = rememberCoroutineScope()
     SettingsSection(stringResource(R.string.settings_installed_maps), stringResource(R.string.settings_installed_maps_note)) {
-        files?.forEach { (what, about) -> SettingRow(what, about) }
+        if (files?.isEmpty() == true) SettingRow(stringResource(R.string.maps_no_map))
+        files?.forEach { (id, name, about) -> SettingRow(name, about) {
+            TextButton(onClick = { removing = id to name }) { Text(stringResource(R.string.settings_remove_map), maxLines = 1) }
+        } }
     }
+    removing?.let { (id, name) -> AlertDialog(onDismissRequest = { removing = null }, title = { Text(stringResource(R.string.settings_remove_map_title, name)) },
+        text = { Text(stringResource(R.string.settings_remove_map_body)) },
+        confirmButton = { TextButton(onClick = { removing = null; removeScope.launch { withContext(Dispatchers.IO) { MapsFiles.removeMap(mapsRoot, id) }; mapsVersion++ } }) {
+            Text(stringResource(R.string.settings_remove_map), maxLines = 1) } },
+        dismissButton = { TextButton(onClick = { removing = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1) } }) }
     // the log and the last 7 days' drive traces (MapsTrace), for a problem seen on the road (the user, 23 Oct)
     SettingsSection(stringResource(R.string.settings_problems)) {
         SettingRow(stringResource(R.string.settings_send_log), stringResource(R.string.settings_send_log_summary),

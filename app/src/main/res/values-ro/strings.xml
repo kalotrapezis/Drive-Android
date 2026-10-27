@@ -388,7 +388,7 @@
     <string name="settings_imported">Importat</string>
     <string name="settings_imported_shared">%1$d locuri și %2$d adăugiri pe hartă; %3$d deja aici sau fără poziție.</string>
     <string name="settings_not_placed">Acestea nu au putut fi plasate – caută-le în Hărți și salvează-le:</string>
-    <string name="settings_installed_maps_note">Hărțile se fac pe computer și ajung aici prin Sincronizare, în Tetra/Maps: tools/maps-greece.sh descarcă cea mai nouă hartă a Greciei și construiește rutarea pentru ea (un buton Actualizează în Tetra pentru desktop este planificat).</string>
+    <string name="settings_installed_maps_note">Harta fiecărei țări se face pe computer, în Tetra de pe computer › Setări › Hărți › Adaugă o hartă. Sincronizare o aduce aici, în Tetra/Maps.</string>
     <string name="settings_problems">Probleme</string>
     <string name="settings_send_log_summary">Jurnalul Tetra și traseele condusului din ultimele 7 zile, într-un zip; rămân pe acest dispozitiv până le trimiți</string>
     <string name="settings_contacts_note">Contactele tale sunt fișiere în Tetra/Contacts, unul pentru fiecare persoană: se sincronizează cu computerul, unde le afișează și Contacte.</string>
@@ -1552,7 +1552,7 @@
     <string name="maps_my_car">Mașina mea</string>
     <string name="maps_parking_saved">Parcare salvată</string>
     <string name="maps_on_car_screen">Pe ecranul mașinii: %1$s</string>
-    <string name="maps_no_graph">Niciun graf de rutare încă: pune greece-gh în Tetra/Maps (îl creează tools/maps-greece.sh de pe computer).</string>
+    <string name="maps_no_graph">Această hartă nu are încă drumuri pentru indicații: actualizeaz-o în Tetra de pe computer › Setări › Hărți.</string>
     <string name="maps_finding">Se caută drumul…</string>
     <string name="maps_no_way_graph">Nu s-a găsit niciun drum: graful de rutare nu a putut fi citit</string>
     <string name="maps_arrived">Ai ajuns: %1$s</string>
@@ -1560,8 +1560,8 @@
     <string name="maps_dropped_pin">Pin plasat</string>
     <string name="maps_amea_parking">Loc ♿</string>
     <string name="maps_amea_placed">Loc ♿ plasat: %1$s</string>
-    <string name="maps_no_map">Harta Greciei nu este încă pe acest dispozitiv</string>
-    <string name="maps_no_map_how">Vine de pe computer: tools/maps-greece.sh creează greece.pmtiles (circa 500 MB) și graful de rutare greece-gh, iar Sincronizarea le aduce aici, în Tetra/Maps.</string>
+    <string name="maps_no_map">Încă nu există nicio hartă pe acest dispozitiv</string>
+    <string name="maps_no_map_how">Hărțile se fac pe computer: Tetra de pe computer › Setări › Hărți › Adaugă o hartă, iar apoi Sincronizare le aduce aici, în Tetra/Maps.</string>
     <string name="maps_parked_here">Am parcat aici</string>
     <string name="maps_waiting_location">Se așteaptă locația…</string>
     <string name="maps_location_off">Locația este dezactivată pentru Tetra.</string>
@@ -1656,7 +1656,7 @@
     <string name="car_map">Hartă</string>
     <string name="car_places">Locuri</string>
     <string name="car_allow_location">Deschide o dată Tetra Hărți pe telefon pentru a permite locația</string>
-    <string name="car_no_map">Nicio hartă încă: greece.pmtiles vine de pe computer în Tetra/Maps</string>
+    <string name="car_no_map">Încă nu există nicio hartă: fă una în Tetra de pe computer › Setări › Hărți</string>
     <string name="car_end">Încheie</string>
     <string name="car_routes">Trasee</string>
     <string name="car_add_stop_button">Oprire</string>
@@ -1696,10 +1696,6 @@
         <item quantity="few">%1$d taxe de drum</item>
         <item quantity="other">%1$d de taxe de drum</item>
     </plurals>
-    <string name="maps_installed_map">Harta Greciei</string>
-    <string name="maps_installed_routing">Rutare (mașină, pe jos, bicicletă)</string>
-    <string name="maps_installed_places">Locuri salvate</string>
-    <string name="maps_installed_not_yet">încă nu este aici</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Preferate</string>
@@ -4686,4 +4682,9 @@
     <string name="phone_blocked_notify_about">O notificare silențioasă când sună un număr blocat.</string>
     <string name="phone_channel_blocked">Apeluri blocate</string>
     <string name="phone_blocked_from">Apel blocat de la %1$s</string>
+    <string name="maps_with_roads">cu drumuri</string>
+    <string name="maps_no_roads">doar harta, fără drumuri</string>
+    <string name="settings_remove_map">Elimină</string>
+    <string name="settings_remove_map_title">Elimini harta: %1$s?</string>
+    <string name="settings_remove_map_body">Fișierele ei merg în Coșul de gunoi, aici și pe celelalte dispozitive. Locurile salvate rămân.</string>
 </resources>

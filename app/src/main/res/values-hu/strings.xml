@@ -388,7 +388,7 @@
     <string name="settings_imported">Importálva</string>
     <string name="settings_imported_shared">%1$d hely és %2$d térképkiegészítés; %3$d már megvolt vagy nincs helye.</string>
     <string name="settings_not_placed">Ezeket nem sikerült elhelyezni – keresd meg őket a Térképekben, és mentsd:</string>
-    <string name="settings_installed_maps_note">A térképek a számítógépen készülnek, és a Szinkronnal kerülnek ide, a Tetra/Maps mappába: a tools/maps-greece.sh letölti Görögország legújabb térképét, és elkészíti hozzá az útvonaltervezést (az asztali Tetrába Frissítés gomb tervben van).</string>
+    <string name="settings_installed_maps_note">Minden ország térképét a számítógépen készítheted el, itt: Tetra a számítógépen › Beállítások › Térképek › Térkép hozzáadása. A(z) Szinkron idehozza, a Tetra/Maps mappába.</string>
     <string name="settings_problems">Problémák</string>
     <string name="settings_send_log_summary">A Tetra naplója és az elmúlt 7 nap vezetéseinek nyomvonalai egy zip-ben; ezen az eszközön maradnak, amíg el nem küldöd őket</string>
     <string name="settings_contacts_note">A névjegyeid fájlok a Tetra/Contacts mappában, személyenként egy: szinkronizálódnak a számítógéppel, ahol a Névjegyek is megjeleníti őket.</string>
@@ -1509,7 +1509,7 @@
     <string name="maps_my_car">Az autóm</string>
     <string name="maps_parking_saved">Parkolóhely mentve</string>
     <string name="maps_on_car_screen">Az autó képernyőjén: %1$s</string>
-    <string name="maps_no_graph">Még nincs útvonalgráf: tedd a greece-gh-t a Tetra/Maps mappába (a számítógép tools/maps-greece.sh szkriptje készíti).</string>
+    <string name="maps_no_graph">Ehhez a térképhez még nincsenek utak az útvonaltervezéshez: frissítsd itt: Tetra a számítógépen › Beállítások › Térképek.</string>
     <string name="maps_finding">Útvonal keresése…</string>
     <string name="maps_no_way_graph">Nincs útvonal: az útvonalgráf nem olvasható</string>
     <string name="maps_arrived">Megérkeztél: %1$s</string>
@@ -1517,8 +1517,8 @@
     <string name="maps_dropped_pin">Elhelyezett jelölő</string>
     <string name="maps_amea_parking">Mozgáskorlátozott parkoló</string>
     <string name="maps_amea_placed">Mozgáskorlátozott hely elhelyezve: %1$s</string>
-    <string name="maps_no_map">Görögország térképe még nincs ezen az eszközön</string>
-    <string name="maps_no_map_how">A számítógépről érkezik: a tools/maps-greece.sh elkészíti a greece.pmtiles fájlt (kb. 500 MB) és a greece-gh útvonalgráfot, a Szinkron pedig idehozza őket a Tetra/Maps mappába.</string>
+    <string name="maps_no_map">Ezen az eszközön még nincs térkép</string>
+    <string name="maps_no_map_how">A térképeket a számítógépen kell elkészíteni: Tetra a számítógépen › Beállítások › Térképek › Térkép hozzáadása, majd a(z) Szinkron idehozza őket a Tetra/Maps mappába.</string>
     <string name="maps_parked_here">Itt parkoltam</string>
     <string name="maps_waiting_location">Várakozás a helyzetedre…</string>
     <string name="maps_location_off">A helymeghatározás ki van kapcsolva a Tetrának.</string>
@@ -1613,7 +1613,7 @@
     <string name="car_map">Térkép</string>
     <string name="car_places">Helyek</string>
     <string name="car_allow_location">Nyisd meg egyszer a Tetra Térképeket a telefonon a helymeghatározás engedélyezéséhez</string>
-    <string name="car_no_map">Még nincs térkép: a greece.pmtiles a számítógépről érkezik a Tetra/Maps mappába</string>
+    <string name="car_no_map">Még nincs térkép: készíts egyet itt: Tetra a számítógépen › Beállítások › Térképek</string>
     <string name="car_end">Vége</string>
     <string name="car_routes">Útvonalak</string>
     <string name="car_add_stop_button">Megálló</string>
@@ -1652,10 +1652,6 @@
         <item quantity="one">%1$d fizetőkapu</item>
         <item quantity="other">%1$d fizetőkapu</item>
     </plurals>
-    <string name="maps_installed_map">Görögország térképe</string>
-    <string name="maps_installed_routing">Útvonaltervezés (autó, gyalog, kerékpár)</string>
-    <string name="maps_installed_places">Mentett helyek</string>
-    <string name="maps_installed_not_yet">még nincs itt</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Kedvencek</string>
@@ -4594,4 +4590,9 @@
     <string name="phone_blocked_notify_about">Néma értesítés, ha letiltott szám hív.</string>
     <string name="phone_channel_blocked">Letiltott hívások</string>
     <string name="phone_blocked_from">Letiltott hívás: %1$s</string>
+    <string name="maps_with_roads">úthálózattal</string>
+    <string name="maps_no_roads">csak térkép, utak nélkül</string>
+    <string name="settings_remove_map">Eltávolítás</string>
+    <string name="settings_remove_map_title">Eltávolítod a térképet: %1$s?</string>
+    <string name="settings_remove_map_body">A fájljai a Kukába kerülnek, itt és a többi eszközödön is. A mentett helyeid megmaradnak.</string>
 </resources>

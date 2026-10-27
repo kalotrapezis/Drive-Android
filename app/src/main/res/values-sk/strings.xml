@@ -388,7 +388,7 @@
     <string name="settings_imported">Importované</string>
     <string name="settings_imported_shared">%1$d miest a %2$d doplnkov mapy; %3$d už tu je alebo nemá polohu.</string>
     <string name="settings_not_placed">Tieto sa nepodarilo umiestniť – vyhľadajte ich v Mapách a uložte:</string>
-    <string name="settings_installed_maps_note">Mapy sa vytvárajú v počítači a prichádzajú sem cez Synchronizáciu do Tetra/Maps: tools/maps-greece.sh stiahne najnovšiu mapu Grécka a vytvorí pre ňu navigáciu (tlačidlo Aktualizovať v Tetre pre počítač sa plánuje).</string>
+    <string name="settings_installed_maps_note">Mapa každej krajiny sa vytvára v počítači, v Tetra v počítači › Nastavenia › Mapy › Pridať mapu. Synchronizácia ju prenesie sem, do Tetra/Maps.</string>
     <string name="settings_problems">Problémy</string>
     <string name="settings_send_log_summary">Denník aplikácie Tetra a záznamy vašich jázd za posledných 7 dní v jednom zipe; zostanú v tomto zariadení, kým ich neodošlete</string>
     <string name="settings_contacts_note">Vaše kontakty sú súbory v Tetra/Contacts, jeden na osobu: synchronizujú sa s počítačom, kde ich zobrazujú aj Kontakty.</string>
@@ -1595,7 +1595,7 @@
     <string name="maps_my_car">Moje auto</string>
     <string name="maps_parking_saved">Parkovanie uložené</string>
     <string name="maps_on_car_screen">Na obrazovke auta: %1$s</string>
-    <string name="maps_no_graph">Zatiaľ nie je graf trás: vložte greece-gh do Tetra/Maps (vytvorí ho tools/maps-greece.sh v počítači).</string>
+    <string name="maps_no_graph">Táto mapa zatiaľ nemá cesty pre navigáciu: aktualizujte ju v Tetra v počítači › Nastavenia › Mapy.</string>
     <string name="maps_finding">Hľadá sa trasa…</string>
     <string name="maps_no_way_graph">Trasa sa nenašla: graf trás sa nepodarilo prečítať</string>
     <string name="maps_arrived">Ste v cieli: %1$s</string>
@@ -1603,8 +1603,8 @@
     <string name="maps_dropped_pin">Umiestnený špendlík</string>
     <string name="maps_amea_parking">Parkovanie pre ZŤP</string>
     <string name="maps_amea_placed">Miesto pre ZŤP umiestnené: %1$s</string>
-    <string name="maps_no_map">Mapa Grécka zatiaľ nie je v tomto zariadení</string>
-    <string name="maps_no_map_how">Prichádza z počítača: tools/maps-greece.sh vytvorí greece.pmtiles (asi 500 MB) a graf trás greece-gh a Synchronizácia ich prenesie sem do Tetra/Maps.</string>
+    <string name="maps_no_map">V tomto zariadení zatiaľ nie je žiadna mapa</string>
+    <string name="maps_no_map_how">Mapy sa vytvárajú v počítači: Tetra v počítači › Nastavenia › Mapy › Pridať mapu, potom ich Synchronizácia prenesie sem, do Tetra/Maps.</string>
     <string name="maps_parked_here">Parkujem tu</string>
     <string name="maps_waiting_location">Čaká sa na vašu polohu…</string>
     <string name="maps_location_off">Poloha je pre Tetru vypnutá.</string>
@@ -1699,7 +1699,7 @@
     <string name="car_map">Mapa</string>
     <string name="car_places">Miesta</string>
     <string name="car_allow_location">Raz otvorte Tetra Mapy v telefóne a povoľte polohu</string>
-    <string name="car_no_map">Zatiaľ bez mapy: greece.pmtiles príde z počítača do Tetra/Maps</string>
+    <string name="car_no_map">Zatiaľ žiadna mapa: vytvorte ju v Tetra v počítači › Nastavenia › Mapy</string>
     <string name="car_end">Ukončiť</string>
     <string name="car_routes">Trasy</string>
     <string name="car_add_stop_button">Zastávka</string>
@@ -1740,10 +1740,6 @@
         <item quantity="many">%1$d mýtnej brány</item>
         <item quantity="other">%1$d mýtnych brán</item>
     </plurals>
-    <string name="maps_installed_map">Mapa Grécka</string>
-    <string name="maps_installed_routing">Trasy (auto, pešo, bicykel)</string>
-    <string name="maps_installed_places">Uložené miesta</string>
-    <string name="maps_installed_not_yet">zatiaľ tu nie je</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Obľúbené</string>
@@ -4778,4 +4774,9 @@
     <string name="phone_blocked_notify_about">Tiché upozornenie, keď volá zablokované číslo.</string>
     <string name="phone_channel_blocked">Zablokované hovory</string>
     <string name="phone_blocked_from">Zablokovaný hovor od %1$s</string>
+    <string name="maps_with_roads">s cestami</string>
+    <string name="maps_no_roads">len mapa, bez ciest</string>
+    <string name="settings_remove_map">Odstrániť</string>
+    <string name="settings_remove_map_title">Odstrániť mapu: %1$s?</string>
+    <string name="settings_remove_map_body">Jej súbory sa presunú do Koša, tu aj vo vašich ďalších zariadeniach. Vaše uložené miesta zostanú.</string>
 </resources>

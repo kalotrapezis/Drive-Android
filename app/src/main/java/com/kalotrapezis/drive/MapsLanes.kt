@@ -10,13 +10,11 @@ internal data class Lanes(val turns: List<List<String>>, val use: Set<Int>, val 
 
 /**
  * Lane guidance (the user, 23 Oct, on the Α1 by Ελαιώνας: "you must keep to the second lane from the right, which slowly
- * becomes the outer one"): OpenStreetMap's lane arrows from greece-lanes.tsv (tools/maps-lanes.py) beside the graph, each
+ * becomes the outer one"): OpenStreetMap's lane arrows from each map's <id>-lanes.tsv (tools/maps-lanes.py) beside the graph, each
  * the end of a road piece in the way it is driven. A turn's lanes are those of the last piece's end the route passes,
  * facing its way, up to 400 m before the turn.
  */
 internal object MapsLanes {
-    const val FILE = "greece-lanes.tsv"
-
     private class End(val lat: Double, val lng: Double, val bearing: Double, val turns: List<List<String>>, val metres: Double)
 
     private var cells: Map<Long, List<End>> = emptyMap()
@@ -28,19 +26,20 @@ internal object MapsLanes {
     fun parse(lanes: String): List<List<String>> =
         lanes.split('|').map { l -> l.split(';').map { it.trim() }.map { if (it.isEmpty() || it == "none") "through" else it }.distinct() }
 
-    /** The lanes file in [dir] (Tetra/Maps), read once and again when it changes; nothing when it is not there. */
+    /** The lanes files in [dir] (Tetra/Maps), read once and again when one changes; nothing when there are none. */
     @Synchronized private fun load(dir: File): Map<Long, List<End>> {
-        val f = File(dir, FILE)
-        val stamp = f.takeIf { it.isFile }?.lastModified() ?: return emptyMap()
-        if (loaded == f to stamp) return cells
+        val files = MapsFiles.lists(dir, "lanes")
+        if (files.isEmpty()) return emptyMap()
+        val stamp = files.sumOf { it.lastModified() } + files.size
+        if (loaded == dir to stamp) return cells
         val m = HashMap<Long, MutableList<End>>()
-        f.forEachLine { line ->
+        for (f in files) f.forEachLine { line ->
             val p = line.split('\t')
             val lat = p.getOrNull(0)?.toDoubleOrNull(); val lng = p.getOrNull(1)?.toDoubleOrNull(); val b = p.getOrNull(2)?.toDoubleOrNull()
             if (lat != null && lng != null && b != null && p.getOrNull(3).orEmpty().isNotBlank())
                 m.getOrPut(key(lat, lng)) { ArrayList() } += End(lat, lng, b, parse(p[3]), p.getOrNull(5)?.toDoubleOrNull() ?: 0.0)
         }
-        cells = m; loaded = f to stamp
+        cells = m; loaded = dir to stamp
         return cells
     }
 

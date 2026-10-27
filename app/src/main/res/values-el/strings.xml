@@ -388,7 +388,7 @@
     <string name="settings_imported">Έγινε εισαγωγή</string>
     <string name="settings_imported_shared">%1$d μέρη και %2$d προσθήκες χάρτη· %3$d υπήρχαν ήδη ή δεν είχαν θέση.</string>
     <string name="settings_not_placed">Αυτά δεν τοποθετήθηκαν — αναζητήστε τα στους Χάρτες και πατήστε Αποθήκευση:</string>
-    <string name="settings_installed_maps_note">Οι χάρτες φτιάχνονται στον υπολογιστή και έρχονται εδώ με τον Τοπικό συγχρονισμό, στο Tetra/Maps: το tools/maps-greece.sh κατεβάζει τον νεότερο χάρτη της Ελλάδας και φτιάχνει τη δρομολόγησή του (σχεδιάζεται κουμπί Ενημέρωσης στο Tetra του υπολογιστή).</string>
+    <string name="settings_installed_maps_note">Ο χάρτης κάθε χώρας φτιάχνεται στον υπολογιστή, στο Tetra του υπολογιστή › Ρυθμίσεις › Χάρτες › Προσθήκη χάρτη. Ο Τοπικός συγχρονισμός τον φέρνει εδώ, στο Tetra/Maps.</string>
     <string name="settings_problems">Προβλήματα</string>
     <string name="settings_send_log_summary">Το αρχείο καταγραφής του Tetra και τα ίχνη των διαδρομών σας των τελευταίων 7 ημερών, σε ένα zip· μένουν σε αυτή τη συσκευή μέχρι να τα στείλετε</string>
     <string name="settings_contacts_note">Οι επαφές σας είναι αρχεία στο Tetra/Contacts, ένα για κάθε άτομο: συγχρονίζονται με τον υπολογιστή, όπου τις δείχνουν και οι Επαφές.</string>
@@ -1508,7 +1508,7 @@
     <string name="maps_my_car">Το αυτοκίνητό μου</string>
     <string name="maps_parking_saved">Η θέση στάθμευσης αποθηκεύτηκε</string>
     <string name="maps_on_car_screen">Στην οθόνη του αυτοκινήτου: %1$s</string>
-    <string name="maps_no_graph">Δεν υπάρχει ακόμη γράφος διαδρομών: βάλτε το greece-gh στο Tetra/Maps (το φτιάχνει το tools/maps-greece.sh στον υπολογιστή).</string>
+    <string name="maps_no_graph">Αυτός ο χάρτης δεν έχει ακόμη δρόμους για οδηγίες: ενημερώστε τον στο Tetra του υπολογιστή › Ρυθμίσεις › Χάρτες.</string>
     <string name="maps_finding">Αναζήτηση διαδρομής…</string>
     <string name="maps_no_way_graph">Δεν βρέθηκε διαδρομή: ο γράφος διαδρομών δεν διαβάστηκε</string>
     <string name="maps_arrived">Φτάσατε: %1$s</string>
@@ -1516,8 +1516,8 @@
     <string name="maps_dropped_pin">Σημείο στον χάρτη</string>
     <string name="maps_amea_parking">Θέση ΑμεΑ</string>
     <string name="maps_amea_placed">Η θέση ΑμεΑ τοποθετήθηκε: %1$s</string>
-    <string name="maps_no_map">Ο χάρτης της Ελλάδας δεν είναι ακόμη σε αυτή τη συσκευή</string>
-    <string name="maps_no_map_how">Έρχεται από τον υπολογιστή: το tools/maps-greece.sh φτιάχνει το greece.pmtiles (περίπου 500 MB) και τον γράφο διαδρομών greece-gh, και ο Τοπικός συγχρονισμός τα φέρνει εδώ, στο Tetra/Maps.</string>
+    <string name="maps_no_map">Δεν υπάρχει ακόμη χάρτης σε αυτή τη συσκευή</string>
+    <string name="maps_no_map_how">Οι χάρτες φτιάχνονται στον υπολογιστή: Tetra του υπολογιστή › Ρυθμίσεις › Χάρτες › Προσθήκη χάρτη, και ο Τοπικός συγχρονισμός τους φέρνει εδώ στο Tetra/Maps.</string>
     <string name="maps_parked_here">Πάρκαρα εδώ</string>
     <string name="maps_waiting_location">Αναμονή για την τοποθεσία σας…</string>
     <string name="maps_location_off">Η τοποθεσία είναι απενεργοποιημένη για το Tetra.</string>
@@ -1612,7 +1612,7 @@
     <string name="car_map">Χάρτης</string>
     <string name="car_places">Μέρη</string>
     <string name="car_allow_location">Ανοίξτε μία φορά τους Χάρτες του Tetra στο τηλέφωνο για να επιτρέψετε την τοποθεσία</string>
-    <string name="car_no_map">Δεν υπάρχει ακόμη χάρτης: το greece.pmtiles έρχεται από τον υπολογιστή στο Tetra/Maps</string>
+    <string name="car_no_map">Δεν υπάρχει ακόμη χάρτης: φτιάξτε έναν στο Tetra του υπολογιστή › Ρυθμίσεις › Χάρτες</string>
     <string name="car_end">Τέλος</string>
     <string name="car_routes">Διαδρομές</string>
     <string name="car_add_stop_button">Στάση</string>
@@ -1651,10 +1651,6 @@
         <item quantity="one">%1$d διόδιο</item>
         <item quantity="other">%1$d διόδια</item>
     </plurals>
-    <string name="maps_installed_map">Χάρτης της Ελλάδας</string>
-    <string name="maps_installed_routing">Διαδρομές (αυτοκίνητο, πόδια, ποδήλατο)</string>
-    <string name="maps_installed_places">Αποθηκευμένα μέρη</string>
-    <string name="maps_installed_not_yet">δεν υπάρχει ακόμα</string>
 
     <!-- ===== Contacts, Phone, Data ===== -->
     <string name="contacts_favourites">Αγαπημένα</string>
@@ -4593,4 +4589,9 @@
     <string name="phone_blocked_notify_about">Μια αθόρυβη ειδοποίηση όταν καλεί ένας μπλοκαρισμένος αριθμός.</string>
     <string name="phone_channel_blocked">Μπλοκαρισμένες κλήσεις</string>
     <string name="phone_blocked_from">Μπλοκαρισμένη κλήση από %1$s</string>
+    <string name="maps_with_roads">με δρόμους</string>
+    <string name="maps_no_roads">μόνο χάρτης, χωρίς δρόμους</string>
+    <string name="settings_remove_map">Αφαίρεση</string>
+    <string name="settings_remove_map_title">Αφαίρεση του χάρτη: %1$s;</string>
+    <string name="settings_remove_map_body">Τα αρχεία του πάνε στον Κάδο, εδώ και στις άλλες συσκευές σας. Τα αποθηκευμένα μέρη σας μένουν.</string>
 </resources>

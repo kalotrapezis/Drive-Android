@@ -103,7 +103,8 @@ internal object CarLink {
 /** The map, the next turn over it while directions run, and Places / Nearby / Stop. */
 private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObserver {
     private val root = MapsFiles.root(TetraFolder.root(Environment.getExternalStorageDirectory()))
-    private val graphDir = MapsFiles.graph(root)
+    /** The roads of the map a spot is on (Tetra/Maps can hold several countries'). */
+    private fun graphAt(lat: Double, lng: Double) = MapsFiles.graphAt(root, lat, lng)
     private val lang = MapsPrefs.lang(car)
     private val navigation = car.getCarService(NavigationManager::class.java)
     private var here: Location? = null
@@ -226,7 +227,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
                 setContentView(frame)
                 show()
                 v.onStart(); v.onResume()
-                v.getMapAsync { m -> m.setStyle(Style.Builder().fromJson(mapStyle(carContext, MapsFiles.map(root)))) { style -> ready(m, style) } }
+                v.getMapAsync { m -> m.setStyle(Style.Builder().fromJson(mapStyle(carContext, root))) { style -> ready(m, style) } }
             }
         }
 
@@ -752,7 +753,10 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         CarLink.connected.value = true
         // the graph opened now, so the first route does not wait for it (it took 25 s on 22 Oct)
-        lifecycleScope.launch(Dispatchers.IO) { if (File(graphDir, "properties").isFile) runCatching { WriterLog.timed("Maps car: graph opened") { MapsRouting.open(graphDir) } } }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val g = graphAt(here?.latitude ?: Double.NaN, here?.longitude ?: Double.NaN)
+            if (File(g, "properties").isFile) runCatching { WriterLog.timed("Maps car: graph opened") { MapsRouting.open(g) } }
+        }
         if (!granted()) return
         // no fix for 10 s: "No GPS" on the map, and said while directions run
         lifecycleScope.launch {
@@ -796,9 +800,10 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             if (tracking && lc.cameraMode != CameraMode.TRACKING_GPS) follow("it had left the car (mode ${lc.cameraMode})")
         }
         // the limit at most every two seconds, off the main thread (the graph is opened the first time)
-        if (System.currentTimeMillis() - limitAsked > 2000 && File(graphDir, "properties").isFile) {
+        if (System.currentTimeMillis() - limitAsked > 2000) {
             limitAsked = System.currentTimeMillis()
-            lifecycleScope.launch { limit = withContext(Dispatchers.IO) { runCatching { MapsRouting.limitAt(graphDir, loc.latitude, loc.longitude) }.getOrNull() }; showSpeed() }
+            lifecycleScope.launch { limit = withContext(Dispatchers.IO) { runCatching { graphAt(loc.latitude, loc.longitude).takeIf { File(it, "properties").isFile }
+                ?.let { MapsRouting.limitAt(it, loc.latitude, loc.longitude) } }.getOrNull() }; showSpeed() }
         }
         showSpeed()
         waitNext?.let { next ->
@@ -905,6 +910,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
     /** By car to [target]: [chosen] when one of the other routes was picked, else the fastest from the last fix. */
     fun go(target: Place, chosen: Route? = null) {
         val from = here ?: run { CarToast.makeText(carContext, s(R.string.car_waiting_gps), CarToast.LENGTH_SHORT).show(); return }
+        val graphDir = graphAt(from.latitude, from.longitude)
         if (!File(graphDir, "properties").isFile) { CarToast.makeText(carContext, s(R.string.car_no_graph), CarToast.LENGTH_LONG).show(); return }
         finding = s(R.string.maps_finding); showSpeed(); invalidate()
         val t0 = System.currentTimeMillis()
@@ -1157,7 +1163,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
             val h = here
             lifecycleScope.launch {
                 routes = if (h == null) emptyList() else withContext(Dispatchers.IO) {
-                    runCatching { MapsRouting.routes(graphDir, h.latitude, h.longitude, target.lat, target.lng, "car", lang, main = MapsPrefs.mainRoads(carContext)) }.getOrDefault(emptyList())
+                    runCatching { MapsRouting.routes(graphAt(h.latitude, h.longitude), h.latitude, h.longitude, target.lat, target.lng, "car", lang, main = MapsPrefs.mainRoads(carContext)) }.getOrDefault(emptyList())
                         .also { rs -> tollCounts = rs.map { r -> runCatching { tollsOn(r, cumulative(r), MapsSearch.tolls(root)).size }.getOrDefault(0) } }
                 }
                 invalidate()

@@ -4850,4 +4850,9 @@
     </plurals>
     <string name="maps_in_km_fraction">Za %1$s kilometru, %2$s</string>
     <string name="maps_in_mi_fraction">Za %1$s míle, %2$s</string>
+    <string name="maps_old">Starší než 3 měsíce</string>
+    <string name="maps_old_remake">Vytvořte ji znovu v počítači: Tetra › Nastavení › Mapy.</string>
+    <string name="maps_old_channel">Staré mapy</string>
+    <string name="maps_old_title">Mapa %1$s je starší než 3 měsíce</string>
+    <string name="maps_old_body">Silnice a místa se mění. Počítač ji vytvoří znovu z čerstvých dat OpenStreetMap: Tetra › Nastavení › Mapy.</string>
 </resources>

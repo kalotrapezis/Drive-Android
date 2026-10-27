@@ -4850,4 +4850,9 @@
     </plurals>
     <string name="maps_in_km_fraction">Čez %1$s kilometre, %2$s</string>
     <string name="maps_in_mi_fraction">Čez %1$s milje, %2$s</string>
+    <string name="maps_old">Starejši od 3 mesecev</string>
+    <string name="maps_old_remake">Izdelajte ga znova na računalniku: Tetra › Nastavitve › Zemljevidi.</string>
+    <string name="maps_old_channel">Stari zemljevidi</string>
+    <string name="maps_old_title">Zemljevid %1$s je starejši od 3 mesecev</string>
+    <string name="maps_old_body">Ceste in kraji se spreminjajo. Računalnik ga izdela znova iz svežih podatkov OpenStreetMap: Tetra › Nastavitve › Zemljevidi.</string>
 </resources>

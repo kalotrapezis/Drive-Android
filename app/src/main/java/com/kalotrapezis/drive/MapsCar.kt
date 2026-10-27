@@ -605,7 +605,7 @@ private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObse
         }
         panelJunction?.apply {
             val px = layoutParams?.width ?: 0
-            if (j != null && px > 0 && junctionShown != j to px) { setImageBitmap(junctionPicture(j, px)); junctionShown = j to px }
+            if (j != null && px > 0 && junctionShown != j to px) { setImageBitmap(junctionPicture(j, px, MapsFiles.driveLeftAt(root, n.route, step.at))); junctionShown = j to px }
             junctionBox?.visibility = if (j != null && px > 0) android.view.View.VISIBLE else android.view.View.GONE
         }
     }

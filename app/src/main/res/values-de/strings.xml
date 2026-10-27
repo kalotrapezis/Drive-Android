@@ -4648,4 +4648,9 @@
     </plurals>
     <string name="maps_in_km_fraction">In %1$s Kilometern, %2$s</string>
     <string name="maps_in_mi_fraction">In %1$s Meilen, %2$s</string>
+    <string name="maps_old">Über 3 Monate alt</string>
+    <string name="maps_old_remake">Erstelle sie am Computer neu: Tetra › Einstellungen › Karten.</string>
+    <string name="maps_old_channel">Alte Karten</string>
+    <string name="maps_old_title">Die Karte von %1$s ist über 3 Monate alt</string>
+    <string name="maps_old_body">Straßen und Orte ändern sich. Der Computer erstellt sie aus frischen OpenStreetMap-Daten neu: Tetra › Einstellungen › Karten.</string>
 </resources>

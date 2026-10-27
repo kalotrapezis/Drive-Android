@@ -278,6 +278,7 @@ class MainActivity : ComponentActivity() {
             Thread { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); if (Environment.isExternalStorageManager()) runCatching { notesStore().list() } }.start()
         } }
         Thread { runCatching { TimerService.check(this) } }.start() // a timer running (here or started elsewhere): its notification
+        Thread { runCatching { if (Environment.isExternalStorageManager()) MapsAge.check(this) } }.start() // a map turned old: said once
         // Compose's new text menu bypasses LocalTextToolbar; the old path lets Writer show its Selection tab instead (14 Oct).
         @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = false
         // a document, spreadsheet or presentation another app opens here (Open with › Tetra Office); else a photo or video
@@ -401,6 +402,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     val preferences = remember(context) { context.getSharedPreferences("onboarding", Context.MODE_PRIVATE) }
     // the first start opens the guide (Guide.kt), which can be skipped; Settings › Guide opens it again
     var screen by remember { mutableStateOf(if (AppLocale.reopenSettings) Screen.Settings.also { AppLocale.reopenSettings = false } else if (preferences.getBoolean(PHOTO_SETUP_COMPLETED, false)) Screen.Home else Screen.Guide) }
+    var settingsStart by remember { mutableStateOf<SettingsPage?>(null) } // a notification's Settings page (MapsAge)
     var guideAt by remember { mutableStateOf(if (screen == Screen.Guide) 0 else null) } // the guide's step; docked under the screen when screen isn't Guide
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
     var mapsGo by remember { mutableStateOf<Place?>(null) } // a place on Home's Maps card: directions to it start at once
@@ -703,6 +705,8 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
         if (applet.value == FromComputer.SCREEN && screen != Screen.Guide) {
             applet.value = null; screen = Screen.Drive; drivePane = DrivePane.Files; driveFolder = FromComputer.FOLDER; loadDrive(FromComputer.FOLDER); return@LaunchedEffect
         }
+        // a map turned old (MapsAge): Settings › Maps
+        if (applet.value == MapsAge.SCREEN && screen != Screen.Guide) { applet.value = null; settingsStart = SettingsPage.Maps; screen = Screen.Settings; return@LaunchedEffect }
         // the Phone's "Contact" and "Add" (PhoneApp.kt): Contacts on that person, or a new one with the number
         applet.value?.takeIf { (it.startsWith("contact:") || it.startsWith("contact-new:")) && screen != Screen.Guide }?.let { v ->
             applet.value = null
@@ -961,6 +965,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 )
                 Screen.Settings -> SettingsTab(
                     back = { screen = Screen.Home },
+                    start = settingsStart, started = { settingsStart = null },
                     metadataStore = photoMetadata,
                     photoPermission = photoPermission(),
                     photoAccess = hasVisualAccess(),

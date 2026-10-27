@@ -46,6 +46,7 @@ internal class SyncJob : JobService() {
                 val error = runCatching { SyncClient(applicationContext, store).scopeOnly(part) }.onFailure { WriterLog.w("Scoped sync $part: ${it.message}") }.exceptionOrNull()
                 // the look carries the Timer's part too: a timer started on the computer reaches a closed Tetra here
                 if (params.jobId == ScopedSync.CALENDAR_LOOK) listOf("timer", "contacts", "data").forEach { runCatching { SyncClient(applicationContext, store).scopeOnly(it) } }
+                if (params.jobId == ScopedSync.CALENDAR_LOOK) runCatching { MapsAge.check(applicationContext) }
                 val tooOld = ScopedSync.tooOld(error) // the whole sync carries it
                 jobFinished(params, error != null && !tooOld && params.jobId != ScopedSync.CALENDAR_LOOK) // a change waiting is tried again; a look waits for the next
             }

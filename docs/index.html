@@ -8,7 +8,30 @@
 <meta property="og:title" content="Tetra">
 <meta property="og:description" content="One private super app for your phone, tablet and computer. Nothing leaves your devices.">
 <meta property="og:image" content="img/tetra-devices.jpg">
+<link rel="alternate" hreflang="bg" href="bg.html">
+<link rel="alternate" hreflang="cs" href="cs.html">
+<link rel="alternate" hreflang="da" href="da.html">
+<link rel="alternate" hreflang="de" href="de.html">
 <link rel="alternate" hreflang="el" href="el.html">
+<link rel="alternate" hreflang="en" href="index.html">
+<link rel="alternate" hreflang="es" href="es.html">
+<link rel="alternate" hreflang="et" href="et.html">
+<link rel="alternate" hreflang="fi" href="fi.html">
+<link rel="alternate" hreflang="fr" href="fr.html">
+<link rel="alternate" hreflang="ga" href="ga.html">
+<link rel="alternate" hreflang="hr" href="hr.html">
+<link rel="alternate" hreflang="hu" href="hu.html">
+<link rel="alternate" hreflang="it" href="it.html">
+<link rel="alternate" hreflang="lt" href="lt.html">
+<link rel="alternate" hreflang="lv" href="lv.html">
+<link rel="alternate" hreflang="mt" href="mt.html">
+<link rel="alternate" hreflang="nl" href="nl.html">
+<link rel="alternate" hreflang="pl" href="pl.html">
+<link rel="alternate" hreflang="pt" href="pt.html">
+<link rel="alternate" hreflang="ro" href="ro.html">
+<link rel="alternate" hreflang="sk" href="sk.html">
+<link rel="alternate" hreflang="sl" href="sl.html">
+<link rel="alternate" hreflang="sv" href="sv.html">
 <link rel="icon" href="img/tetra.png">
 <style>
   :root { --bg: #0f1113; --card: #191c20; --line: #2a2e34; --text: #f4f6f8; --muted: #b0b7c0; --teal: #04d5cc;
@@ -90,13 +113,35 @@
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px; }
   .panel h3 { margin: 0 0 6px; font-size: 24px; } .panel p { color: var(--muted); margin: 0 0 6px; }
   .panel .btn { min-width: 0; margin-top: 12px; }
-  .lang { position: absolute; top: 16px; right: 16px; display: flex; gap: 4px; background: rgba(0, 0, 0, .55); border: 1px solid var(--line);
-           border-radius: 999px; padding: 4px; z-index: 2; }
-  .lang a { color: var(--text); text-decoration: none; font-size: 14px; font-weight: 700; padding: 6px 12px; border-radius: 999px; }
+  .lang { position: absolute; top: 16px; right: 16px; z-index: 2; text-align: left; }
+  .lang summary { list-style: none; cursor: pointer; background: rgba(0, 0, 0, .55); border: 1px solid var(--line); border-radius: 999px;
+                  padding: 6px 14px; font-size: 14px; font-weight: 700; }
+  .lang summary::-webkit-details-marker { display: none; }
+  .lang summary::after { content: " ▾"; }
+  .lang ul { position: absolute; right: 0; margin: 6px 0 0; padding: 6px; list-style: none; columns: 2; column-gap: 4px; width: max-content;
+             max-width: calc(100vw - 32px); background: #15181b; border: 1px solid var(--line); border-radius: 14px; }
+  .lang a { display: block; color: var(--text); text-decoration: none; font-size: 14px; padding: 5px 12px; border-radius: 8px; }
+  .lang a:hover { background: #22262b; }
   .lang a[aria-current="page"] { background: var(--text); color: #111; }
   header { position: relative; }
+  .buttons { align-items: stretch; }
+  .group { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 28px; background: rgba(0, 0, 0, .35);
+           border: 1px solid var(--line); }
+  .group h3 { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; font-size: 18px; }
+  .group h3 img { width: 30px; height: 30px; }
+  .qr { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; text-align: left; }
+  .qr img { width: 92px; height: 92px; border-radius: 10px; }
+  .qr p { margin: 0; }
+  .btn img[src$=".svg"] { background: rgba(255, 255, 255, .1); padding: 6px; }
+  .faq { max-width: 820px; margin: 24px auto 0; display: grid; gap: 10px; }
+  .faq details { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 18px; }
+  .faq summary { cursor: pointer; font-weight: 700; font-size: 18px; }
+  .faq ol, .faq p { color: var(--muted); margin: 10px 0 0; }
+  .faq li { margin: 4px 0; }
+  .faq b, .faq code { color: var(--text); }
   footer { color: #7d858f; font-size: 14px; padding: 48px 0 40px; text-align: center; }
   @media (max-width: 700px) {  /* a phone: the tabs would not fit, so every card one under the other, the words above */
+    .qr { display: none; }  /* already on the phone */
     .island { display: none; }
     [role="tabpanel"] { display: block !important; }
     .card { display: flex; flex-direction: column-reverse; }
@@ -115,15 +160,18 @@
 </head>
 <body>
 <header>
-  <nav class="lang" aria-label="Language"><a href="el.html" hreflang="el" lang="el">ΕΛ</a><a href="index.html" hreflang="en" lang="en" aria-current="page">EN</a></nav>
+  <details class="lang"><summary aria-label="Language">EN</summary><ul><li><a href="bg.html" hreflang="bg" lang="bg">Български</a></li><li><a href="cs.html" hreflang="cs" lang="cs">Čeština</a></li><li><a href="da.html" hreflang="da" lang="da">Dansk</a></li><li><a href="de.html" hreflang="de" lang="de">Deutsch</a></li><li><a href="el.html" hreflang="el" lang="el">Ελληνικά</a></li><li><a href="index.html" hreflang="en" lang="en" aria-current="page">English</a></li><li><a href="es.html" hreflang="es" lang="es">Español</a></li><li><a href="et.html" hreflang="et" lang="et">Eesti</a></li><li><a href="fi.html" hreflang="fi" lang="fi">Suomi</a></li><li><a href="fr.html" hreflang="fr" lang="fr">Français</a></li><li><a href="ga.html" hreflang="ga" lang="ga">Gaeilge</a></li><li><a href="hr.html" hreflang="hr" lang="hr">Hrvatski</a></li><li><a href="hu.html" hreflang="hu" lang="hu">Magyar</a></li><li><a href="it.html" hreflang="it" lang="it">Italiano</a></li><li><a href="lt.html" hreflang="lt" lang="lt">Lietuvių</a></li><li><a href="lv.html" hreflang="lv" lang="lv">Latviešu</a></li><li><a href="mt.html" hreflang="mt" lang="mt">Malti</a></li><li><a href="nl.html" hreflang="nl" lang="nl">Nederlands</a></li><li><a href="pl.html" hreflang="pl" lang="pl">Polski</a></li><li><a href="pt.html" hreflang="pt" lang="pt">Português</a></li><li><a href="ro.html" hreflang="ro" lang="ro">Română</a></li><li><a href="sk.html" hreflang="sk" lang="sk">Slovenčina</a></li><li><a href="sl.html" hreflang="sl" lang="sl">Slovenščina</a></li><li><a href="sv.html" hreflang="sv" lang="sv">Svenska</a></li></ul></details>
   <div class="wrap">
     <img class="logo" src="img/tetra.png" alt="">
     <h1>Tetra</h1>
     <p class="lead">One private super app for your phone, tablet and computer. Free software, no account, no cloud: nothing leaves your devices.</p>
     <div class="buttons">
-      <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.2/Tetra-0.6.0-beta.2-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Download for Android</b><span>APK · 0.6.0 beta 2 · Android 11+</span></div></a>
-      <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/Tetra-0.6.0-beta.23.AppImage"><img src="img/tetra.png" alt=""><div><b>Linux AppImage</b><span>0.6.0 beta 23 · most distros</span></div></a>
-      <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/local-drive-desktop_0.6.0-beta.23_amd64.deb"><img src="img/tetra.png" alt=""><div><b>Linux .deb</b><span>Debian, Ubuntu, Mint</span></div></a>
+      <div class="group"><h3><img src="img/android.svg" alt="">Android</h3>
+        <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.2/Tetra-0.6.0-beta.2-arm64.apk"><img src="img/android.svg" alt=""><div><b>Download for Android</b><span>APK · 0.6.0 beta 2 · Android 11+</span></div></a>
+        <div class="qr"><img src="img/qr-android.svg" alt="QR code of the Android download"><p>Or scan it with your phone.<br><a href="#faq-install">How to install it</a></p></div></div>
+      <div class="group"><h3><img src="img/linux.svg" alt="">Linux</h3>
+        <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/Tetra-0.6.0-beta.23.AppImage"><img src="img/linux.svg" alt=""><div><b>Linux AppImage</b><span>0.6.0 beta 23 · most distros</span></div></a>
+        <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/local-drive-desktop_0.6.0-beta.23_amd64.deb"><img src="img/linux.svg" alt=""><div><b>Linux .deb</b><span>Debian, Ubuntu, Mint</span></div></a></div>
     </div>
     <img class="hero" src="img/tetra-devices.jpg" alt="Tetra on a computer, a tablet and a phone">
   </div>
@@ -267,15 +315,29 @@
         <h3>Tetra for Android</h3>
         <p>Phones and tablets, Android 11 or newer.</p>
         <a href="https://github.com/kalotrapezis/Drive-Android">Source and details on GitHub</a>
-        <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.2/Tetra-0.6.0-beta.2-arm64.apk"><img src="img/tetra.png" alt=""><div><b>Download APK</b><span>0.6.0 beta 2</span></div></a>
+        <a class="btn android" href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.2/Tetra-0.6.0-beta.2-arm64.apk"><img src="img/android.svg" alt=""><div><b>Download APK</b><span>0.6.0 beta 2</span></div></a>
       </div>
       <div class="panel">
         <h3>Tetra for the desktop</h3>
         <p>Linux: an AppImage for most distributions, or a .deb for Debian, Ubuntu and Mint. It waits in the tray for your phone.</p>
         <a href="https://github.com/kalotrapezis/Drive">Source and details on GitHub</a>
-        <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/Tetra-0.6.0-beta.23.AppImage"><img src="img/tetra.png" alt=""><div><b>AppImage</b><span>0.6.0 beta 23</span></div></a>
-        <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/local-drive-desktop_0.6.0-beta.23_amd64.deb"><img src="img/tetra.png" alt=""><div><b>.deb</b><span>0.6.0 beta 23</span></div></a>
+        <a class="btn appimage" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/Tetra-0.6.0-beta.23.AppImage"><img src="img/linux.svg" alt=""><div><b>AppImage</b><span>0.6.0 beta 23</span></div></a>
+        <a class="btn deb" href="https://github.com/kalotrapezis/Drive/releases/download/desktop-v0.6.0-beta.23/local-drive-desktop_0.6.0-beta.23_amd64.deb"><img src="img/linux.svg" alt=""><div><b>.deb</b><span>0.6.0 beta 23</span></div></a>
       </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>Questions</h2>
+    <div class="faq">
+      <details id="faq-install" open><summary>How do I install Tetra from outside the Play Store?</summary><ol><li>On your phone, open this page or scan the QR code, and tap <b>Download for Android</b>.</li><li>When the download ends, tap its notification, or open <b>Files › Downloads</b> and tap <b>Tetra-…-arm64.apk</b>.</li><li>The first time, Android says your browser (or Files) is not allowed to install apps. Tap <b>Settings</b>, turn on <b>Allow from this source</b>, and go back.</li><li>Tap <b>Install</b>. If Play Protect warns about an unknown app, tap <b>More details</b>, then <b>Install anyway</b>.</li><li>Tap <b>Open</b>. Tetra's guide starts and shows you around.</li></ol><p>Each phone maker words these steps a little differently, but the steps are the same. Updates install the same way, over the old version, and keep everything.</p></details>
+      <details id="faq-safe"><summary>Is it safe to install an APK like this?</summary><p>Download Tetra only from this page or from its GitHub releases. Every release is signed with the same key, and Android installs an update only if it carries that signature. The source code is public for anyone to read.</p></details>
+      <details id="faq-linux"><summary>How do I start the AppImage on Linux?</summary><p>Download it, right-click it › <b>Properties</b> › <b>Permissions</b> › <b>Allow executing file as program</b> (or run <code>chmod +x Tetra-*.AppImage</code>), then double-click it. On Debian, Ubuntu and Mint the .deb opens in your software installer, or installs with <code>sudo apt install ./local-drive-desktop_*_amd64.deb</code>.</p></details>
+      <details id="faq-computer"><summary>Do I need a computer?</summary><p>No. Tetra works alone on a phone or a tablet. With the desktop app your files sync over your own Wi-Fi, and the computer makes the maps of any country.</p></details>
+      <details id="faq-free"><summary>Does it cost anything, or need an account?</summary><p>No. Tetra is free software (GPL 3.0): no account, no ads, no tracking. Nothing leaves your devices.</p></details>
+      <details id="faq-files"><summary>Where are my files?</summary><p>In one folder: <b>Tetra</b> on the phone's storage and <b>~/Tetra</b> on the computer. They are plain files, photos, documents, notes, calendars (.ics) and contacts (.vcf), that other apps can open too.</p></details>
     </div>
   </div>
 </section>
@@ -300,6 +362,9 @@
     });
   });
   document.querySelectorAll('.lang a').forEach(a => a.addEventListener('click', () => { a.href = a.getAttribute('href').split('#')[0] + location.hash }));
+  // a link to a question opens its answer
+  const open = () => { const d = document.getElementById(location.hash.slice(1)); if (d?.tagName === 'DETAILS') d.open = true }
+  addEventListener('hashchange', open); open()
   const start = document.getElementById('tab-' + location.hash.slice(1));
   if (start) show(start);
 </script>

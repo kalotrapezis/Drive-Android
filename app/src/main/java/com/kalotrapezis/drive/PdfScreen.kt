@@ -235,8 +235,12 @@ internal class PdfDoc(private val file: File, password: String? = null) {
     // —— editing (Plan.md § PDF, Phase 1: pages) ——
 
     val editable get() = pdf != null
-    val canUndo get() = synchronized(this) { (pdf?.undoRedoPosition() ?: 0) > 0 }
-    val canRedo get() = synchronized(this) { pdf?.let { it.undoRedoPosition() < it.undoRedoSteps() } == true }
+    // MuPDF's undo cannot take off what a save wrote (it says it can, and changes nothing; changes after the save undo
+    // and redo as before, 27 Oct): Undo goes back to the last save, Redo only to what was undone since
+    private var savedAt = 0
+    private var redoStale = false
+    val canUndo get() = synchronized(this) { (pdf?.undoRedoPosition() ?: 0) > savedAt }
+    val canRedo get() = synchronized(this) { !redoStale && pdf?.let { it.undoRedoPosition() < it.undoRedoSteps() } == true }
     val dirty get() = synchronized(this) { pdf?.hasUnsavedChanges() == true || rewrite != null || copied }
     /** Saved only as a copy (File › Save a copy) since the last change: the file itself still is not. */
     private var copied = false
@@ -249,6 +253,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         WriterLog.i("PDF: $what")
         p.beginOperation(what)
         try { change(p) } finally { p.endOperation() }
+        redoStale = false // what could be redone is gone with a new change
         changed()
     }
     fun undo() = synchronized(this) { if (canUndo) { pdf?.undo(); changed() } }
@@ -972,6 +977,7 @@ internal class PdfDoc(private val file: File, password: String? = null) {
         else if (appendable) { file.copyTo(temp, overwrite = true); p.save(temp.path, "incremental,compress") } // new pictures compressed (a watermark was 2.3 MB raw)
         else p.save(temp.path, "garbage=compact,compress")
         if (!temp.renameTo(to)) throw PdfError(R.string.pdf_save_failed_file)
+        p.undoRedoPosition().let { at -> savedAt = at; redoStale = p.undoRedoSteps() > at }
         savedOnce = true
         copied = copy && was
         WriterLog.i("PDF: saved${if (copy) " a copy" else ""}${if (whole == null && !appendable) " whole" else ""} (${to.length() / 1024} KB)")

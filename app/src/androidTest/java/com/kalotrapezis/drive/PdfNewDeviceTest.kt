@@ -1,5 +1,6 @@
 package com.kalotrapezis.drive
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -85,5 +86,26 @@ class PdfNewDeviceTest {
         val copy = PdfDoc(java.io.File(dir, "copy.pdf"))
         assertEquals(listOf("first", "second"), copy.comments().map { it.words })
         copy.close(); dir.deleteRecursively()
+    }
+
+    @Test fun undoGoesBackToTheLastSave() {
+        val dir = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "pdf-undo-save").apply { deleteRecursively() }
+        val f = Pdf.newBlank(dir)
+        val d = PdfDoc(f)
+        fun notes() = d.comments().size
+        d.note(0, Offset(100f, 100f), "first", 0xFFEB3B)
+        d.save()
+        // what the save wrote stays (MuPDF's undo would say it can, and change nothing)
+        assertTrue(!d.canUndo)
+        d.note(0, Offset(200f, 100f), "second", 0xFFEB3B); d.note(0, Offset(300f, 100f), "third", 0xFFEB3B)
+        d.undo(); assertEquals(2, notes())
+        d.redo(); assertEquals(3, notes())
+        d.undo(); d.save()
+        // undone before the save: not to be redone after it
+        assertTrue(!d.canRedo && !d.canUndo)
+        d.close()
+        val again = PdfDoc(f)
+        assertEquals(2, again.comments().size)
+        again.close(); dir.deleteRecursively()
     }
 }

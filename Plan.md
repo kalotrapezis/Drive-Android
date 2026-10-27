@@ -22,8 +22,9 @@ How to write here:
       the phone: a dialog once (car: a toast) with Voice settings. Miles + feet (US) / yards (UK) by the phone's region (Android's
       measurement system), spoken, on the turn card and the car's screen. Desktop router.js asks in the app's language. Greek wording
       unchanged. 675 Android unit / 164 desktop tests pass. **Not seen on a device** (voices, the dialog, the car's miles); the desktop
-      gets English for et/ga/lv/mt and GraphHopper's gaps (its server can't take Tetra's files) and still shows km; a half (1.5 km)
-      takes the plural of 100 (wrong case in cs/sk/pl/lt).
+      gets English for et/ga/lv/mt and GraphHopper's gaps (its server can't take Tetra's files) and still shows km. Then (the user
+      approved): a half (1.5 km) takes its CLDR category by android.icu — a whole number of that category, or maps_in_km/mi_fraction
+      where none has it (cs, sk, lt "many", pl "other"); ro, sl, fr, da were off too. Checked in all 24 against ICU (icu4j, tests only).
 - [~] (call-speaker session, 27 Oct; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
       phone-speaker button** (the user: "the call pop up on the PC from the phone to have a speaker option so instead of hearing the call from
       bluetooth to my PC to hear it from the phone's speaker"). Bubble: a speaker icon (while Tetra is the phone app, as Mute/Hold) sends

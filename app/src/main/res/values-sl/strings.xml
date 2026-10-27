@@ -4848,4 +4848,6 @@
         <item quantity="few">Pot ima %1$d cestninske postaje</item>
         <item quantity="other">Pot ima %1$d cestninskih postaj</item>
     </plurals>
+    <string name="maps_in_km_fraction">Čez %1$s kilometre, %2$s</string>
+    <string name="maps_in_mi_fraction">Čez %1$s milje, %2$s</string>
 </resources>

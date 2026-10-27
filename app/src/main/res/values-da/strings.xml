@@ -4646,4 +4646,6 @@
         <item quantity="one">Ruten har %1$d betalingsstation</item>
         <item quantity="other">Ruten har %1$d betalingsstationer</item>
     </plurals>
+    <string name="maps_in_km_fraction">Om %1$s kilometer, %2$s</string>
+    <string name="maps_in_mi_fraction">Om %1$s engelsk mil, %2$s</string>
 </resources>

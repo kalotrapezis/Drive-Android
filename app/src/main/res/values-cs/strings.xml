@@ -4848,4 +4848,6 @@
         <item quantity="many">Trasa má %1$d mýtné brány</item>
         <item quantity="other">Trasa má %1$d mýtných bran</item>
     </plurals>
+    <string name="maps_in_km_fraction">Za %1$s kilometru, %2$s</string>
+    <string name="maps_in_mi_fraction">Za %1$s míle, %2$s</string>
 </resources>

@@ -4646,4 +4646,6 @@
         <item quantity="one">Rutten har %1$d vägtull</item>
         <item quantity="other">Rutten har %1$d vägtullar</item>
     </plurals>
+    <string name="maps_in_km_fraction">Om %1$s kilometer, %2$s</string>
+    <string name="maps_in_mi_fraction">Om %1$s engelska mil, %2$s</string>
 </resources>

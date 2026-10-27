@@ -4848,4 +4848,6 @@
         <item quantity="many">Ir-rotta għandha %1$d punt tat-tariffa</item>
         <item quantity="other">Ir-rotta għandha %1$d punt tat-tariffa</item>
     </plurals>
+    <string name="maps_in_km_fraction">Wara %1$s kilometru, %2$s</string>
+    <string name="maps_in_mi_fraction">Wara %1$s mil, %2$s</string>
 </resources>

@@ -4747,4 +4747,6 @@
         <item quantity="many">O percurso tem %1$d portagens</item>
         <item quantity="other">O percurso tem %1$d portagens</item>
     </plurals>
+    <string name="maps_in_km_fraction">Dentro de %1$s quilómetros, %2$s</string>
+    <string name="maps_in_mi_fraction">Dentro de %1$s milhas, %2$s</string>
 </resources>

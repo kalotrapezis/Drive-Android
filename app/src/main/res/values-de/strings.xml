@@ -4646,4 +4646,6 @@
         <item quantity="one">Die Route hat %1$d Mautstelle</item>
         <item quantity="other">Die Route hat %1$d Mautstellen</item>
     </plurals>
+    <string name="maps_in_km_fraction">In %1$s Kilometern, %2$s</string>
+    <string name="maps_in_mi_fraction">In %1$s Meilen, %2$s</string>
 </resources>

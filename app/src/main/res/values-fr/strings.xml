@@ -4747,4 +4747,6 @@
         <item quantity="many">L’itinéraire comporte %1$d péages</item>
         <item quantity="other">L’itinéraire comporte %1$d péages</item>
     </plurals>
+    <string name="maps_in_km_fraction">Dans %1$s kilomètre, %2$s</string>
+    <string name="maps_in_mi_fraction">Dans %1$s mile, %2$s</string>
 </resources>

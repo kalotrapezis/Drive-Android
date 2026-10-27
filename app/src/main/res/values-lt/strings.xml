@@ -4848,4 +4848,6 @@
         <item quantity="many">Maršrute yra %1$d mokamo punkto</item>
         <item quantity="other">Maršrute yra %1$d mokamų punktų</item>
     </plurals>
+    <string name="maps_in_km_fraction">Po %1$s kilometro, %2$s</string>
+    <string name="maps_in_mi_fraction">Po %1$s mylios, %2$s</string>
 </resources>

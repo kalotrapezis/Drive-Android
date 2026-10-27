@@ -289,8 +289,8 @@ internal object MapsPrefs {
     fun inDistance(w: Words, metres: Double, car: Boolean, then: String): String {
         val (d, unit) = spokenDistance(metres, car, w.units)
         val id = when (unit) { "km" -> R.plurals.maps_in_km; "mi" -> R.plurals.maps_in_mi; "ft" -> R.plurals.maps_in_ft; "yd" -> R.plurals.maps_in_yd; else -> R.plurals.maps_in_m }
-        // shortcut: a half (1.5 km) takes the plural of 100, which is right in most languages but not Czech, Slovak, Polish or Lithuanian's fraction form; Android's plurals take whole numbers only
-        return w.q(id, if (d % 1.0 == 0.0) d.toInt() else 100, w.number(d), then)
+        // only kilometres and miles are said in halves
+        return w.measure(id, d, if (unit == "mi") R.string.maps_in_mi_fraction else R.string.maps_in_km_fraction, w.number(d), then)
     }
     fun sample(w: Words) = inDistance(w, 300.0, true, w.s(R.string.maps_sample_turn))
     /** Whether the phone's missing voice for [lang] is yet to be told: true once a language. */

@@ -4747,4 +4747,6 @@
         <item quantity="few">Ruta ima %1$d naplatne postaje</item>
         <item quantity="other">Ruta ima %1$d naplatnih postaja</item>
     </plurals>
+    <string name="maps_in_km_fraction">Za %1$s kilometara, %2$s</string>
+    <string name="maps_in_mi_fraction">Za %1$s milja, %2$s</string>
 </resources>

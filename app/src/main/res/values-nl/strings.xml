@@ -4646,4 +4646,6 @@
         <item quantity="one">De route heeft %1$d tolpoort</item>
         <item quantity="other">De route heeft %1$d tolpoorten</item>
     </plurals>
+    <string name="maps_in_km_fraction">Over %1$s kilometer, %2$s</string>
+    <string name="maps_in_mi_fraction">Over %1$s mijl, %2$s</string>
 </resources>

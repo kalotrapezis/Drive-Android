@@ -4747,4 +4747,6 @@
         <item quantity="many">La ruta tiene %1$d peajes</item>
         <item quantity="other">La ruta tiene %1$d peajes</item>
     </plurals>
+    <string name="maps_in_km_fraction">En %1$s kilómetros, %2$s</string>
+    <string name="maps_in_mi_fraction">En %1$s millas, %2$s</string>
 </resources>

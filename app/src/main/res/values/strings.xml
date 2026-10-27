@@ -4647,4 +4647,6 @@
         <item quantity="one">The route has %1$d toll</item>
         <item quantity="other">The route has %1$d tolls</item>
     </plurals>
+    <string name="maps_in_km_fraction">In %1$s kilometres, %2$s</string>
+    <string name="maps_in_mi_fraction">In %1$s miles, %2$s</string>
 </resources>

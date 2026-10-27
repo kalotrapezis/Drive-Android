@@ -6,7 +6,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * [Words] for JVM tests, which have no Android: Tetra's own string resources read from src/main/res/values(-[lang])/strings.xml,
- * filled in as Android fills them. A plural takes "one" for 1, else "other" — right for the languages tested here.
+ * filled in as Android fills them: a plural's item by CLDR's rules for the language (ICU, as Android's own), "other" when it has none.
  */
 internal fun testWords(lang: String, units: String = "metric"): Words {
     val names = (R.string::class.java.fields + R.plurals::class.java.fields).associate { it.getInt(null) to it.name }
@@ -24,6 +24,8 @@ internal fun testWords(lang: String, units: String = "metric"): Words {
     }
     val texts = read("values") + if (lang == "en") emptyMap() else read("values-$lang")
     val locale = Locale.forLanguageTag(lang)
+    val android = com.ibm.icu.text.PluralRules.forLocale(locale) // the resources' own locale, as getQuantityString picks
     return Words(lang, units, { id, a -> String.format(locale, texts.getValue(names.getValue(id)), *a) },
-        { id, n, a -> String.format(locale, texts.getValue(names.getValue(id) + if (n == 1) "#one" else "#other"), *a) })
+        { id, n, a -> val name = names.getValue(id); String.format(locale, (texts[name + "#" + android.select(n.toDouble())] ?: texts.getValue("$name#other")), *a) },
+        com.ibm.icu.text.PluralRules.forLocale(Words.pluralLocale(lang))::select)
 }

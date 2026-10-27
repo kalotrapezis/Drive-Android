@@ -4646,4 +4646,6 @@
         <item quantity="one">Маршрутът има %1$d пункт за такса</item>
         <item quantity="other">Маршрутът има %1$d пункта за такса</item>
     </plurals>
+    <string name="maps_in_km_fraction">След %1$s километра, %2$s</string>
+    <string name="maps_in_mi_fraction">След %1$s мили, %2$s</string>
 </resources>

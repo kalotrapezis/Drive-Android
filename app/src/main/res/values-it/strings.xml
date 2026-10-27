@@ -4646,4 +4646,6 @@
         <item quantity="one">Il percorso ha %1$d casello</item>
         <item quantity="other">Il percorso ha %1$d caselli</item>
     </plurals>
+    <string name="maps_in_km_fraction">Tra %1$s chilometri, %2$s</string>
+    <string name="maps_in_mi_fraction">Tra %1$s miglia, %2$s</string>
 </resources>

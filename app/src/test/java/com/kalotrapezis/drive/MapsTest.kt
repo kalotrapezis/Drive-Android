@@ -2,6 +2,7 @@ package com.kalotrapezis.drive
 
 import java.io.File
 import java.nio.file.Files
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -761,6 +762,45 @@ class MapsWordsTest {
         assertEquals("350 m", metresText(347.0, "metric"))
         // in another language too
         assertEquals("In 2 Meilen, x", MapsPrefs.inDistance(testWords("de", "us"), 3300.0, true, "x"))
+    }
+
+    /**
+     * A half (1.5 km) as each language says a fraction (the user, 27 Oct, approving the fix): CLDR's category for the real number
+     * by ICU — Czech, Slovak, Lithuanian "many", Polish "other", which no whole number has — and whole numbers as before.
+     */
+    @Test fun halves() {
+        fun say(lang: String, m: Double) = MapsPrefs.inDistance(testWords(lang), m, true, "x")
+        val want = mapOf(
+            "cs" to listOf("Za 1,5 kilometru, x", "Za 2 kilometry, x", "Za 5 kilometrů, x"),
+            "sk" to listOf("O 1,5 kilometra, x", "O 2 kilometre, x", "O 5 kilometrov, x"),
+            "pl" to listOf("Za 1,5 kilometra, x", "Za 2 kilometry, x", "Za 5 kilometrów, x"),
+            "lt" to listOf("Po 1,5 kilometro, x", "Po 2 kilometrų, x", "Po 5 kilometrų, x"),
+            "ro" to listOf("Peste 1,5 kilometri, x", "Peste 2 kilometri, x", "Peste 5 kilometri, x"),
+            "sl" to listOf("Čez 1,5 kilometre, x", "Čez 2 kilometra, x", "Čez 5 kilometrov, x"),
+            "fr" to listOf("Dans 1,5 kilomètre, x", "Dans 2 kilomètres, x", "Dans 5 kilomètres, x"),
+            "pt" to listOf("Dentro de 1,5 quilómetros, x", "Dentro de 2 quilómetros, x", "Dentro de 5 quilómetros, x"))
+        for ((lang, w) in want) assertEquals(lang, w, listOf(1400.0, 2000.0, 5000.0).map { say(lang, it) })
+        assertEquals("Za 2,5 kilometru, x", say("cs", 2600.0)); assertEquals("Za 1 kilometr, x", say("cs", 1000.0))
+        assertEquals("Za 1,5 mili, x", MapsPrefs.inDistance(testWords("pl", "uk"), 1.5 * MILE, true, "x"))
+    }
+
+    /** In all 24, a half's words are those of its CLDR category: the plural's own item, or the fraction string that has it. */
+    @Test fun halvesInEveryLanguage() {
+        for (lang in File("src/main/res").list()!!.filter { it.matches(Regex("values-[a-z]{2}")) }.map { it.removePrefix("values-") } + "en") {
+            val w = testWords(lang)
+            val rules = com.ibm.icu.text.PluralRules.forLocale(Words.pluralLocale(lang))
+            val xml = File("src/main/res/values${if (lang == "en") "" else "-$lang"}/strings.xml").readText()
+            fun item(unit: String, c: String) = Regex("""<plurals name="maps_in_$unit">(.*?)</plurals>""", RegexOption.DOT_MATCHES_ALL).find(xml)!!.groupValues[1]
+                .let { Regex("""<item quantity="$c">(.*?)</item>""").find(it)?.groupValues?.get(1) }
+            val miles = testWords(lang, "uk")
+            fun form(unit: String, x: Double): String {
+                val c = rules.select(x)
+                val f = item(unit, c) ?: error("$lang has no $c for $x $unit")
+                return String.format(Locale.forLanguageTag(lang), f.replace("\\'", "'"), w.number(x), "x")
+            }
+            for (x in listOf(1.5, 2.5, 5.5, 11.5, 21.5)) assertEquals("$lang $x km", form("km", x), MapsPrefs.inDistance(w, x * 1000, true, "x"))
+            for (x in listOf(0.5, 1.5, 2.5, 5.5)) assertEquals("$lang $x mi", form("mi", x), MapsPrefs.inDistance(miles, x * MILE, true, "x"))
+        }
     }
 
     /** Every language's warning fills in, and GraphHopper's words for it are its own (StringsTest checks every key is there). */

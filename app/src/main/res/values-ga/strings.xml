@@ -4949,4 +4949,6 @@
         <item quantity="many">Tá %1$d dola ar an mbealach</item>
         <item quantity="other">Tá %1$d dola ar an mbealach</item>
     </plurals>
+    <string name="maps_in_km_fraction">I gceann %1$s ciliméadar, %2$s</string>
+    <string name="maps_in_mi_fraction">I gceann %1$s míle, %2$s</string>
 </resources>

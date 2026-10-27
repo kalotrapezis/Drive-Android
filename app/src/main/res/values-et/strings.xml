@@ -4646,4 +4646,6 @@
         <item quantity="one">Marsruudil on %1$d teemaksupunkt</item>
         <item quantity="other">Marsruudil on %1$d teemaksupunkti</item>
     </plurals>
+    <string name="maps_in_km_fraction">%1$s kilomeetri pärast, %2$s</string>
+    <string name="maps_in_mi_fraction">%1$s miili pärast, %2$s</string>
 </resources>

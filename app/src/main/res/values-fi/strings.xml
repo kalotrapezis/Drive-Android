@@ -4646,4 +4646,6 @@
         <item quantity="one">Reitillä on %1$d tietulli</item>
         <item quantity="other">Reitillä on %1$d tietullia</item>
     </plurals>
+    <string name="maps_in_km_fraction">%1$s kilometrin päästä, %2$s</string>
+    <string name="maps_in_mi_fraction">%1$s mailin päästä, %2$s</string>
 </resources>

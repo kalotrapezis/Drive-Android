@@ -4646,4 +4646,6 @@
         <item quantity="one">Az útvonalon %1$d fizetőkapu van</item>
         <item quantity="other">Az útvonalon %1$d fizetőkapu van</item>
     </plurals>
+    <string name="maps_in_km_fraction">%1$s kilométer múlva, %2$s</string>
+    <string name="maps_in_mi_fraction">%1$s mérföld múlva, %2$s</string>
 </resources>

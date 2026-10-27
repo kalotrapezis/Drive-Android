@@ -4747,4 +4747,6 @@
         <item quantity="few">Traseul are %1$d bariere de taxare</item>
         <item quantity="other">Traseul are %1$d de bariere de taxare</item>
     </plurals>
+    <string name="maps_in_km_fraction">Peste %1$s kilometri, %2$s</string>
+    <string name="maps_in_mi_fraction">Peste %1$s mile, %2$s</string>
 </resources>

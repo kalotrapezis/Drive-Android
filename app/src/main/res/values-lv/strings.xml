@@ -4747,4 +4747,6 @@
         <item quantity="one">Maršrutā ir %1$d maksas punkts</item>
         <item quantity="other">Maršrutā ir %1$d maksas punkti</item>
     </plurals>
+    <string name="maps_in_km_fraction">Pēc %1$s kilometriem, %2$s</string>
+    <string name="maps_in_mi_fraction">Pēc %1$s jūdzēm, %2$s</string>
 </resources>

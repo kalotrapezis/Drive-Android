@@ -12,6 +12,10 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (directions-languages session, 27 Oct; branches `claude/reverent-lederberg-489439` here and `directions-languages` in Drive) **Maps' directions
+      in every language Tetra has** (the user: "Why it's only Greek? Isn't that an Android feature? It shouldn't be hard to be in all the
+      languages we have."): Tetra's own words into strings, GraphHopper asked in the chosen language, "Directions in" lists all 24, miles where
+      the country uses them, a plain notice when the phone has no voice for it.
 - [~] (call-speaker session, 27 Oct; branches `claude/frosty-jemison-a4b00a` here and `call-speaker` in Drive) **The computer's call bubble has a
       phone-speaker button** (the user: "the call pop up on the PC from the phone to have a speaker option so instead of hearing the call from
       bluetooth to my PC to hear it from the phone's speaker"). Bubble: a speaker icon (while Tetra is the phone app, as Mute/Hold) sends

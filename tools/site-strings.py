@@ -2,6 +2,7 @@
 """The site in another language is the English page with its words swapped, nothing else (docs/index.html → docs/<lang>.html).
   tools/site-strings.py extract              every phrase of docs/index.html, as a JSON list (to stdout)
   tools/site-strings.py apply <lang> <json>  docs/<lang>.html from a JSON object {English phrase: translation}
+                                             (each language's object is kept in tools/site-strings/<lang>.json)
 A phrase is the inside of a heading, paragraph, list item, question, label, tab or button line (it may hold <b>, <a>, <code>,
 <br>: keep them, translate the words around them) or an alt / aria-label / meta description. Apply also sets <html lang>,
 the language menu's current entry and its code, and refuses a phrase left out."""

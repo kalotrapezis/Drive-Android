@@ -21,6 +21,16 @@ How to write here:
       read 8 characters ("unspeaker" is 9). Both branches have main merged in; 670 Android unit / 162 desktop tests pass. **Not tried on
       the real phone + PC yet** (the phone was not on USB); not merged into main. Not done: the tablet's relayed call notification has
       no Speaker action.
+- [x] (phone-country session, 27 Oct; branches `claude/awesome-goldwasser-472e81` here and `phone-country` in Drive, not merged)
+      **A number without + or 00 is the phone's own country's, not Greek** (the user: "Greece is +30 or 0030. All the other
+      countries have their own codes. They are standard. Use them."). Android: libphonenumber 9.0.42 (Apache-2.0, 360 KB, the
+      release maps-phone.py reads) — `PhoneCountry.of` is the SIM's country, else the network's, else the system's;
+      `PhoneArea.of/place`, the spam list's ranges and CallInsider (Greek numbers only) read numbers in it: Mobile / Landline from
+      libphonenumber's types (a US number, either: its place or nothing), Abroad = another country than the SIM's; Germany's
+      0171… is +49171…, Italy's 06… keeps its 0, the US's 011 is its way out. The phone sends its country with each call's state;
+      the desktop (libphonenumber-js, MIT) keeps it as the phoneCountry setting, else the computer's locale, for its spam list.
+      Unit tests both sides. **Not tried on a device**: needs a call (or Recents) on the phone to see the labels and screening.
+      Left as it was: contacts still match by the last nine digits (no country in it); PDF › Redact's phone pattern is Greek.
 - [x] (phone-area-codes session, 27 Oct; merged into main) **The Phone names every landline's place from
       the installed maps** (the user: "could we take that into maps to get the codes for the map the user has installed?";
       "it has to be built side by side with map manager so with the map gets the numbers as well"): each map gets

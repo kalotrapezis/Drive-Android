@@ -83,41 +83,75 @@ internal object PhoneT9 {
 }
 
 /**
+ * The phone's own country (the user, 27 Oct: "Greece is +30 or 0030. All the other countries have their own codes"): a
+ * number written without + or 00 is read in it, with its calling code and trunk prefix (libphonenumber's metadata).
+ */
+internal object PhoneCountry {
+    private val util get() = com.google.i18n.phonenumbers.PhoneNumberUtil.getInstance()
+    @Volatile private var known: String? = null
+
+    /** The SIM's country ("GR"), else the network's, else the system's; read once. */
+    fun of(c: Context): String = known ?: c.getSystemService(android.telephony.TelephonyManager::class.java).let { tm ->
+        listOf(runCatching { tm?.simCountryIso }.getOrNull(), runCatching { tm?.networkCountryIso }.getOrNull(), java.util.Locale.getDefault().country)
+            .firstOrNull { !it.isNullOrEmpty() }.orEmpty().uppercase().also { if (it.isNotEmpty()) known = it }
+    }
+
+    /** The number, valid for libphonenumber, read in [region]; null for 112, a number half typed or not a number. */
+    fun parse(number: String, region: String) = runCatching { util.parse(number, region) }.getOrNull()?.takeIf { util.isValidNumber(it) }
+
+    /**
+     * A number or the start of one (a spam range's 69800) as + its country code and the rest: "6980012345", "00306980012345"
+     * and "+30 698 001 2345" alike in Greece; Germany's 0171… loses its trunk 0, Italy's 06… keeps its 0.
+     */
+    fun international(number: String, region: String): String {
+        val t = number.trim(); val d = t.filter(Char::isDigit)
+        parse(t, region)?.let { return "+${it.countryCode}${util.getNationalSignificantNumber(it)}" }
+        // the start of a range is too short to parse: its trunk prefix comes off by hand
+        val cc = util.getCountryCodeForRegion(region)
+        return when {
+            t.startsWith("+") -> "+$d"
+            t.startsWith("00") -> "+" + d.drop(2)
+            cc == 0 -> d
+            else -> "+$cc" + d.removePrefix(util.getNddPrefixForRegion(region, true).orEmpty())
+        }
+    }
+}
+
+/**
  * What an unknown number is: the place of its area code (Θεσσαλονίκη, …) from the installed maps' phone tables, else
- * Mobile, Landline or Abroad (the words' strings).
+ * Mobile, Landline or Abroad (the words' strings), in the phone's own country ([PhoneCountry]).
  */
 internal object PhoneArea {
     /** One map's <id>-phone.tsv (tools/maps-phone.py): its languages, en first, and prefix with the country code → a name in each. */
     class Table(val langs: List<String>, val names: Map<String, List<String>>)
     private var cache: Triple<Long, String, List<Table>>? = null
 
-    /** Mobile, Landline or Abroad; null for what is not a whole number (112, a number half typed). */
-    @androidx.annotation.StringRes fun of(number: String): Int? {
-        val n = number.filter { it.isDigit() || it == '+' }
-        val national = when {
-            n.startsWith("+30") -> n.drop(3)
-            n.startsWith("0030") -> n.drop(4)
-            n.startsWith("+") || n.startsWith("00") -> return R.string.phone_area_abroad
-            else -> n
+    /** Mobile, Landline or Abroad (another country than [region]'s); 0 for a number that may be either (the US's): its place or nothing; null for what is not a whole number. */
+    @androidx.annotation.StringRes fun of(number: String, region: String): Int? {
+        val util = com.google.i18n.phonenumbers.PhoneNumberUtil.getInstance()
+        val p = PhoneCountry.parse(number, region) ?: return null
+        if (util.getRegionCodeForNumber(p) != region) return R.string.phone_area_abroad
+        return when (util.getNumberType(p)) {
+            com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberType.MOBILE -> R.string.contacts_label_mobile
+            com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberType.FIXED_LINE -> R.string.phone_area_landline
+            com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberType.FIXED_LINE_OR_MOBILE -> 0
+            else -> null
         }
-        if (national.length != 10) return null
-        if (national.startsWith("69")) return R.string.contacts_label_mobile
-        return if (national.startsWith("2")) R.string.phone_area_landline else null
     }
 
     /** What [of] says, with a landline's or a foreign number's place when a table has it, in the app's language else English. */
     @androidx.compose.runtime.Composable fun label(number: String): String? {
-        val kind = of(number) ?: return null
+        val region = PhoneCountry.of(androidx.compose.ui.platform.LocalContext.current)
+        val kind = of(number, region) ?: return null
         val lang = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language
         val place = if (kind == R.string.contacts_label_mobile) null
-            else place(number, lang, tables(MapsFiles.root(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()))))
-        return place ?: androidx.compose.ui.res.stringResource(kind)
+            else place(number, region, lang, tables(MapsFiles.root(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()))))
+        return place ?: if (kind == 0) null else androidx.compose.ui.res.stringResource(kind)
     }
 
-    /** The longest prefix any table has. shortcut: a number without +/00 is taken as Greek (+30), as [of] does; the SIM's country when Tetra leaves Greece. */
-    fun place(number: String, lang: String, tables: List<Table>): String? {
-        val n = number.filter { it.isDigit() || it == '+' }
-        val digits = when { n.startsWith("+") -> n.drop(1); n.startsWith("00") -> n.drop(2); else -> "30$n" }
+    /** The longest prefix any table has, the number read in [region]. */
+    fun place(number: String, region: String, lang: String, tables: List<Table>): String? {
+        val digits = PhoneCountry.international(number, region).takeIf { it.startsWith("+") }?.drop(1) ?: return null
         for (len in minOf(digits.length, 12) downTo 1) for (t in tables) {
             val names = t.names[digits.take(len)] ?: continue
             return names.getOrNull(t.langs.indexOf(lang))?.ifEmpty { null } ?: names.firstOrNull()?.ifEmpty { null } ?: continue

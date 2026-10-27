@@ -99,6 +99,7 @@ dependencies {
     implementation("com.artifex.mupdf:fitz:1.28.5") // PDF: drawing (annotations too), editing, pages, forms (AGPL-3.0; Tetra is free software)
     implementation("com.github.adaptech-cz.Tesseract4Android:tesseract4android:4.8.0") // PDF › Recognize text: Greek and English OCR (Apache 2.0)
     implementation("org.dmfs:lib-recur:0.17.1") // Calendar: iCalendar RRULE repeats (Apache 2.0)
+    implementation("com.googlecode.libphonenumber:libphonenumber:9.0.42") // Phone: a number read in the SIM's country (Apache 2.0)
     // Maps: offline routing on the graph the computer builds (Apache 2.0). Only what reading a graph needs: Janino (run-time
     // bytecode, which Android cannot load — MapsRouting writes the custom models out), the OSM reader, XML and logback stay out.
     implementation("com.graphhopper:graphhopper-core:10.2") {

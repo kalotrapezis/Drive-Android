@@ -34,22 +34,60 @@ internal data class ToolResult(val forModel: String, val choices: List<Assistant
 internal data class AssistantReply(val text: String, val choices: List<AssistantChoice> = emptyList(), val call: PendingCall? = null,
     val images: List<File> = emptyList(), val open: File? = null)
 
+/**
+ * What a conversation has cost so far, in US dollars by Mistral's list prices (the user: "the bill came"; shown in the
+ * chat's top bar and on the live screen).
+ */
+internal class Bill {
+    @Volatile var usd = 0.0; private set
+    @Synchronized fun add(x: Double) { usd += x }
+    @Synchronized fun reset() { usd = 0.0 }
+    fun tokens(model: String, usage: JSONObject?) {
+        val (inPrice, outPrice) = TOKENS[model] ?: return
+        usage ?: return
+        add((usage.optLong("prompt_tokens") * inPrice + usage.optLong("completion_tokens") * outPrice) / 1e6)
+    }
+    fun minutes(model: String, seconds: Double) = add((PER_MINUTE[model] ?: 0.0) * seconds / 60)
+
+    companion object {
+        // shortcut: Mistral's list prices in $ as published Oct 2026 (tools' from price tables, not Mistral's page); update when they change
+        private val TOKENS = mapOf(Mistral.CHAT to (0.1 to 0.3), Mistral.BUILT_IN to (0.4 to 2.0))
+        private val PER_MINUTE = mapOf(Mistral.TRANSCRIBE to 0.004, Mistral.REALTIME to 0.006)
+        fun perMinute(model: String) = PER_MINUTE[model] ?: 0.0
+        val PER_CALL = mapOf("web_search" to 0.03, "image_generation" to 0.10)
+
+        /** "$0.0123": a cent's fractions while it is small. */
+        fun text(usd: Double) = if (usd < 1) "$%.4f".format(java.util.Locale.ROOT, usd) else "$%.2f".format(java.util.Locale.ROOT, usd)
+    }
+}
+
 /** Mistral's REST API; [http] posts a path and a body and answers the response's text (tests give their own). */
-internal class Mistral(private val http: (path: String, body: String) -> String) {
+internal class Mistral(private val http: (path: String, body: String) -> String, val bill: Bill = Bill()) {
     fun chat(messages: JSONArray, tools: JSONArray): JSONObject = JSONObject(http("/chat/completions", JSONObject()
         .put("model", CHAT).put("messages", messages).put("tools", tools).put("tool_choice", "auto").put("temperature", 0.2).toString()))
+        .also { bill.tokens(CHAT, it.optJSONObject("usage")) }
         .getJSONArray("choices").getJSONObject(0).getJSONObject("message")
 
     /** One stateless turn of the Conversations API with one of Mistral's own tools (web_search, image_generation). */
     fun conversation(input: String, tool: String, instructions: String): JSONArray = JSONObject(http("/conversations", JSONObject()
         .put("model", BUILT_IN).put("inputs", input).put("instructions", instructions).put("store", false)
-        .put("tools", JSONArray().put(JSONObject().put("type", tool))).toString())).getJSONArray("outputs")
+        .put("tools", JSONArray().put(JSONObject().put("type", tool))).toString()))
+        .also { bill.tokens(BUILT_IN, it.optJSONObject("usage")); bill.add(Bill.PER_CALL[tool] ?: 0.0) }
+        .getJSONArray("outputs")
 
     companion object {
         const val API = "https://api.mistral.ai/v1"
         const val CHAT = "mistral-small-latest"
         const val BUILT_IN = "mistral-medium-latest" // the model Mistral's web search and image examples use
         const val TRANSCRIBE = "voxtral-small-transcribe-3"
+        const val REALTIME = "voxtral-mini-transcribe-realtime-3"
+
+        /**
+         * Voxtral's context_bias from "My words" (comma-separated, Settings › AI Assist) and the extra names: at most 100 terms,
+         * as Voxtral takes (the VOICE app's terms()).
+         */
+        fun terms(words: String, more: List<String> = emptyList()): List<String> =
+            (words.split(',') + more).map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(100)
 
         /** A conversation's last answer: its text pieces joined, the sources' titles and links, the files it made. */
         fun output(outputs: JSONArray): Triple<String, List<String>, List<String>> {
@@ -294,6 +332,7 @@ internal class AssistantChat(private val api: Mistral, private val tools: Assist
     private val now: () -> ZonedDateTime = { ZonedDateTime.now() }) {
     private val messages = mutableListOf<JSONObject>()
     private var lastAt = 0L
+    val bill get() = api.bill
 
     fun ask(text: String, at: Long = System.currentTimeMillis()): AssistantReply {
         if (at - lastAt > forgetMs) messages.clear()
@@ -319,7 +358,7 @@ internal class AssistantChat(private val api: Mistral, private val tools: Assist
         return AssistantReply("", choices, call, images, open)
     }
 
-    fun clear() = messages.clear()
+    fun clear() { messages.clear(); bill.reset() }
 
     companion object {
         const val ROUNDS = 5 // tool rounds in one turn at most: find, then act, with room to spare

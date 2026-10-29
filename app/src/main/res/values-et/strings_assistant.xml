@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Assistent</string>
-    <string name="home_label_assistant">Tetra Assistent</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Küsi või ütle: kalender, taimerid, märkmed, kõned</string>
     <string name="settings_assistant_summary">Mistrali võti, vaikeassistent</string>
     <string name="assistant_hint">Küsi mida tahes</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Muu rakendus</string>
     <string name="assistant_choose">Vali</string>
-    <string name="assistant_default_note">Vali Tetra digitaalse assistendi rakenduseks. Seejärel hoia all toitenuppu, libista alumisest nurgast üles või hoia all Home: Tetra hakkab kohe kuulama ja vastab, kui oled rääkimise lõpetanud. Kui telefon hoiab toitenuppu Google\'i jaoks, lülita jaotises Välimus › Rakenduste ikoonid sisse Tetra Assistent ja kasuta selle ikooni.</string>
+    <string name="assistant_default_note">Vali Tetra digitaalse assistendi rakenduseks. Seejärel hoia all toitenuppu, libista alumisest nurgast üles või hoia all Home: Tetra hakkab kohe kuulama ja vastab, kui oled rääkimise lõpetanud. Kui telefon hoiab toitenuppu Google\'i jaoks, lülita jaotises Välimus › Rakenduste ikoonid sisse AI Assist ja kasuta selle ikooni.</string>
     <string name="assistant_open">Ava assistent</string>
     <string name="assistant_offline">Internetiühendust pole.</string>
-    <string name="assistant_bad_key">Mistrali võti on vale. Kontrolli seda jaotises Seaded › Assistent.</string>
+    <string name="assistant_bad_key">Mistrali võti on vale. Kontrolli seda jaotises Seaded › AI Assist.</string>
     <string name="assistant_busy">Mistral on hõivatud või võtmel pole enam krediiti. Proovi minuti pärast uuesti.</string>
     <string name="assistant_server">Mistral vastas veaga (%1$d).</string>
-    <string name="assistant_no_key">Lisa kõigepealt oma Mistrali API võti: Seaded › Assistent.</string>
+    <string name="assistant_no_key">Lisa kõigepealt oma Mistrali API võti: Seaded › AI Assist.</string>
+    <string name="assistant_words">Minu sõnad</string>
+    <string name="assistant_words_note">Nimed ja sõnad, mida transkriptsioon peab õigesti kirjutama, komadega eraldatult. Need saadetakse Mistralile koos iga salvestusega.</string>
+    <string name="assistant_contact_words">Lisa minu lemmikkontaktide nimed</string>
+    <string name="assistant_contact_words_note">Kuni 50 lemmikut, et \"helista …\" saaks nime õigesti. Neid nimesid saadetakse seejärel Mistralile koos iga salvestusega.</string>
+    <string name="assistant_live">Otse</string>
+    <string name="assistant_live_end">Lõpeta otse</string>
+    <string name="assistant_live_connecting">Ühendan…</string>
+    <string name="assistant_live_silence">Otsevestlus lõppes 20 sekundi vaikuse järel.</string>
+    <string name="assistant_live_cap">Otsevestlus lõppes 5 minuti järel.</string>
+    <string name="assistant_you">Sina</string>
 </resources>

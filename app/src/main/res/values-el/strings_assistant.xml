@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Βοηθός</string>
-    <string name="home_label_assistant">Tetra Βοηθός</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Ρώτα ή πες το: ημερολόγιο, χρονόμετρα, σημειώσεις, κλήσεις</string>
     <string name="settings_assistant_summary">Κλειδί Mistral, προεπιλεγμένος βοηθός</string>
     <string name="assistant_hint">Ρώτα ό,τι θέλεις</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Άλλη εφαρμογή</string>
     <string name="assistant_choose">Επιλογή</string>
-    <string name="assistant_default_note">Διάλεξε το Tetra ως εφαρμογή ψηφιακού βοηθού. Μετά κράτα πατημένο το κουμπί λειτουργίας, σύρε προς τα πάνω από μια κάτω γωνία ή κράτα το Home: το Tetra ακούει αμέσως και απαντά όταν σταματήσεις να μιλάς. Αν το κινητό κρατά το κουμπί λειτουργίας για τη Google, άνοιξε το Tetra Βοηθός στο Εμφάνιση › Εικονίδια εφαρμογών και πάτα το εικονίδιό του.</string>
+    <string name="assistant_default_note">Διάλεξε το Tetra ως εφαρμογή ψηφιακού βοηθού. Μετά κράτα πατημένο το κουμπί λειτουργίας, σύρε προς τα πάνω από μια κάτω γωνία ή κράτα το Home: το Tetra ακούει αμέσως και απαντά όταν σταματήσεις να μιλάς. Αν το κινητό κρατά το κουμπί λειτουργίας για τη Google, άνοιξε το AI Assist στο Εμφάνιση › Εικονίδια εφαρμογών και πάτα το εικονίδιό του.</string>
     <string name="assistant_open">Άνοιγμα του βοηθού</string>
     <string name="assistant_offline">Δεν υπάρχει σύνδεση στο διαδίκτυο.</string>
-    <string name="assistant_bad_key">Λάθος κλειδί Mistral. Έλεγξέ το στις Ρυθμίσεις › Βοηθός.</string>
+    <string name="assistant_bad_key">Λάθος κλειδί Mistral. Έλεγξέ το στις Ρυθμίσεις › AI Assist.</string>
     <string name="assistant_busy">Η Mistral είναι απασχολημένη ή το κλειδί δεν έχει άλλη πίστωση. Δοκίμασε ξανά σε ένα λεπτό.</string>
     <string name="assistant_server">Η Mistral απάντησε με σφάλμα (%1$d).</string>
-    <string name="assistant_no_key">Πρόσθεσε πρώτα το κλειδί API της Mistral: Ρυθμίσεις › Βοηθός.</string>
+    <string name="assistant_no_key">Πρόσθεσε πρώτα το κλειδί API της Mistral: Ρυθμίσεις › AI Assist.</string>
+    <string name="assistant_words">Οι λέξεις μου</string>
+    <string name="assistant_words_note">Ονόματα και λέξεις που η απομαγνητοφώνηση πρέπει να γράφει σωστά, χωρισμένα με κόμμα. Στέλνονται στη Mistral με κάθε ηχογράφηση.</string>
+    <string name="assistant_contact_words">Πρόσθεσε τα ονόματα των αγαπημένων επαφών μου</string>
+    <string name="assistant_contact_words_note">Έως 50 αγαπημένες, για να γράφεται σωστά το όνομα στο «πάρε τηλέφωνο …». Τα ονόματα αυτά στέλνονται τότε στη Mistral με κάθε ηχογράφηση.</string>
+    <string name="assistant_live">Ζωντανά</string>
+    <string name="assistant_live_end">Τέλος ζωντανής συζήτησης</string>
+    <string name="assistant_live_connecting">Σύνδεση…</string>
+    <string name="assistant_live_silence">Η ζωντανή συζήτηση έκλεισε μετά από 20 δευτερόλεπτα σιωπής.</string>
+    <string name="assistant_live_cap">Η ζωντανή συζήτηση έκλεισε στα 5 λεπτά.</string>
+    <string name="assistant_you">Εσύ</string>
 </resources>

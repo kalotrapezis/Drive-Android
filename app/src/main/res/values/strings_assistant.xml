@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Tetra Assistant (Assistant.kt, AssistantScreen.kt) -->
+<!-- AI Assist (Assistant.kt, AssistantScreen.kt) -->
 <resources>
-    <string name="app_assistant">Assistant</string>
-    <string name="home_label_assistant">Tetra Assistant</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Ask, or say it: calendar, timers, notes, calls</string>
     <string name="settings_assistant_summary">Mistral key, default assistant</string>
     <string name="assistant_hint">Ask anything</string>
@@ -26,11 +26,22 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Another app</string>
     <string name="assistant_choose">Choose</string>
-    <string name="assistant_default_note">Choose Tetra as the digital assistant app. Then hold the power button, swipe up from a bottom corner or hold Home: Tetra listens at once and answers when you stop talking. If your phone keeps the power button for Google, turn on Tetra Assistant in Appearance › App icons and use its icon.</string>
+    <string name="assistant_default_note">Choose Tetra as the digital assistant app. Then hold the power button, swipe up from a bottom corner or hold Home: Tetra listens at once and answers when you stop talking. If your phone keeps the power button for Google, turn on AI Assist in Appearance › App icons and use its icon.</string>
     <string name="assistant_open">Open the assistant</string>
     <string name="assistant_offline">No internet connection.</string>
-    <string name="assistant_bad_key">The Mistral key is wrong. Check it in Settings › Assistant.</string>
+    <string name="assistant_bad_key">The Mistral key is wrong. Check it in Settings › AI Assist.</string>
     <string name="assistant_busy">Mistral is busy, or the key has no credit left. Try again in a minute.</string>
     <string name="assistant_server">Mistral answered with an error (%1$d).</string>
-    <string name="assistant_no_key">Add your Mistral API key first: Settings › Assistant.</string>
+    <string name="assistant_no_key">Add your Mistral API key first: Settings › AI Assist.</string>
+    <string name="assistant_words">My words</string>
+    <string name="assistant_words_note">Names and words the transcription should spell right, separated by commas. They are sent to Mistral with each recording.</string>
+    <string name="assistant_contact_words">Add my favourite contacts\' names</string>
+    <string name="assistant_contact_words_note">Up to 50 favourites, so that \"call …\" gets the name right. These names are then sent to Mistral with each recording.</string>
+    <string name="assistant_live">Live</string>
+    <string name="assistant_live_end">End live</string>
+    <string name="assistant_live_connecting">Connecting…</string>
+    <string name="assistant_live_silence">Live ended after 20 seconds of silence.</string>
+    <string name="assistant_live_cap">Live ended at 5 minutes.</string>
+    <string name="assistant_you">You</string>
+    <string name="assistant_ai" translatable="false">AI</string>
 </resources>

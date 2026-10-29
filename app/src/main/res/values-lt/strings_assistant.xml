@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Asistentas</string>
-    <string name="home_label_assistant">Tetra Asistentas</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Paklausk arba pasakyk: kalendorius, laikmačiai, užrašai, skambučiai</string>
     <string name="settings_assistant_summary">Mistral raktas, numatytasis asistentas</string>
     <string name="assistant_hint">Klausk bet ko</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Kita programa</string>
     <string name="assistant_choose">Pasirinkti</string>
-    <string name="assistant_default_note">Pasirink Tetra kaip skaitmeninio asistento programą. Tada palaikyk paspaudęs maitinimo mygtuką, perbrauk aukštyn iš apatinio kampo arba palaikyk Home: Tetra klauso iškart ir atsako, kai nustoji kalbėti. Jei telefonas maitinimo mygtuką rezervuoja Google, įjunk Tetra Asistentas skiltyje Išvaizda › Programų piktogramos ir naudok jo piktogramą.</string>
+    <string name="assistant_default_note">Pasirink Tetra kaip skaitmeninio asistento programą. Tada palaikyk paspaudęs maitinimo mygtuką, perbrauk aukštyn iš apatinio kampo arba palaikyk Home: Tetra klauso iškart ir atsako, kai nustoji kalbėti. Jei telefonas maitinimo mygtuką rezervuoja Google, įjunk AI Assist skiltyje Išvaizda › Programų piktogramos ir naudok jo piktogramą.</string>
     <string name="assistant_open">Atidaryti asistentą</string>
     <string name="assistant_offline">Nėra interneto ryšio.</string>
-    <string name="assistant_bad_key">Mistral raktas neteisingas. Patikrink jį skiltyje Nustatymai › Asistentas.</string>
+    <string name="assistant_bad_key">Mistral raktas neteisingas. Patikrink jį skiltyje Nustatymai › AI Assist.</string>
     <string name="assistant_busy">Mistral užimtas arba rakte nebėra kredito. Pabandyk dar kartą po minutės.</string>
     <string name="assistant_server">Mistral atsakė klaida (%1$d).</string>
-    <string name="assistant_no_key">Pirmiausia pridėk savo Mistral API raktą: Nustatymai › Asistentas.</string>
+    <string name="assistant_no_key">Pirmiausia pridėk savo Mistral API raktą: Nustatymai › AI Assist.</string>
+    <string name="assistant_words">Mano žodžiai</string>
+    <string name="assistant_words_note">Vardai ir žodžiai, kuriuos transkripcija turi parašyti teisingai, atskirti kableliais. Jie siunčiami Mistral su kiekvienu įrašu.</string>
+    <string name="assistant_contact_words">Pridėk mano mėgstamiausių kontaktų vardus</string>
+    <string name="assistant_contact_words_note">Iki 50 mėgstamiausių, kad \"paskambink …\" teisingai atpažintų vardą. Šie vardai tada siunčiami Mistral su kiekvienu įrašu.</string>
+    <string name="assistant_live">Gyvai</string>
+    <string name="assistant_live_end">Baigti gyvai</string>
+    <string name="assistant_live_connecting">Jungiamasi…</string>
+    <string name="assistant_live_silence">Pokalbis gyvai baigėsi po 20 sekundžių tylos.</string>
+    <string name="assistant_live_cap">Pokalbis gyvai baigėsi po 5 minučių.</string>
+    <string name="assistant_you">Tu</string>
 </resources>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Avustaja</string>
-    <string name="home_label_assistant">Tetra Avustaja</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Kysy tai sano: kalenteri, ajastimet, muistiinpanot, puhelut</string>
     <string name="settings_assistant_summary">Mistral-avain, oletusavustaja</string>
     <string name="assistant_hint">Kysy mitä vain</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Toinen sovellus</string>
     <string name="assistant_choose">Valitse</string>
-    <string name="assistant_default_note">Valitse Tetra digitaaliseksi avustajasovellukseksi. Pidä sitten virtapainiketta painettuna, pyyhkäise ylös alakulmasta tai pidä Home painettuna: Tetra alkaa kuunnella heti ja vastaa, kun lopetat puhumisen. Jos puhelimesi varaa virtapainikkeen Googlelle, ota Tetra Avustaja käyttöön kohdassa Ulkoasu › Sovelluskuvakkeet ja käytä sen kuvaketta.</string>
+    <string name="assistant_default_note">Valitse Tetra digitaaliseksi avustajasovellukseksi. Pidä sitten virtapainiketta painettuna, pyyhkäise ylös alakulmasta tai pidä Home painettuna: Tetra alkaa kuunnella heti ja vastaa, kun lopetat puhumisen. Jos puhelimesi varaa virtapainikkeen Googlelle, ota AI Assist käyttöön kohdassa Ulkoasu › Sovelluskuvakkeet ja käytä sen kuvaketta.</string>
     <string name="assistant_open">Avaa avustaja</string>
     <string name="assistant_offline">Ei internetyhteyttä.</string>
-    <string name="assistant_bad_key">Mistral-avain on väärä. Tarkista se kohdassa Asetukset › Avustaja.</string>
+    <string name="assistant_bad_key">Mistral-avain on väärä. Tarkista se kohdassa Asetukset › AI Assist.</string>
     <string name="assistant_busy">Mistral on kiireinen tai avaimen krediitti on loppu. Yritä uudelleen minuutin kuluttua.</string>
     <string name="assistant_server">Mistral vastasi virheellä (%1$d).</string>
-    <string name="assistant_no_key">Lisää ensin Mistral-API-avaimesi: Asetukset › Avustaja.</string>
+    <string name="assistant_no_key">Lisää ensin Mistral-API-avaimesi: Asetukset › AI Assist.</string>
+    <string name="assistant_words">Omat sanani</string>
+    <string name="assistant_words_note">Nimet ja sanat, jotka litteroinnin pitää kirjoittaa oikein, pilkuilla erotettuina. Ne lähetetään Mistralille jokaisen äänityksen mukana.</string>
+    <string name="assistant_contact_words">Lisää suosikkiyhteystietojeni nimet</string>
+    <string name="assistant_contact_words_note">Enintään 50 suosikkia, jotta \"soita …\" tunnistaa nimen oikein. Nämä nimet lähetetään sitten Mistralille jokaisen äänityksen mukana.</string>
+    <string name="assistant_live">Suora</string>
+    <string name="assistant_live_end">Lopeta suora</string>
+    <string name="assistant_live_connecting">Yhdistetään…</string>
+    <string name="assistant_live_silence">Suora keskustelu päättyi 20 sekunnin hiljaisuuden jälkeen.</string>
+    <string name="assistant_live_cap">Suora keskustelu päättyi 5 minuutin kohdalla.</string>
+    <string name="assistant_you">Sinä</string>
 </resources>

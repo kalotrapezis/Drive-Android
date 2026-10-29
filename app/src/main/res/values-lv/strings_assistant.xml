@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Asistents</string>
-    <string name="home_label_assistant">Tetra Asistents</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Jautā vai pasaki: kalendārs, taimeri, piezīmes, zvani</string>
     <string name="settings_assistant_summary">Mistral atslēga, noklusējuma asistents</string>
     <string name="assistant_hint">Jautā, ko vien vēlies</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Cita lietotne</string>
     <string name="assistant_choose">Izvēlēties</string>
-    <string name="assistant_default_note">Izvēlies Tetra kā digitālā asistenta lietotni. Pēc tam turi nospiestu barošanas pogu, velc uz augšu no apakšējā stūra vai turi nospiestu Home: Tetra klausās uzreiz un atbild, kad beidz runāt. Ja tavs tālrunis barošanas pogu rezervē Google, ieslēdz Tetra Asistents sadaļā Izskats › Lietotņu ikonas un izmanto tā ikonu.</string>
+    <string name="assistant_default_note">Izvēlies Tetra kā digitālā asistenta lietotni. Pēc tam turi nospiestu barošanas pogu, velc uz augšu no apakšējā stūra vai turi nospiestu Home: Tetra klausās uzreiz un atbild, kad beidz runāt. Ja tavs tālrunis barošanas pogu rezervē Google, ieslēdz AI Assist sadaļā Izskats › Lietotņu ikonas un izmanto tā ikonu.</string>
     <string name="assistant_open">Atvērt asistentu</string>
     <string name="assistant_offline">Nav interneta savienojuma.</string>
-    <string name="assistant_bad_key">Mistral atslēga ir nepareiza. Pārbaudi to sadaļā Iestatījumi › Asistents.</string>
+    <string name="assistant_bad_key">Mistral atslēga ir nepareiza. Pārbaudi to sadaļā Iestatījumi › AI Assist.</string>
     <string name="assistant_busy">Mistral ir aizņemts, vai atslēgai vairs nav kredīta. Mēģini vēlreiz pēc minūtes.</string>
     <string name="assistant_server">Mistral atbildēja ar kļūdu (%1$d).</string>
-    <string name="assistant_no_key">Vispirms pievieno savu Mistral API atslēgu: Iestatījumi › Asistents.</string>
+    <string name="assistant_no_key">Vispirms pievieno savu Mistral API atslēgu: Iestatījumi › AI Assist.</string>
+    <string name="assistant_words">Mani vārdi</string>
+    <string name="assistant_words_note">Vārdi un nosaukumi, kas transkripcijai jāraksta pareizi, atdalīti ar komatiem. Tie tiek nosūtīti Mistral kopā ar katru ierakstu.</string>
+    <string name="assistant_contact_words">Pievieno manu iecienīto kontaktpersonu vārdus</string>
+    <string name="assistant_contact_words_note">Līdz 50 iecienītajiem, lai \"zvani …\" pareizi atpazītu vārdu. Šie vārdi pēc tam tiek nosūtīti Mistral kopā ar katru ierakstu.</string>
+    <string name="assistant_live">Tiešraide</string>
+    <string name="assistant_live_end">Beigt tiešraidi</string>
+    <string name="assistant_live_connecting">Savienojas…</string>
+    <string name="assistant_live_silence">Tiešraide beidzās pēc 20 sekunžu klusuma.</string>
+    <string name="assistant_live_cap">Tiešraide beidzās pēc 5 minūtēm.</string>
+    <string name="assistant_you">Tu</string>
 </resources>

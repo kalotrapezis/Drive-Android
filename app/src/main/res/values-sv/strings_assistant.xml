@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Assistent</string>
-    <string name="home_label_assistant">Tetra Assistent</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Fråga eller säg det: kalender, timers, anteckningar, samtal</string>
     <string name="settings_assistant_summary">Mistral-nyckel, standardassistent</string>
     <string name="assistant_hint">Fråga vad som helst</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">En annan app</string>
     <string name="assistant_choose">Välj</string>
-    <string name="assistant_default_note">Välj Tetra som app för digital assistent. Håll sedan in strömknappen, svep uppåt från ett nedre hörn eller håll in Home: Tetra lyssnar direkt och svarar när du slutar prata. Om din telefon reserverar strömknappen för Google, slå på Tetra Assistent under Utseende › Appikoner och använd dess ikon.</string>
+    <string name="assistant_default_note">Välj Tetra som app för digital assistent. Håll sedan in strömknappen, svep uppåt från ett nedre hörn eller håll in Home: Tetra lyssnar direkt och svarar när du slutar prata. Om din telefon reserverar strömknappen för Google, slå på AI Assist under Utseende › Appikoner och använd dess ikon.</string>
     <string name="assistant_open">Öppna assistenten</string>
     <string name="assistant_offline">Ingen internetanslutning.</string>
-    <string name="assistant_bad_key">Mistral-nyckeln är fel. Kontrollera den i Inställningar › Assistent.</string>
+    <string name="assistant_bad_key">Mistral-nyckeln är fel. Kontrollera den i Inställningar › AI Assist.</string>
     <string name="assistant_busy">Mistral är upptagen, eller så har nyckeln slut på kredit. Försök igen om en minut.</string>
     <string name="assistant_server">Mistral svarade med ett fel (%1$d).</string>
-    <string name="assistant_no_key">Lägg först till din API-nyckel för Mistral: Inställningar › Assistent.</string>
+    <string name="assistant_no_key">Lägg först till din API-nyckel för Mistral: Inställningar › AI Assist.</string>
+    <string name="assistant_words">Mina ord</string>
+    <string name="assistant_words_note">Namn och ord som transkriptionen ska stava rätt, åtskilda med kommatecken. De skickas till Mistral med varje inspelning.</string>
+    <string name="assistant_contact_words">Lägg till namnen på mina favoritkontakter</string>
+    <string name="assistant_contact_words_note">Upp till 50 favoriter, så att \"ring …\" får namnet rätt. Dessa namn skickas sedan till Mistral med varje inspelning.</string>
+    <string name="assistant_live">Live</string>
+    <string name="assistant_live_end">Avsluta live</string>
+    <string name="assistant_live_connecting">Ansluter…</string>
+    <string name="assistant_live_silence">Live avslutades efter 20 sekunders tystnad.</string>
+    <string name="assistant_live_cap">Live avslutades efter 5 minuter.</string>
+    <string name="assistant_you">Du</string>
 </resources>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Assistent</string>
-    <string name="home_label_assistant">Tetra Assistent</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Staqsi jew għidha: kalendarju, timers, noti, sejħiet</string>
     <string name="settings_assistant_summary">Ċavetta ta\' Mistral, assistent predefinit</string>
     <string name="assistant_hint">Staqsi kull ma tixtieq</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">App oħra</string>
     <string name="assistant_choose">Agħżel</string>
-    <string name="assistant_default_note">Agħżel Tetra bħala l-app tal-assistent diġitali. Imbagħad żomm il-buttuna tal-power, ċaqlaq \'il fuq minn kantuniera t\'isfel jew żomm Home: Tetra tisma\' minnufih u twieġeb meta tieqaf titkellem. Jekk it-telefon tiegħek iżomm il-buttuna tal-power għal Google, ixgħel Tetra Assistent f\'Dehra › Ikoni tal-applikazzjonijiet u uża l-ikona tiegħu.</string>
+    <string name="assistant_default_note">Agħżel Tetra bħala l-app tal-assistent diġitali. Imbagħad żomm il-buttuna tal-power, ċaqlaq \'il fuq minn kantuniera t\'isfel jew żomm Home: Tetra tisma\' minnufih u twieġeb meta tieqaf titkellem. Jekk it-telefon tiegħek iżomm il-buttuna tal-power għal Google, ixgħel AI Assist f\'Dehra › Ikoni tal-applikazzjonijiet u uża l-ikona tiegħu.</string>
     <string name="assistant_open">Iftaħ l-assistent</string>
     <string name="assistant_offline">M\'hemm l-ebda konnessjoni mal-internet.</string>
-    <string name="assistant_bad_key">Iċ-ċavetta ta\' Mistral hija ħażina. Iċċekkja f\'Settings › Assistent.</string>
+    <string name="assistant_bad_key">Iċ-ċavetta ta\' Mistral hija ħażina. Iċċekkja f\'Settings › AI Assist.</string>
     <string name="assistant_busy">Mistral huwa okkupat, jew iċ-ċavetta m\'għandhiex kreditu. Erġa\' pprova f\'minuta.</string>
     <string name="assistant_server">Mistral wieġeb b\'żball (%1$d).</string>
-    <string name="assistant_no_key">Żid l-ewwel iċ-ċavetta API ta\' Mistral tiegħek: Settings › Assistent.</string>
+    <string name="assistant_no_key">Żid l-ewwel iċ-ċavetta API ta\' Mistral tiegħek: Settings › AI Assist.</string>
+    <string name="assistant_words">Kliemi tiegħi</string>
+    <string name="assistant_words_note">Ismijiet u kliem li t-traskrizzjoni jrid jikteb sew, separati b\'virgoli. Jintbagħtu lil Mistral ma\' kull reġistrazzjoni.</string>
+    <string name="assistant_contact_words">Żid l-ismijiet tal-kuntatti favoriti tiegħi</string>
+    <string name="assistant_contact_words_note">Sa 50 favorit, biex \"ċempel lil …\" jieħu l-isem sew. Dawn l-ismijiet imbagħad jintbagħtu lil Mistral ma\' kull reġistrazzjoni.</string>
+    <string name="assistant_live">Live</string>
+    <string name="assistant_live_end">Waqqaf il-live</string>
+    <string name="assistant_live_connecting">Qed titqabbad…</string>
+    <string name="assistant_live_silence">Il-live spiċċa wara 20 sekonda ta\' skiet.</string>
+    <string name="assistant_live_cap">Il-live spiċċa wara 5 minuti.</string>
+    <string name="assistant_you">Int</string>
 </resources>

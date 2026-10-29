@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Pomočnik</string>
-    <string name="home_label_assistant">Tetra Pomočnik</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Vprašaj ali povej: koledar, časovniki, zapiski, klici</string>
     <string name="settings_assistant_summary">Ključ Mistral, privzeti pomočnik</string>
     <string name="assistant_hint">Vprašaj karkoli</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Druga aplikacija</string>
     <string name="assistant_choose">Izberi</string>
-    <string name="assistant_default_note">Izberi Tetra kot aplikacijo digitalnega pomočnika. Nato pridrži gumb za vklop, podrsaj navzgor iz spodnjega kota ali pridrži Home: Tetra posluša takoj in odgovori, ko nehaš govoriti. Če tvoj telefon gumb za vklop rezervira za Google, vklopi Tetra Pomočnik v Videz › Ikone aplikacij in uporabi njegovo ikono.</string>
+    <string name="assistant_default_note">Izberi Tetra kot aplikacijo digitalnega pomočnika. Nato pridrži gumb za vklop, podrsaj navzgor iz spodnjega kota ali pridrži Home: Tetra posluša takoj in odgovori, ko nehaš govoriti. Če tvoj telefon gumb za vklop rezervira za Google, vklopi AI Assist v Videz › Ikone aplikacij in uporabi njegovo ikono.</string>
     <string name="assistant_open">Odpri pomočnika</string>
     <string name="assistant_offline">Ni internetne povezave.</string>
-    <string name="assistant_bad_key">Ključ Mistral je napačen. Preveri ga v Nastavitve › Pomočnik.</string>
+    <string name="assistant_bad_key">Ključ Mistral je napačen. Preveri ga v Nastavitve › AI Assist.</string>
     <string name="assistant_busy">Mistral je zaseden ali pa ključ nima več kredita. Poskusi znova čez minuto.</string>
     <string name="assistant_server">Mistral je odgovoril z napako (%1$d).</string>
-    <string name="assistant_no_key">Najprej dodaj svoj ključ API za Mistral: Nastavitve › Pomočnik.</string>
+    <string name="assistant_no_key">Najprej dodaj svoj ključ API za Mistral: Nastavitve › AI Assist.</string>
+    <string name="assistant_words">Moje besede</string>
+    <string name="assistant_words_note">Imena in besede, ki jih mora prepis zapisati pravilno, ločena z vejicami. Pošiljajo se Mistral z vsakim posnetkom.</string>
+    <string name="assistant_contact_words">Dodaj imena mojih priljubljenih stikov</string>
+    <string name="assistant_contact_words_note">Do 50 priljubljenih, da bo \"pokliči …\" ime zapisalo pravilno. Ta imena se nato pošljejo Mistral z vsakim posnetkom.</string>
+    <string name="assistant_live">V živo</string>
+    <string name="assistant_live_end">Končaj v živo</string>
+    <string name="assistant_live_connecting">Povezovanje…</string>
+    <string name="assistant_live_silence">Pogovor v živo se je končal po 20 sekundah tišine.</string>
+    <string name="assistant_live_cap">Pogovor v živo se je končal po 5 minutah.</string>
+    <string name="assistant_you">Ti</string>
 </resources>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Cúntóir</string>
-    <string name="home_label_assistant">Tetra Cúntóir</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Fiafraigh nó abair é: féilire, amadóirí, nótaí, glaonna</string>
     <string name="settings_assistant_summary">Eochair Mistral, cúntóir réamhshocraithe</string>
     <string name="assistant_hint">Fiafraigh de rud ar bith</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Aip eile</string>
     <string name="assistant_choose">Roghnaigh</string>
-    <string name="assistant_default_note">Roghnaigh Tetra mar aip an chúntóra dhigitigh. Ansin coinnigh an cnaipe cumhachta síos, svaidhpeáil aníos ó choirnéal íochtair nó coinnigh Home síos: éisteann Tetra láithreach agus freagraíonn sé nuair a stopann tú ag caint. Má choinníonn do fhón an cnaipe cumhachta do Google, cuir Tetra Cúntóir air faoi Cuma › Deilbhíní aipe agus úsáid a dheilbhín.</string>
+    <string name="assistant_default_note">Roghnaigh Tetra mar aip an chúntóra dhigitigh. Ansin coinnigh an cnaipe cumhachta síos, svaidhpeáil aníos ó choirnéal íochtair nó coinnigh Home síos: éisteann Tetra láithreach agus freagraíonn sé nuair a stopann tú ag caint. Má choinníonn do fhón an cnaipe cumhachta do Google, cuir AI Assist air faoi Cuma › Deilbhíní aipe agus úsáid a dheilbhín.</string>
     <string name="assistant_open">Oscail an cúntóir</string>
     <string name="assistant_offline">Níl aon cheangal idirlín ann.</string>
-    <string name="assistant_bad_key">Tá eochair Mistral mícheart. Seiceáil í faoi Socruithe › Cúntóir.</string>
+    <string name="assistant_bad_key">Tá eochair Mistral mícheart. Seiceáil í faoi Socruithe › AI Assist.</string>
     <string name="assistant_busy">Tá Mistral gnóthach, nó níl aon chreidmheas fágtha ar an eochair. Bain triail eile as i gceann nóiméid.</string>
     <string name="assistant_server">D\'fhreagair Mistral le earráid (%1$d).</string>
-    <string name="assistant_no_key">Cuir d\'eochair API Mistral leis ar dtús: Socruithe › Cúntóir.</string>
+    <string name="assistant_no_key">Cuir d\'eochair API Mistral leis ar dtús: Socruithe › AI Assist.</string>
+    <string name="assistant_words">Mo chuid focal</string>
+    <string name="assistant_words_note">Ainmneacha agus focail ar chóir don tras-scríobh a litriú i gceart, scartha le camóga. Seoltar chuig Mistral iad le gach taifeadadh.</string>
+    <string name="assistant_contact_words">Cuir ainmneacha mo theagmhálaithe is fearr liom leis</string>
+    <string name="assistant_contact_words_note">Suas le 50 ceann is fearr liom, ionas go bhfaighidh \"cuir glao ar …\" an t-ainm ceart. Seoltar na hainmneacha seo chuig Mistral ansin le gach taifeadadh.</string>
+    <string name="assistant_live">Beo</string>
+    <string name="assistant_live_end">Cuir deireadh leis an mbeo</string>
+    <string name="assistant_live_connecting">Ag nascadh…</string>
+    <string name="assistant_live_silence">Tháinig deireadh leis an gcomhrá beo tar éis 20 soicind ciúnais.</string>
+    <string name="assistant_live_cap">Tháinig deireadh leis an gcomhrá beo ag 5 nóiméad.</string>
+    <string name="assistant_you">Tú</string>
 </resources>

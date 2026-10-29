@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Asszisztens</string>
-    <string name="home_label_assistant">Tetra Asszisztens</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Kérdezz vagy mondd el: naptár, időzítők, jegyzetek, hívások</string>
     <string name="settings_assistant_summary">Mistral-kulcs, alapértelmezett asszisztens</string>
     <string name="assistant_hint">Kérdezz bármit</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Másik alkalmazás</string>
     <string name="assistant_choose">Kiválasztás</string>
-    <string name="assistant_default_note">Válaszd a Tetrát digitális asszisztens alkalmazásnak. Utána tartsd nyomva a bekapcsológombot, húzd felfelé az ujjad egy alsó sarokból, vagy tartsd nyomva a Home gombot: a Tetra azonnal hallgat, és válaszol, amikor abbahagyod a beszédet. Ha a telefonod a bekapcsológombot a Google-nek tartja fenn, kapcsold be a Tetra Asszisztenst a Megjelenés › Alkalmazásikonok alatt, és használd az ikonját.</string>
+    <string name="assistant_default_note">Válaszd a Tetrát digitális asszisztens alkalmazásnak. Utána tartsd nyomva a bekapcsológombot, húzd felfelé az ujjad egy alsó sarokból, vagy tartsd nyomva a Home gombot: a Tetra azonnal hallgat, és válaszol, amikor abbahagyod a beszédet. Ha a telefonod a bekapcsológombot a Google-nek tartja fenn, kapcsold be az AI Assist ikont a Megjelenés › Alkalmazásikonok alatt, és használd az ikonját.</string>
     <string name="assistant_open">Az asszisztens megnyitása</string>
     <string name="assistant_offline">Nincs internetkapcsolat.</string>
-    <string name="assistant_bad_key">A Mistral-kulcs hibás. Ellenőrizd itt: Beállítások › Asszisztens.</string>
+    <string name="assistant_bad_key">A Mistral-kulcs hibás. Ellenőrizd itt: Beállítások › AI Assist.</string>
     <string name="assistant_busy">A Mistral foglalt, vagy a kulcsnak elfogyott a kreditje. Próbáld újra egy perc múlva.</string>
     <string name="assistant_server">A Mistral hibával válaszolt (%1$d).</string>
-    <string name="assistant_no_key">Először add hozzá a Mistral API-kulcsodat: Beállítások › Asszisztens.</string>
+    <string name="assistant_no_key">Először add hozzá a Mistral API-kulcsodat: Beállítások › AI Assist.</string>
+    <string name="assistant_words">Saját szavaim</string>
+    <string name="assistant_words_note">Nevek és szavak, amelyeket az átiratnak helyesen kell leírnia, vesszővel elválasztva. Minden felvétellel együtt elküldődnek a Mistralnak.</string>
+    <string name="assistant_contact_words">Add hozzá a kedvenc névjegyeim neveit</string>
+    <string name="assistant_contact_words_note">Legfeljebb 50 kedvenc, hogy a \"hívd fel …\" helyesen kapja meg a nevet. Ezek a nevek ezután minden felvétellel együtt elküldődnek a Mistralnak.</string>
+    <string name="assistant_live">Élő</string>
+    <string name="assistant_live_end">Élő leállítása</string>
+    <string name="assistant_live_connecting">Csatlakozás…</string>
+    <string name="assistant_live_silence">Az élő beszélgetés 20 másodpercnyi csend után véget ért.</string>
+    <string name="assistant_live_cap">Az élő beszélgetés 5 perc után véget ért.</string>
+    <string name="assistant_you">Te</string>
 </resources>

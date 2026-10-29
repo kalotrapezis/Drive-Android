@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Assistent</string>
-    <string name="home_label_assistant">Tetra Assistent</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Vraag of zeg het: agenda, timers, notities, bellen</string>
     <string name="settings_assistant_summary">Mistral-sleutel, standaardassistent</string>
     <string name="assistant_hint">Vraag maar raak</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Een andere app</string>
     <string name="assistant_choose">Kiezen</string>
-    <string name="assistant_default_note">Kies Tetra als app voor de digitale assistent. Houd daarna de aan-uitknop ingedrukt, veeg omhoog vanuit een hoek onderaan of houd Home ingedrukt: Tetra luistert meteen en antwoordt zodra je stopt met praten. Als je telefoon de aan-uitknop voor Google gebruikt, zet dan Tetra Assistent aan bij Weergave › App-iconen en gebruik het icoon ervan.</string>
+    <string name="assistant_default_note">Kies Tetra als app voor de digitale assistent. Houd daarna de aan-uitknop ingedrukt, veeg omhoog vanuit een hoek onderaan of houd Home ingedrukt: Tetra luistert meteen en antwoordt zodra je stopt met praten. Als je telefoon de aan-uitknop voor Google gebruikt, zet dan AI Assist aan bij Weergave › App-iconen en gebruik het icoon ervan.</string>
     <string name="assistant_open">Open de assistent</string>
     <string name="assistant_offline">Geen internetverbinding.</string>
-    <string name="assistant_bad_key">De Mistral-sleutel klopt niet. Controleer hem in Instellingen › Assistent.</string>
+    <string name="assistant_bad_key">De Mistral-sleutel klopt niet. Controleer hem in Instellingen › AI Assist.</string>
     <string name="assistant_busy">Mistral is druk bezig, of de sleutel heeft geen tegoed meer. Probeer het over een minuut opnieuw.</string>
     <string name="assistant_server">Mistral antwoordde met een fout (%1$d).</string>
-    <string name="assistant_no_key">Voeg eerst je Mistral-API-sleutel toe: Instellingen › Assistent.</string>
+    <string name="assistant_no_key">Voeg eerst je Mistral-API-sleutel toe: Instellingen › AI Assist.</string>
+    <string name="assistant_words">Mijn woorden</string>
+    <string name="assistant_words_note">Namen en woorden die de transcriptie goed moet spellen, gescheiden door komma\'s. Ze worden met elke opname naar Mistral gestuurd.</string>
+    <string name="assistant_contact_words">Voeg de namen van mijn favoriete contacten toe</string>
+    <string name="assistant_contact_words_note">Maximaal 50 favorieten, zodat \"bel …\" de naam goed krijgt. Deze namen worden dan met elke opname naar Mistral gestuurd.</string>
+    <string name="assistant_live">Live</string>
+    <string name="assistant_live_end">Live beëindigen</string>
+    <string name="assistant_live_connecting">Verbinden…</string>
+    <string name="assistant_live_silence">Live is beëindigd na 20 seconden stilte.</string>
+    <string name="assistant_live_cap">Live is beëindigd na 5 minuten.</string>
+    <string name="assistant_you">Jij</string>
 </resources>

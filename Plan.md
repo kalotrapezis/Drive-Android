@@ -26,7 +26,15 @@ How to write here:
       of an assistant), Settings › Assistant (the role cannot be requested: the button opens Android's page). App icon "Tetra
       Assistant" (Settings › App icons) opens the sheet: the fallback where the power button stays Google's. Strings in all 24 languages
       (22 by a Sonnet helper, unchecked by native readers). AssistantTest (9). **Not tried on a device or against Mistral** (no key here).
-      Later: photos, send-to-PC, live mode, an offline model, contact names as Voxtral's context_bias, keeping chats.
+      Then (the user, same day): named **AI Assist**, the user's own icon (Assets/Icons/Applets/AIAssistant.png); the thread's running
+      cost in the top bar (Bill: Mistral's list prices in $, hand-kept; tools' prices from price tables, not Mistral's page); **My words**
+      (Settings › AI Assist, Voxtral context_bias, prefilled) and a switch, off, adding up to 50 favourite contacts' names; **Live** (the
+      waveform button): Voxtral realtime (`voxtral-mini-transcribe-realtime-3`) over a WebSocket with the key — no server of Tetra's;
+      Mistral's voice-agent SDK needs LiveKit, so not used — its turn detection hands each turn to the same chat and tools; answers read
+      by the phone's own voice (free) with the mic sending silence meanwhile; a vinyl record turns with the talk (the icon its label),
+      captions, X and "cost / time"; ends by itself after 20 s of silence or at 5 minutes. Live's realtime messages not tried against
+      Mistral (no key here): the protocol is from the docs page only.
+      Later: photos, send-to-PC, an offline model, keeping chats, Mistral's own TTS voice.
 - [~] (system-folder session, 27 Oct; branches `system-folder` in Drive and `claude/system-folder` here; not merged, not pushed)
       **One hidden ~/Tetra/.System** (the user: "gather all of these under one system folder, and make it hidden: .System"; "every
       app/data, app/core, app/user"; "the builder … clean up after itself, every time the same way"). Desktop system.js makes every

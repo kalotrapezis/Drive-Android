@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Asistent</string>
-    <string name="home_label_assistant">Tetra Asistent</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Pitaj ili reci: kalendar, tajmeri, bilješke, pozivi</string>
     <string name="settings_assistant_summary">Mistral ključ, zadani asistent</string>
     <string name="assistant_hint">Pitaj što god želiš</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Druga aplikacija</string>
     <string name="assistant_choose">Odaberi</string>
-    <string name="assistant_default_note">Odaberi Tetra kao aplikaciju digitalnog asistenta. Zatim drži tipku za uključivanje, povuci prema gore iz donjeg kuta ili drži Home: Tetra odmah sluša i odgovara kad prestaneš govoriti. Ako tvoj telefon tipku za uključivanje čuva za Google, uključi Tetra Asistent u Izgled › Ikone aplikacija i koristi njegovu ikonu.</string>
+    <string name="assistant_default_note">Odaberi Tetra kao aplikaciju digitalnog asistenta. Zatim drži tipku za uključivanje, povuci prema gore iz donjeg kuta ili drži Home: Tetra odmah sluša i odgovara kad prestaneš govoriti. Ako tvoj telefon tipku za uključivanje čuva za Google, uključi AI Assist u Izgled › Ikone aplikacija i koristi njegovu ikonu.</string>
     <string name="assistant_open">Otvori asistenta</string>
     <string name="assistant_offline">Nema internetske veze.</string>
-    <string name="assistant_bad_key">Mistral ključ nije ispravan. Provjeri ga pod Postavke › Asistent.</string>
+    <string name="assistant_bad_key">Mistral ključ nije ispravan. Provjeri ga pod Postavke › AI Assist.</string>
     <string name="assistant_busy">Mistral je zauzet ili ključ nema više kredita. Pokušaj ponovno za minutu.</string>
     <string name="assistant_server">Mistral je odgovorio pogreškom (%1$d).</string>
-    <string name="assistant_no_key">Prvo dodaj svoj Mistral API ključ: Postavke › Asistent.</string>
+    <string name="assistant_no_key">Prvo dodaj svoj Mistral API ključ: Postavke › AI Assist.</string>
+    <string name="assistant_words">Moje riječi</string>
+    <string name="assistant_words_note">Imena i riječi koje transkripcija mora točno napisati, odvojena zarezima. Šalju se Mistralu sa svakim snimkom.</string>
+    <string name="assistant_contact_words">Dodaj imena mojih omiljenih kontakata</string>
+    <string name="assistant_contact_words_note">Do 50 omiljenih, kako bi \"nazovi …\" točno prepoznalo ime. Ta se imena zatim šalju Mistralu sa svakim snimkom.</string>
+    <string name="assistant_live">Uživo</string>
+    <string name="assistant_live_end">Završi uživo</string>
+    <string name="assistant_live_connecting">Povezivanje…</string>
+    <string name="assistant_live_silence">Razgovor uživo završio je nakon 20 sekundi tišine.</string>
+    <string name="assistant_live_cap">Razgovor uživo završio je nakon 5 minuta.</string>
+    <string name="assistant_you">Ti</string>
 </resources>

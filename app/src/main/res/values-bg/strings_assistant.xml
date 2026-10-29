@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Асистент</string>
-    <string name="home_label_assistant">Tetra Асистент</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Питай или кажи: календар, таймери, бележки, обаждания</string>
     <string name="settings_assistant_summary">Ключ за Mistral, асистент по подразбиране</string>
     <string name="assistant_hint">Питай каквото искаш</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Друго приложение</string>
     <string name="assistant_choose">Избор</string>
-    <string name="assistant_default_note">Избери Tetra за приложение за дигитален асистент. После задръж бутона за захранване, плъзни нагоре от долен ъгъл или задръж Home: Tetra слуша веднага и отговаря, когато спреш да говориш. Ако телефонът ти пази бутона за захранване за Google, включи Tetra Асистент в Облик › Икони на приложенията и използвай иконата му.</string>
+    <string name="assistant_default_note">Избери Tetra за приложение за дигитален асистент. После задръж бутона за захранване, плъзни нагоре от долен ъгъл или задръж Home: Tetra слуша веднага и отговаря, когато спреш да говориш. Ако телефонът ти пази бутона за захранване за Google, включи AI Assist в Облик › Икони на приложенията и използвай иконата му.</string>
     <string name="assistant_open">Отваряне на асистента</string>
     <string name="assistant_offline">Няма връзка с интернет.</string>
-    <string name="assistant_bad_key">Ключът за Mistral е грешен. Провери го в Настройки › Асистент.</string>
+    <string name="assistant_bad_key">Ключът за Mistral е грешен. Провери го в Настройки › AI Assist.</string>
     <string name="assistant_busy">Mistral е заета или ключът няма повече кредит. Опитай пак след минута.</string>
     <string name="assistant_server">Mistral отговори с грешка (%1$d).</string>
-    <string name="assistant_no_key">Първо добави API ключа за Mistral: Настройки › Асистент.</string>
+    <string name="assistant_no_key">Първо добави API ключа за Mistral: Настройки › AI Assist.</string>
+    <string name="assistant_words">Моите думи</string>
+    <string name="assistant_words_note">Имена и думи, които транскрипцията трябва да изписва правилно, разделени със запетаи. Изпращат се към Mistral с всеки запис.</string>
+    <string name="assistant_contact_words">Добави имената на любимите ми контакти</string>
+    <string name="assistant_contact_words_note">До 50 любими, за да се изписва правилно името в \"обади се на …\". След това тези имена се изпращат към Mistral с всеки запис.</string>
+    <string name="assistant_live">На живо</string>
+    <string name="assistant_live_end">Край на живо</string>
+    <string name="assistant_live_connecting">Свързване…</string>
+    <string name="assistant_live_silence">Разговорът на живо приключи след 20 секунди мълчание.</string>
+    <string name="assistant_live_cap">Разговорът на живо приключи след 5 минути.</string>
+    <string name="assistant_you">Ти</string>
 </resources>

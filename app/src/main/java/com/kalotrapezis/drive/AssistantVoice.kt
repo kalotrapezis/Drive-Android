@@ -63,16 +63,26 @@ internal object AssistantNet {
 
     fun download(key: String, fileId: String): ByteArray = send(key, "/files/$fileId/content", null, null)
 
-    /** Speech to text with Voxtral, in Greek. */
-    fun transcribe(key: String, pcm: ShortArray): String {
+    /** Speech to text with Voxtral, in Greek, spelling [terms] as given (My words). */
+    fun transcribe(key: String, pcm: ShortArray, terms: List<String>, bill: Bill? = null): String {
         val b = "tetra" + System.nanoTime()
         val body = ByteArrayOutputStream().apply {
             fun field(name: String, value: String) = write("--$b\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n".toByteArray())
             field("model", Mistral.TRANSCRIBE); field("language", "el")
+            terms.forEach { field("context_bias", it) }
             write("--$b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n".toByteArray())
             write(Vad.wav(pcm)); write("\r\n--$b--\r\n".toByteArray())
         }.toByteArray()
         return JSONObject(send(key, "/audio/transcriptions", "multipart/form-data; boundary=$b", body).decodeToString()).optString("text").trim()
+            .also { bill?.minutes(Mistral.TRANSCRIBE, pcm.size.toDouble() / Vad.RATE) }
+    }
+
+    /** A failed live connection in the user's words, as [send] says a failed request. */
+    fun problem(code: Int?): DriveProblem = when (code) {
+        null -> DriveProblem("Offline", R.string.assistant_offline)
+        401 -> DriveProblem("Wrong key.", R.string.assistant_bad_key)
+        429 -> DriveProblem("Too many requests.", R.string.assistant_busy)
+        else -> DriveProblem("Mistral $code", R.string.assistant_server, code)
     }
 
     private fun send(key: String, path: String, type: String?, body: ByteArray?): ByteArray {
@@ -85,11 +95,7 @@ internal object AssistantNet {
             if (code in 200..299) return c.inputStream.use { it.readBytes() }
             val said = runCatching { c.errorStream?.use { it.readBytes().decodeToString() } }.getOrNull().orEmpty().take(300)
             WriterLog.w("Assistant: Mistral $path answered $code $said")
-            throw when (code) {
-                401 -> DriveProblem("Wrong key.", R.string.assistant_bad_key)
-                429 -> DriveProblem("Too many requests.", R.string.assistant_busy)
-                else -> DriveProblem("Mistral $code", R.string.assistant_server, code)
-            }
+            throw problem(code)
         } catch (e: IOException) {
             throw DriveProblem("Offline: ${e.message}", R.string.assistant_offline)
         } finally { c.disconnect() }
@@ -100,7 +106,7 @@ internal object AssistantNet {
 internal fun assistantChat(c: Context, forgetMs: Long = Long.MAX_VALUE): AssistantChat {
     val app = c.applicationContext
     val tetra = driveRoot()
-    val api = Mistral { path, body -> AssistantNet.post(AssistantNet.key(app), path, body) }
+    val api = Mistral({ path, body -> AssistantNet.post(AssistantNet.key(app), path, body) })
     val tools = AssistantTools(tetra, TimerControl.device(),
         changed = { what -> when (what) {
             "calendar" -> { ScopedSync.soon(app, "calendar", 0, orWhole = true); CalendarAlarms.planSoon(app) }
@@ -116,6 +122,97 @@ internal fun assistantChat(c: Context, forgetMs: Long = Long.MAX_VALUE): Assista
             File(File(tetra, FOLDER).apply { mkdirs() }, "image-${System.currentTimeMillis()}.png").apply { writeBytes(AssistantNet.download(AssistantNet.key(app), id)) }
         })
     return AssistantChat(api, tools, forgetMs)
+}
+
+/** "My words" (Settings › AI Assist): what Voxtral should spell right, sent with every recording as its context_bias. */
+internal object AssistantWords {
+    const val DEFAULT = "Καλοτραπέζης, Θεολόγος, Tetra, ΥΠΕΧΩΔΕ"
+    private fun prefs(c: Context) = c.getSharedPreferences("assistant", Context.MODE_PRIVATE)
+    fun words(c: Context): String = prefs(c).getString("words", DEFAULT) ?: DEFAULT
+    fun setWords(c: Context, words: String) = prefs(c).edit().putString("words", words).apply()
+    /** Off unless switched on: the favourites' names then go to Mistral too. */
+    fun contacts(c: Context) = prefs(c).getBoolean("contactWords", false)
+    fun setContacts(c: Context, on: Boolean) = prefs(c).edit().putBoolean("contactWords", on).apply()
+
+    fun terms(c: Context): List<String> = Mistral.terms(words(c), if (!contacts(c)) emptyList() else
+        runCatching { ContactsFiles.all(contactsRoot()).map { it.info }.filter { it.favourite }.map { it.name }.take(50) }.getOrDefault(emptyList()))
+}
+
+/**
+ * Live (the waveform button): the microphone streamed to Voxtral realtime over a WebSocket that carries the key itself,
+ * so no server of Tetra's own; Voxtral says when a turn ends ([turn]), and the screen hands it to the same chat and tools
+ * as walkie-talkie. While [muted] (thinking, reading the answer aloud) silence is sent instead, so the phone does not
+ * hear itself and the stream stays open. Mistral's voice-agent SDK needs a LiveKit server, so it is not used.
+ */
+internal class AssistantLive(
+    private val key: String,
+    private val terms: List<String>,
+    private val heard: (String) -> Unit,
+    private val turn: (String) -> Unit,
+    private val level: (Float) -> Unit,
+    private val failed: (Throwable) -> Unit,
+) {
+    @Volatile var muted = false
+        set(on) { field = on; if (!on) synchronized(text) { text.clear() } }
+    @Volatile private var open = true
+    private var socket: okhttp3.WebSocket? = null
+    private val text = StringBuilder()
+
+    fun start() {
+        val request = okhttp3.Request.Builder().url("wss://api.mistral.ai/v1/audio/transcriptions/realtime?model=${Mistral.REALTIME}")
+            .header("Authorization", "Bearer $key").build()
+        socket = okhttp3.OkHttpClient().newWebSocket(request, object : okhttp3.WebSocketListener() {
+            override fun onMessage(webSocket: okhttp3.WebSocket, text: String) = runCatching { event(webSocket, JSONObject(text)) }
+                .onFailure { WriterLog.w("AI Assist live: ${it.message}") }.let { }
+            override fun onFailure(webSocket: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) {
+                WriterLog.w("AI Assist live: closed (${response?.code}) ${t.message}")
+                if (open) { open = false; failed(AssistantNet.problem(response?.code)) }
+            }
+        })
+    }
+
+    private fun event(ws: okhttp3.WebSocket, e: JSONObject) {
+        when (e.optString("type")) {
+            "session.created" -> {
+                ws.send(JSONObject().put("type", "session.update").put("session", JSONObject()
+                    .put("audio_format", JSONObject().put("encoding", "pcm_s16le").put("sample_rate", Vad.RATE))
+                    .put("language", "el").put("context_bias", org.json.JSONArray(terms)).put("target_streaming_delay_ms", 480)
+                    .put("turn_detection", JSONObject())).toString())
+                Thread(::record, "ai-assist-live").start()
+            }
+            "transcription.text.delta" -> if (!muted) heard(synchronized(text) { text.append(e.optString("text")).toString() })
+            "turn.end" -> if (!muted) synchronized(text) { text.toString().trim().also { text.clear() } }.takeIf { it.isNotEmpty() }?.let(turn)
+            "error" -> { WriterLog.w("AI Assist live: $e"); if (open) { end(); failed(IllegalStateException(e.optJSONObject("error")?.optString("message") ?: "Mistral")) } }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun record() {
+        val size = maxOf(AudioRecord.getMinBufferSize(Vad.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT), Vad.FRAME * 2 * 8)
+        val rec = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, Vad.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, size)
+        val chunk = ShortArray(Vad.FRAME * 4) // 120 ms
+        val bytes = java.nio.ByteBuffer.allocate(chunk.size * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        try {
+            rec.startRecording()
+            while (open) {
+                var n = 0
+                while (n < chunk.size) { val r = rec.read(chunk, n, chunk.size - n); if (r <= 0) return; n += r }
+                level((Vad.rms(chunk) / 3000).coerceIn(0.0, 1.0).toFloat())
+                if (muted) chunk.fill(0)
+                bytes.clear(); chunk.forEach { bytes.putShort(it) }
+                socket?.send(JSONObject().put("type", "input_audio.append").put("audio", Base64.encodeToString(bytes.array(), Base64.NO_WRAP)).toString())
+            }
+        } catch (e: Exception) {
+            WriterLog.e("AI Assist live: the microphone stopped", e)
+        } finally { runCatching { rec.stop() }; rec.release() }
+    }
+
+    fun end() {
+        if (!open) return
+        open = false
+        socket?.send("""{"type":"input_audio.end"}""")
+        socket?.close(1000, null)
+    }
 }
 
 /** Pictures the assistant made: Tetra/Assistant, a folder of Files like any other. */
@@ -178,7 +275,7 @@ class AssistantRecognition : RecognitionService() {
                 cb.readyForSpeech(Bundle())
                 val pcm = listen(8_000, { stop }) ?: return@Thread cb.error(SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
                 cb.endOfSpeech()
-                cb.results(Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(AssistantNet.transcribe(key, pcm))) })
+                cb.results(Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(AssistantNet.transcribe(key, pcm, AssistantWords.terms(this@AssistantRecognition)))) })
             }.onFailure { WriterLog.w("Assistant: recognition for another app failed", it); runCatching { cb.error(SpeechRecognizer.ERROR_NETWORK) } }
         }.start()
     }

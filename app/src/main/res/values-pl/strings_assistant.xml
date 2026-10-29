@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Asystent</string>
-    <string name="home_label_assistant">Tetra Asystent</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Zapytaj albo powiedz: kalendarz, timery, notatki, połączenia</string>
     <string name="settings_assistant_summary">Klucz Mistral, domyślny asystent</string>
     <string name="assistant_hint">Zapytaj o cokolwiek</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Inna aplikacja</string>
     <string name="assistant_choose">Wybierz</string>
-    <string name="assistant_default_note">Wybierz Tetra jako aplikację asystenta cyfrowego. Potem przytrzymaj przycisk zasilania, przesuń palcem w górę z dolnego rogu albo przytrzymaj Home: Tetra od razu słucha i odpowiada, gdy przestaniesz mówić. Jeśli telefon rezerwuje przycisk zasilania dla Google, włącz Tetra Asystent w Wygląd › Ikony aplikacji i użyj jego ikony.</string>
+    <string name="assistant_default_note">Wybierz Tetra jako aplikację asystenta cyfrowego. Potem przytrzymaj przycisk zasilania, przesuń palcem w górę z dolnego rogu albo przytrzymaj Home: Tetra od razu słucha i odpowiada, gdy przestaniesz mówić. Jeśli telefon rezerwuje przycisk zasilania dla Google, włącz AI Assist w Wygląd › Ikony aplikacji i użyj jego ikony.</string>
     <string name="assistant_open">Otwórz asystenta</string>
     <string name="assistant_offline">Brak połączenia z internetem.</string>
-    <string name="assistant_bad_key">Klucz Mistral jest nieprawidłowy. Sprawdź go w Ustawienia › Asystent.</string>
+    <string name="assistant_bad_key">Klucz Mistral jest nieprawidłowy. Sprawdź go w Ustawienia › AI Assist.</string>
     <string name="assistant_busy">Mistral jest zajęty albo na kluczu skończyły się środki. Spróbuj ponownie za minutę.</string>
     <string name="assistant_server">Mistral odpowiedział błędem (%1$d).</string>
-    <string name="assistant_no_key">Najpierw dodaj swój klucz API Mistral: Ustawienia › Asystent.</string>
+    <string name="assistant_no_key">Najpierw dodaj swój klucz API Mistral: Ustawienia › AI Assist.</string>
+    <string name="assistant_words">Moje słowa</string>
+    <string name="assistant_words_note">Imiona i słowa, które transkrypcja ma zapisywać poprawnie, oddzielone przecinkami. Są wysyłane do Mistral z każdym nagraniem.</string>
+    <string name="assistant_contact_words">Dodaj nazwy moich ulubionych kontaktów</string>
+    <string name="assistant_contact_words_note">Do 50 ulubionych, aby \"zadzwoń do …\" poprawnie rozpoznało nazwę. Te nazwy są potem wysyłane do Mistral z każdym nagraniem.</string>
+    <string name="assistant_live">Na żywo</string>
+    <string name="assistant_live_end">Zakończ rozmowę na żywo</string>
+    <string name="assistant_live_connecting">Łączenie…</string>
+    <string name="assistant_live_silence">Rozmowa na żywo zakończyła się po 20 sekundach ciszy.</string>
+    <string name="assistant_live_cap">Rozmowa na żywo zakończyła się po 5 minutach.</string>
+    <string name="assistant_you">Ty</string>
 </resources>

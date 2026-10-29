@@ -21,7 +21,7 @@ class AssistantTest {
     private class Script(vararg replies: JSONObject) {
         val left = ArrayDeque(replies.toList())
         val sent = mutableListOf<JSONObject>()
-        val api = Mistral { _, body -> sent += JSONObject(body); JSONObject().put("choices", JSONArray().put(JSONObject().put("message", left.removeFirst()))).toString() }
+        val api = Mistral({ _, body -> sent += JSONObject(body); JSONObject().put("choices", JSONArray().put(JSONObject().put("message", left.removeFirst()))).toString() })
     }
     private fun calls(vararg c: Pair<String, String>) = JSONObject().put("role", "assistant").put("content", "")
         .put("tool_calls", JSONArray(c.mapIndexed { i, (name, args) -> JSONObject().put("id", "call$i").put("function", JSONObject().put("name", name).put("arguments", args)) }))
@@ -109,6 +109,27 @@ class AssistantTest {
         assertEquals(listOf("Δήμος — https://example.org/a"), sources)
         assertEquals(listOf("f-1"), files)
         assertEquals("ok", Mistral.output(JSONArray("""[{"type":"message.output","content":"ok"}]""")).first)
+    }
+
+    @Test fun theBillCountsTokensToolCallsAndMinutes() {
+        val usage = JSONObject().put("prompt_tokens", 1_000_000).put("completion_tokens", 1_000_000)
+        val api = Mistral({ path, _ -> if (path == "/chat/completions") JSONObject().put("usage", usage).put("choices", JSONArray().put(JSONObject().put("message", says("ok")))).toString()
+            else JSONObject().put("outputs", JSONArray()).toString() })
+        api.chat(JSONArray(), JSONArray())
+        assertEquals(0.4, api.bill.usd, 1e-9) // small: $0.1 in + $0.3 out a million
+        api.conversation("καιρός", "web_search", "")
+        assertEquals(0.43, api.bill.usd, 1e-9) // a search, no usage given
+        api.bill.minutes(Mistral.TRANSCRIBE, 90.0)
+        assertEquals(0.436, api.bill.usd, 1e-9)
+        assertEquals("$0.4360", Bill.text(api.bill.usd)); assertEquals("$12.50", Bill.text(12.5))
+        AssistantChat(api, tools()).clear()
+        assertEquals(0.0, api.bill.usd, 0.0) // New chat: a new bill
+    }
+
+    @Test fun myWordsAreVoxtralsContextBias() {
+        assertEquals(listOf("Tetra", "ΥΠΕΧΩΔΕ", "Μαρία"), Mistral.terms(" Tetra, ΥΠΕΧΩΔΕ,, Tetra ", listOf("Μαρία")))
+        assertEquals(100, Mistral.terms((1..150).joinToString(",")).size)
+        assertEquals(listOf("Καλοτραπέζης", "Θεολόγος", "Tetra", "ΥΠΕΧΩΔΕ"), Mistral.terms(AssistantWords.DEFAULT))
     }
 
     @Test fun aSpokenYesIsHeardByThePhone() {

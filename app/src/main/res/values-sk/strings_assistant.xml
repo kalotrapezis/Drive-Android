@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Asistent</string>
-    <string name="home_label_assistant">Tetra Asistent</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Spýtaj sa alebo to povedz: kalendár, časovače, poznámky, hovory</string>
     <string name="settings_assistant_summary">Kľúč Mistral, predvolený asistent</string>
     <string name="assistant_hint">Spýtaj sa na čokoľvek</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Iná aplikácia</string>
     <string name="assistant_choose">Vybrať</string>
-    <string name="assistant_default_note">Vyber Tetra ako aplikáciu digitálneho asistenta. Potom podrž vypínač, potiahni prstom nahor zo spodného rohu alebo podrž Home: Tetra začne hneď počúvať a odpovie, keď prestaneš hovoriť. Ak telefón vyhradzuje vypínač pre Google, zapni Tetra Asistent v ponuke Vzhľad › Ikony aplikácií a použi jeho ikonu.</string>
+    <string name="assistant_default_note">Vyber Tetra ako aplikáciu digitálneho asistenta. Potom podrž vypínač, potiahni prstom nahor zo spodného rohu alebo podrž Home: Tetra začne hneď počúvať a odpovie, keď prestaneš hovoriť. Ak telefón vyhradzuje vypínač pre Google, zapni AI Assist v ponuke Vzhľad › Ikony aplikácií a použi jeho ikonu.</string>
     <string name="assistant_open">Otvoriť asistenta</string>
     <string name="assistant_offline">Nie je pripojenie na internet.</string>
-    <string name="assistant_bad_key">Kľúč Mistral je nesprávny. Skontroluj ho v ponuke Nastavenia › Asistent.</string>
+    <string name="assistant_bad_key">Kľúč Mistral je nesprávny. Skontroluj ho v ponuke Nastavenia › AI Assist.</string>
     <string name="assistant_busy">Mistral je zaneprázdnený alebo kľúč už nemá kredit. Skús to znova o minútu.</string>
     <string name="assistant_server">Mistral odpovedal chybou (%1$d).</string>
-    <string name="assistant_no_key">Najprv pridaj svoj kľúč API Mistral: Nastavenia › Asistent.</string>
+    <string name="assistant_no_key">Najprv pridaj svoj kľúč API Mistral: Nastavenia › AI Assist.</string>
+    <string name="assistant_words">Moje slová</string>
+    <string name="assistant_words_note">Mená a slová, ktoré má prepis písať správne, oddelené čiarkami. Posielajú sa do Mistral s každou nahrávkou.</string>
+    <string name="assistant_contact_words">Pridaj mená mojich obľúbených kontaktov</string>
+    <string name="assistant_contact_words_note">Až 50 obľúbených, aby \"zavolaj …\" správne zachytilo meno. Tieto mená sa potom posielajú do Mistral s každou nahrávkou.</string>
+    <string name="assistant_live">Naživo</string>
+    <string name="assistant_live_end">Ukončiť naživo</string>
+    <string name="assistant_live_connecting">Pripája sa…</string>
+    <string name="assistant_live_silence">Rozhovor naživo skončil po 20 sekundách ticha.</string>
+    <string name="assistant_live_cap">Rozhovor naživo skončil po 5 minútach.</string>
+    <string name="assistant_you">Ty</string>
 </resources>

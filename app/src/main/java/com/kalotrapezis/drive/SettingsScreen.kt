@@ -68,7 +68,7 @@ internal enum class SettingsPage(@androidx.annotation.StringRes val title: Int, 
         R.string.settings_silence_unknown, R.string.settings_decline_hidden, R.string.settings_pc_calls, R.string.settings_phone_permission, R.string.settings_open_phone)),
     Data(R.string.app_data, Category.Data.icon, Category.Data.color, R.string.settings_data_summary, listOf(R.string.settings_data_setup, R.string.settings_usage_access, R.string.settings_your_plan, R.string.settings_warnings, R.string.settings_roaming,
         R.string.settings_live_speed, R.string.settings_signal_drops, R.string.settings_wifi_around, R.string.settings_open_data)),
-    Assistant(R.string.app_assistant, R.drawable.ic_chat, ASSISTANT_COLOR, R.string.settings_assistant_summary, listOf(R.string.assistant_key, R.string.assistant_default, R.string.assistant_open)),
+    Assistant(R.string.app_assistant, R.drawable.ic_chat, ASSISTANT_COLOR, R.string.settings_assistant_summary, listOf(R.string.assistant_key, R.string.assistant_words, R.string.assistant_contact_words, R.string.assistant_default, R.string.assistant_open)),
 }
 
 @Composable
@@ -401,6 +401,15 @@ internal fun SettingsTab(
     val version = resumes()
     val held = remember(version.intValue) { context.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) }
     SettingsSection { AssistantKeyField() }
+    // Voxtral's context_bias (the VOICE app's terms): the user's own spellings, and the favourites' names only when switched on
+    var words by remember { mutableStateOf(AssistantWords.words(context)) }
+    var contactWords by remember { mutableStateOf(AssistantWords.contacts(context)) }
+    SettingsSection(stringResource(R.string.assistant_words), stringResource(R.string.assistant_words_note)) {
+        Box(Modifier.fillMaxWidth().background(rowColor()).padding(12.dp)) {
+            OutlinedTextField(words, { words = it; AssistantWords.setWords(context, it) }, Modifier.fillMaxWidth(), minLines = 2, maxLines = 5)
+        }
+        SwitchRow(stringResource(R.string.assistant_contact_words), stringResource(R.string.assistant_contact_words_note), contactWords) { contactWords = it; AssistantWords.setContacts(context, it) }
+    }
     // Android lets no app ask for the assistant role itself (it is not "requestable"): the user picks it on Android's page
     SettingsSection(stringResource(R.string.assistant_default), stringResource(R.string.assistant_default_note)) {
         StatusRow(stringResource(R.string.assistant_default), stringResource(if (held) R.string.assistant_default_yes else R.string.assistant_default_no), held, stringResource(R.string.assistant_choose)) {

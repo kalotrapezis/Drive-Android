@@ -7,7 +7,7 @@ nodpi = f"{res}/drawable-nodpi"
 # the user's new tiles (17 Oct): their solid corners cut away (flood from each corner), at the other arts' size
 # a tile on a dark ground (Data's, 25 Oct) has corners too near its own colour to flood: cut by its rounded square instead
 MASKS = {"Data": ((29, 27, 1222, 1209), 256)}
-for src, out in [("DocScan", "scanner_art"), ("QRScan", "codes_art"), ("Files", "files_art"), ("Office", "office_art"), ("Notes", "notes_art"), ("Calendar", "calendar_art"), ("Contacts", "contacts_art"), ("Phone", "phone_art"), ("Maps", "maps_art"), ("Timer", "timer_art"), ("Sync", "sync_art"), ("Settings", "settings_art"), ("Data", "data_art")]:
+for src, out in [("DocScan", "scanner_art"), ("QRScan", "codes_art"), ("Files", "files_art"), ("Office", "office_art"), ("Notes", "notes_art"), ("Calendar", "calendar_art"), ("Contacts", "contacts_art"), ("Phone", "phone_art"), ("Maps", "maps_art"), ("Timer", "timer_art"), ("AIAssistant", "assistant_art"), ("Sync", "sync_art"), ("Settings", "settings_art"), ("Data", "data_art")]:
     if not os.path.exists(f"{dl}/{src}.png"): continue  # only the tiles given are made again
     a = Image.open(f"{dl}/{src}.png").convert("RGBA")
     if src in MASKS:

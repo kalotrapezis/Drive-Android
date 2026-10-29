@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_assistant">Asistent</string>
-    <string name="home_label_assistant">Tetra Asistent</string>
+    <string name="app_assistant">AI Assist</string>
+    <string name="home_label_assistant">Tetra AI Assist</string>
     <string name="assistant_home_detail">Întreabă sau spune: calendar, temporizatoare, notițe, apeluri</string>
     <string name="settings_assistant_summary">Cheie Mistral, asistent implicit</string>
     <string name="assistant_hint">Întreabă orice</string>
@@ -25,11 +25,21 @@
     <string name="assistant_default_yes">Tetra</string>
     <string name="assistant_default_no">Altă aplicație</string>
     <string name="assistant_choose">Alege</string>
-    <string name="assistant_default_note">Alege Tetra ca aplicație de asistent digital. Apoi ține apăsat butonul de pornire, glisează în sus dintr-un colț de jos sau ține apăsat Home: Tetra ascultă imediat și răspunde când nu mai vorbești. Dacă telefonul rezervă butonul de pornire pentru Google, activează Tetra Asistent în Aspect › Pictograme aplicații și folosește pictograma lui.</string>
+    <string name="assistant_default_note">Alege Tetra ca aplicație de asistent digital. Apoi ține apăsat butonul de pornire, glisează în sus dintr-un colț de jos sau ține apăsat Home: Tetra ascultă imediat și răspunde când nu mai vorbești. Dacă telefonul rezervă butonul de pornire pentru Google, activează AI Assist în Aspect › Pictograme aplicații și folosește pictograma lui.</string>
     <string name="assistant_open">Deschide asistentul</string>
     <string name="assistant_offline">Nu există conexiune la internet.</string>
-    <string name="assistant_bad_key">Cheia Mistral este greșită. Verific-o în Setări › Asistent.</string>
+    <string name="assistant_bad_key">Cheia Mistral este greșită. Verific-o în Setări › AI Assist.</string>
     <string name="assistant_busy">Mistral este ocupat sau cheia nu mai are credit. Încearcă din nou peste un minut.</string>
     <string name="assistant_server">Mistral a răspuns cu o eroare (%1$d).</string>
-    <string name="assistant_no_key">Adaugă mai întâi cheia ta API Mistral: Setări › Asistent.</string>
+    <string name="assistant_no_key">Adaugă mai întâi cheia ta API Mistral: Setări › AI Assist.</string>
+    <string name="assistant_words">Cuvintele mele</string>
+    <string name="assistant_words_note">Nume și cuvinte pe care transcrierea trebuie să le scrie corect, separate prin virgule. Sunt trimise către Mistral cu fiecare înregistrare.</string>
+    <string name="assistant_contact_words">Adaugă numele contactelor mele favorite</string>
+    <string name="assistant_contact_words_note">Până la 50 de favorite, ca \"sună …\" să recunoască corect numele. Aceste nume sunt apoi trimise către Mistral cu fiecare înregistrare.</string>
+    <string name="assistant_live">Live</string>
+    <string name="assistant_live_end">Oprește live</string>
+    <string name="assistant_live_connecting">Se conectează…</string>
+    <string name="assistant_live_silence">Live s-a încheiat după 20 de secunde de liniște.</string>
+    <string name="assistant_live_cap">Live s-a încheiat după 5 minute.</string>
+    <string name="assistant_you">Tu</string>
 </resources>

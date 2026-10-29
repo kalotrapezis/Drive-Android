@@ -38,9 +38,10 @@ internal data class AssistantReply(val text: String, val choices: List<Assistant
  * What a conversation has cost so far, in US dollars by Mistral's list prices (the user: "the bill came"; shown in the
  * chat's top bar and on the live screen).
  */
-internal class Bill {
+internal class Bill(private val counted: (Double) -> Unit = {}) {
     @Volatile var usd = 0.0; private set
-    @Synchronized fun add(x: Double) { usd += x }
+    /** [counted] gets each cost too: the meter in Settings sums every chat's from here, so nothing is counted twice. */
+    @Synchronized fun add(x: Double) { usd += x; counted(x) }
     @Synchronized fun reset() { usd = 0.0 }
     fun tokens(model: String, usage: JSONObject?) {
         val (inPrice, outPrice) = TOKENS[model] ?: return
@@ -61,6 +62,27 @@ internal class Bill {
 
         /** "$0.0123": a cent's fractions while it is small. */
         fun text(usd: Double) = if (usd < 1) "$%.4f".format(java.util.Locale.ROOT, usd) else "$%.2f".format(java.util.Locale.ROOT, usd)
+    }
+}
+
+/**
+ * Every AI Assist cost, like a car's odometer and trip meter: [total] never goes back, [reset] starts a new trip from
+ * [since] and keeps the one before in [past], newest first.
+ */
+internal class Meter(var total: Double = 0.0, var trip: Double = 0.0, var since: Long = 0L, val past: MutableList<Trip> = mutableListOf()) {
+    data class Trip(val from: Long, val to: Long, val usd: Double)
+    fun add(x: Double) { total += x; trip += x }
+    fun reset(at: Long) { past.add(0, Trip(since, at, trip)); trip = 0.0; since = at }
+    fun json(): String = JSONObject().put("total", total).put("trip", trip).put("since", since)
+        .put("past", JSONArray(past.map { JSONObject().put("from", it.from).put("to", it.to).put("usd", it.usd) })).toString()
+
+    companion object {
+        /** The saved meter, or a new one counting from [now]. */
+        fun of(json: String?, now: Long): Meter = runCatching {
+            val o = JSONObject(json!!); val p = o.optJSONArray("past") ?: JSONArray()
+            Meter(o.optDouble("total", 0.0), o.optDouble("trip", 0.0), o.optLong("since", now),
+                (0 until p.length()).map { p.getJSONObject(it).let { t -> Trip(t.getLong("from"), t.getLong("to"), t.getDouble("usd")) } }.toMutableList())
+        }.getOrElse { Meter(since = now) }
     }
 }
 

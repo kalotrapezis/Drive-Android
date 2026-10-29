@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Telefonens stemme (gratis)</string>
     <string name="assistant_voice_first">Mistrals første stemme</string>
     <string name="assistant_voice_sample">Hej, sådan kommer mine svar til at lyde.</string>
+    <string name="assistant_spent">Brugte penge</string>
+    <string name="assistant_spent_note">Alle AI Assist-omkostninger til Mistrals listepriser, alle samtaler samlet. Nulstil starter en ny optælling; totalen og de tidligere bliver.</string>
+    <string name="assistant_spent_since">Siden %1$s</string>
+    <string name="assistant_spent_total">I alt fra starten</string>
+    <string name="assistant_spent_reset">Nulstil</string>
+    <string name="assistant_spent_reset_ask">Nulstil? Historikken bliver.</string>
 </resources>

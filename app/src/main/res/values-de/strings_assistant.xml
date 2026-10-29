@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Die Stimme des Telefons (kostenlos)</string>
     <string name="assistant_voice_first">Die erste Stimme von Mistral</string>
     <string name="assistant_voice_sample">Hallo, so werden meine Antworten klingen.</string>
+    <string name="assistant_spent">Ausgegebenes Geld</string>
+    <string name="assistant_spent_note">Alle Kosten von AI Assist zu Mistrals Listenpreisen, alle Chats zusammen. Zurücksetzen beginnt eine neue Zählung; die Summe und die früheren Zählungen bleiben.</string>
+    <string name="assistant_spent_since">Seit %1$s</string>
+    <string name="assistant_spent_total">Gesamt seit Beginn</string>
+    <string name="assistant_spent_reset">Zurücksetzen</string>
+    <string name="assistant_spent_reset_ask">Zurücksetzen? Der Verlauf bleibt.</string>
 </resources>

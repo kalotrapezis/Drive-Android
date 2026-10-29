@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Telefoni hääl (tasuta)</string>
     <string name="assistant_voice_first">Mistrali esimene hääl</string>
     <string name="assistant_voice_sample">Tere, nii hakkavad mu vastused kõlama.</string>
+    <string name="assistant_spent">Kulutatud raha</string>
+    <string name="assistant_spent_note">Kõik AI Assisti kulud Mistrali hinnakirja järgi, kõik vestlused kokku. Nullimine alustab uut loendust; kogusumma ja varasemad jäävad alles.</string>
+    <string name="assistant_spent_since">Alates %1$s</string>
+    <string name="assistant_spent_total">Kokku algusest</string>
+    <string name="assistant_spent_reset">Nulli</string>
+    <string name="assistant_spent_reset_ask">Nullida? Ajalugu jääb alles.</string>
 </resources>

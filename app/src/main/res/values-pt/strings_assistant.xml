@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">A voz do telemóvel (grátis)</string>
     <string name="assistant_voice_first">A primeira voz da Mistral</string>
     <string name="assistant_voice_sample">Olá, é assim que as minhas respostas vão soar.</string>
+    <string name="assistant_spent">Dinheiro gasto</string>
+    <string name="assistant_spent_note">Todos os custos do AI Assist aos preços da Mistral, todas as conversas juntas. Repor começa uma nova contagem; o total e as contagens anteriores ficam.</string>
+    <string name="assistant_spent_since">Desde %1$s</string>
+    <string name="assistant_spent_total">Total desde o início</string>
+    <string name="assistant_spent_reset">Repor</string>
+    <string name="assistant_spent_reset_ask">Repor? O histórico fica.</string>
 </resources>

@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Puhelimen ääni (ilmainen)</string>
     <string name="assistant_voice_first">Mistralin ensimmäinen ääni</string>
     <string name="assistant_voice_sample">Hei, tältä vastaukseni kuulostavat.</string>
+    <string name="assistant_spent">Käytetty raha</string>
+    <string name="assistant_spent_note">Kaikki AI Assistin kulut Mistralin listahinnoin, kaikki keskustelut yhdessä. Nollaus aloittaa uuden laskennan; kokonaissumma ja aiemmat jäävät.</string>
+    <string name="assistant_spent_since">Alkaen %1$s</string>
+    <string name="assistant_spent_total">Yhteensä alusta</string>
+    <string name="assistant_spent_reset">Nollaa</string>
+    <string name="assistant_spent_reset_ask">Nollataanko? Historia säilyy.</string>
 </resources>

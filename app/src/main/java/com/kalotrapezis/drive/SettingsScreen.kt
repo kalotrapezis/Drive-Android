@@ -417,6 +417,21 @@ internal fun SettingsTab(
         SettingRow(stringResource(R.string.assistant_voice), voiceName ?: stringResource(R.string.assistant_voice_first), onClick = { picking = true }) { Chevron() }
     }
     if (picking) VoicePicker({ picking = false }) { id, name -> AssistantVoices.set(context, id, name); voiceName = name }
+    // the money counter (the user: like a car's trip meter beside its odometer); Reset keeps the total and the past trips
+    var meter by remember(version.intValue) { mutableStateOf(AssistantMeter.read(context)) }
+    var resetting by remember { mutableStateOf(false) }
+    fun day(ms: Long) = java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        .format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM))
+    SettingsSection(stringResource(R.string.assistant_spent), stringResource(R.string.assistant_spent_note)) {
+        SettingRow(stringResource(R.string.assistant_spent_since, day(meter.since)), Bill.text(meter.trip)) {
+            TextButton(onClick = { resetting = true }) { Text(stringResource(R.string.assistant_spent_reset)) }
+        }
+        SettingRow(stringResource(R.string.assistant_spent_total), Bill.text(meter.total))
+        meter.past.forEach { SettingRow(stringResource(R.string.assistant_spent_past, day(it.from), day(it.to)), Bill.text(it.usd)) }
+    }
+    if (resetting) AlertDialog(onDismissRequest = { resetting = false }, title = { Text(stringResource(R.string.assistant_spent_reset_ask)) },
+        confirmButton = { TextButton(onClick = { AssistantMeter.reset(context); meter = AssistantMeter.read(context); resetting = false }) { Text(stringResource(R.string.assistant_spent_reset)) } },
+        dismissButton = { TextButton(onClick = { resetting = false }) { Text(stringResource(R.string.common_cancel)) } })
     // Android lets no app ask for the assistant role itself (it is not "requestable"): the user picks it on Android's page
     SettingsSection(stringResource(R.string.assistant_default), stringResource(R.string.assistant_default_note)) {
         StatusRow(stringResource(R.string.assistant_default), stringResource(if (held) R.string.assistant_default_yes else R.string.assistant_default_no), held, stringResource(R.string.assistant_choose)) {
@@ -453,7 +468,7 @@ internal fun SettingsTab(
                     SettingRow(name, chosen = id == current, onClick = {
                         current = id; chosen(id, name)
                         sample?.stop()
-                        sample = AnswerVoice(context, reader, Bill(), scope).apply { say(context.getString(R.string.assistant_voice_sample)); finish() }
+                        sample = AnswerVoice(context, reader, AssistantMeter.bill(context), scope).apply { say(context.getString(R.string.assistant_voice_sample)); finish() }
                     })
                 }
                 if (voices == null) item { Text(stringResource(R.string.common_loading), color = quiet(), modifier = Modifier.padding(12.dp)) }

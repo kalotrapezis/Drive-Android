@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">La voix du téléphone (gratuite)</string>
     <string name="assistant_voice_first">La première voix de Mistral</string>
     <string name="assistant_voice_sample">Bonjour, voici comment sonneront mes réponses.</string>
+    <string name="assistant_spent">Argent dépensé</string>
+    <string name="assistant_spent_note">Tous les coûts d\'AI Assist aux prix de Mistral, toutes les conversations ensemble. Réinitialiser commence un nouveau compte ; le total et les comptes passés restent.</string>
+    <string name="assistant_spent_since">Depuis le %1$s</string>
+    <string name="assistant_spent_total">Total depuis le début</string>
+    <string name="assistant_spent_reset">Réinitialiser</string>
+    <string name="assistant_spent_reset_ask">Réinitialiser ? L\'historique reste.</string>
 </resources>

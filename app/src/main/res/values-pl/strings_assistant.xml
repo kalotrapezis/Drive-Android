@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Głos telefonu (bezpłatny)</string>
     <string name="assistant_voice_first">Pierwszy głos Mistral</string>
     <string name="assistant_voice_sample">Cześć, tak będą brzmieć moje odpowiedzi.</string>
+    <string name="assistant_spent">Wydane pieniądze</string>
+    <string name="assistant_spent_note">Wszystkie koszty AI Assist w cenach Mistral, wszystkie rozmowy razem. Wyzerowanie zaczyna nowe liczenie; suma i poprzednie liczenia zostają.</string>
+    <string name="assistant_spent_since">Od %1$s</string>
+    <string name="assistant_spent_total">Razem od początku</string>
+    <string name="assistant_spent_reset">Wyzeruj</string>
+    <string name="assistant_spent_reset_ask">Wyzerować? Historia zostaje.</string>
 </resources>

@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Гласът на телефона (безплатно)</string>
     <string name="assistant_voice_first">Първият глас на Mistral</string>
     <string name="assistant_voice_sample">Здравей, така ще звучат отговорите ми.</string>
+    <string name="assistant_spent">Похарчени пари</string>
+    <string name="assistant_spent_note">Всички разходи на AI Assist по цените на Mistral, от всички разговори заедно. Нулирането започва ново броене; общата сума и предишните остават.</string>
+    <string name="assistant_spent_since">От %1$s</string>
+    <string name="assistant_spent_total">Общо от началото</string>
+    <string name="assistant_spent_reset">Нулиране</string>
+    <string name="assistant_spent_reset_ask">Нулиране? Историята остава.</string>
 </resources>

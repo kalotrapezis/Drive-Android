@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Guth an fhóin (saor in aisce)</string>
     <string name="assistant_voice_first">An chéad ghuth de chuid Mistral</string>
     <string name="assistant_voice_sample">Dia duit, seo mar a fhuaimneoidh mo fhreagraí.</string>
+    <string name="assistant_spent">Airgead caite</string>
+    <string name="assistant_spent_note">Gach costas AI Assist ar phraghsanna Mistral, na comhráite go léir le chéile. Tosaíonn athshocrú comhaireamh nua; fanann an t-iomlán agus na comhairimh roimhe.</string>
+    <string name="assistant_spent_since">Ó %1$s</string>
+    <string name="assistant_spent_total">Iomlán ón tús</string>
+    <string name="assistant_spent_reset">Athshocraigh</string>
+    <string name="assistant_spent_reset_ask">Athshocrú? Fanann an stair.</string>
 </resources>

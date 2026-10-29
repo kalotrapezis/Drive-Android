@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Glas telefona (besplatno)</string>
     <string name="assistant_voice_first">Prvi Mistralov glas</string>
     <string name="assistant_voice_sample">Bok, ovako će zvučati moji odgovori.</string>
+    <string name="assistant_spent">Potrošeni novac</string>
+    <string name="assistant_spent_note">Svi troškovi AI Assista po Mistralovim cijenama, svi razgovori zajedno. Poništavanje počinje novo brojanje; ukupno i prijašnja brojanja ostaju.</string>
+    <string name="assistant_spent_since">Od %1$s</string>
+    <string name="assistant_spent_total">Ukupno od početka</string>
+    <string name="assistant_spent_reset">Poništi</string>
+    <string name="assistant_spent_reset_ask">Poništiti? Povijest ostaje.</string>
 </resources>

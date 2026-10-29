@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Tālruņa balss (bez maksas)</string>
     <string name="assistant_voice_first">Pirmā Mistral balss</string>
     <string name="assistant_voice_sample">Sveiki, šādi skanēs manas atbildes.</string>
+    <string name="assistant_spent">Iztērētā nauda</string>
+    <string name="assistant_spent_note">Visas AI Assist izmaksas pēc Mistral cenām, visas sarunas kopā. Atiestatīšana sāk jaunu skaitīšanu; kopsumma un iepriekšējās paliek.</string>
+    <string name="assistant_spent_since">Kopš %1$s</string>
+    <string name="assistant_spent_total">Kopā no sākuma</string>
+    <string name="assistant_spent_reset">Atiestatīt</string>
+    <string name="assistant_spent_reset_ask">Atiestatīt? Vēsture paliek.</string>
 </resources>

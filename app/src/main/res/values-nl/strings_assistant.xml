@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">De stem van de telefoon (gratis)</string>
     <string name="assistant_voice_first">De eerste stem van Mistral</string>
     <string name="assistant_voice_sample">Hallo, zo gaan mijn antwoorden klinken.</string>
+    <string name="assistant_spent">Uitgegeven geld</string>
+    <string name="assistant_spent_note">Alle kosten van AI Assist tegen de prijzen van Mistral, alle chats samen. Opnieuw beginnen start een nieuwe telling; het totaal en de eerdere tellingen blijven.</string>
+    <string name="assistant_spent_since">Sinds %1$s</string>
+    <string name="assistant_spent_total">Totaal sinds het begin</string>
+    <string name="assistant_spent_reset">Op nul zetten</string>
+    <string name="assistant_spent_reset_ask">Op nul zetten? De geschiedenis blijft.</string>
 </resources>

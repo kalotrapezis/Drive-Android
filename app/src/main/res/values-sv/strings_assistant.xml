@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Telefonens röst (gratis)</string>
     <string name="assistant_voice_first">Mistrals första röst</string>
     <string name="assistant_voice_sample">Hej, så här kommer mina svar att låta.</string>
+    <string name="assistant_spent">Använda pengar</string>
+    <string name="assistant_spent_note">Alla kostnader för AI Assist till Mistrals listpriser, alla chattar tillsammans. Nollställ börjar en ny räkning; totalen och de tidigare räkningarna finns kvar.</string>
+    <string name="assistant_spent_since">Sedan %1$s</string>
+    <string name="assistant_spent_total">Totalt från början</string>
+    <string name="assistant_spent_reset">Nollställ</string>
+    <string name="assistant_spent_reset_ask">Nollställa? Historiken finns kvar.</string>
 </resources>

@@ -151,7 +151,7 @@ internal object AssistantNet {
 internal fun assistantChat(c: Context, forgetMs: Long = Long.MAX_VALUE): AssistantChat {
     val app = c.applicationContext
     val tetra = driveRoot()
-    val api = Mistral({ path, body -> AssistantNet.post(AssistantNet.key(app), path, body) },
+    val api = Mistral({ path, body -> AssistantNet.post(AssistantNet.key(app), path, body) }, AssistantMeter.bill(app),
         stream = { path, body, line -> AssistantNet.stream(AssistantNet.key(app), path, body, line) })
     val prefs = app.getSharedPreferences("assistant", Context.MODE_PRIVATE)
     val tools = AssistantTools(tetra, TimerControl.device(),
@@ -325,13 +325,24 @@ class AssistantRecognition : RecognitionService() {
                 cb.readyForSpeech(Bundle())
                 val pcm = listen(8_000, { stop }) ?: return@Thread cb.error(SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
                 cb.endOfSpeech()
-                cb.results(Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(AssistantNet.transcribe(key, pcm, AssistantWords.terms(this@AssistantRecognition)))) })
+                cb.results(Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(AssistantNet.transcribe(key, pcm, AssistantWords.terms(this@AssistantRecognition), AssistantMeter.bill(this@AssistantRecognition)))) })
             }.onFailure { WriterLog.w("Assistant: recognition for another app failed", it); runCatching { cb.error(SpeechRecognizer.ERROR_NETWORK) } }
         }.start()
     }
 
     override fun onStopListening(cb: Callback) { stop = true }
     override fun onCancel(cb: Callback) { stop = true }
+}
+
+/** Settings › AI Assist's money counter, kept apart from the chats so clearing one loses nothing; prefs survive updates. */
+internal object AssistantMeter {
+    private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("assistant_meter", Context.MODE_PRIVATE)
+    @Synchronized fun read(c: Context): Meter = Meter.of(prefs(c).getString("meter", null), System.currentTimeMillis())
+    @Synchronized private fun change(c: Context, how: (Meter) -> Unit) { val m = read(c).apply(how); prefs(c).edit().putString("meter", m.json()).apply() }
+    @Synchronized fun add(c: Context, usd: Double) { if (usd > 0) change(c) { it.add(usd) } }
+    @Synchronized fun reset(c: Context) = change(c) { it.reset(System.currentTimeMillis()) }
+    /** A bill whose every cost is also counted here. */
+    fun bill(c: Context): Bill { val app = c.applicationContext; return Bill { add(app, it) } }
 }
 
 /** The voice that reads answers (Settings › AI Assist › Voice): one of Mistral's, or the phone's own ("", free). */

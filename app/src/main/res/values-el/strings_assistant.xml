@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Η φωνή του κινητού (δωρεάν)</string>
     <string name="assistant_voice_first">Η πρώτη φωνή της Mistral</string>
     <string name="assistant_voice_sample">Γεια σου, έτσι θα ακούγονται οι απαντήσεις μου.</string>
+    <string name="assistant_spent">Χρήματα που ξοδεύτηκαν</string>
+    <string name="assistant_spent_note">Όλα τα κόστη του AI Assist με τις τιμές της Mistral, από όλες τις συζητήσεις μαζί. Ο μηδενισμός ξεκινά νέα μέτρηση· το σύνολο και οι παλιές μετρήσεις μένουν.</string>
+    <string name="assistant_spent_since">Από %1$s</string>
+    <string name="assistant_spent_total">Σύνολο από την αρχή</string>
+    <string name="assistant_spent_reset">Μηδενισμός</string>
+    <string name="assistant_spent_reset_ask">Μηδενισμός; Το ιστορικό μένει.</string>
 </resources>

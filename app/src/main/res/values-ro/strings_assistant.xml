@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Vocea telefonului (gratuit)</string>
     <string name="assistant_voice_first">Prima voce Mistral</string>
     <string name="assistant_voice_sample">Salut, așa vor suna răspunsurile mele.</string>
+    <string name="assistant_spent">Bani cheltuiți</string>
+    <string name="assistant_spent_note">Toate costurile AI Assist la prețurile Mistral, toate conversațiile la un loc. Resetarea începe o numărătoare nouă; totalul și cele vechi rămân.</string>
+    <string name="assistant_spent_since">Din %1$s</string>
+    <string name="assistant_spent_total">Total de la început</string>
+    <string name="assistant_spent_reset">Resetează</string>
+    <string name="assistant_spent_reset_ask">Resetezi? Istoricul rămâne.</string>
 </resources>

@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Hlas telefónu (zadarmo)</string>
     <string name="assistant_voice_first">Prvý hlas Mistral</string>
     <string name="assistant_voice_sample">Ahoj, takto budú znieť moje odpovede.</string>
+    <string name="assistant_spent">Minuté peniaze</string>
+    <string name="assistant_spent_note">Všetky náklady AI Assist za ceny Mistral, všetky konverzácie spolu. Vynulovanie začne nové počítanie; spolu a predchádzajúce počty zostanú.</string>
+    <string name="assistant_spent_since">Od %1$s</string>
+    <string name="assistant_spent_total">Spolu od začiatku</string>
+    <string name="assistant_spent_reset">Vynulovať</string>
+    <string name="assistant_spent_reset_ask">Vynulovať? História zostane.</string>
 </resources>

@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Telefono balsas (nemokamai)</string>
     <string name="assistant_voice_first">Pirmasis Mistral balsas</string>
     <string name="assistant_voice_sample">Labas, taip skambės mano atsakymai.</string>
+    <string name="assistant_spent">Išleisti pinigai</string>
+    <string name="assistant_spent_note">Visos AI Assist išlaidos Mistral kainomis, visi pokalbiai kartu. Nunulinimas pradeda naują skaičiavimą; bendra suma ir ankstesni lieka.</string>
+    <string name="assistant_spent_since">Nuo %1$s</string>
+    <string name="assistant_spent_total">Iš viso nuo pradžios</string>
+    <string name="assistant_spent_reset">Nunulinti</string>
+    <string name="assistant_spent_reset_ask">Nunulinti? Istorija lieka.</string>
 </resources>

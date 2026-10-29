@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">Glas telefona (brezplačno)</string>
     <string name="assistant_voice_first">Prvi glas Mistral</string>
     <string name="assistant_voice_sample">Živjo, tako bodo zveneli moji odgovori.</string>
+    <string name="assistant_spent">Porabljen denar</string>
+    <string name="assistant_spent_note">Vsi stroški AI Assist po Mistralovih cenah, vsi pogovori skupaj. Ponastavitev začne novo štetje; skupni znesek in prejšnja štetja ostanejo.</string>
+    <string name="assistant_spent_since">Od %1$s</string>
+    <string name="assistant_spent_total">Skupaj od začetka</string>
+    <string name="assistant_spent_reset">Ponastavi</string>
+    <string name="assistant_spent_reset_ask">Ponastavim? Zgodovina ostane.</string>
 </resources>

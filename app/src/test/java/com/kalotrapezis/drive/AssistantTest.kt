@@ -159,6 +159,19 @@ class AssistantTest {
         assertEquals(0.1, api.bill.usd, 1e-9)
     }
 
+    @Test fun theMeterCountsEveryBillAndAResetKeepsTheHistory() {
+        val meter = Meter.of(null, 1_000)
+        val a = Bill { meter.add(it) }; val b = Bill { meter.add(it) }
+        a.minutes(Mistral.REALTIME, 60.0); b.chars("x".repeat(1000))
+        b.reset() // a new chat clears its own bill, not the meter
+        assertEquals(0.022, meter.trip, 1e-9)
+        meter.reset(5_000); a.add(0.01)
+        val back = Meter.of(meter.json(), 9_999) // as saved and read again after an update
+        assertEquals(0.032, back.total, 1e-9); assertEquals(0.01, back.trip, 1e-9); assertEquals(5_000L, back.since)
+        assertEquals(listOf(Meter.Trip(1_000, 5_000, 0.022)), back.past)
+        assertEquals(0.0, Meter.of("not json", 7).total, 0.0)
+    }
+
     @Test fun sentencesGoToTheVoiceAsSoonAsTheyEnd() {
         val cut = Sentences()
         assertEquals(emptyList<String>(), cut.push("Ναι. Η Μαρία"))

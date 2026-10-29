@@ -41,6 +41,9 @@ How to write here:
       the user's own card's X-ABRELATEDNAMES; which card is the user's is asked once (my_card) and kept in this phone's prefs.
       Live: a **tonearm** that moves to another track when the AI talks; a **cassette** a tap away (the tape winds one way for the
       user, back for the AI). Installed on the Xiaomi 15.
+      Then (the user, 29 Oct evening): a **money counter** in Settings › AI Assist, a trip meter beside an odometer: "Since <date>"
+      with Reset (asks once, keeps the history), the total since the start, the past trips listed. Every Bill also counts into
+      AssistantMeter (prefs "assistant_meter", apart from the chats), including the keyboard's voice input and the voice samples.
       Later: photos, send-to-PC, an offline model, keeping chats; the "me" card in the card itself once the computer needs it.
 - [x] (data-refresh session, 29 Oct; branch `claude/data-background-refresh`, merged into `claude/assistant`) **Data refreshes and sends with the
       app closed** (the user: Data "never refreshes or sends unless I open it"): SyncJob's 30-minute job runs DataStats.refresh (the screen's look)

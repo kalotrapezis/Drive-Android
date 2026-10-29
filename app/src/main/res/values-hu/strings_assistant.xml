@@ -47,4 +47,10 @@
     <string name="assistant_voice_phone">A telefon hangja (ingyenes)</string>
     <string name="assistant_voice_first">A Mistral első hangja</string>
     <string name="assistant_voice_sample">Szia, így fognak szólni a válaszaim.</string>
+    <string name="assistant_spent">Elköltött pénz</string>
+    <string name="assistant_spent_note">Az AI Assist minden költsége a Mistral listaárain, az összes beszélgetés együtt. A nullázás új számlálást kezd; az összeg és a korábbiak megmaradnak.</string>
+    <string name="assistant_spent_since">%1$s óta</string>
+    <string name="assistant_spent_total">Összesen a kezdetektől</string>
+    <string name="assistant_spent_reset">Nullázás</string>
+    <string name="assistant_spent_reset_ask">Nullázod? Az előzmények megmaradnak.</string>
 </resources>

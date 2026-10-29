@@ -49,4 +49,11 @@
     <string name="assistant_voice_phone">The phone\'s voice (free)</string>
     <string name="assistant_voice_first">Mistral\'s first voice</string>
     <string name="assistant_voice_sample">Hello, this is how my answers will sound.</string>
+    <string name="assistant_spent">Money spent</string>
+    <string name="assistant_spent_note">Every AI Assist cost at Mistral\'s list prices, all chats together. Reset starts a new count; the total and the past counts stay.</string>
+    <string name="assistant_spent_since">Since %1$s</string>
+    <string name="assistant_spent_total">Total since the start</string>
+    <string name="assistant_spent_reset">Reset</string>
+    <string name="assistant_spent_reset_ask">Reset? The history stays.</string>
+    <string name="assistant_spent_past" translatable="false">%1$s → %2$s</string>
 </resources>

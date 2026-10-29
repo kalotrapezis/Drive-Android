@@ -28,7 +28,7 @@ internal class SyncJob : JobService() {
         val store = SyncStore(applicationContext)
         // Data's hourly look (Plan.md § Data): Android's counts into this device's files, then the plan's warnings
         if (params.jobId == DataStats.JOB) {
-            scope.launch { runCatching { DataStats.record(applicationContext); DataStats.checkRoaming(applicationContext) }.onFailure { WriterLog.w("Data: the hourly look failed (${it.message})") }; jobFinished(params, false) }
+            scope.launch { DataStats.refresh(applicationContext); jobFinished(params, false) }
             return true
         }
         // Send to computer's files, waiting for the computer (Outbox): tried again until it has them.
@@ -55,8 +55,18 @@ internal class SyncJob : JobService() {
         // A new photo or video: sync now (asked 2026-09-27) — the computer there or not, the trigger is armed again.
         val newPhoto = params.jobId == NEW_PHOTO
         if (newPhoto) watchNewPhotos(applicationContext)
-        if (SyncService.isRunning || store.pairing() == null || !onLocalNetwork() || (!newPhoto && System.currentTimeMillis() - store.lastBackup() < minutes(applicationContext) * 50_000L)) return false
+        val paired = store.pairing() != null
+        val sync = !SyncService.isRunning && paired && onLocalNetwork() && (newPhoto || System.currentTimeMillis() - store.lastBackup() >= minutes(applicationContext) * 50_000L)
+        // Data's look rides on this one too, the computer there or not (the user, 29 Oct: Data refreshed and sent only when opened)
+        val dataLook = params.jobId == ID && DataStats.inUse(applicationContext)
+        if (!sync && !dataLook) return false
         scope.launch {
+            if (dataLook) {
+                DataStats.refresh(applicationContext)
+                // sent inside the job: ScopedSync.soon's 2.5 s wait outlives it, and a frozen app sends nothing; the whole sync below carries it otherwise
+                if (!sync && paired && !SyncService.isRunning && onLocalNetwork()) runCatching { SyncClient(applicationContext, store).scopeOnly("data") }
+                if (!sync) return@launch jobFinished(params, false)
+            }
             val failed = runCatching { SyncClient(applicationContext, store).backUp(listPhotos(applicationContext)) {} }.isFailure
             jobFinished(params, failed) // a failure (the computer asleep) is tried again later
         }

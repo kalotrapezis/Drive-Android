@@ -90,6 +90,9 @@ internal object DataStats {
 
     private fun prefs(c: Context) = c.getSharedPreferences("data", Context.MODE_PRIVATE)
 
+    /** The look: what opening Data does, the hourly job, a 50 MB step and the 30-minute sync (SyncJob) too. Without usage access [record] leaves the files as they are. */
+    fun refresh(c: Context) { runCatching { record(c); checkRoaming(c) }.onFailure { WriterLog.w("Data: the look failed (${it.message})") } }
+
     /** The hourly look, every hour Android lets it run (no network needed). */
     fun schedule(c: Context) {
         val jobs = c.getSystemService(JobScheduler::class.java) ?: return
@@ -357,7 +360,7 @@ internal object DataStats {
             override fun onThresholdReached(networkType: Int, subscriberId: String?) {
                 // registered again from here, so the next 50 MB count from now
                 runCatching { nsm.unregisterUsageCallback(this) }; callback = null
-                Thread { runCatching { record(app); checkRoaming(app) }; watchUsage(app) }.start()
+                Thread { refresh(app); watchUsage(app) }.start()
             }
         }
         // shortcut: one fixed step (Android's least is 2 MiB); a look at every 50 MB is enough to warn within that of a threshold

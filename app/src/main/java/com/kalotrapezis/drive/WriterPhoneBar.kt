@@ -105,6 +105,18 @@ internal class ReadAloud(context: android.content.Context) {
         WriterLog.i("read aloud from paragraph $from")
         return true
     }
+    private var added = 100_000 // the ids of the pieces given one at a time, beyond any paragraph's
+
+    /** [text] read after what is being read: an answer (AI Assist) coming a sentence at a time. */
+    fun add(text: String): Boolean {
+        if (!ready || text.isBlank()) return false
+        tts.setSpeechRate(speed)
+        tts.language = languageOf(text)
+        last = ++added
+        speaking = true
+        tts.speak(text, TextToSpeech.QUEUE_ADD, null, last.toString())
+        return true
+    }
     fun stop() { tts.stop(); speaking = false; at = -1 }
     fun shutdown() { tts.stop(); tts.shutdown() }
 }

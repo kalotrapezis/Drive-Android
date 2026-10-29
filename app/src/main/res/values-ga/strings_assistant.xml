@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Tháinig deireadh leis an gcomhrá beo tar éis 20 soicind ciúnais.</string>
     <string name="assistant_live_cap">Tháinig deireadh leis an gcomhrá beo ag 5 nóiméad.</string>
     <string name="assistant_you">Tú</string>
+    <string name="assistant_voice">Guth</string>
+    <string name="assistant_voice_note">Fuaimníonn guthanna Mistral nádúrtha agus cosnaíonn siad beagán ($0.016 ar 1,000 carachtar). Níl guth Gaeilge ag Mistral, ach léann na guthanna Béarla teangacha eile go maith. Tapáil guth chun é a chloisteáil.</string>
+    <string name="assistant_voice_phone">Guth an fhóin (saor in aisce)</string>
+    <string name="assistant_voice_first">An chéad ghuth de chuid Mistral</string>
+    <string name="assistant_voice_sample">Dia duit, seo mar a fhuaimneoidh mo fhreagraí.</string>
 </resources>

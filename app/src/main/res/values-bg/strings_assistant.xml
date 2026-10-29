@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Разговорът на живо приключи след 20 секунди мълчание.</string>
     <string name="assistant_live_cap">Разговорът на живо приключи след 5 минути.</string>
     <string name="assistant_you">Ти</string>
+    <string name="assistant_voice">Глас</string>
+    <string name="assistant_voice_note">Гласовете на Mistral звучат естествено и струват малко ($0.016 за 1000 прочетени знака). Mistral няма български глас, но английските четат добре и на други езици. Докосни глас, за да го чуеш.</string>
+    <string name="assistant_voice_phone">Гласът на телефона (безплатно)</string>
+    <string name="assistant_voice_first">Първият глас на Mistral</string>
+    <string name="assistant_voice_sample">Здравей, така ще звучат отговорите ми.</string>
 </resources>

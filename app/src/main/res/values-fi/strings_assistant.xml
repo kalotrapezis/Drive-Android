@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Suora keskustelu päättyi 20 sekunnin hiljaisuuden jälkeen.</string>
     <string name="assistant_live_cap">Suora keskustelu päättyi 5 minuutin kohdalla.</string>
     <string name="assistant_you">Sinä</string>
+    <string name="assistant_voice">Ääni</string>
+    <string name="assistant_voice_note">Mistralin äänet kuulostavat luonnollisilta ja maksavat vähän ($0.016 / 1 000 luettua merkkiä). Mistralilla ei ole suomenkielistä ääntä, mutta englanninkieliset lukevat hyvin muitakin kieliä. Napauta ääntä kuullaksesi sen.</string>
+    <string name="assistant_voice_phone">Puhelimen ääni (ilmainen)</string>
+    <string name="assistant_voice_first">Mistralin ensimmäinen ääni</string>
+    <string name="assistant_voice_sample">Hei, tältä vastaukseni kuulostavat.</string>
 </resources>

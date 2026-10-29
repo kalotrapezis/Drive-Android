@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Pokalbis gyvai baigėsi po 20 sekundžių tylos.</string>
     <string name="assistant_live_cap">Pokalbis gyvai baigėsi po 5 minučių.</string>
     <string name="assistant_you">Tu</string>
+    <string name="assistant_voice">Balsas</string>
+    <string name="assistant_voice_note">Mistral balsai skamba natūraliai ir kainuoja nedaug ($0.016 už 1000 perskaitytų ženklų). Mistral neturi lietuviško balso, bet angliški gerai skaito ir kitas kalbas. Bakstelėk balsą, kad jį išgirstum.</string>
+    <string name="assistant_voice_phone">Telefono balsas (nemokamai)</string>
+    <string name="assistant_voice_first">Pirmasis Mistral balsas</string>
+    <string name="assistant_voice_sample">Labas, taip skambės mano atsakymai.</string>
 </resources>

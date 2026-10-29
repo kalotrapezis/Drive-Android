@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Az élő beszélgetés 20 másodpercnyi csend után véget ért.</string>
     <string name="assistant_live_cap">Az élő beszélgetés 5 perc után véget ért.</string>
     <string name="assistant_you">Te</string>
+    <string name="assistant_voice">Hang</string>
+    <string name="assistant_voice_note">A Mistral hangjai természetesen szólnak, és keveset kerülnek ($0.016 1000 felolvasott karakterenként). A Mistralnak nincs magyar hangja, de az angolok más nyelveket is jól olvasnak. Koppints egy hangra a meghallgatáshoz.</string>
+    <string name="assistant_voice_phone">A telefon hangja (ingyenes)</string>
+    <string name="assistant_voice_first">A Mistral első hangja</string>
+    <string name="assistant_voice_sample">Szia, így fognak szólni a válaszaim.</string>
 </resources>

@@ -410,6 +410,13 @@ internal fun SettingsTab(
         }
         SwitchRow(stringResource(R.string.assistant_contact_words), stringResource(R.string.assistant_contact_words_note), contactWords) { contactWords = it; AssistantWords.setContacts(context, it) }
     }
+    // the voice that reads answers: Mistral's (the user: the phone's was bad and slow), the phone's kept as the free one
+    var voiceName by remember { mutableStateOf(AssistantVoices.id(context)?.let { if (it == AssistantVoices.PHONE) context.getString(R.string.assistant_voice_phone) else AssistantVoices.name(context) }) }
+    var picking by remember { mutableStateOf(false) }
+    SettingsSection(stringResource(R.string.assistant_voice), stringResource(R.string.assistant_voice_note)) {
+        SettingRow(stringResource(R.string.assistant_voice), voiceName ?: stringResource(R.string.assistant_voice_first), onClick = { picking = true }) { Chevron() }
+    }
+    if (picking) VoicePicker({ picking = false }) { id, name -> AssistantVoices.set(context, id, name); voiceName = name }
     // Android lets no app ask for the assistant role itself (it is not "requestable"): the user picks it on Android's page
     SettingsSection(stringResource(R.string.assistant_default), stringResource(R.string.assistant_default_note)) {
         StatusRow(stringResource(R.string.assistant_default), stringResource(if (held) R.string.assistant_default_yes else R.string.assistant_default_no), held, stringResource(R.string.assistant_choose)) {
@@ -418,6 +425,40 @@ internal fun SettingsTab(
         }
         SettingRow(stringResource(R.string.assistant_open), onClick = { openAssistant(context) }) { Chevron() }
     }
+}
+
+/** Mistral's voices (all pages), the phone's first: a tap chooses one and reads a sentence in it. */
+@Composable private fun VoicePicker(close: () -> Unit, chosen: (String, String) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val reader = rememberReadAloud()
+    val phone = stringResource(R.string.assistant_voice_phone)
+    var voices by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var current by remember { mutableStateOf(AssistantVoices.id(context)) }
+    var sample by remember { mutableStateOf<AnswerVoice?>(null) }
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) { runCatching { AssistantNet.voices(AssistantNet.key(context)) } }
+            .onSuccess { voices = it }.onFailure { problem = it.shownMessage(context) ?: it.message; voices = emptyList() }
+    }
+    DisposableEffect(Unit) { onDispose { sample?.stop() } }
+    val rows = listOf(AssistantVoices.PHONE to phone) + voices.orEmpty()
+    AlertDialog(onDismissRequest = close, confirmButton = { TextButton(onClick = close) { Text(stringResource(R.string.common_done)) } },
+        title = { Text(stringResource(R.string.assistant_voice)) },
+        text = {
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                item { problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) } }
+                items(rows.size) { n ->
+                    val (id, name) = rows[n]
+                    SettingRow(name, chosen = id == current, onClick = {
+                        current = id; chosen(id, name)
+                        sample?.stop()
+                        sample = AnswerVoice(context, reader, Bill(), scope).apply { say(context.getString(R.string.assistant_voice_sample)); finish() }
+                    })
+                }
+                if (voices == null) item { Text(stringResource(R.string.common_loading), color = quiet(), modifier = Modifier.padding(12.dp)) }
+            }
+        })
 }
 
 @Composable private fun CalendarPage() {

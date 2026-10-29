@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Le direct s\'est arrêté après 20 secondes de silence.</string>
     <string name="assistant_live_cap">Le direct s\'est arrêté au bout de 5 minutes.</string>
     <string name="assistant_you">Toi</string>
+    <string name="assistant_voice">Voix</string>
+    <string name="assistant_voice_note">Les voix de Mistral sonnent naturel et coûtent peu (0,016 $ pour 1 000 caractères lus). Mistral a des voix françaises ; les anglaises lisent bien d\'autres langues aussi. Touche une voix pour l\'écouter.</string>
+    <string name="assistant_voice_phone">La voix du téléphone (gratuite)</string>
+    <string name="assistant_voice_first">La première voix de Mistral</string>
+    <string name="assistant_voice_sample">Bonjour, voici comment sonneront mes réponses.</string>
 </resources>

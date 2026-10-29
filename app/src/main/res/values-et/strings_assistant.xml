@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Otsevestlus lõppes 20 sekundi vaikuse järel.</string>
     <string name="assistant_live_cap">Otsevestlus lõppes 5 minuti järel.</string>
     <string name="assistant_you">Sina</string>
+    <string name="assistant_voice">Hääl</string>
+    <string name="assistant_voice_note">Mistrali hääled kõlavad loomulikult ja maksavad vähe ($0.016 1000 loetud tähemärgi eest). Mistralil pole eesti häält, kuid inglise hääled loevad hästi ka teisi keeli. Puuduta häält, et seda kuulata.</string>
+    <string name="assistant_voice_phone">Telefoni hääl (tasuta)</string>
+    <string name="assistant_voice_first">Mistrali esimene hääl</string>
+    <string name="assistant_voice_sample">Tere, nii hakkavad mu vastused kõlama.</string>
 </resources>

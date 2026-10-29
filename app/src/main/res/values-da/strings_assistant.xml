@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Live sluttede efter 20 sekunders stilhed.</string>
     <string name="assistant_live_cap">Live sluttede efter 5 minutter.</string>
     <string name="assistant_you">Du</string>
+    <string name="assistant_voice">Stemme</string>
+    <string name="assistant_voice_note">Mistrals stemmer lyder naturlige og koster lidt ($0.016 for 1.000 læste tegn). Mistral har ingen dansk stemme, men de engelske læser også andre sprog godt. Tryk på en stemme for at høre den.</string>
+    <string name="assistant_voice_phone">Telefonens stemme (gratis)</string>
+    <string name="assistant_voice_first">Mistrals første stemme</string>
+    <string name="assistant_voice_sample">Hej, sådan kommer mine svar til at lyde.</string>
 </resources>

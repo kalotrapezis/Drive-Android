@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Živý hovor skončil po 20 sekundách ticha.</string>
     <string name="assistant_live_cap">Živý hovor skončil po 5 minutách.</string>
     <string name="assistant_you">Ty</string>
+    <string name="assistant_voice">Hlas</string>
+    <string name="assistant_voice_note">Hlasy Mistral znějí přirozeně a stojí málo ($0.016 za 1 000 přečtených znaků). Mistral nemá český hlas, ale jeho anglické hlasy čtou dobře i jiné jazyky. Klepni na hlas a poslechni si ho.</string>
+    <string name="assistant_voice_phone">Hlas telefonu (zdarma)</string>
+    <string name="assistant_voice_first">První hlas Mistral</string>
+    <string name="assistant_voice_sample">Ahoj, takhle budou znít moje odpovědi.</string>
 </resources>

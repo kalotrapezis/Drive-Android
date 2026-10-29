@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Rozmowa na żywo zakończyła się po 20 sekundach ciszy.</string>
     <string name="assistant_live_cap">Rozmowa na żywo zakończyła się po 5 minutach.</string>
     <string name="assistant_you">Ty</string>
+    <string name="assistant_voice">Głos</string>
+    <string name="assistant_voice_note">Głosy Mistral brzmią naturalnie i kosztują niewiele ($0.016 za 1000 przeczytanych znaków). Mistral nie ma polskiego głosu, ale angielskie dobrze czytają też inne języki. Dotknij głosu, aby go usłyszeć.</string>
+    <string name="assistant_voice_phone">Głos telefonu (bezpłatny)</string>
+    <string name="assistant_voice_first">Pierwszy głos Mistral</string>
+    <string name="assistant_voice_sample">Cześć, tak będą brzmieć moje odpowiedzi.</string>
 </resources>

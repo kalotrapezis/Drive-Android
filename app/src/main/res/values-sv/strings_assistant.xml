@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Live avslutades efter 20 sekunders tystnad.</string>
     <string name="assistant_live_cap">Live avslutades efter 5 minuter.</string>
     <string name="assistant_you">Du</string>
+    <string name="assistant_voice">Röst</string>
+    <string name="assistant_voice_note">Mistrals röster låter naturliga och kostar lite ($0.016 per 1 000 upplästa tecken). Mistral har ingen svensk röst, men de engelska läser andra språk bra också. Tryck på en röst för att höra den.</string>
+    <string name="assistant_voice_phone">Telefonens röst (gratis)</string>
+    <string name="assistant_voice_first">Mistrals första röst</string>
+    <string name="assistant_voice_sample">Hej, så här kommer mina svar att låta.</string>
 </resources>

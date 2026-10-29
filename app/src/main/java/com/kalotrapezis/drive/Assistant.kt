@@ -48,6 +48,8 @@ internal class Bill {
         add((usage.optLong("prompt_tokens") * inPrice + usage.optLong("completion_tokens") * outPrice) / 1e6)
     }
     fun minutes(model: String, seconds: Double) = add((PER_MINUTE[model] ?: 0.0) * seconds / 60)
+    /** Mistral's voice is paid by the character read. */
+    fun chars(text: String) = add(text.length * PER_CHAR)
 
     companion object {
         // shortcut: Mistral's list prices in $ as published Oct 2026 (tools' from price tables, not Mistral's page); update when they change
@@ -55,18 +57,44 @@ internal class Bill {
         private val PER_MINUTE = mapOf(Mistral.TRANSCRIBE to 0.004, Mistral.REALTIME to 0.006)
         fun perMinute(model: String) = PER_MINUTE[model] ?: 0.0
         val PER_CALL = mapOf("web_search" to 0.03, "image_generation" to 0.10)
+        const val PER_CHAR = 0.016 / 1000 // voxtral-mini-tts-3: $0.016 a thousand characters (Mistral's Voxtral TTS page)
 
         /** "$0.0123": a cent's fractions while it is small. */
         fun text(usd: Double) = if (usd < 1) "$%.4f".format(java.util.Locale.ROOT, usd) else "$%.2f".format(java.util.Locale.ROOT, usd)
     }
 }
 
-/** Mistral's REST API; [http] posts a path and a body and answers the response's text (tests give their own). */
-internal class Mistral(private val http: (path: String, body: String) -> String, val bill: Bill = Bill()) {
-    fun chat(messages: JSONArray, tools: JSONArray): JSONObject = JSONObject(http("/chat/completions", JSONObject()
-        .put("model", CHAT).put("messages", messages).put("tools", tools).put("tool_choice", "auto").put("temperature", 0.2).toString()))
-        .also { bill.tokens(CHAT, it.optJSONObject("usage")) }
-        .getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+/**
+ * Mistral's REST API; [http] posts a path and a body and answers the response's text, [stream] posts and hands back each
+ * line of a server-sent stream (tests give their own).
+ */
+internal class Mistral(private val http: (path: String, body: String) -> String, val bill: Bill = Bill(),
+    private val stream: ((path: String, body: String, line: (String) -> Unit) -> Unit)? = null) {
+    /** One chat turn; with [onText] (and a [stream]) its words come as they are made, so the voice can start on the first sentence. */
+    fun chat(messages: JSONArray, tools: JSONArray, onText: ((String) -> Unit)? = null): JSONObject {
+        val body = JSONObject().put("model", CHAT).put("messages", messages).put("tools", tools).put("tool_choice", "auto").put("temperature", 0.2)
+        if (onText == null || stream == null) return JSONObject(http("/chat/completions", body.toString()))
+            .also { bill.tokens(CHAT, it.optJSONObject("usage")) }
+            .getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+        val text = StringBuilder(); val calls = sortedMapOf<Int, JSONObject>()
+        stream.invoke("/chat/completions", body.put("stream", true).toString()) { line ->
+            val data = line.removePrefix("data:").trim().takeIf { line.startsWith("data:") && it.startsWith("{") } ?: return@invoke
+            val chunk = JSONObject(data)
+            chunk.optJSONObject("usage")?.let { bill.tokens(CHAT, it) }
+            val delta = chunk.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta") ?: return@invoke
+            AssistantChat.words(delta).takeIf { it.isNotEmpty() }?.let { text.append(it); onText(it) }
+            // a call comes whole or in pieces by its index: the pieces' arguments are joined
+            delta.optJSONArray("tool_calls")?.let { tc -> for (i in 0 until tc.length()) {
+                val piece = tc.getJSONObject(i); val f = piece.optJSONObject("function") ?: JSONObject()
+                val c = calls.getOrPut(piece.optInt("index", calls.size)) { JSONObject().put("type", "function").put("function", JSONObject().put("name", "").put("arguments", "")) }
+                piece.optString("id").takeIf { it.isNotEmpty() }?.let { c.put("id", it) }
+                val cf = c.getJSONObject("function")
+                f.optString("name").takeIf { it.isNotEmpty() }?.let { cf.put("name", it) }
+                when (val a = f.opt("arguments")) { is String -> cf.put("arguments", cf.getString("arguments") + a); is JSONObject -> cf.put("arguments", a.toString()) }
+            } }
+        }
+        return JSONObject().put("role", "assistant").put("content", text.toString()).apply { if (calls.isNotEmpty()) put("tool_calls", JSONArray(calls.values)) }
+    }
 
     /** One stateless turn of the Conversations API with one of Mistral's own tools (web_search, image_generation). */
     fun conversation(input: String, tool: String, instructions: String): JSONArray = JSONObject(http("/conversations", JSONObject()
@@ -81,6 +109,7 @@ internal class Mistral(private val http: (path: String, body: String) -> String,
         const val BUILT_IN = "mistral-medium-latest" // the model Mistral's web search and image examples use
         const val TRANSCRIBE = "voxtral-small-transcribe-3"
         const val REALTIME = "voxtral-mini-transcribe-realtime-3"
+        const val TTS = "voxtral-mini-tts-3"
 
         /**
          * Voxtral's context_bias from "My words" (comma-separated, Settings › AI Assist) and the extra names: at most 100 terms,
@@ -122,6 +151,9 @@ internal class AssistantTools(
     private val changed: (String) -> Unit = {},
     private val search: (String) -> String = { error("No web search here.") },
     private val image: (String) -> File = { error("No pictures here.") },
+    /** The UID of the user's own card in Contacts (Apple's "My Card"), where their relations are kept; asked once. */
+    private val me: () -> String? = { null },
+    private val setMe: (String) -> Unit = {},
 ) {
     private var contacts = emptyList<PendingCall>()
     private var files = emptyList<File>()
@@ -139,6 +171,9 @@ internal class AssistantTools(
             "files_find" -> filesFind(args)
             "file_open" -> pick(files, args) { f -> ToolResult("Opened ${f.name}.", open = f) }
             "contacts_find" -> contactsFind(args)
+            "my_card" -> myCard(args)
+            "relation_remember" -> relationRemember(args)
+            "relation_forget" -> relationForget(args)
             "contact_call" -> pick(contacts, args) { c -> ToolResult("The call to ${c.name} waits for the user's yes (a button on the screen).", call = c) }
             "web_search" -> ToolResult(search(args.getString("query")))
             "make_image" -> image(args.getString("prompt")).let { ToolResult("The picture is on the screen, saved as ${it.name}.", image = it) }
@@ -262,18 +297,78 @@ internal class AssistantTools(
     // ---- Contacts ----
     /** Each match's name and the label of each of its numbers: the numbers themselves stay on the phone. */
     private fun contactsFind(a: JSONObject): ToolResult {
-        val q = a.getString("name")
-        val words = ContactsFiles.plain(q).split(' ').filter { it.isNotBlank() }
-        val found = ContactsFiles.all(ContactsFiles.root(tetra)).map { it.info }
-            .filter { i -> i.phones.isNotEmpty() && words.all { w -> ContactsFiles.matches(i, w) } }
-            .sortedBy { ContactsFiles.sortKey(it, false) }.take(9)
+        val relation = a.optString("relation").trim()
+        val found = if (relation.isNotEmpty()) {
+            val card = myContact() ?: return ToolResult(NO_ME)
+            val names = card.info.related.filter { sameLabel(it.label, relation) }.map { it.value }
+            if (names.isEmpty()) return ToolResult("No $relation is saved on the user's card. Ask who it is, then relation_remember.")
+            names.flatMap { n -> named(n) }.distinct().filter { it.phones.isNotEmpty() }
+                .ifEmpty { return ToolResult("The user's $relation is ${names.joinToString(", ")}, but no contact by that name has a phone number.") }
+        } else {
+            val q = a.optString("name").ifBlank { return ToolResult("Say a name or a relation.") }
+            val words = ContactsFiles.plain(q).split(' ').filter { it.isNotBlank() }
+            ContactsFiles.all(ContactsFiles.root(tetra)).map { it.info }
+                .filter { i -> i.phones.isNotEmpty() && words.all { w -> ContactsFiles.matches(i, w) } }
+                .sortedBy { ContactsFiles.sortKey(it, false) }.take(9)
+        }
         contacts = found.flatMap { i ->
             val phones = i.phones.sortedByDescending { it.value == i.defaultPhone }
             phones.map { p -> PendingCall(if (phones.size > 1) "${i.name} (${p.label.ifBlank { "phone" }})" else i.name, p.value) }
         }
-        if (contacts.isEmpty()) return ToolResult("No contact called $q with a phone number.")
+        if (contacts.isEmpty()) return ToolResult("No contact called ${a.optString("name")} with a phone number.")
         return ToolResult(contacts.mapIndexed { n, c -> "${n + 1}. ${c.name}" }.joinToString("\n"),
             choices = contacts.map { AssistantChoice(it.name, call = it) })
+    }
+
+    // ---- Relations: on the user's own card, as Apple and Google write them (X-ABRELATEDNAMES with its X-ABLabel), so they
+    // sync and show in Contacts, where they can be changed; no file of the assistant's own ----
+    private fun allContacts() = ContactsFiles.all(ContactsFiles.root(tetra))
+    private fun myContact() = me()?.let { uid -> allContacts().firstOrNull { it.info.uid == uid } }
+    private fun sameLabel(a: String, b: String) = ContactsFiles.plain(a) == ContactsFiles.plain(b)
+
+    /** The contacts a name means: the one with that very name, else those with all its words. */
+    private fun named(name: String): List<ContactInfo> {
+        val all = allContacts().map { it.info }
+        all.filter { ContactsFiles.plain(it.name) == ContactsFiles.plain(name) }.takeIf { it.isNotEmpty() }?.let { return it }
+        val words = ContactsFiles.plain(name).split(' ').filter { it.isNotBlank() }
+        return all.filter { i -> words.isNotEmpty() && words.all { w -> ContactsFiles.matches(i, w) } }.sortedBy { ContactsFiles.sortKey(it, false) }
+    }
+    private fun one(name: String, use: (ContactInfo) -> ToolResult): ToolResult {
+        val found = named(name)
+        return when (found.size) {
+            0 -> ToolResult("No contact called $name.")
+            1 -> use(found.single())
+            else -> ToolResult("Several contacts match $name: ${found.take(9).joinToString("; ") { it.name }}. Ask which, then call again with the full name.")
+        }
+    }
+
+    private fun myCard(a: JSONObject) = one(a.getString("name")) { i -> setMe(i.uid); ToolResult("Saved: the user's own card is ${i.name}.") }
+
+    private fun relationRemember(a: JSONObject): ToolResult {
+        val relation = a.getString("relation").trim().ifEmpty { return ToolResult("Say the relation.") }
+        val label = VCard.RELATIONS.firstOrNull { sameLabel(it, relation) } ?: relation
+        val card = myContact() ?: return ToolResult(NO_ME)
+        return one(a.getString("name")) { person ->
+            val related = card.info.related
+            if (related.any { sameLabel(it.label, label) && sameLabel(it.value, person.name) }) return@one ToolResult("Already saved: ${person.name} is the user's $label.")
+            // a spouse or a mother is one; brothers, sisters, children and friends may be several
+            val replaced = if (label in ONLY_ONE || label !in VCard.RELATIONS) related.filter { sameLabel(it.label, label) } else emptyList()
+            ContactsFiles.save(ContactsFiles.root(tetra), card, card.info.copy(related = related - replaced.toSet() + VField(label, person.name)))
+            changed("contacts")
+            ToolResult("Saved on the user's card: ${person.name} is their $label." +
+                if (replaced.isEmpty()) "" else " It replaced ${replaced.joinToString(", ") { it.value }}; tell the user.")
+        }
+    }
+
+    private fun relationForget(a: JSONObject): ToolResult {
+        val relation = a.getString("relation").trim()
+        val card = myContact() ?: return ToolResult(NO_ME)
+        val name = a.optString("name").trim()
+        val gone = card.info.related.filter { sameLabel(it.label, relation) && (name.isEmpty() || ContactsFiles.plain(it.value).contains(ContactsFiles.plain(name))) }
+        if (gone.isEmpty()) return ToolResult("No $relation was saved.")
+        ContactsFiles.save(ContactsFiles.root(tetra), card, card.info.copy(related = card.info.related - gone.toSet()))
+        changed("contacts")
+        return ToolResult("Forgot: ${gone.joinToString(", ") { it.value }} as the user's $relation.")
     }
 
     companion object {
@@ -287,6 +382,10 @@ internal class AssistantTools(
                 .put("properties", JSONObject().apply { props.forEach { (k, v) -> put(k, v) } }).put("required", JSONArray(required))))
         private fun p(type: String, what: String) = JSONObject().put("type", type).put("description", what)
         private val CHOICE = "choice" to p("integer", "The number of the item in the list last shown (1 = the first).")
+
+        private const val NO_ME = "Tetra does not know which contact is the user. Ask the user for their own name as saved in Contacts, then call my_card, then try again."
+        private const val RELATION = "Spouse, Partner, Mother, Father, Parent, Brother, Sister, Child, Friend, Assistant or Manager in English; any other in the user's own word (κουμπάρος)."
+        private val ONLY_ONE = setOf("Spouse", "Partner", "Mother", "Father", "Assistant", "Manager")
 
         /** What the model may call, in Mistral's function-calling form. */
         val SCHEMA: JSONArray = JSONArray(listOf(
@@ -306,7 +405,12 @@ internal class AssistantTools(
                 "title" to p("string", "The note's title; Ψώνια if not said."), "items" to JSONObject().put("type", "array").put("items", JSONObject().put("type", "string")).put("description", "One entry per item.")),
             fn("files_find", "Find files in Tetra whose name contains some words; answers a numbered list.", listOf("query"), "query" to p("string", "Part of the file's name.")),
             fn("file_open", "Open a file from the last files_find list.", listOf("choice"), CHOICE),
-            fn("contacts_find", "Find the user's contacts by name; answers a numbered list of names (with the kind of number when one has several).", listOf("name"), "name" to p("string", "The name as said.")),
+            fn("contacts_find", "Find the user's contacts by name, or by their relation to the user (\"my sister\"); answers a numbered list of names (with the kind of number when one has several).", emptyList(),
+                "name" to p("string", "The name as said."), "relation" to p("string", RELATION)),
+            fn("relation_remember", "Save who someone is to the user (\"Maria K. is my sister\") on the user's own card in Contacts. No need to ask first.", listOf("relation", "name"),
+                "relation" to p("string", RELATION), "name" to p("string", "The contact's name.")),
+            fn("relation_forget", "Forget a saved relation.", listOf("relation"), "relation" to p("string", RELATION), "name" to p("string", "Only this person, when several have the relation.")),
+            fn("my_card", "Say which contact is the user themself, once, when a relation tool asks for it.", listOf("name"), "name" to p("string", "The user's own name as in Contacts.")),
             fn("contact_call", "Ask to call a contact from the last contacts_find list. The phone asks the user to confirm; it does not call by itself.", listOf("choice"), CHOICE),
             fn("web_search", "Search the web for current facts, news, opening hours, prices.", listOf("query"), "query" to p("string", "What to search for.")),
             fn("make_image", "Draw a picture from a description.", listOf("prompt"), "prompt" to p("string", "What the picture shows, in detail.")),
@@ -319,6 +423,7 @@ internal class AssistantTools(
             Use the tools for anything about the user's own calendar, timers, notes, files or contacts; never invent what they hold.
             When a search finds several, say how many and ask which one (the screen shows the numbered list); "the first", "η δεύτερη" mean that list's numbers.
             A call is never placed by you: after contact_call say that the call waits for their yes.
+            "My sister", "ο μπαμπάς μου", "η γυναίκα μου": contacts_find with that relation. When the user says who someone is to them, relation_remember it.
             Work out dates yourself from today's date ("αύριο", "την Πέμπτη").
         """.trimIndent()
     }
@@ -334,14 +439,15 @@ internal class AssistantChat(private val api: Mistral, private val tools: Assist
     private var lastAt = 0L
     val bill get() = api.bill
 
-    fun ask(text: String, at: Long = System.currentTimeMillis()): AssistantReply {
+    /** The user's [text] answered, the tools run on the way; [onText] gets the answer's words as they come. */
+    fun ask(text: String, at: Long = System.currentTimeMillis(), onText: ((String) -> Unit)? = null): AssistantReply {
         if (at - lastAt > forgetMs) messages.clear()
         lastAt = at
         messages += JSONObject().put("role", "user").put("content", text)
         val choices = mutableListOf<AssistantChoice>(); val images = mutableListOf<File>()
         var call: PendingCall? = null; var open: File? = null
         repeat(ROUNDS) {
-            val m = api.chat(JSONArray(listOf(JSONObject().put("role", "system").put("content", AssistantTools.system(now()))) + messages), AssistantTools.SCHEMA)
+            val m = api.chat(JSONArray(listOf(JSONObject().put("role", "system").put("content", AssistantTools.system(now()))) + messages), AssistantTools.SCHEMA, onText)
             val calls = m.optJSONArray("tool_calls")
             messages += JSONObject().put("role", "assistant").put("content", m.opt("content")?.takeIf { it != JSONObject.NULL } ?: "")
                 .apply { if (calls != null && calls.length() > 0) put("tool_calls", calls) }
@@ -364,11 +470,13 @@ internal class AssistantChat(private val api: Mistral, private val tools: Assist
         const val ROUNDS = 5 // tool rounds in one turn at most: find, then act, with room to spare
 
         /** A message's text: a string, or Mistral's chunks (text pieces among others). */
-        fun text(m: JSONObject): String = when (val c = m.opt("content")) {
+        fun text(m: JSONObject): String = words(m).trim()
+        /** The same, spaces kept: a streamed piece's edges are the spaces between words. */
+        fun words(m: JSONObject): String = when (val c = m.opt("content")) {
             is String -> c
             is JSONArray -> (0 until c.length()).mapNotNull { c.optJSONObject(it)?.takeIf { k -> k.optString("type") == "text" }?.optString("text") }.joinToString("")
             else -> ""
-        }.trim()
+        }
 
         /** A spoken yes or no to a waiting call, heard by the phone itself: true, false, or null for anything else. */
         fun yesNo(said: String): Boolean? {
@@ -378,6 +486,29 @@ internal class AssistantChat(private val api: Mistral, private val tools: Assist
         private val YES = setOf("ναι", "οκ", "εντάξει", "ντάξει", "κάλεσε", "πάρε", "ok", "okay", "yes").map(ContactsFiles::plain).toSet()
         private val NO = setOf("όχι", "άκυρο", "ακύρωσε", "σταμάτα", "no", "cancel").map(ContactsFiles::plain).toSet()
     }
+}
+
+/**
+ * An answer coming a few words at a time, cut into sentences for the voice: each is read as soon as it ends and the next
+ * made while it plays (the user: the voice was slow). A cut needs a stop and a space after it ("3.5" stays whole) and a
+ * dozen letters before it, so "κ. Νίκος" or "Ναι." do not go alone.
+ */
+internal class Sentences {
+    private val buf = StringBuilder()
+    fun push(words: String): List<String> {
+        buf.append(words)
+        val out = mutableListOf<String>()
+        while (true) {
+            val end = END.findAll(buf).firstOrNull { buf.substring(0, it.range.first).trim().length >= 12 } ?: break
+            out += buf.substring(0, end.range.last + 1).trim()
+            buf.delete(0, end.range.last + 1)
+        }
+        return out
+    }
+    /** What is left once the answer is whole. */
+    fun rest(): String = buf.toString().trim().also { buf.clear() }
+
+    private companion object { val END = Regex("[.!?;…·:]+\\s+|\n+") }
 }
 
 /** Voice activity: 30 ms frames of 16 kHz speech in, one phrase out when the speaker pauses (the VOICE app's Vad, ported). */

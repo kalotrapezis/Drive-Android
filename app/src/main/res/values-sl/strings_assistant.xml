@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Pogovor v živo se je končal po 20 sekundah tišine.</string>
     <string name="assistant_live_cap">Pogovor v živo se je končal po 5 minutah.</string>
     <string name="assistant_you">Ti</string>
+    <string name="assistant_voice">Glas</string>
+    <string name="assistant_voice_note">Glasovi Mistral zvenijo naravno in stanejo malo ($0.016 za 1000 prebranih znakov). Mistral nima slovenskega glasu, a angleški dobro berejo tudi druge jezike. Tapni glas, da ga slišiš.</string>
+    <string name="assistant_voice_phone">Glas telefona (brezplačno)</string>
+    <string name="assistant_voice_first">Prvi glas Mistral</string>
+    <string name="assistant_voice_sample">Živjo, tako bodo zveneli moji odgovori.</string>
 </resources>

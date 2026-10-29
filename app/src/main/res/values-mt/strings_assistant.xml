@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Il-live spiċċa wara 20 sekonda ta\' skiet.</string>
     <string name="assistant_live_cap">Il-live spiċċa wara 5 minuti.</string>
     <string name="assistant_you">Int</string>
+    <string name="assistant_voice">Leħen</string>
+    <string name="assistant_voice_note">Il-ilħna ta\' Mistral jinstemgħu naturali u jiswew ftit ($0.016 għal kull 1,000 karattru). Mistral m\'għandux leħen Malti, iżda l-ilħna Ingliżi jaqraw tajjeb lingwi oħra wkoll. Agħfas leħen biex tismgħu.</string>
+    <string name="assistant_voice_phone">Il-leħen tat-telefown (b\'xejn)</string>
+    <string name="assistant_voice_first">L-ewwel leħen ta\' Mistral</string>
+    <string name="assistant_voice_sample">Bonġu, hekk se jinstemgħu t-tweġibiet tiegħi.</string>
 </resources>

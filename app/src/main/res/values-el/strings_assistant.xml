@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Η ζωντανή συζήτηση έκλεισε μετά από 20 δευτερόλεπτα σιωπής.</string>
     <string name="assistant_live_cap">Η ζωντανή συζήτηση έκλεισε στα 5 λεπτά.</string>
     <string name="assistant_you">Εσύ</string>
+    <string name="assistant_voice">Φωνή</string>
+    <string name="assistant_voice_note">Οι φωνές της Mistral ακούγονται φυσικές και κοστίζουν λίγο (0,016 $ ανά 1.000 γράμματα). Η Mistral δεν έχει ελληνική φωνή, αλλά οι αγγλικές της διαβάζουν καλά ελληνικά. Πάτησε μια φωνή για να την ακούσεις.</string>
+    <string name="assistant_voice_phone">Η φωνή του κινητού (δωρεάν)</string>
+    <string name="assistant_voice_first">Η πρώτη φωνή της Mistral</string>
+    <string name="assistant_voice_sample">Γεια σου, έτσι θα ακούγονται οι απαντήσεις μου.</string>
 </resources>

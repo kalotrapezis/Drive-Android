@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Live s-a încheiat după 20 de secunde de liniște.</string>
     <string name="assistant_live_cap">Live s-a încheiat după 5 minute.</string>
     <string name="assistant_you">Tu</string>
+    <string name="assistant_voice">Voce</string>
+    <string name="assistant_voice_note">Vocile Mistral sună natural și costă puțin ($0.016 pentru 1.000 de caractere citite). Mistral nu are voce în română, dar cele englezești citesc bine și alte limbi. Atinge o voce ca s-o asculți.</string>
+    <string name="assistant_voice_phone">Vocea telefonului (gratuit)</string>
+    <string name="assistant_voice_first">Prima voce Mistral</string>
+    <string name="assistant_voice_sample">Salut, așa vor suna răspunsurile mele.</string>
 </resources>

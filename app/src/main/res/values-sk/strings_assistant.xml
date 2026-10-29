@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Rozhovor naživo skončil po 20 sekundách ticha.</string>
     <string name="assistant_live_cap">Rozhovor naživo skončil po 5 minútach.</string>
     <string name="assistant_you">Ty</string>
+    <string name="assistant_voice">Hlas</string>
+    <string name="assistant_voice_note">Hlasy Mistral znejú prirodzene a stoja málo ($0.016 za 1 000 prečítaných znakov). Mistral nemá slovenský hlas, ale anglické dobre čítajú aj iné jazyky. Ťukni na hlas a vypočuj si ho.</string>
+    <string name="assistant_voice_phone">Hlas telefónu (zadarmo)</string>
+    <string name="assistant_voice_first">Prvý hlas Mistral</string>
+    <string name="assistant_voice_sample">Ahoj, takto budú znieť moje odpovede.</string>
 </resources>

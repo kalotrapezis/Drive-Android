@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">O direto terminou após 20 segundos de silêncio.</string>
     <string name="assistant_live_cap">O direto terminou aos 5 minutos.</string>
     <string name="assistant_you">Tu</string>
+    <string name="assistant_voice">Voz</string>
+    <string name="assistant_voice_note">As vozes da Mistral soam naturais e custam pouco ($0.016 por 1000 caracteres lidos). A Mistral tem vozes em português; as inglesas também leem bem outras línguas. Toca numa voz para a ouvires.</string>
+    <string name="assistant_voice_phone">A voz do telemóvel (grátis)</string>
+    <string name="assistant_voice_first">A primeira voz da Mistral</string>
+    <string name="assistant_voice_sample">Olá, é assim que as minhas respostas vão soar.</string>
 </resources>

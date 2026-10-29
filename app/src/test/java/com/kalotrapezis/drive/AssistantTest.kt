@@ -140,6 +140,59 @@ class AssistantTest {
         assertNull(AssistantChat.yesNo(""))
     }
 
+    @Test fun aStreamedAnswerComesInPiecesAndItsToolCallIsJoined() {
+        fun data(o: JSONObject) = "data: $o"
+        fun delta(d: JSONObject) = data(JSONObject().put("choices", JSONArray().put(JSONObject().put("delta", d))))
+        val rounds = ArrayDeque(listOf(
+            listOf(delta(JSONObject().put("tool_calls", JSONArray().put(JSONObject().put("index", 0).put("id", "c1")
+                    .put("function", JSONObject().put("name", "timer_start").put("arguments", """{"minu"""))))),
+                delta(JSONObject().put("tool_calls", JSONArray().put(JSONObject().put("index", 0).put("function", JSONObject().put("arguments", "tes\":3}"))))),
+                "", "data: [DONE]"),
+            listOf(delta(JSONObject().put("content", "Ξεκίνησε. ")), delta(JSONObject().put("content", "Τρία λεπτά.")),
+                data(JSONObject().put("choices", JSONArray()).put("usage", JSONObject().put("prompt_tokens", 1_000_000).put("completion_tokens", 0)))),
+        ))
+        val api = Mistral({ _, _ -> error("not streamed") }, stream = { _, body, line -> assertTrue(JSONObject(body).getBoolean("stream")); rounds.removeFirst().forEach(line) })
+        val heard = StringBuilder()
+        val reply = AssistantChat(api, tools(), now = { now }).ask("χρονόμετρο τρία λεπτά") { heard.append(it) }
+        assertEquals("Ξεκίνησε. Τρία λεπτά.", reply.text); assertEquals(reply.text, heard.toString())
+        assertEquals(180L, TimerFiles.read(TimerFiles.root(tetra)).single().seconds)
+        assertEquals(0.1, api.bill.usd, 1e-9)
+    }
+
+    @Test fun sentencesGoToTheVoiceAsSoonAsTheyEnd() {
+        val cut = Sentences()
+        assertEquals(emptyList<String>(), cut.push("Ναι. Η Μαρία"))
+        assertEquals(listOf("Ναι. Η Μαρία έχει γενέθλια στις 3.5 το απόγευμα;"), cut.push(" έχει γενέθλια στις 3.5 το απόγευμα; Θέλεις"))
+        assertEquals(emptyList<String>(), cut.push(" να της"))
+        assertEquals("Θέλεις να της", cut.rest())
+        val bill = Bill(); bill.chars("x".repeat(1000)); assertEquals(0.016, bill.usd, 1e-12)
+    }
+
+    @Test fun relationsLiveOnTheUsersOwnCard() {
+        val dir = ContactsFiles.root(tetra)
+        val me = ContactsFiles.save(dir, null, ContactInfo(formatted = "Γιώργος Δημητρίου"))
+        ContactsFiles.save(dir, null, ContactInfo(formatted = "Μαρία Κωστοπούλου", phones = listOf(VField("Mobile", "+306900000002"))))
+        ContactsFiles.save(dir, null, ContactInfo(formatted = "Ελένη Δημητρίου", phones = listOf(VField("Mobile", "+306900000004"))))
+        var mine: String? = null
+        val t = AssistantTools(tetra, "Phone", zone, { now }, me = { mine }, setMe = { mine = it })
+        fun run(name: String, vararg a: Pair<String, String>) = t.run(name, JSONObject(a.toMap())).forModel
+        assertTrue(run("relation_remember", "relation" to "Sister", "name" to "Μαρία Κ").startsWith("Tetra does not know which contact is the user"))
+        assertEquals("Saved: the user's own card is Γιώργος Δημητρίου.", run("my_card", "name" to "Γιώργος Δημητρίου"))
+        assertEquals(me.info.uid, mine)
+        assertEquals("Saved on the user's card: Μαρία Κωστοπούλου is their Sister.", run("relation_remember", "relation" to "sister", "name" to "Μαρία Κ"))
+        assertEquals("1. Μαρία Κωστοπούλου", run("contacts_find", "relation" to "Sister"))
+        // in Contacts, as Apple and Google write it
+        val text = ContactsFiles.root(tetra).listFiles()!!.single { it.readText().contains("Γιώργος") }.readText()
+        assertTrue(text, text.contains("X-ABRELATEDNAMES:Μαρία Κωστοπούλου") && text.contains("X-ABLabel:_\$!<Sister>!\$_"))
+        // a spouse is one: a new one says what it replaced
+        run("relation_remember", "relation" to "Spouse", "name" to "Μαρία Κωστοπούλου")
+        assertTrue(run("relation_remember", "relation" to "Spouse", "name" to "Ελένη").contains("It replaced Μαρία Κωστοπούλου"))
+        assertEquals("1. Ελένη Δημητρίου", run("contacts_find", "relation" to "spouse"))
+        assertEquals("Forgot: Ελένη Δημητρίου as the user's Spouse.", run("relation_forget", "relation" to "Spouse"))
+        assertTrue(run("contacts_find", "relation" to "Spouse").startsWith("No Spouse is saved"))
+        assertEquals("1. Μαρία Κωστοπούλου", run("contacts_find", "relation" to "Sister")) // the sister stayed
+    }
+
     @Test fun vadEndsAPhraseAtAPauseAndWavIsWellFormed() {
         val vad = Vad()
         fun frame(amp: Int) = ShortArray(Vad.FRAME) { i -> (amp * Math.sin(i * 0.3)).toInt().toShort() }

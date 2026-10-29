@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Live is beëindigd na 20 seconden stilte.</string>
     <string name="assistant_live_cap">Live is beëindigd na 5 minuten.</string>
     <string name="assistant_you">Jij</string>
+    <string name="assistant_voice">Stem</string>
+    <string name="assistant_voice_note">De stemmen van Mistral klinken natuurlijk en kosten weinig ($0.016 per 1.000 voorgelezen tekens). Mistral heeft Nederlandse stemmen; de Engelse lezen ook andere talen goed. Tik op een stem om hem te horen.</string>
+    <string name="assistant_voice_phone">De stem van de telefoon (gratis)</string>
+    <string name="assistant_voice_first">De eerste stem van Mistral</string>
+    <string name="assistant_voice_sample">Hallo, zo gaan mijn antwoorden klinken.</string>
 </resources>

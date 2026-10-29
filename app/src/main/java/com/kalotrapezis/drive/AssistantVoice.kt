@@ -5,8 +5,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.os.Bundle
 import android.security.keystore.KeyGenParameterSpec
@@ -17,6 +19,13 @@ import android.service.voice.VoiceInteractionSessionService
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
 import android.util.Base64
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -85,14 +94,50 @@ internal object AssistantNet {
         else -> DriveProblem("Mistral $code", R.string.assistant_server, code)
     }
 
-    private fun send(key: String, path: String, type: String?, body: ByteArray?): ByteArray {
+    /** A server-sent stream, a line at a time as it comes (the chat's answer, Mistral's voice). */
+    fun stream(key: String, path: String, body: String, line: (String) -> Unit) =
+        request(key, path, "application/json", body.toByteArray()) { it.bufferedReader().forEachLine(line) }
+
+    /** Mistral's preset voices as id to "Name (languages)", every page (the TTS app's mistralVoices()). */
+    fun voices(key: String): List<Pair<String, String>> {
+        val out = mutableListOf<Pair<String, String>>()
+        var offset = 0
+        while (true) {
+            val items = JSONObject(request(key, "/audio/voices?limit=100&offset=$offset", null, null) { it.readBytes().decodeToString() }).optJSONArray("items") ?: return out
+            for (i in 0 until items.length()) items.getJSONObject(i).let { v ->
+                val langs = v.optJSONArray("languages")?.let { l -> (0 until l.length()).joinToString(", ") { l.getString(it) } }.orEmpty()
+                out += v.getString("id") to (v.optString("name").ifBlank { v.getString("id") } + if (langs.isEmpty()) "" else " ($langs)")
+            }
+            if (items.length() < 100) return out
+            offset += 100
+        }
+    }
+
+    /**
+     * [text] read by Mistral's [voice], streamed: [audio] gets 24 kHz mono float samples as they are made, so playing starts
+     * before the sentence is whole. Mistral has no Greek voice, but its English ones read Greek well (the TTS app).
+     */
+    fun speech(key: String, voice: String, text: String, bill: Bill?, audio: (FloatArray) -> Unit) {
+        val body = JSONObject().put("model", Mistral.TTS).put("input", text).put("voice_id", voice).put("response_format", "pcm").put("stream", true)
+        stream(key, "/audio/speech", body.toString()) { line ->
+            val data = line.removePrefix("data:").trim().takeIf { line.startsWith("data:") && it.startsWith("{") } ?: return@stream
+            val b64 = JSONObject(data).optString("audio_data").ifEmpty { return@stream }
+            val bytes = java.nio.ByteBuffer.wrap(Base64.decode(b64, Base64.DEFAULT)).order(java.nio.ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+            audio(FloatArray(bytes.remaining()).also { bytes.get(it) })
+        }
+        bill?.chars(text)
+    }
+
+    private fun send(key: String, path: String, type: String?, body: ByteArray?): ByteArray = request(key, path, type, body) { it.readBytes() }
+
+    private fun <T> request(key: String, path: String, type: String?, body: ByteArray?, read: (java.io.InputStream) -> T): T {
         val c = URL(Mistral.API + path).openConnection() as HttpURLConnection
         try {
             c.connectTimeout = 15_000; c.readTimeout = 120_000 // a picture takes a while
             c.setRequestProperty("Authorization", "Bearer $key")
             if (body != null) { c.requestMethod = "POST"; c.doOutput = true; c.setRequestProperty("Content-Type", type); c.outputStream.use { it.write(body) } }
             val code = try { c.responseCode } catch (e: IOException) { throw DriveProblem("Offline: ${e.message}", R.string.assistant_offline) }
-            if (code in 200..299) return c.inputStream.use { it.readBytes() }
+            if (code in 200..299) return c.inputStream.use(read)
             val said = runCatching { c.errorStream?.use { it.readBytes().decodeToString() } }.getOrNull().orEmpty().take(300)
             WriterLog.w("Assistant: Mistral $path answered $code $said")
             throw problem(code)
@@ -106,12 +151,15 @@ internal object AssistantNet {
 internal fun assistantChat(c: Context, forgetMs: Long = Long.MAX_VALUE): AssistantChat {
     val app = c.applicationContext
     val tetra = driveRoot()
-    val api = Mistral({ path, body -> AssistantNet.post(AssistantNet.key(app), path, body) })
+    val api = Mistral({ path, body -> AssistantNet.post(AssistantNet.key(app), path, body) },
+        stream = { path, body, line -> AssistantNet.stream(AssistantNet.key(app), path, body, line) })
+    val prefs = app.getSharedPreferences("assistant", Context.MODE_PRIVATE)
     val tools = AssistantTools(tetra, TimerControl.device(),
         changed = { what -> when (what) {
             "calendar" -> { ScopedSync.soon(app, "calendar", 0, orWhole = true); CalendarAlarms.planSoon(app) }
             "timer" -> { ScopedSync.soon(app, "timer", 0, orWhole = true); TimerService.check(app) }
             "notes" -> NotesSync.soon(app)
+            "contacts" -> { ScopedSync.soon(app, "contacts", 0, orWhole = true); ContactsAccount.soon(app) }
         } },
         search = { q ->
             val (text, sources, _) = Mistral.output(api.conversation(q, "web_search", "Search the web and answer briefly with the facts found."))
@@ -120,7 +168,9 @@ internal fun assistantChat(c: Context, forgetMs: Long = Long.MAX_VALUE): Assista
         image = { prompt ->
             val id = Mistral.output(api.conversation(prompt, "image_generation", "Draw the picture asked for.")).third.firstOrNull() ?: error("No picture came back.")
             File(File(tetra, FOLDER).apply { mkdirs() }, "image-${System.currentTimeMillis()}.png").apply { writeBytes(AssistantNet.download(AssistantNet.key(app), id)) }
-        })
+        },
+        // shortcut: which card is the user's is kept on this phone only (Contacts has no "me" mark yet); move it into the card when the computer needs it
+        me = { prefs.getString("me", null) }, setMe = { prefs.edit().putString("me", it).apply() })
     return AssistantChat(api, tools, forgetMs)
 }
 
@@ -282,4 +332,75 @@ class AssistantRecognition : RecognitionService() {
 
     override fun onStopListening(cb: Callback) { stop = true }
     override fun onCancel(cb: Callback) { stop = true }
+}
+
+/** The voice that reads answers (Settings › AI Assist › Voice): one of Mistral's, or the phone's own ("", free). */
+internal object AssistantVoices {
+    const val PHONE = ""
+    private fun prefs(c: Context) = c.getSharedPreferences("assistant", Context.MODE_PRIVATE)
+    fun id(c: Context): String? = prefs(c).getString("voice", null)
+    fun name(c: Context): String? = prefs(c).getString("voiceName", null)
+    fun set(c: Context, id: String, name: String) = prefs(c).edit().putString("voice", id).putString("voiceName", name).apply()
+
+    /** The chosen voice; never chosen, Mistral's first (the user wanted Mistral's voice), kept from then on. */
+    fun chosen(c: Context, key: String): String = id(c) ?: (AssistantNet.voices(key).firstOrNull()?.also { set(c, it.first, it.second) }?.first ?: PHONE)
+}
+
+/**
+ * One answer read aloud a sentence at a time as it comes ([say], then [finish]): by Mistral's voice, each sentence made
+ * while the one before plays, or by the phone's own. A sentence Mistral cannot read (offline, the key) is read by the
+ * phone, in its turn.
+ */
+internal class AnswerVoice(private val c: Context, private val reader: ReadAloud, private val bill: Bill, scope: CoroutineScope) {
+    private val sentences = Channel<String>(Channel.UNLIMITED)
+    private val audio = Channel<Any>(Channel.UNLIMITED) // samples to play, or a sentence for the phone's voice
+    @Volatile private var track: AudioTrack? = null
+
+    private val making = scope.launch(Dispatchers.IO) {
+        val key = AssistantKey.get(c)
+        var voice = key?.let { k -> runCatching { AssistantVoices.chosen(c, k) }.getOrDefault(AssistantVoices.PHONE) } ?: AssistantVoices.PHONE
+        for (s in sentences) {
+            if (voice == AssistantVoices.PHONE || key == null) { audio.trySend(s); continue }
+            try {
+                AssistantNet.speech(key, voice, s, bill) { a -> if (audio.trySend(a).isFailure) throw CancellationException("stopped") }
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) { WriterLog.w("AI Assist voice: ${e.message}"); voice = AssistantVoices.PHONE; audio.trySend(s) }
+        }
+        audio.close()
+    }
+
+    private val playing = scope.launch(Dispatchers.IO) {
+        var written = 0L
+        suspend fun drain() { while (isActive && (track?.playbackHeadPosition ?: return) < written) delay(30) }
+        try {
+            for (a in audio) when (a) {
+                is FloatArray -> {
+                    val t = track ?: newTrack().also { track = it; it.play() }
+                    var at = 0
+                    while (at < a.size && isActive) { val n = t.write(a, at, minOf(2_400, a.size - at), AudioTrack.WRITE_BLOCKING); if (n <= 0) break; at += n }
+                    written += a.size
+                }
+                is String -> { drain(); reader.add(a); while (isActive && reader.speaking) delay(50) }
+            }
+            drain()
+        } finally { track?.run { runCatching { pause(); flush() }; release() }; track = null }
+    }
+
+    private fun newTrack() = AudioTrack.Builder()
+        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+        .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+        .setBufferSizeInBytes(maxOf(AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT), RATE * 4 / 2))
+        .setTransferMode(AudioTrack.MODE_STREAM).build()
+
+    fun say(sentence: String) { if (sentence.isNotBlank()) sentences.trySend(sentence) }
+    fun finish() { sentences.close() }
+    /** Until the last word is heard. */
+    suspend fun await() = playing.join()
+    fun stop() {
+        sentences.close(); audio.cancel(); making.cancel(); playing.cancel()
+        track?.runCatching { pause(); flush() } // a blocked write returns
+        reader.stop()
+    }
+
+    private companion object { const val RATE = 24_000 } // Mistral's voice: 24 kHz float samples
 }

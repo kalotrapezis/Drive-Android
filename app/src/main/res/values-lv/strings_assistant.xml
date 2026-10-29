@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Tiešraide beidzās pēc 20 sekunžu klusuma.</string>
     <string name="assistant_live_cap">Tiešraide beidzās pēc 5 minūtēm.</string>
     <string name="assistant_you">Tu</string>
+    <string name="assistant_voice">Balss</string>
+    <string name="assistant_voice_note">Mistral balsis skan dabiski un maksā maz ($0.016 par 1000 nolasītām rakstzīmēm). Mistral nav latviešu balss, bet angļu balsis labi lasa arī citas valodas. Pieskaries balsij, lai to dzirdētu.</string>
+    <string name="assistant_voice_phone">Tālruņa balss (bez maksas)</string>
+    <string name="assistant_voice_first">Pirmā Mistral balss</string>
+    <string name="assistant_voice_sample">Sveiki, šādi skanēs manas atbildes.</string>
 </resources>

@@ -44,4 +44,9 @@
     <string name="assistant_live_cap">Live ended at 5 minutes.</string>
     <string name="assistant_you">You</string>
     <string name="assistant_ai" translatable="false">AI</string>
+    <string name="assistant_voice">Voice</string>
+    <string name="assistant_voice_note">Mistral\'s voices sound natural and cost a little ($0.016 for 1,000 letters read). Mistral has no Greek voice, but its English ones read Greek well. Tap a voice to hear it.</string>
+    <string name="assistant_voice_phone">The phone\'s voice (free)</string>
+    <string name="assistant_voice_first">Mistral\'s first voice</string>
+    <string name="assistant_voice_sample">Hello, this is how my answers will sound.</string>
 </resources>

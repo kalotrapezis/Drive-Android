@@ -34,7 +34,14 @@ How to write here:
       by the phone's own voice (free) with the mic sending silence meanwhile; a vinyl record turns with the talk (the icon its label),
       captions, X and "cost / time"; ends by itself after 20 s of silence or at 5 minutes. Live's realtime messages not tried against
       Mistral (no key here): the protocol is from the docs page only.
-      Later: photos, send-to-PC, an offline model, keeping chats, Mistral's own TTS voice.
+      Then (the user tried it on the phone: "the voice is bad and slow"): the chat answer streams (SSE) and is read a sentence at a
+      time (Sentences) by **Mistral's voice** (`voxtral-mini-tts-3`, streamed float PCM 24 kHz, AnswerVoice: the next sentence made
+      while one plays), the phone's voice kept as the free choice (Settings › AI Assist › Voice, all of Mistral's voices, a tap reads
+      a sample); TTS characters on the bill. **Relations** ("η αδερφή μου"): relation_remember/forget and contacts_find(relation) on
+      the user's own card's X-ABRELATEDNAMES; which card is the user's is asked once (my_card) and kept in this phone's prefs.
+      Live: a **tonearm** that moves to another track when the AI talks; a **cassette** a tap away (the tape winds one way for the
+      user, back for the AI). Installed on the Xiaomi 15.
+      Later: photos, send-to-PC, an offline model, keeping chats; the "me" card in the card itself once the computer needs it.
 - [~] (system-folder session, 27 Oct; branches `system-folder` in Drive and `claude/system-folder` here; not merged, not pushed)
       **One hidden ~/Tetra/.System** (the user: "gather all of these under one system folder, and make it hidden: .System"; "every
       app/data, app/core, app/user"; "the builder … clean up after itself, every time the same way"). Desktop system.js makes every

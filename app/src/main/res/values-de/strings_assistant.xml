@@ -42,4 +42,9 @@
     <string name="assistant_live_silence">Live wurde nach 20 Sekunden Stille beendet.</string>
     <string name="assistant_live_cap">Live wurde nach 5 Minuten beendet.</string>
     <string name="assistant_you">Du</string>
+    <string name="assistant_voice">Stimme</string>
+    <string name="assistant_voice_note">Die Stimmen von Mistral klingen natürlich und kosten wenig ($0.016 für 1.000 gelesene Zeichen). Mistral hat keine deutsche Stimme, aber die englischen lesen auch andere Sprachen gut. Tippe auf eine Stimme, um sie zu hören.</string>
+    <string name="assistant_voice_phone">Die Stimme des Telefons (kostenlos)</string>
+    <string name="assistant_voice_first">Die erste Stimme von Mistral</string>
+    <string name="assistant_voice_sample">Hallo, so werden meine Antworten klingen.</string>
 </resources>

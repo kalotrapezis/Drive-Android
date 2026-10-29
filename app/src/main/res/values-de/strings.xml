@@ -1925,6 +1925,8 @@
     <string name="phone_merge">Zusammenführen</string>
     <string name="phone_end_this">Diesen Anruf beenden</string>
     <string name="phone_computer_device">Computer · %1$s</string>
+    <string name="phone_to_computer">Zum Computer</string>
+    <string name="phone_to_phone">Zum Handy</string>
     <string name="phone_call_with">Anruf mit %1$s</string>
     <string name="phone_no_sims">Das Telefon hat nicht gemeldet, welche SIMs es hat.</string>
     <string name="phone_no_calls_here">Dieses Gerät hat keine eigenen Anrufe: Telefon ruft über dein Telefon an, über den Computer, und zeigt die Anrufe des Telefons beim Klingeln. Der Ton bleibt auf dem Telefon.</string>

@@ -1982,6 +1982,8 @@
     <string name="phone_merge">Combinar</string>
     <string name="phone_end_this">Colgar esta llamada</string>
     <string name="phone_computer_device">Ordenador · %1$s</string>
+    <string name="phone_to_computer">Al ordenador</string>
+    <string name="phone_to_phone">Al teléfono</string>
     <string name="phone_call_with">Llamada con %1$s</string>
     <string name="phone_no_sims">El teléfono no ha indicado qué SIM tiene.</string>
     <string name="phone_no_calls_here">Este dispositivo no tiene llamadas propias: su Teléfono llama a través de tu teléfono, pasando por el ordenador, y muestra las llamadas del teléfono mientras suenan. La voz se queda en el teléfono.</string>

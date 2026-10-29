@@ -1982,6 +1982,8 @@
     <string name="phone_merge">Îmbină</string>
     <string name="phone_end_this">Încheie acest apel</string>
     <string name="phone_computer_device">Computer · %1$s</string>
+    <string name="phone_to_computer">Pe calculator</string>
+    <string name="phone_to_phone">Pe telefon</string>
     <string name="phone_call_with">Apel cu %1$s</string>
     <string name="phone_no_sims">Telefonul nu a spus ce cartele SIM are.</string>
     <string name="phone_no_calls_here">Acest dispozitiv nu are apeluri proprii: Telefonul lui apelează prin telefonul tău, prin intermediul computerului, și afișează apelurile telefonului când sună. Vocea rămâne pe telefon.</string>

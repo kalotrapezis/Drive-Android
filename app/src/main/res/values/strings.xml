@@ -1926,6 +1926,8 @@
     <string name="phone_merge">Merge</string>
     <string name="phone_end_this">End this call</string>
     <string name="phone_computer_device">Computer · %1$s</string>
+    <string name="phone_to_computer">To the computer</string>
+    <string name="phone_to_phone">To the phone</string>
     <string name="phone_call_with">Call with %1$s</string>
     <string name="phone_no_sims">The phone did not say which SIMs it has.</string>
     <string name="phone_no_calls_here">This device has no calls of its own: its Phone calls through your phone, by way of the computer, and shows the phone\'s calls as they ring. The voice stays on the phone.</string>

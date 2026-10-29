@@ -2039,6 +2039,8 @@
     <string name="phone_merge">Sujungti</string>
     <string name="phone_end_this">Baigti šį skambutį</string>
     <string name="phone_computer_device">Kompiuteris · %1$s</string>
+    <string name="phone_to_computer">Į kompiuterį</string>
+    <string name="phone_to_phone">Į telefoną</string>
     <string name="phone_call_with">Skambutis su %1$s</string>
     <string name="phone_no_sims">Telefonas nenurodė, kokias SIM korteles turi.</string>
     <string name="phone_no_calls_here">Šis įrenginys savų skambučių neturi: jo Telefonas skambina per jūsų telefoną, per kompiuterį, ir rodo telefono skambučius, kai jie skamba. Balsas lieka telefone.</string>

@@ -2039,6 +2039,8 @@
     <string name="phone_merge">Zlúčiť</string>
     <string name="phone_end_this">Ukončiť tento hovor</string>
     <string name="phone_computer_device">Počítač · %1$s</string>
+    <string name="phone_to_computer">Do počítača</string>
+    <string name="phone_to_phone">Do telefónu</string>
     <string name="phone_call_with">Hovor s %1$s</string>
     <string name="phone_no_sims">Telefón neuviedol, aké má SIM karty.</string>
     <string name="phone_no_calls_here">Toto zariadenie nemá vlastné hovory: jeho Telefón volá cez váš telefón prostredníctvom počítača a zobrazuje hovory telefónu, keď zvonia. Hlas zostáva v telefóne.</string>

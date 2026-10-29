@@ -1925,6 +1925,8 @@
     <string name="phone_merge">Ühenda</string>
     <string name="phone_end_this">Lõpeta see kõne</string>
     <string name="phone_computer_device">Arvuti · %1$s</string>
+    <string name="phone_to_computer">Arvutisse</string>
+    <string name="phone_to_phone">Telefoni</string>
     <string name="phone_call_with">Kõne: %1$s</string>
     <string name="phone_no_sims">Telefon ei öelnud, millised SIM-kaardid tal on.</string>
     <string name="phone_no_calls_here">Selles seadmes pole oma kõnesid: selle Telefon helistab teie telefoni kaudu arvuti vahendusel ja näitab telefoni kõnesid, kui need helisevad. Hääl jääb telefoni.</string>

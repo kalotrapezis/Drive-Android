@@ -1982,6 +1982,8 @@
     <string name="phone_merge">Fusionner</string>
     <string name="phone_end_this">Mettre fin à cet appel</string>
     <string name="phone_computer_device">Ordinateur · %1$s</string>
+    <string name="phone_to_computer">Vers l\'ordinateur</string>
+    <string name="phone_to_phone">Vers le téléphone</string>
     <string name="phone_call_with">Appeler avec %1$s</string>
     <string name="phone_no_sims">Le téléphone n’a pas indiqué quelles SIM il possède.</string>
     <string name="phone_no_calls_here">Cet appareil n’a pas d’appels propres : son Téléphone appelle via votre téléphone, en passant par l’ordinateur, et affiche les appels du téléphone quand ils sonnent. La voix reste sur le téléphone.</string>

@@ -2039,6 +2039,8 @@
     <string name="phone_merge">Združi</string>
     <string name="phone_end_this">Končaj ta klic</string>
     <string name="phone_computer_device">Računalnik · %1$s</string>
+    <string name="phone_to_computer">Na računalnik</string>
+    <string name="phone_to_phone">Na telefon</string>
     <string name="phone_call_with">Kliči prek %1$s</string>
     <string name="phone_no_sims">Telefon ni sporočil, katere kartice SIM ima.</string>
     <string name="phone_no_calls_here">Ta naprava nima lastnih klicev: njen Telefon kliče prek vašega telefona, po poti prek računalnika, in prikazuje klice telefona, ko zvonijo. Glas ostane v telefonu.</string>

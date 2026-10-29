@@ -180,6 +180,13 @@ private fun InCallControls(call: Call, keys: Boolean, toggleKeys: () -> Unit, ad
         else -> R.drawable.ic_volume_up to stringResource(R.string.phone_speaker)
     }
     val loud = route == CallAudioState.ROUTE_SPEAKER || route == CallAudioState.ROUTE_BLUETOOTH
+    // the paired computer on the phone's Bluetooth now: the call moves there and back in one tap (the user, 29 Oct)
+    val pc = remember(devices) { devices.firstOrNull { PhoneRoutes.isComputer(context, it) } }
+    val onPc = pc != null && route == CallAudioState.ROUTE_BLUETOOTH && audio?.activeBluetoothDevice?.address == pc.address
+    if (pc != null) TextButton(onClick = { PhoneCalls.moveTo(context, phone = onPc) }, modifier = Modifier.padding(bottom = 8.dp)) {
+        Icon(painterResource(if (onPc) R.drawable.ic_phone else R.drawable.ic_computer), contentDescription = null, modifier = Modifier.size(18.dp))
+        Text("  " + stringResource(if (onPc) R.string.phone_to_phone else R.string.phone_to_computer), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
     // three equal columns in both rows: a long label ("Πληκτρολόγιο", "Υπολογιστής · theologos-82xm") stays in its own (the user, 27 Oct)
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(Modifier.fillMaxWidth()) {
@@ -276,8 +283,25 @@ private fun OtherCall(o: Call, main: Call) {
 internal object PhoneRoutes {
     fun name(c: Context, d: android.bluetooth.BluetoothDevice): String {
         val n = runCatching { d.name }.getOrNull()?.ifBlank { null } ?: return "Bluetooth"
-        val computers = runCatching { SyncStore(c).peers().map { it.name.lowercase() } }.getOrDefault(emptyList())
-        return if (n.lowercase() in computers) c.getString(R.string.phone_computer_device, n) else n
+        return if (isComputer(c, d)) c.getString(R.string.phone_computer_device, n) else n
+    }
+
+    /** A Bluetooth device that is a computer Tetra is paired with: its Bluetooth name is the computer's (its hostname, desktop sync.js). */
+    fun isComputer(c: Context, d: android.bluetooth.BluetoothDevice): Boolean {
+        val n = runCatching { d.name }.getOrNull()?.ifBlank { null }?.lowercase() ?: return false
+        return runCatching { SyncStore(c).peers().any { it.name.lowercase() == n } }.getOrDefault(false)
+    }
+
+    /**
+     * Where the call's sound should go for it to be on the phone ([onPhone]) or on the computer: a CallAudioState route and
+     * its Bluetooth device, or null when it is there already (or there is no computer to send it to). Off the computer a
+     * headset or the car on Bluetooth wins over the earpiece, as Android would have chosen without the computer.
+     */
+    fun <D> where(onPhone: Boolean, route: Int, active: D?, devices: Collection<D>, isComputer: (D) -> Boolean): Pair<Int, D?>? {
+        val onComputer = route == CallAudioState.ROUTE_BLUETOOTH && active != null && isComputer(active)
+        if (onPhone) return if (!onComputer) null else devices.firstOrNull { !isComputer(it) }?.let { CallAudioState.ROUTE_BLUETOOTH to it } ?: (CallAudioState.ROUTE_WIRED_OR_EARPIECE to null)
+        // shortcut: the first computer on the phone's Bluetooth; with two, the bubble's own computer is not told apart yet
+        return if (onComputer) null else devices.firstOrNull(isComputer)?.let { CallAudioState.ROUTE_BLUETOOTH to it }
     }
 }
 

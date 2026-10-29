@@ -1925,6 +1925,8 @@
     <string name="phone_merge">Flet</string>
     <string name="phone_end_this">Afslut dette opkald</string>
     <string name="phone_computer_device">Computer · %1$s</string>
+    <string name="phone_to_computer">Til computeren</string>
+    <string name="phone_to_phone">Til telefonen</string>
     <string name="phone_call_with">Ring med %1$s</string>
     <string name="phone_no_sims">Telefonen oplyste ikke, hvilke SIM-kort den har.</string>
     <string name="phone_no_calls_here">Denne enhed har ingen egne opkald: dens Telefon ringer via din telefon gennem computeren og viser telefonens opkald, når de ringer. Lyden bliver på telefonen.</string>

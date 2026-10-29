@@ -1982,6 +1982,8 @@
     <string name="phone_merge">Spoji</string>
     <string name="phone_end_this">Prekini ovaj poziv</string>
     <string name="phone_computer_device">Računalo · %1$s</string>
+    <string name="phone_to_computer">Na računalo</string>
+    <string name="phone_to_phone">Na telefon</string>
     <string name="phone_call_with">Poziv s %1$s</string>
     <string name="phone_no_sims">Telefon nije javio koje SIM kartice ima.</string>
     <string name="phone_no_calls_here">Ovaj uređaj nema vlastitih poziva: njegov Telefon zove preko vašeg telefona, putem računala, i prikazuje pozive telefona dok zvone. Glas ostaje na telefonu.</string>

@@ -2096,6 +2096,8 @@
     <string name="phone_merge">Cumaisc</string>
     <string name="phone_end_this">Críochnaigh an glao seo</string>
     <string name="phone_computer_device">Ríomhaire · %1$s</string>
+    <string name="phone_to_computer">Chuig an ríomhaire</string>
+    <string name="phone_to_phone">Chuig an bhfón</string>
     <string name="phone_call_with">Glao le %1$s</string>
     <string name="phone_no_sims">Níor dhúirt an guthán cé mhéad SIM atá aige.</string>
     <string name="phone_no_calls_here">Níl glaonna ag an ngléas seo féin: glaonna guthán trí do ghuthán, tríd an ríomhaire, agus taispeánann sé glaonna an ghutháin mar a bhíonn siad ag bualadh. Fanann an guth ar an ngutháin.</string>

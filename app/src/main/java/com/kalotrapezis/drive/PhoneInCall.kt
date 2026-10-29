@@ -35,8 +35,9 @@ class PhoneInCallService : InCallService() {
     override fun onCallRemoved(call: Call) = PhoneCalls.removed(this, call)
     @Deprecated("CallAudioState: still what Telecom sends on every Android Tetra runs on")
     override fun onCallAudioStateChanged(audioState: CallAudioState?) {
-        val told = PhoneCalls.audio?.isMuted != audioState?.isMuted || PhoneCalls.audio?.route != audioState?.route // the computer's bubble shows both
-        PhoneCalls.audio = audioState; PhoneCalls.changed(this)
+        val was = PhoneCalls.audio
+        val told = was?.isMuted != audioState?.isMuted || was?.route != audioState?.route || was?.activeBluetoothDevice != audioState?.activeBluetoothDevice // the computer's bubble shows both
+        PhoneCalls.audio = audioState; PhoneCalls.changed(this); PhoneCalls.keep(this)
         if (told) PhoneCalls.top()?.let { PhoneCalls.report(this, it) }
     }
     override fun onAvailableCallEndpointsChanged(endpoints: List<android.telecom.CallEndpoint>) { PhoneCalls.endpoints = endpoints }
@@ -67,6 +68,7 @@ internal object PhoneCalls {
             if (state == Call.STATE_DISCONNECTED && call.details.connectTimeMillis > 0 && PhonePrefs.buzzEnd(s)) buzz(s, longArrayOf(0, 120))
             changed(s)
             report(s, call)
+            keep(s)
         }
         override fun onDetailsChanged(call: Call, details: Call.Details) { service?.let { changed(it) } }
     }
@@ -75,6 +77,8 @@ internal object PhoneCalls {
         call.registerCallback(callback)
         calls = calls + call
         WriterLog.i("Phone: a call ${if (call.state == Call.STATE_RINGING) "ringing" else "placed"} (${calls.size} now)")
+        // the first call's sound: a call dialled here stays here, one the computer asked for goes there; a ringing one waits for its answer
+        if (calls.size == 1) take(if (call.state == Call.STATE_RINGING) null else !PhoneCall.computerAsked(number(call)))
         report(s, call)
         number(call)?.let { n -> if (n !in names) Thread { val c = contactFor(n); synchronized(names) { names[n] = c }; android.os.Handler(s.mainLooper).post { changed(s) } }.start() }
         changed(s)
@@ -109,7 +113,7 @@ internal object PhoneCalls {
         }
         val body = org.json.JSONObject().put("state", state).put("direction", if (incoming) "in" else "out").put("number", number(call).orEmpty())
             .put("missed", state == "ended" && call.details.disconnectCause?.code == android.telecom.DisconnectCause.MISSED)
-            .put("muted", audio?.isMuted == true).put("route", routeName(audio?.route)).put("phoneApp", true).put("at", System.currentTimeMillis())
+            .put("muted", audio?.isMuted == true).put("route", if (onComputer(c)) "computer" else routeName(audio?.route)).put("phoneApp", true).put("at", System.currentTimeMillis())
         if (state == "ended") toComputer.remove(call)
         val app = c.applicationContext
         Thread { runCatching { SyncClient(app, SyncStore(app)).callState(body) }.onFailure { WriterLog.w("Phone: the call's state did not reach the computer (${it.message})") } }.start()
@@ -126,8 +130,9 @@ internal object PhoneCalls {
      * (Telecom: "use google dialer for relay call, can not set audio route" — the user's call on 27 Oct, answered on the
      * computer, stayed there whatever was pressed on the phone); the endpoint request is Telecom's other door.
      */
-    fun route(route: Int, device: android.bluetooth.BluetoothDevice? = null) {
+    fun route(route: Int, device: android.bluetooth.BluetoothDevice? = null, chosen: Boolean = true) {
         val s = service ?: return
+        if (chosen) onPhone = null // a way picked by hand, here or on the computer, wins over where the call was taken
         val mask = audio?.supportedRouteMask ?: 0
         val want = if (route == CallAudioState.ROUTE_WIRED_OR_EARPIECE) (if (mask and CallAudioState.ROUTE_WIRED_HEADSET != 0) CallAudioState.ROUTE_WIRED_HEADSET else CallAudioState.ROUTE_EARPIECE) else route
         fun old() = if (device != null) s.requestBluetoothAudio(device) else s.setAudioRoute(want)
@@ -143,6 +148,36 @@ internal object PhoneCalls {
         }, 2000)
     }
 
+    /**
+     * Where the call was taken (the user, 29 Oct: "where I answer the call, the sound goes there"): true on the phone (its
+     * screen, its notification, raised to the ear, dialled there), false on the computer; null leaves Android's choice (a
+     * headset's own button answered, or a way was picked by hand since). Android alone sends every call to the computer,
+     * which the phone takes for a hands-free kit while it is on the computer's Bluetooth.
+     */
+    private var onPhone: Boolean? = null
+    private var kept = 0
+    private fun take(here: Boolean?) { onPhone = here; kept = 0 }
+
+    /** The sound where the call was taken: a few tries a call, as Telecom moves it to Bluetooth again once the link is up. */
+    fun keep(c: Context) {
+        val want = onPhone ?: return
+        val a = audio ?: return
+        if (kept >= 3 || calls.none { it.state == Call.STATE_ACTIVE || it.state == Call.STATE_DIALING }) return
+        val (r, d) = PhoneRoutes.where(want, a.route, a.activeBluetoothDevice, a.supportedBluetoothDevices.orEmpty()) { PhoneRoutes.isComputer(c, it) } ?: return
+        kept++
+        WriterLog.i("Phone: the sound to ${if (want) "the phone" else "the computer"}, where the call was taken (${routeName(a.route)} → ${routeName(r)})")
+        route(r, d, chosen = false)
+    }
+
+    /** The phone's "To the computer" / "To the phone", and the computer's bubble's. */
+    fun moveTo(c: Context, phone: Boolean) {
+        val a = audio ?: return
+        PhoneRoutes.where(phone, a.route, a.activeBluetoothDevice, a.supportedBluetoothDevices.orEmpty()) { PhoneRoutes.isComputer(c, it) }?.let { (r, d) -> route(r, d) }
+    }
+
+    /** The call's sound on a computer Tetra is paired with, by its Bluetooth. */
+    fun onComputer(c: Context) = audio?.route == CallAudioState.ROUTE_BLUETOOTH && audio?.activeBluetoothDevice?.let { PhoneRoutes.isComputer(c, it) } == true
+
     @androidx.annotation.RequiresApi(34)
     private fun endpointFor(route: Int, device: android.bluetooth.BluetoothDevice?): android.telecom.CallEndpoint? {
         val type = when (route) {
@@ -154,13 +189,14 @@ internal object PhoneCalls {
         return all.firstOrNull { name != null && it.endpointName.toString() == name } ?: all.firstOrNull()
     }
 
-    /** The computer's bubble pressed: answer, decline, end, hold, unhold, mute, unmute, speaker, unspeaker, dtmf<digit>. Null while Tetra is not the phone app. */
+    /** The computer's bubble pressed: answer, decline, end, hold, unhold, mute, unmute, speaker, unspeaker, phone, computer, dtmf<digit>. Null while Tetra is not the phone app. */
     fun act(what: String): Boolean? {
         val s = service ?: return null
         val ringing = calls.firstOrNull { it.state == Call.STATE_RINGING }
         val call = top() ?: return what == "end" || what == "decline" // the other side hung up first: nothing left to end is done
         when {
-            what == "answer" -> answer(ringing ?: return false)
+            what == "answer" -> answer(ringing ?: return false, here = false)
+            what == "phone" || what == "computer" -> moveTo(s, what == "phone")
             what == "decline" -> (ringing ?: return false).reject(false, null)
             what == "end" -> hangUp(call)
             what == "hold" -> call.hold()
@@ -259,7 +295,8 @@ internal object PhoneCalls {
 
     fun elapsed(ms: Long): String { val s = (ms / 1000).coerceAtLeast(0); return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60) }
 
-    fun answer(call: Call) = call.answer(VideoProfile.STATE_AUDIO_ONLY)
+    /** Answered [here] on the phone, or on the computer: the sound goes there (keep). */
+    fun answer(call: Call, here: Boolean = true) { take(here); call.answer(VideoProfile.STATE_AUDIO_ONLY) }
     fun hangUp(call: Call) = if (call.state == Call.STATE_RINGING) call.reject(false, null) else call.disconnect()
 }
 

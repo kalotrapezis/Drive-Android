@@ -1924,6 +1924,8 @@
     <string name="phone_merge">Συγχώνευση</string>
     <string name="phone_end_this">Τερματισμός αυτής της κλήσης</string>
     <string name="phone_computer_device">Υπολογιστής · %1$s</string>
+    <string name="phone_to_computer">Στον υπολογιστή</string>
+    <string name="phone_to_phone">Στο κινητό</string>
     <string name="phone_call_with">Κλήση με %1$s</string>
     <string name="phone_no_sims">Το τηλέφωνο δεν είπε ποιες κάρτες SIM έχει.</string>
     <string name="phone_no_calls_here">Αυτή η συσκευή δεν έχει δικές της κλήσεις: το Τηλέφωνό της καλεί μέσω του τηλεφώνου σας, μέσω του υπολογιστή, και δείχνει τις κλήσεις του τηλεφώνου όταν χτυπούν. Η φωνή μένει στο τηλέφωνο.</string>

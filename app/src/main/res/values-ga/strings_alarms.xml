@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Amadóirí</string>
+    <string name="timer_tab_alarms">Aláraim</string>
+    <string name="stopwatch">Stopchlog</string>
+    <string name="stopwatch_counting">Ag comhaireamh</string>
+    <string name="stopwatch_held">Ar sos ag %1$s</string>
+    <string name="stopwatch_reset">Athshocraigh</string>
+    <string name="stopwatch_lap">Ciorcad</string>
+    <string name="stopwatch_lap_n">Ciorcad %1$d</string>
+    <string name="alarm_named">Aláram</string>
+    <string name="alarm_snooze">Cuir siar</string>
+    <string name="alarm_dismiss">Múch</string>
+    <string name="alarm_ringing">Ag bualadh</string>
+    <string name="alarm_next">Aláram %1$s</string>
+    <string name="alarm_skip">Scipeáil</string>
+    <string name="alarm_new">Aláram nua</string>
+    <string name="alarm_label">Lipéad</string>
+    <string name="alarm_once">Uair amháin</string>
+    <string name="alarm_every_day">Gach lá</string>
+    <string name="alarm_in">An chéad aláram eile i gceann %1$s</string>
+    <string name="alarm_none">Níl aon aláram ann fós. Buaileann aláram ar an bhfeiste seo agus ar gach feiste a shioncronaíonn tú leis; múch ar cheann amháin é agus stopann sé ar gach ceann.</string>
+</resources>

@@ -1,9 +1,9 @@
 ---
 name: tetra-timer
-description: Read, start, pause, resume or stop the user's timers in Tetra — each timer is a small JSON file in ~/Tetra/Files/Timer that syncs to their phone and tablet, where it counts down and rings. Use whenever the user asks to set a timer, start a countdown, remind them in N minutes, see what timers are running or how long is left, or pause, resume, stop or delete a timer.
+description: Read, start, pause, resume or stop the user's timers, alarms and stopwatch in Tetra — each is a small JSON file in ~/Tetra/Files/Timer that syncs to their phone and tablet, where it counts down, rings or counts up. Use whenever the user asks to set a timer, start a countdown, remind them in N minutes, set, list, switch off or delete an alarm (wake me at 7, every weekday at 7:30), start, pause, read or reset the stopwatch, see what timers are running or how long is left, or pause, resume, stop or delete a timer.
 ---
 
-# Tetra's timers
+# Tetra's timers, alarms and stopwatch
 
 The user's timers are **files**: Tetra (their own app, on Android and the PC) counts each one down, rings it at the
 end, and syncs the folder to their phone and tablet within seconds. You manage them by writing the files.
@@ -24,6 +24,10 @@ T=~/.claude/skills/tetra-timer/tetra_timer.py
 python3 $T list                          # what is running, paused or pinned, and the time left
 python3 $T start 10m --label Pasta       # 10m, 1h30m, 90s or 600; --pin keeps the card when it ends
 python3 $T pause Pasta                   # by label or id; also: resume, stop, delete, again (a pinned one anew)
+python3 $T alarms                        # the alarms, their days, and when each rings next
+python3 $T alarm 07:30 --label Σχολείο --days MO,TU   # --days daily | weekdays | MO,WE,FR; none: once (the next 07:30, or --date)
+python3 $T alarm-off 07:30               # by time, label or id; also: alarm-on, alarm-delete
+python3 $T stopwatch start               # show (default), start, pause, lap, reset
 ```
 
 Two timers with the same label: it lists their ids; use the id. Below is the format, for anything the helper does not
@@ -87,3 +91,38 @@ and write `<id>.claude.json`:
 
 Every device picks up the change within seconds (or at its next 30-second look). After writing, read the folder again
 with the listing above and tell the user what is running now.
+
+## Alarms and the stopwatch
+
+They live in the same folder by the same rules (one file per item per device, `<id>.claude.json` for yours, the highest
+`rev` wins, write beside then rename). A `kind` tells them from timers, and their `state` words are not a timer's, so
+older readers skip them.
+
+An alarm, `alarm-<6 hex>.<device>.json`:
+
+```json
+{"kind":"alarm","id":"alarm-k3f9a2","time":"07:30","days":["MO","TU"],"date":null,"label":"Σχολείο","state":"on","answered":"2026-10-29T20:00:00Z","snooze":null,"rev":1,"by":"claude"}
+```
+
+- `time`: local `HH:MM`; each device rings it in its own time zone.
+- `days`: the weekdays it repeats on (`MO TU WE TH FR SA SU`, as iCalendar's). Empty: **once**, on `date` (local
+  `YYYY-MM-DD`; null: the next `time` to come). A single alarm turns `off` once it has rung and been answered.
+- `state`: `on` · `off` · `deleted` (equal `rev`: deleted beats off beats on). A deleted alarm's file is used for the
+  next new one (its `rev` + 1).
+- `answered`: the instant of the last ring stopped — Dismiss, Snooze or Skip, on any device. A ring at or before it does
+  not sound; a new or switched-on alarm sets it to now, so nothing from before rings. `snooze`: one more ring at that
+  instant (Snooze: the ring answered, `snooze` = now + 10 min).
+- A ring nobody answers sounds for 10 minutes, then stops.
+- Every device rings it; Dismiss on one stops it on all (as a timer's OK).
+
+The stopwatch, one for all the devices, `stopwatch.<device>.json`:
+
+```json
+{"kind":"stopwatch","id":"stopwatch","state":"counting","started":"2026-10-29T16:00:00Z","elapsed":0,"laps":[62.4],"rev":3,"by":"claude"}
+```
+
+- `state`: `counting` (time = now − `started`, the moment it would have started had it never paused) · `held` (`elapsed`
+  seconds) · `reset` (zero, no laps). Equal `rev`: reset beats held beats counting.
+- Start from held: `started` = now − `elapsed`. Pause: `elapsed` = now − `started`, `started` null. Lap: the time now
+  appended to `laps` (seconds since the start, not the split).
+

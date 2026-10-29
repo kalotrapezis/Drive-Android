@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Timers</string>
+    <string name="timer_tab_alarms">Allarmi</string>
+    <string name="stopwatch">Kronometru</string>
+    <string name="stopwatch_counting">Qed jgħodd</string>
+    <string name="stopwatch_held">Waqfa f\'%1$s</string>
+    <string name="stopwatch_reset">Irrisettja</string>
+    <string name="stopwatch_lap">Dawra</string>
+    <string name="stopwatch_lap_n">Dawra %1$d</string>
+    <string name="alarm_named">Allarm</string>
+    <string name="alarm_snooze">Posponi</string>
+    <string name="alarm_dismiss">Waqqaf</string>
+    <string name="alarm_ringing">Qed idoqq</string>
+    <string name="alarm_next">Allarm %1$s</string>
+    <string name="alarm_skip">Aqbeż</string>
+    <string name="alarm_new">Allarm ġdid</string>
+    <string name="alarm_label">Tikketta</string>
+    <string name="alarm_once">Darba</string>
+    <string name="alarm_every_day">Kuljum</string>
+    <string name="alarm_in">L-allarm li jmiss wara %1$s</string>
+    <string name="alarm_none">Għad m\'hemm l-ebda allarm. Allarm idoqq fuq dan l-apparat u fuq kull apparat li tissinkronizza miegħu; waqqfu fuq wieħed u jieqaf fuq kollha.</string>
+</resources>

@@ -104,9 +104,12 @@
         <service android:name=".SyncJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
         <service android:name=".SyncService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name=".PhotoAnalysisService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <!-- An alarm ringing: its time, Snooze and Dismiss, over the lock screen -->
+        <activity android:name=".AlarmRingActivity" android:exported="false" android:launchMode="singleTask" android:taskAffinity="com.kalotrapezis.drive.alarm"
+            android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" />
         <!-- The Timer while one runs: its countdown notification, the alarm at the end, the 30 s look at the other devices -->
         <service android:name=".TimerService" android:exported="false" android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Countdown timer the user started, kept in step with their other devices" />
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Countdown timer, alarm or stopwatch the user started, kept in step with their other devices" />
         </service>
         <!-- Data's live speed in the status bar, while the user has it on (Plan.md § Data) -->
         <service android:name=".DataSpeedService" android:exported="false" android:foregroundServiceType="specialUse">

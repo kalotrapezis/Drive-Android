@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Časovniki</string>
+    <string name="timer_tab_alarms">Budilke</string>
+    <string name="stopwatch">Štoparica</string>
+    <string name="stopwatch_counting">Šteje</string>
+    <string name="stopwatch_held">Zaustavljeno pri %1$s</string>
+    <string name="stopwatch_reset">Ponastavi</string>
+    <string name="stopwatch_lap">Krog</string>
+    <string name="stopwatch_lap_n">Krog %1$d</string>
+    <string name="alarm_named">Budilka</string>
+    <string name="alarm_snooze">Dremež</string>
+    <string name="alarm_dismiss">Izklopi</string>
+    <string name="alarm_ringing">Zvoni</string>
+    <string name="alarm_next">Budilka %1$s</string>
+    <string name="alarm_skip">Preskoči</string>
+    <string name="alarm_new">Nova budilka</string>
+    <string name="alarm_label">Oznaka</string>
+    <string name="alarm_once">Enkrat</string>
+    <string name="alarm_every_day">Vsak dan</string>
+    <string name="alarm_in">Naslednja budilka čez %1$s</string>
+    <string name="alarm_none">Budilk še ni. Budilka zvoni v tej napravi in v vsaki napravi, s katero sinhronizirate; izklopite jo v eni in preneha zvoniti v vseh.</string>
+</resources>

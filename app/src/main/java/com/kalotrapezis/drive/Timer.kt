@@ -66,6 +66,7 @@ internal data class TimerRecord(
         /** A file's record; anything that is not one (a stray file, half a write) is null, never an error. */
         fun parse(text: String, file: File? = null): TimerRecord? = runCatching {
             val o = JSONObject(text)
+            if (o.optString("kind", "timer") != "timer") return null // an alarm or the stopwatch (TimerAlarms.kt)
             val state = o.optString("state", RUNNING).lowercase().takeIf { it in ORDER } ?: return null
             val ends = o.optString("ends", "").takeIf { it.isNotEmpty() && it != "null" }?.let { Instant.parse(it) }
             TimerRecord(o.optString("id").ifEmpty { file?.nameWithoutExtension ?: return null }, o.optLong("seconds"), state, ends,
@@ -110,14 +111,17 @@ internal object TimerFiles {
      * devices never change the same file, so sync never has two versions of one to keep side by side (18 Oct: an OK and
      * a new start at once made "x (3) (3).json"… on every change).
      */
-    fun write(dir: File, r: TimerRecord): TimerRecord {
+    fun write(dir: File, r: TimerRecord): TimerRecord = r.copy(file = save(dir, r.id, r.by, r.json()))
+
+    /** [text] as `<id>.<by>.json`, beside then renamed; the alarms' and stopwatch's files too. */
+    fun save(dir: File, id: String, by: String, text: String): File {
         dir.mkdirs()
-        val to = File(dir, fileName(r.id, r.by))
+        val to = File(dir, fileName(id, by))
         val part = File(dir, ".${to.name}.part")
-        part.writeText(r.json())
+        part.writeText(text)
         check(part.renameTo(to)) { "Could not save the timer." }
         to.setLastModified(System.currentTimeMillis()) // its time is now: the phone's storage keeps a renamed-over file's first date, and sync's hash cache goes by size and date
-        return r.copy(file = to)
+        return to
     }
 
     /**

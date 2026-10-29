@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Laikmačiai</string>
+    <string name="timer_tab_alarms">Žadintuvai</string>
+    <string name="stopwatch">Chronometras</string>
+    <string name="stopwatch_counting">Matuoja</string>
+    <string name="stopwatch_held">Pristabdyta ties %1$s</string>
+    <string name="stopwatch_reset">Nustatyti iš naujo</string>
+    <string name="stopwatch_lap">Ratas</string>
+    <string name="stopwatch_lap_n">Ratas %1$d</string>
+    <string name="alarm_named">Žadintuvas</string>
+    <string name="alarm_snooze">Atidėti</string>
+    <string name="alarm_dismiss">Išjungti</string>
+    <string name="alarm_ringing">Skamba</string>
+    <string name="alarm_next">Žadintuvas %1$s</string>
+    <string name="alarm_skip">Praleisti</string>
+    <string name="alarm_new">Naujas žadintuvas</string>
+    <string name="alarm_label">Pavadinimas</string>
+    <string name="alarm_once">Vieną kartą</string>
+    <string name="alarm_every_day">Kasdien</string>
+    <string name="alarm_in">Kitas žadintuvas po %1$s</string>
+    <string name="alarm_none">Žadintuvų dar nėra. Žadintuvas skamba šiame įrenginyje ir visuose įrenginiuose, su kuriais sinchronizuojate; išjunkite jį viename ir jis nustos skambėti visuose.</string>
+</resources>

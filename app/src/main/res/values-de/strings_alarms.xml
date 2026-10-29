@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Timer</string>
+    <string name="timer_tab_alarms">Wecker</string>
+    <string name="stopwatch">Stoppuhr</string>
+    <string name="stopwatch_counting">Läuft</string>
+    <string name="stopwatch_held">Pausiert bei %1$s</string>
+    <string name="stopwatch_reset">Zurücksetzen</string>
+    <string name="stopwatch_lap">Runde</string>
+    <string name="stopwatch_lap_n">Runde %1$d</string>
+    <string name="alarm_named">Wecker</string>
+    <string name="alarm_snooze">Schlummern</string>
+    <string name="alarm_dismiss">Beenden</string>
+    <string name="alarm_ringing">Klingelt</string>
+    <string name="alarm_next">Wecker %1$s</string>
+    <string name="alarm_skip">Überspringen</string>
+    <string name="alarm_new">Neuer Wecker</string>
+    <string name="alarm_label">Bezeichnung</string>
+    <string name="alarm_once">Einmal</string>
+    <string name="alarm_every_day">Jeden Tag</string>
+    <string name="alarm_in">Nächster Wecker in %1$s</string>
+    <string name="alarm_none">Noch keine Wecker. Ein Wecker klingelt auf diesem Gerät und auf jedem Gerät, mit dem du synchronisierst; beende ihn auf einem, und er hört auf allen auf.</string>
+</resources>

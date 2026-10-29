@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Minutniki</string>
+    <string name="timer_tab_alarms">Budziki</string>
+    <string name="stopwatch">Stoper</string>
+    <string name="stopwatch_counting">Mierzy</string>
+    <string name="stopwatch_held">Wstrzymano przy %1$s</string>
+    <string name="stopwatch_reset">Zeruj</string>
+    <string name="stopwatch_lap">Okrążenie</string>
+    <string name="stopwatch_lap_n">Okrążenie %1$d</string>
+    <string name="alarm_named">Budzik</string>
+    <string name="alarm_snooze">Drzemka</string>
+    <string name="alarm_dismiss">Wyłącz</string>
+    <string name="alarm_ringing">Dzwoni</string>
+    <string name="alarm_next">Budzik %1$s</string>
+    <string name="alarm_skip">Pomiń</string>
+    <string name="alarm_new">Nowy budzik</string>
+    <string name="alarm_label">Etykieta</string>
+    <string name="alarm_once">Jednorazowo</string>
+    <string name="alarm_every_day">Codziennie</string>
+    <string name="alarm_in">Następny budzik za %1$s</string>
+    <string name="alarm_none">Brak budzików. Budzik dzwoni na tym urządzeniu i na każdym urządzeniu, z którym synchronizujesz; wyłącz go na jednym, a ucichnie na wszystkich.</string>
+</resources>

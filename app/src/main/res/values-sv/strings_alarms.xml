@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Timer</string>
+    <string name="timer_tab_alarms">Alarm</string>
+    <string name="stopwatch">Stoppur</string>
+    <string name="stopwatch_counting">Räknar</string>
+    <string name="stopwatch_held">Pausad vid %1$s</string>
+    <string name="stopwatch_reset">Nollställ</string>
+    <string name="stopwatch_lap">Varv</string>
+    <string name="stopwatch_lap_n">Varv %1$d</string>
+    <string name="alarm_named">Alarm</string>
+    <string name="alarm_snooze">Snooze</string>
+    <string name="alarm_dismiss">Avvisa</string>
+    <string name="alarm_ringing">Ringer</string>
+    <string name="alarm_next">Alarm %1$s</string>
+    <string name="alarm_skip">Hoppa över</string>
+    <string name="alarm_new">Nytt alarm</string>
+    <string name="alarm_label">Etikett</string>
+    <string name="alarm_once">En gång</string>
+    <string name="alarm_every_day">Varje dag</string>
+    <string name="alarm_in">Nästa alarm om %1$s</string>
+    <string name="alarm_none">Inga alarm än. Ett alarm ringer på den här enheten och på varje enhet du synkroniserar med; avvisa det på en, så tystnar det på alla.</string>
+</resources>

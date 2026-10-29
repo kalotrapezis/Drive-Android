@@ -187,14 +187,19 @@ internal object CalendarAlarms {
     }
 }
 
-/** The reminders' alarm, Snooze, and the moments the plan must be made again (boot, clock, zone, update). */
+/** The reminders' alarm, Snooze, and the moments the plan must be made again (boot, clock, zone, update); the Timer's alarms' too. */
 class CalendarAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val done = goAsync()
         val app = context.applicationContext
         WriterLog.init(app) // Tetra may not be open: the log is opened here too
         Thread {
-            runCatching { CalendarAlarms.handle(app, intent) }.onFailure { WriterLog.e("Calendar reminders: ${intent.action} failed", it) }
+            when (intent.action) {
+                AlarmPlan.SKIP -> runCatching { TimerControl.alarmChange(app, intent.getStringExtra("id").orEmpty(), TimerService.ALARM_SKIP) }
+                AlarmPlan.LOOK -> Unit
+                else -> runCatching { CalendarAlarms.handle(app, intent) }.onFailure { WriterLog.e("Calendar reminders: ${intent.action} failed", it) }
+            }
+            runCatching { AlarmPlan.plan(app) }.onFailure { WriterLog.e("Alarms: plan failed", it) } // the alarms' clock too: boot, clock, zone, update
             done.finish()
         }.start()
     }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Minuteurs</string>
+    <string name="timer_tab_alarms">Alarmes</string>
+    <string name="stopwatch">Chronomètre</string>
+    <string name="stopwatch_counting">En cours</string>
+    <string name="stopwatch_held">En pause à %1$s</string>
+    <string name="stopwatch_reset">Réinitialiser</string>
+    <string name="stopwatch_lap">Tour</string>
+    <string name="stopwatch_lap_n">Tour %1$d</string>
+    <string name="alarm_named">Alarme</string>
+    <string name="alarm_snooze">Répéter</string>
+    <string name="alarm_dismiss">Arrêter</string>
+    <string name="alarm_ringing">Sonne</string>
+    <string name="alarm_next">Alarme %1$s</string>
+    <string name="alarm_skip">Ignorer</string>
+    <string name="alarm_new">Nouvelle alarme</string>
+    <string name="alarm_label">Libellé</string>
+    <string name="alarm_once">Une fois</string>
+    <string name="alarm_every_day">Tous les jours</string>
+    <string name="alarm_in">Prochaine alarme dans %1$s</string>
+    <string name="alarm_none">Aucune alarme pour l\'instant. Une alarme sonne sur cet appareil et sur chaque appareil que vous synchronisez ; arrêtez-la sur l\'un, elle s\'arrête sur tous.</string>
+</resources>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Časovače</string>
+    <string name="timer_tab_alarms">Budíky</string>
+    <string name="stopwatch">Stopky</string>
+    <string name="stopwatch_counting">Běží</string>
+    <string name="stopwatch_held">Pozastaveno na %1$s</string>
+    <string name="stopwatch_reset">Vynulovat</string>
+    <string name="stopwatch_lap">Okruh</string>
+    <string name="stopwatch_lap_n">Okruh %1$d</string>
+    <string name="alarm_named">Budík</string>
+    <string name="alarm_snooze">Odložit</string>
+    <string name="alarm_dismiss">Vypnout</string>
+    <string name="alarm_ringing">Zvoní</string>
+    <string name="alarm_next">Budík %1$s</string>
+    <string name="alarm_skip">Přeskočit</string>
+    <string name="alarm_new">Nový budík</string>
+    <string name="alarm_label">Popisek</string>
+    <string name="alarm_once">Jednou</string>
+    <string name="alarm_every_day">Každý den</string>
+    <string name="alarm_in">Další budík za %1$s</string>
+    <string name="alarm_none">Zatím žádné budíky. Budík zazvoní na tomto zařízení i na každém zařízení, se kterým synchronizujete; vypnete-li ho na jednom, přestane zvonit na všech.</string>
+</resources>

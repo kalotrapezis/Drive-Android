@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Taimeri</string>
+    <string name="timer_tab_alarms">Modinātāji</string>
+    <string name="stopwatch">Hronometrs</string>
+    <string name="stopwatch_counting">Mēra</string>
+    <string name="stopwatch_held">Apturēts pie %1$s</string>
+    <string name="stopwatch_reset">Atiestatīt</string>
+    <string name="stopwatch_lap">Aplis</string>
+    <string name="stopwatch_lap_n">Aplis %1$d</string>
+    <string name="alarm_named">Modinātājs</string>
+    <string name="alarm_snooze">Atlikt</string>
+    <string name="alarm_dismiss">Izslēgt</string>
+    <string name="alarm_ringing">Zvana</string>
+    <string name="alarm_next">Modinātājs %1$s</string>
+    <string name="alarm_skip">Izlaist</string>
+    <string name="alarm_new">Jauns modinātājs</string>
+    <string name="alarm_label">Nosaukums</string>
+    <string name="alarm_once">Vienreiz</string>
+    <string name="alarm_every_day">Katru dienu</string>
+    <string name="alarm_in">Nākamais modinātājs pēc %1$s</string>
+    <string name="alarm_none">Modinātāju vēl nav. Modinātājs zvana šajā ierīcē un katrā ierīcē, ar kuru sinhronizējat; izslēdziet to vienā, un tas apstājas visās.</string>
+</resources>

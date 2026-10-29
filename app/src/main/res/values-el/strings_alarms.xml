@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Αντίστροφη</string>
+    <string name="timer_tab_alarms">Ξυπνητήρια</string>
+    <string name="stopwatch">Χρονόμετρο</string>
+    <string name="stopwatch_counting">Μετράει</string>
+    <string name="stopwatch_held">Σε παύση στο %1$s</string>
+    <string name="stopwatch_reset">Μηδενισμός</string>
+    <string name="stopwatch_lap">Γύρος</string>
+    <string name="stopwatch_lap_n">Γύρος %1$d</string>
+    <string name="alarm_named">Ξυπνητήρι</string>
+    <string name="alarm_snooze">Αναβολή</string>
+    <string name="alarm_dismiss">Τέλος</string>
+    <string name="alarm_ringing">Χτυπάει</string>
+    <string name="alarm_next">Ξυπνητήρι %1$s</string>
+    <string name="alarm_skip">Παράλειψη</string>
+    <string name="alarm_new">Νέο ξυπνητήρι</string>
+    <string name="alarm_label">Ετικέτα</string>
+    <string name="alarm_once">Μία φορά</string>
+    <string name="alarm_every_day">Κάθε μέρα</string>
+    <string name="alarm_in">Επόμενο ξυπνητήρι σε %1$s</string>
+    <string name="alarm_none">Κανένα ξυπνητήρι ακόμα. Ένα ξυπνητήρι χτυπάει σε αυτή τη συσκευή και σε κάθε συσκευή που συγχρονίζεις· σταμάτα το σε μία και σταματά σε όλες.</string>
+</resources>

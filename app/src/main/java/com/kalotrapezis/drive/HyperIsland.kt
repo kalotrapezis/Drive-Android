@@ -111,25 +111,28 @@ internal object HyperIsland {
     }
 
     const val TIMER = "tetra_timer"
+    const val STOPWATCH = "tetra_stopwatch"
+    const val ALARM = "tetra_alarm"
 
     /**
      * A timer in the island (the user, 18 Oct: "active notification on the hyper island with pause and stop buttons"):
      * running, the island counts down by itself to [ends] (HyperOS's countdown, timerType -1, as Xiaomi's own Clock);
-     * paused or rung, it shows [shown]. [buttons] are the notification's own actions, linked by key as the reminder's.
+     * paused or rung, it shows [shown]. [buttons] are the notification's own actions, linked by key as the reminder's. The
+ * stopwatch counts up from [ends] (its start: timerType 1); an alarm shows its time.
      */
     fun timer(builder: NotificationCompat.Builder, title: String, text: String, ends: Long?, shown: String, announce: Boolean,
-              buttons: List<Triple<String, String, android.app.PendingIntent>>) {
+              buttons: List<Triple<String, String, android.app.PendingIntent>>, business: String = TIMER, countUp: Boolean = false) {
         runCatching {
             val now = System.currentTimeMillis()
             val actions = Bundle().apply {
                 buttons.forEach { (key, label, pi) -> putParcelable("miui.focus.action_$key", android.app.Notification.Action.Builder(null as android.graphics.drawable.Icon?, label, pi).build()) }
             }
             val right = if (ends != null) JSONObject().put("sameWidthDigitInfo", JSONObject()
-                .put("timerInfo", JSONObject().put("timerType", -1).put("timerWhen", ends).put("timerTotal", now).put("timerSystemCurrent", now)))
+                .put("timerInfo", JSONObject().put("timerType", if (countUp) 1 else -1).put("timerWhen", ends).put("timerTotal", now).put("timerSystemCurrent", now)))
             else JSONObject().put("imageTextInfoRight", JSONObject().put("type", 2).put("textInfo", JSONObject().put("title", shown)))
             val paramV2 = JSONObject()
                 .put("protocol", 3)
-                .put("business", TIMER)
+                .put("business", business)
                 .put("updatable", true)
                 .put("ticker", title)
                 .put("enableFloat", announce) // the card opens when it starts and when it rings, not at each pause

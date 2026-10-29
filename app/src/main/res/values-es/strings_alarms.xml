@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Temporizadores</string>
+    <string name="timer_tab_alarms">Alarmas</string>
+    <string name="stopwatch">Cronómetro</string>
+    <string name="stopwatch_counting">Contando</string>
+    <string name="stopwatch_held">En pausa en %1$s</string>
+    <string name="stopwatch_reset">Restablecer</string>
+    <string name="stopwatch_lap">Vuelta</string>
+    <string name="stopwatch_lap_n">Vuelta %1$d</string>
+    <string name="alarm_named">Alarma</string>
+    <string name="alarm_snooze">Posponer</string>
+    <string name="alarm_dismiss">Descartar</string>
+    <string name="alarm_ringing">Sonando</string>
+    <string name="alarm_next">Alarma %1$s</string>
+    <string name="alarm_skip">Omitir</string>
+    <string name="alarm_new">Nueva alarma</string>
+    <string name="alarm_label">Etiqueta</string>
+    <string name="alarm_once">Una vez</string>
+    <string name="alarm_every_day">Todos los días</string>
+    <string name="alarm_in">Próxima alarma en %1$s</string>
+    <string name="alarm_none">Aún no hay alarmas. Una alarma suena en este dispositivo y en todos los que sincronices; descártala en uno y se detiene en todos.</string>
+</resources>

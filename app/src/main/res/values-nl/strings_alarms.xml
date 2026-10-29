@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timer_tab_timers">Timers</string>
+    <string name="timer_tab_alarms">Wekkers</string>
+    <string name="stopwatch">Stopwatch</string>
+    <string name="stopwatch_counting">Loopt</string>
+    <string name="stopwatch_held">Gepauzeerd op %1$s</string>
+    <string name="stopwatch_reset">Resetten</string>
+    <string name="stopwatch_lap">Ronde</string>
+    <string name="stopwatch_lap_n">Ronde %1$d</string>
+    <string name="alarm_named">Wekker</string>
+    <string name="alarm_snooze">Sluimeren</string>
+    <string name="alarm_dismiss">Stoppen</string>
+    <string name="alarm_ringing">Gaat af</string>
+    <string name="alarm_next">Wekker %1$s</string>
+    <string name="alarm_skip">Overslaan</string>
+    <string name="alarm_new">Nieuwe wekker</string>
+    <string name="alarm_label">Label</string>
+    <string name="alarm_once">Eenmalig</string>
+    <string name="alarm_every_day">Elke dag</string>
+    <string name="alarm_in">Volgende wekker over %1$s</string>
+    <string name="alarm_none">Nog geen wekkers. Een wekker gaat af op dit apparaat en op elk apparaat waarmee je synchroniseert; stop hem op één en hij stopt op alle.</string>
+</resources>

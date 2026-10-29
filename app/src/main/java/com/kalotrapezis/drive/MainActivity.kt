@@ -260,7 +260,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onResume() { super.onResume(); CalendarAlarms.front = true }
-    override fun onPause() { super.onPause(); CalendarAlarms.front = false }
+    override fun onPause() {
+        super.onPause(); CalendarAlarms.front = false
+        Thread { runCatching { AlarmPlan.plan(this) } }.start() // the next alarm posted again out of the front, where HyperOS gives it its island
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Timer's alarms and stopwatch (TimerAlarms.kt, TimerAlarmsScreen.kt, TimerService.kt, AlarmRingActivity.kt) -->
+<resources>
+    <string name="timer_tab_timers">Timers</string>
+    <string name="timer_tab_alarms">Alarms</string>
+    <string name="stopwatch">Stopwatch</string>
+    <string name="stopwatch_counting">Counting</string>
+    <string name="stopwatch_held">Paused at %1$s</string>
+    <string name="stopwatch_reset">Reset</string>
+    <string name="stopwatch_lap">Lap</string>
+    <string name="stopwatch_lap_n">Lap %1$d</string>
+    <string name="alarm_named">Alarm</string>
+    <string name="alarm_snooze">Snooze</string>
+    <string name="alarm_dismiss">Dismiss</string>
+    <string name="alarm_ringing">Ringing</string>
+    <string name="alarm_next">Alarm %1$s</string>
+    <string name="alarm_skip">Skip</string>
+    <string name="alarm_new">New alarm</string>
+    <string name="alarm_label">Label</string>
+    <string name="alarm_once">Once</string>
+    <string name="alarm_every_day">Every day</string>
+    <string name="alarm_in">Next alarm in %1$s</string>
+    <string name="alarm_none">No alarms yet. An alarm rings on this device and on every device you sync with; dismiss it on one and it stops on all.</string>
+</resources>

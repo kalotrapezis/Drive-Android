@@ -2402,6 +2402,20 @@ Tetra/Timer/                     (~/Tetra/Files/Timer on the PC, /sdcard/Tetra/T
   time left, pause/resume, a stop/OK reaching the other device, two changes at once, clocks 3 s apart, a free file reused,
   pin and trash across devices, nine at most, a hand-written file.
 
+### Alarms and stopwatch (the user, 29 Oct, relayed by the main session; branch `claude/timer-alarms`)
+"ALARMS (at a clock time, optional repeat days and label, ring like a clock alarm even with the app closed) and a STOPWATCH";
+"Show running timers, the stopwatch and the next alarm on Xiaomi's island — the island does not show them now"; files beside
+the timers so they reach the tablet and PC; the skill and its helper; AI Assist ("βάλε ξυπνητήρι στις 7:30", "ξεκίνα χρονόμετρο").
+- [x] (timer-alarms session, 29 Oct) Android: the Timer's tabs Timers · Alarms · Stopwatch (TimerAlarmsScreen.kt); files and
+      rules in TimerAlarms.kt, the format in skills/tetra-timer/SKILL.md (`kind` alarm/stopwatch, states the timers' readers skip);
+      TimerService rings alarms too (Snooze 10 min, Dismiss, AlarmRingActivity over the lock screen, 10 minutes unanswered then
+      quiet) and shows the stopwatch (Android's chronometer, the island counting up); AlarmPlan sets the next alarm's alarm clock
+      with the service idle (boot, clock, zone, update through CalendarAlarmReceiver) and from 12 h before shows it with Skip.
+      **The island**: HyperOS gives the app in front none, and a timer started in Tetra was never posted again; now everything
+      is posted again when Tetra leaves the front. AI Assist: alarm_add/list/delete, stopwatch. Tests: TimerAlarmsTest (6).
+- [ ] Desktop (Drive desktop/): timer.js to read `kind` alarm/stopwatch, ring alarms, a stopwatch; its AI Assist the same tools.
+- [ ] Seen on the phone: the island for a timer, the stopwatch and the next alarm (not checked: the phone was not on USB).
+
 ### Left
 - [ ] The real pair: start on the tablet, pause on the PC, OK on the phone — on the user's tablet (971f6b37) once the main
       session says it is free; the island's look there (the emulator has no Hyper Island). The user: the sound works on the

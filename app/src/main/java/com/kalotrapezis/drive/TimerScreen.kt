@@ -155,20 +155,24 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
         }
     }
 
+    var tab by remember { mutableStateOf(lastTab) }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize()) {
-            if (wide) Row(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(start = 24.dp, end = 24.dp, top = 80.dp, bottom = 24.dp),
+            if (tab == 1) AlarmsPane(wide)
+            else if (tab == 2) StopwatchPane()
+            else if (wide) Row(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(start = 24.dp, end = 24.dp, top = TOP, bottom = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { picker() }
                 Box(Modifier.width(2.dp).fillMaxHeight(0.6f).background(MaterialTheme.colorScheme.surfaceVariant)) // the sketch's line
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { cards() }
-            } else Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 80.dp),
+            } else Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = TOP),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 cards(); picker()
                 Spacer(Modifier.navigationBarsPadding().height(24.dp))
             }
             FilesPageHeader(title = stringResource(R.string.app_timer), icon = R.drawable.ic_timer, back = back, island = true,
                 modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp))
+            TimerTabs(tab, { tab = it; lastTab = it }, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp))
         }
     }
 }

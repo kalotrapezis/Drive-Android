@@ -182,6 +182,7 @@ internal class AssistantTools(
     private var contacts = emptyList<PendingCall>()
     private var files = emptyList<File>()
     private var notesFound = emptyList<Note>()
+    private var alarmsShown = emptyList<AlarmRecord>()
 
     fun run(name: String, args: JSONObject): ToolResult = runCatching {
         when (name) {
@@ -191,6 +192,10 @@ internal class AssistantTools(
             "timer_start" -> timerStart(args)
             "timer_list" -> timerList()
             "timer_stop" -> timerStop(args)
+            "alarm_add" -> alarmAdd(args)
+            "alarm_list" -> alarmList()
+            "alarm_delete" -> pick(alarmsShown, args) { a -> TimerAlarmFiles.write(timers(), a.delete(device)); changed("timer"); ToolResult("Deleted the alarm at ${a.time}.") }
+            "stopwatch" -> stopwatch(args)
             "notes_search" -> notesSearch(args)
             "note_new" -> noteNew(args)
             "note_open" -> pick(notesFound, args) { n -> ToolResult("Opened the note.", go = "note:${n.id}") }
@@ -289,6 +294,42 @@ internal class AssistantTools(
         stop.forEach { TimerFiles.write(timers(), it.stop(device)) }
         changed("timer")
         return ToolResult("Stopped ${stop.size} timer(s).")
+    }
+
+    // ---- Alarms and the stopwatch ----
+    private fun alarmAdd(a: JSONObject): ToolResult {
+        val time = LocalTime.parse(a.getString("time").trim().padStart(5, '0').take(5))
+        val days = a.optJSONArray("days")?.let { d -> (0 until d.length()).mapNotNull { AlarmRecord.DAY_CODES.indexOf(d.optString(it).uppercase().take(2)).takeIf { i -> i >= 0 }?.let { i -> AlarmRecord.WEEK[i] } } }.orEmpty().toSet()
+        val date = if (days.isEmpty()) a.optString("date").takeIf { it.isNotBlank() }?.let { day(it) } else null
+        val r = TimerAlarmFiles.add(timers(), time, days, a.optString("label").trim(), device, now().toInstant(), zone, date)
+        changed("timer")
+        val at = r.next(now().toInstant(), zone)?.atZone(zone)
+        return ToolResult("Alarm set for ${time.format(HM)}, " + (if (r.repeats) alarmDays(r) else "once, ${at?.toLocalDate()}") + ".")
+    }
+
+    private fun alarmDays(r: AlarmRecord) = if (r.days.size == 7) "every day" else "on " + AlarmRecord.WEEK.filter { it in r.days }.joinToString(",") { AlarmRecord.DAY_CODES[it.ordinal] }
+
+    private fun alarmList(): ToolResult {
+        val at = now().toInstant()
+        alarmsShown = TimerAlarmFiles.alarms(timers())
+        if (alarmsShown.isEmpty()) return ToolResult("No alarms.")
+        return ToolResult(alarmsShown.mapIndexed { i, r ->
+            "${i + 1}. ${r.time.format(HM)} " + (if (r.repeats) alarmDays(r) else "once") + r.label.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty() + if (r.on(at, zone)) "" else ", off"
+        }.joinToString("\n"))
+    }
+
+    private fun stopwatch(a: JSONObject): ToolResult {
+        val at = now().toInstant()
+        val w = TimerAlarmFiles.stopwatch(timers())
+        val next = when (a.getString("action")) {
+            "start" -> w.start(at, device)
+            "pause", "stop" -> w.hold(at, device)
+            "reset" -> w.reset(device)
+            else -> w
+        }
+        if (next !== w) { TimerAlarmFiles.write(timers(), next); changed("timer") }
+        val t = next.elapsedMs(at) / 1000
+        return ToolResult("Stopwatch ${next.state} at ${t / 3600} h ${t % 3600 / 60} min ${t % 60} s.")
     }
 
     // ---- Notes ----
@@ -481,6 +522,16 @@ internal class AssistantTools(
                 "minutes" to p("integer", "Minutes."), "seconds" to p("integer", "Seconds, besides the minutes."), "label" to p("string", "What it is for, if said.")),
             fn("timer_list", "The running and paused timers and the time left.", emptyList()),
             fn("timer_stop", "Stop a timer from the last timer_list, or all of them.", emptyList(), "choice" to p("integer", "Its number in timer_list; leave out to stop all.")),
+            fn("alarm_add", "Set an alarm clock in Tetra; it rings on all the user's devices.", listOf("time"),
+                "time" to p("string", "Local time, HH:MM."),
+                "days" to JSONObject().put("type", "array").put("items", JSONObject().put("type", "string").put("enum", JSONArray(AlarmRecord.DAY_CODES)))
+                    .put("description", "The weekdays it repeats on (all seven for every day, MO–FR for weekdays); leave out for once."),
+                "date" to p("string", "For a single alarm, the day it rings, YYYY-MM-DD; leave out for the next time that clock time comes."),
+                "label" to p("string", "What it is for, if said.")),
+            fn("alarm_list", "The alarms, a numbered list with their times and days.", emptyList()),
+            fn("alarm_delete", "Delete an alarm from the last alarm_list.", listOf("choice"), CHOICE),
+            fn("stopwatch", "The stopwatch: start it, pause it, reset it, or read how long it has run.", listOf("action"),
+                "action" to JSONObject().put("type", "string").put("enum", JSONArray(listOf("start", "pause", "reset", "read")))),
             fn("notes_search", "Find notes with some words anywhere in them; answers a numbered list of titles and the matching line.", listOf("query"), "query" to p("string", "Words to look for.")),
             fn("note_open", "Open a note from the last notes_search list in Tetra's Notes.", listOf("choice"), CHOICE),
             fn("note_new", "Make a new text note with what the user dictates.", listOf("text"),
@@ -507,7 +558,7 @@ internal class AssistantTools(
         ))
 
         fun system(now: ZonedDateTime) = """
-            You are Tetra Assistant, on the user's Android phone, inside the app Tetra (calendar, timers, notes, files, contacts, maps, photos).
+            You are Tetra Assistant, on the user's Android phone, inside the app Tetra (calendar, timers, alarms, stopwatch, notes, files, contacts, maps, photos).
             Now: ${now.format(DateTimeFormatter.ofPattern("EEEE yyyy-MM-dd HH:mm"))} (${now.zone}).
             Answer in the user's language (usually Greek), in one or two short plain sentences: answers are often read aloud. No markdown.
             Use the tools for anything about the user's own calendar, timers, notes, files or contacts; never invent what they hold.
@@ -518,6 +569,8 @@ internal class AssistantTools(
             "Ψάξε στο internet", "google it", news, prices, opening hours, anything current: always web_search.
             "Κλείσε ραντεβού" without a time: calendar_free first, offer two or three times, then calendar_add the one chosen.
             "Πάμε εκεί", "βάλε προορισμό": navigate; "there" is the last place in this conversation (an event's place, a search result); for a contact's home, navigate with contact.
+            "Χρονόμετρο" is both a timer and a stopwatch: with a length ("βάλε χρονόμετρο 10 λεπτά") timer_start; without ("ξεκίνα χρονόμετρο", "σταμάτα το χρονόμετρο", "πόση ώρα πάει") the stopwatch.
+            "Ξυπνητήρι", "ξύπνα με": alarm_add ("κάθε μέρα" all seven days, "τις καθημερινές" MO–FR; "αύριο στις 6" a date). To remove one, alarm_list then alarm_delete.
             A song or a video: youtube. "Κάνε σημείωση": note_new.
             Work out dates yourself from today's date ("αύριο", "την Πέμπτη").
         """.trimIndent()

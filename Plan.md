@@ -12,6 +12,9 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [x] (data-refresh session, 29 Oct; branch `claude/data-background-refresh`, not merged, not installed) **Data refreshes and sends with the
+      app closed** (the user: Data "never refreshes or sends unless I open it"): SyncJob's 30-minute job runs DataStats.refresh (the screen's look)
+      and sends the "data" part inside the job. Open: not yet run on the phone (AI Assist build on it).
 - [~] (system-folder session, 27 Oct; branches `system-folder` in Drive and `claude/system-folder` here; not merged, not pushed)
       **One hidden ~/Tetra/.System** (the user: "gather all of these under one system folder, and make it hidden: .System"; "every
       app/data, app/core, app/user"; "the builder … clean up after itself, every time the same way"). Desktop system.js makes every

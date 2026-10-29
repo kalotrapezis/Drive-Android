@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Skupaj od začetka</string>
     <string name="assistant_spent_reset">Ponastavi</string>
     <string name="assistant_spent_reset_ask">Ponastavim? Zgodovina ostane.</string>
+    <string name="assistant_pause">Čas premora</string>
+    <string name="assistant_pause_note">Kako dolgo se lahko ustaviš in razmisliš, preden AI Assist vzame, kar si rekel (voki-toki, plošča in v živo).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Naj bo AI Assist tvoj pomočnik</string>
+    <string name="assistant_default_hint">Na strani, ki se odpre, tapni Aplikacija digitalnega pomočnika in izberi Tetra. Nato držanje gumba za vklop odpre AI Assist.</string>
+    <string name="assistant_default_xiaomi">Na Xiaomiju tudi: Nastavitve › Dodatne nastavitve › Bližnjice s potezami › Držanje gumba za vklop › Pomočnik.</string>
 </resources>

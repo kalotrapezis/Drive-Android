@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Yhteensä alusta</string>
     <string name="assistant_spent_reset">Nollaa</string>
     <string name="assistant_spent_reset_ask">Nollataanko? Historia säilyy.</string>
+    <string name="assistant_pause">Tauon pituus</string>
+    <string name="assistant_pause_note">Kuinka kauan voit pysähtyä miettimään, ennen kuin AI Assist ottaa sanomasi (radiopuhelin, paneeli ja live).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Tee AI Assistista avustajasi</string>
+    <string name="assistant_default_hint">Avautuvalla sivulla napauta Digitaalisen avustajan sovellus ja valitse Tetra. Sen jälkeen virtapainikkeen painaminen pitkään avaa AI Assistin.</string>
+    <string name="assistant_default_xiaomi">Xiaomilla myös: Asetukset › Lisäasetukset › Elepikakuvakkeet › Virtapainikkeen pitkä painallus › Avustaja.</string>
 </resources>

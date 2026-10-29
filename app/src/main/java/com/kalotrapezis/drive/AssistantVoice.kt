@@ -7,8 +7,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Bundle
 import android.security.keystore.KeyGenParameterSpec
@@ -20,6 +23,7 @@ import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
 import android.util.Base64
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -170,11 +174,81 @@ internal fun assistantChat(c: Context, forgetMs: Long = Long.MAX_VALUE): Assista
             File(File(tetra, FOLDER).apply { mkdirs() }, "image-${System.currentTimeMillis()}.png").apply { writeBytes(AssistantNet.download(AssistantNet.key(app), id)) }
         },
         // shortcut: which card is the user's is kept on this phone only (Contacts has no "me" mark yet); move it into the card when the computer needs it
-        me = { prefs.getString("me", null) }, setMe = { prefs.edit().putString("me", it).apply() })
+        me = { prefs.getString("me", null) }, setMe = { prefs.edit().putString("me", it).apply() },
+        photos = { place, at -> AssistantPhotos.at(app, place, at) })
     return AssistantChat(api, tools, forgetMs)
 }
 
 /** "My words" (Settings › AI Assist): what Voxtral should spell right, sent with every recording as its context_bias. */
+/**
+ * Where the assistant talks and listens. The user's computer holds a Bluetooth link to the phone (Tetra's call relay), so
+ * Android sent the answers to the PC: when the only Bluetooth sound device is Tetra's own computer, the phone's speaker
+ * and mic (a wired headset's first); headphones, earbuds and the car still win. Null: Android's own choice. Calls keep theirs.
+ */
+internal object AssistantAudio {
+    private val BLUETOOTH = setOf(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_BLE_SPEAKER, AudioDeviceInfo.TYPE_HEARING_AID)
+    private val WIRED = setOf(AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_USB_HEADSET)
+
+    fun speaker(c: Context) = device(c, AudioManager.GET_DEVICES_OUTPUTS, AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+    fun mic(c: Context) = device(c, AudioManager.GET_DEVICES_INPUTS, AudioDeviceInfo.TYPE_BUILTIN_MIC)
+
+    private fun device(c: Context, which: Int, builtIn: Int): AudioDeviceInfo? = runCatching {
+        val all = c.getSystemService(AudioManager::class.java).getDevices(which)
+        val bluetooth = all.filter { it.type in BLUETOOTH }.ifEmpty { return null }
+        val computers = SyncStore(c).peers().map { it.name.trim().lowercase() }.toSet()
+        if (bluetooth.any { it.productName?.toString()?.trim()?.lowercase() !in computers }) return null
+        all.firstOrNull { it.type in WIRED } ?: all.firstOrNull { it.type == builtIn }
+    }.getOrNull()
+}
+
+internal fun isDefaultAssistant(c: Context) = c.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)
+
+/** Android's page where the user picks the digital assistant (no app may ask for the role itself), the most direct one first. */
+internal fun openAssistantChoice(c: Context) = listOf(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS,
+    android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS, android.provider.Settings.ACTION_SETTINGS)
+    .firstOrNull { runCatching { c.startActivity(android.content.Intent(it).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess }
+
+/** What to tap there; HyperOS also keeps "hold the power button" for Google in its own setting. */
+internal fun defaultAssistantHint(c: Context) = c.getString(R.string.assistant_default_hint) +
+    if (android.os.Build.MANUFACTURER.equals("xiaomi", true)) " " + c.getString(R.string.assistant_default_xiaomi) else ""
+
+/** YouTube's app on a search (the user: no browser inside Tetra), else its page in the browser. */
+internal fun openYouTube(c: Context, query: String) {
+    val app = android.content.Intent(android.content.Intent.ACTION_SEARCH).setPackage("com.google.android.youtube").putExtra("query", query)
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (runCatching { c.startActivity(app) }.isSuccess) return
+    c.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/results?search_query=" + android.net.Uri.encode(query)))
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+}
+
+/** The library's photos from a place, newest first: by the town each photo keeps (Photos' map), else within 15 km of [at]. */
+internal object AssistantPhotos {
+    // shortcut: only photos Photos has already read the place of (its map or the background scan); unscanned ones are missed
+    fun at(c: Context, place: String, at: () -> Pair<Double, Double>?): List<File> {
+        val photos = listDeviceMedia(c).filter { !it.isVideo && it.relativePath != null }
+        val store = PhotoMetadataStore(c)
+        val where = try { photos.map { it.photoKey }.chunked(500).flatMap { store.locations(it).entries }.associate { it.key to it.value } } finally { store.close() } // SQLite's limit on ? per query
+        val q = ContactsFiles.plain(place)
+        var hits = photos.filter { e -> where[e.photoKey]?.placeName?.let { ContactsFiles.plain(it).contains(q) } == true }
+        if (hits.isEmpty()) at()?.let { (lat, lng) -> hits = photos.filter { e -> where[e.photoKey]?.let { km(it.latitude, it.longitude, lat, lng) < 15 } == true } }
+        val shared = android.os.Environment.getExternalStorageDirectory()
+        return hits.sortedByDescending { it.takenMillis }.map { File(File(shared, it.relativePath!!), it.name) }.filter { it.isFile }
+    }
+    private fun km(a: Double, b: Double, c: Double, d: Double): Double {
+        val x = Math.toRadians(d - b) * Math.cos(Math.toRadians((a + c) / 2)); val y = Math.toRadians(c - a)
+        return Math.sqrt(x * x + y * y) * 6371
+    }
+}
+
+/** How long a pause ends what the user says (Settings › AI Assist; the user: "I can't even pause"). */
+internal object AssistantPause {
+    const val DEFAULT_MS = 2_500
+    private fun prefs(c: Context) = c.getSharedPreferences("assistant", Context.MODE_PRIVATE)
+    fun ms(c: Context) = prefs(c).getInt("pauseMs", DEFAULT_MS)
+    fun set(c: Context, ms: Int) = prefs(c).edit().putInt("pauseMs", ms).apply()
+}
+
 internal object AssistantWords {
     const val DEFAULT = "Καλοτραπέζης, Θεολόγος, Tetra, ΥΠΕΧΩΔΕ"
     private fun prefs(c: Context) = c.getSharedPreferences("assistant", Context.MODE_PRIVATE)
@@ -201,6 +275,8 @@ internal class AssistantLive(
     private val turn: (String) -> Unit,
     private val level: (Float) -> Unit,
     private val failed: (Throwable) -> Unit,
+    private val pauseMs: Int = AssistantPause.DEFAULT_MS,
+    private val mic: AudioDeviceInfo? = null,
 ) {
     @Volatile var muted = false
         set(on) { field = on; if (!on) synchronized(text) { text.clear() } }
@@ -227,7 +303,7 @@ internal class AssistantLive(
                 ws.send(JSONObject().put("type", "session.update").put("session", JSONObject()
                     .put("audio_format", JSONObject().put("encoding", "pcm_s16le").put("sample_rate", Vad.RATE))
                     .put("language", "el").put("context_bias", org.json.JSONArray(terms)).put("target_streaming_delay_ms", 480)
-                    .put("turn_detection", JSONObject())).toString())
+                    .put("turn_detection", JSONObject().put("min_silence_ms", pauseMs).put("end_timeout_ms", maxOf(3_000, pauseMs + 1_500)))).toString())
                 Thread(::record, "ai-assist-live").start()
             }
             "transcription.text.delta" -> if (!muted) heard(synchronized(text) { text.append(e.optString("text")).toString() })
@@ -240,6 +316,7 @@ internal class AssistantLive(
     private fun record() {
         val size = maxOf(AudioRecord.getMinBufferSize(Vad.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT), Vad.FRAME * 2 * 8)
         val rec = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, Vad.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, size)
+        mic?.let(rec::setPreferredDevice)
         val chunk = ShortArray(Vad.FRAME * 4) // 120 ms
         val bytes = java.nio.ByteBuffer.allocate(chunk.size * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         try {
@@ -272,13 +349,14 @@ internal fun hasMic(c: Context) = c.checkSelfPermission(Manifest.permission.RECO
 
 /**
  * Records until the speaker pauses, [stop] says so, or nobody spoke for [waitMs]; null when nothing was said.
- * [speaking] follows whether a phrase has begun, for the screen.
+ * [speaking] follows whether a phrase has begun, for the screen. A pause of [pauseMs] ends it; a minute at most.
  */
 @SuppressLint("MissingPermission")
-internal fun listen(waitMs: Long, stop: () -> Boolean, speaking: (Boolean) -> Unit = {}): ShortArray? {
+internal fun listen(waitMs: Long, stop: () -> Boolean, speaking: (Boolean) -> Unit = {}, pauseMs: Int = AssistantPause.DEFAULT_MS, mic: AudioDeviceInfo? = null): ShortArray? {
     val size = maxOf(AudioRecord.getMinBufferSize(Vad.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT), Vad.FRAME * 2 * 8)
     val rec = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, Vad.RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, size)
-    val vad = Vad()
+    mic?.let(rec::setPreferredDevice)
+    val vad = Vad(pauseMs / 30, 60 * 1000 / 30)
     val started = System.currentTimeMillis()
     try {
         rec.startRecording()
@@ -323,7 +401,7 @@ class AssistantRecognition : RecognitionService() {
         Thread {
             runCatching {
                 cb.readyForSpeech(Bundle())
-                val pcm = listen(8_000, { stop }) ?: return@Thread cb.error(SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+                val pcm = listen(8_000, { stop }, pauseMs = AssistantPause.ms(this), mic = AssistantAudio.mic(this)) ?: return@Thread cb.error(SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
                 cb.endOfSpeech()
                 cb.results(Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(AssistantNet.transcribe(key, pcm, AssistantWords.terms(this@AssistantRecognition), AssistantMeter.bill(this@AssistantRecognition)))) })
             }.onFailure { WriterLog.w("Assistant: recognition for another app failed", it); runCatching { cb.error(SpeechRecognizer.ERROR_NETWORK) } }
@@ -380,25 +458,43 @@ internal class AnswerVoice(private val c: Context, private val reader: ReadAloud
         audio.close()
     }
 
+    @Volatile private var player: MediaPlayer? = null
+
     private val playing = scope.launch(Dispatchers.IO) {
+        val speaker = AssistantAudio.speaker(c)
         var written = 0L
         suspend fun drain() { while (isActive && (track?.playbackHeadPosition ?: return) < written) delay(30) }
         try {
             for (a in audio) when (a) {
                 is FloatArray -> {
-                    val t = track ?: newTrack().also { track = it; it.play() }
+                    val t = track ?: newTrack().also { track = it; speaker?.let(it::setPreferredDevice); it.play() }
                     var at = 0
                     while (at < a.size && isActive) { val n = t.write(a, at, minOf(2_400, a.size - at), AudioTrack.WRITE_BLOCKING); if (n <= 0) break; at += n }
                     written += a.size
                 }
-                is String -> { drain(); reader.add(a); while (isActive && reader.speaking) delay(50) }
+                is String -> { drain(); if (speaker == null || !onPhone(a, speaker)) { reader.add(a); while (isActive && reader.speaking) delay(50) } }
             }
             drain()
         } finally { track?.run { runCatching { pause(); flush() }; release() }; track = null }
     }
 
+    /** The phone's voice on [speaker]: Android's text-to-speech plays only where Android routes it, so made into a file first. */
+    private suspend fun onPhone(sentence: String, speaker: AudioDeviceInfo): Boolean {
+        val f = File(c.cacheDir, "ai-assist-voice.wav")
+        val made = CompletableDeferred<Boolean>()
+        if (!reader.toFile(sentence, f) { made.complete(it) } || !made.await()) return false
+        val done = CompletableDeferred<Unit>()
+        val p = MediaPlayer().also { player = it }
+        try {
+            p.setAudioAttributes(ATTRIBUTES); p.setDataSource(f.path); p.setPreferredDevice(speaker)
+            p.setOnCompletionListener { done.complete(Unit) }; p.setOnErrorListener { _, _, _ -> done.complete(Unit); true }
+            p.prepare(); p.start(); done.await()
+        } finally { player = null; runCatching { p.release() } }
+        return true
+    }
+
     private fun newTrack() = AudioTrack.Builder()
-        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+        .setAudioAttributes(ATTRIBUTES)
         .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
         .setBufferSizeInBytes(maxOf(AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT), RATE * 4 / 2))
         .setTransferMode(AudioTrack.MODE_STREAM).build()
@@ -410,8 +506,12 @@ internal class AnswerVoice(private val c: Context, private val reader: ReadAloud
     fun stop() {
         sentences.close(); audio.cancel(); making.cancel(); playing.cancel()
         track?.runCatching { pause(); flush() } // a blocked write returns
+        player?.runCatching { stop() }
         reader.stop()
     }
 
-    private companion object { const val RATE = 24_000 } // Mistral's voice: 24 kHz float samples
+    private companion object {
+        const val RATE = 24_000 // Mistral's voice: 24 kHz float samples
+        val ATTRIBUTES: AudioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+    }
 }

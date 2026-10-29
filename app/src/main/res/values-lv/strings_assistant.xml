@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Kopā no sākuma</string>
     <string name="assistant_spent_reset">Atiestatīt</string>
     <string name="assistant_spent_reset_ask">Atiestatīt? Vēsture paliek.</string>
+    <string name="assistant_pause">Pauzes laiks</string>
+    <string name="assistant_pause_note">Cik ilgi vari apstāties padomāt, pirms AI Assist paņem teikto (rācija, panelis un tiešraidē).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Padari AI Assist par savu asistentu</string>
+    <string name="assistant_default_hint">Atvērtajā lapā pieskaries Digitālā asistenta lietotne un izvēlies Tetra. Pēc tam barošanas pogas turēšana atver AI Assist.</string>
+    <string name="assistant_default_xiaomi">Xiaomi arī: Iestatījumi › Papildu iestatījumi › Žestu īsceļi › Barošanas pogas turēšana › Asistents.</string>
 </resources>

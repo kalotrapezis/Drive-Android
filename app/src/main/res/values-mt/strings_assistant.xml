@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Total mill-bidu</string>
     <string name="assistant_spent_reset">Reset</string>
     <string name="assistant_spent_reset_ask">Reset? L-istorja tibqa\'.</string>
+    <string name="assistant_pause">Ħin tal-waqfa</string>
+    <string name="assistant_pause_note">Kemm tista\' tieqaf taħseb qabel AI Assist jieħu dak li għidt (walkie-talkie, il-pannell u live).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Agħmel AI Assist l-assistent tiegħek</string>
+    <string name="assistant_default_hint">Fil-paġna li tiftaħ, agħfas App tal-assistent diġitali u agħżel Tetra. Imbagħad iż-żamma tal-buttuna tal-qawwa tiftaħ AI Assist.</string>
+    <string name="assistant_default_xiaomi">Fuq Xiaomi ukoll: Settings › Settings addizzjonali › Shortcuts tal-ġesti › Żomm il-buttuna tal-qawwa › Assistent.</string>
 </resources>

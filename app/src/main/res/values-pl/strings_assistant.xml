@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Razem od początku</string>
     <string name="assistant_spent_reset">Wyzeruj</string>
     <string name="assistant_spent_reset_ask">Wyzerować? Historia zostaje.</string>
+    <string name="assistant_pause">Czas pauzy</string>
+    <string name="assistant_pause_note">Jak długo możesz się zatrzymać i pomyśleć, zanim AI Assist weźmie to, co powiedziałeś (krótkofalówka, panel i na żywo).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Ustaw AI Assist jako asystenta</string>
+    <string name="assistant_default_hint">Na otwartej stronie dotknij Aplikacja asystenta cyfrowego i wybierz Tetra. Potem przytrzymanie przycisku zasilania otwiera AI Assist.</string>
+    <string name="assistant_default_xiaomi">Na Xiaomi także: Ustawienia › Dodatkowe ustawienia › Skróty gestów › Przytrzymanie przycisku zasilania › Asystent.</string>
 </resources>

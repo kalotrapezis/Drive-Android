@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Общо от началото</string>
     <string name="assistant_spent_reset">Нулиране</string>
     <string name="assistant_spent_reset_ask">Нулиране? Историята остава.</string>
+    <string name="assistant_pause">Време за пауза</string>
+    <string name="assistant_pause_note">Колко дълго можеш да спреш и помислиш, преди AI Assist да вземе казаното (уоки-токи, панелът и на живо).</string>
+    <string name="assistant_pause_value">%1$s с</string>
+    <string name="assistant_default_make">Направи AI Assist свой асистент</string>
+    <string name="assistant_default_hint">На страницата, която се отваря, докосни Приложение за дигитален асистент и избери Tetra. После задържането на бутона за захранване отваря AI Assist.</string>
+    <string name="assistant_default_xiaomi">На Xiaomi също: Настройки › Допълнителни настройки › Преки пътища с жестове › Задържане на бутона за захранване › Асистент.</string>
 </resources>

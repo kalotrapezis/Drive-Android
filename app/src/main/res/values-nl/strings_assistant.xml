@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Totaal sinds het begin</string>
     <string name="assistant_spent_reset">Op nul zetten</string>
     <string name="assistant_spent_reset_ask">Op nul zetten? De geschiedenis blijft.</string>
+    <string name="assistant_pause">Pauzetijd</string>
+    <string name="assistant_pause_note">Hoe lang je kunt stoppen om na te denken voordat AI Assist neemt wat je zei (walkietalkie, het paneel en live).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Maak AI Assist je assistent</string>
+    <string name="assistant_default_hint">Tik op de pagina die opent op App voor digitale assistent en kies Tetra. Daarna opent lang drukken op de aan/uit-knop AI Assist.</string>
+    <string name="assistant_default_xiaomi">Op Xiaomi ook: Instellingen › Extra instellingen › Snelkoppelingen voor gebaren › Aan/uit-knop ingedrukt houden › Assistent.</string>
 </resources>

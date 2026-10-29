@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Iš viso nuo pradžios</string>
     <string name="assistant_spent_reset">Nunulinti</string>
     <string name="assistant_spent_reset_ask">Nunulinti? Istorija lieka.</string>
+    <string name="assistant_pause">Pauzės laikas</string>
+    <string name="assistant_pause_note">Kiek ilgai gali sustoti pagalvoti, kol AI Assist paims, ką pasakei (racija, skydelis ir tiesiogiai).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Padaryk AI Assist savo asistentu</string>
+    <string name="assistant_default_hint">Atsivėrusiame puslapyje bakstelėk Skaitmeninio asistento programa ir pasirink Tetra. Tada laikant įjungimo mygtuką atsidaro AI Assist.</string>
+    <string name="assistant_default_xiaomi">Xiaomi taip pat: Nustatymai › Papildomi nustatymai › Gestų nuorodos › Įjungimo mygtuko laikymas › Asistentas.</string>
 </resources>

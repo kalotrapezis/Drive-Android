@@ -399,7 +399,7 @@ internal fun SettingsTab(
 @Composable private fun AssistantPage() {
     val context = LocalContext.current
     val version = resumes()
-    val held = remember(version.intValue) { context.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) }
+    val held = remember(version.intValue) { isDefaultAssistant(context) }
     SettingsSection { AssistantKeyField() }
     // Voxtral's context_bias (the VOICE app's terms): the user's own spellings, and the favourites' names only when switched on
     var words by remember { mutableStateOf(AssistantWords.words(context)) }
@@ -409,6 +409,13 @@ internal fun SettingsTab(
             OutlinedTextField(words, { words = it; AssistantWords.setWords(context, it) }, Modifier.fillMaxWidth(), minLines = 2, maxLines = 5)
         }
         SwitchRow(stringResource(R.string.assistant_contact_words), stringResource(R.string.assistant_contact_words_note), contactWords) { contactWords = it; AssistantWords.setContacts(context, it) }
+    }
+    var pause by remember { mutableFloatStateOf(AssistantPause.ms(context) / 1000f) }
+    SettingsSection(stringResource(R.string.assistant_pause), stringResource(R.string.assistant_pause_note)) {
+        Column(Modifier.fillMaxWidth().background(rowColor()).padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Text(stringResource(R.string.assistant_pause_value, "%.1f".format(pause)), style = MaterialTheme.typography.bodyLarge)
+            Slider(pause, { pause = Math.round(it * 2) / 2f }, valueRange = 1f..6f, steps = 9, onValueChangeFinished = { AssistantPause.set(context, (pause * 1000).toInt()) })
+        }
     }
     // the voice that reads answers: Mistral's (the user: the phone's was bad and slow), the phone's kept as the free one
     var voiceName by remember { mutableStateOf(AssistantVoices.id(context)?.let { if (it == AssistantVoices.PHONE) context.getString(R.string.assistant_voice_phone) else AssistantVoices.name(context) }) }
@@ -433,10 +440,9 @@ internal fun SettingsTab(
         confirmButton = { TextButton(onClick = { AssistantMeter.reset(context); meter = AssistantMeter.read(context); resetting = false }) { Text(stringResource(R.string.assistant_spent_reset)) } },
         dismissButton = { TextButton(onClick = { resetting = false }) { Text(stringResource(R.string.common_cancel)) } })
     // Android lets no app ask for the assistant role itself (it is not "requestable"): the user picks it on Android's page
-    SettingsSection(stringResource(R.string.assistant_default), stringResource(R.string.assistant_default_note)) {
+    SettingsSection(stringResource(R.string.assistant_default), stringResource(R.string.assistant_default_note) + if (held) "" else "\n" + defaultAssistantHint(context)) {
         StatusRow(stringResource(R.string.assistant_default), stringResource(if (held) R.string.assistant_default_yes else R.string.assistant_default_no), held, stringResource(R.string.assistant_choose)) {
-            listOf(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS, android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
-                .firstOrNull { runCatching { context.startActivity(Intent(it).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess }
+            openAssistantChoice(context)
         }
         SettingRow(stringResource(R.string.assistant_open), onClick = { openAssistant(context) }) { Chevron() }
     }

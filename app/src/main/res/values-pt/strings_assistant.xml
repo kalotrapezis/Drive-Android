@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Total desde o início</string>
     <string name="assistant_spent_reset">Repor</string>
     <string name="assistant_spent_reset_ask">Repor? O histórico fica.</string>
+    <string name="assistant_pause">Tempo de pausa</string>
+    <string name="assistant_pause_note">Quanto tempo podes parar para pensar antes de o AI Assist ficar com o que disseste (walkie-talkie, o painel e ao vivo).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Faz do AI Assist o teu assistente</string>
+    <string name="assistant_default_hint">Na página que abre, toca em Aplicação de assistente digital e escolhe Tetra. Depois, manter premido o botão ligar abre o AI Assist.</string>
+    <string name="assistant_default_xiaomi">Na Xiaomi também: Definições › Definições adicionais › Atalhos de gestos › Manter premido o botão ligar › Assistente.</string>
 </resources>

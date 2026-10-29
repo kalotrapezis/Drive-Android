@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Összesen a kezdetektől</string>
     <string name="assistant_spent_reset">Nullázás</string>
     <string name="assistant_spent_reset_ask">Nullázod? Az előzmények megmaradnak.</string>
+    <string name="assistant_pause">Szünet hossza</string>
+    <string name="assistant_pause_note">Mennyi ideig állhatsz meg gondolkodni, mielőtt az AI Assist átveszi, amit mondtál (adóvevő, panel és élő).</string>
+    <string name="assistant_pause_value">%1$s mp</string>
+    <string name="assistant_default_make">Legyen az AI Assist az asszisztensed</string>
+    <string name="assistant_default_hint">A megnyíló oldalon koppints a Digitális asszisztens alkalmazásra, és válaszd a Tetrát. Ezután a bekapcsológomb nyomva tartása megnyitja az AI Assistet.</string>
+    <string name="assistant_default_xiaomi">Xiaomin még: Beállítások › További beállítások › Kézmozdulat-parancsikonok › Bekapcsológomb nyomva tartása › Asszisztens.</string>
 </resources>

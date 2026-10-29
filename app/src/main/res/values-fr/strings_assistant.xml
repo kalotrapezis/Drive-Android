@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Total depuis le début</string>
     <string name="assistant_spent_reset">Réinitialiser</string>
     <string name="assistant_spent_reset_ask">Réinitialiser ? L\'historique reste.</string>
+    <string name="assistant_pause">Temps de pause</string>
+    <string name="assistant_pause_note">Combien de temps tu peux t\'arrêter pour réfléchir avant qu\'AI Assist prenne ce que tu as dit (talkie-walkie, le panneau et en direct).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Fais d\'AI Assist ton assistant</string>
+    <string name="assistant_default_hint">Sur la page qui s\'ouvre, touche Application d\'assistant numérique et choisis Tetra. Ensuite, un appui long sur le bouton marche ouvre AI Assist.</string>
+    <string name="assistant_default_xiaomi">Sur Xiaomi aussi : Paramètres › Paramètres supplémentaires › Raccourcis gestuels › Appui long sur le bouton marche › Assistant.</string>
 </resources>

@@ -80,7 +80,7 @@ class AssistantTest {
         val note = NotesStore(File(tetra, ".notes")).list().single()
         assertTrue(note.checklist); assertEquals("Ψώνια", note.title)
         assertEquals(listOf("γάλα", "ψωμί"), note.items.map { it.text })
-        assertEquals("- Ψώνια: ψωμί", t.run("notes_search", JSONObject().put("query", "ΨΩΜΙ")).forModel)
+        assertEquals("1. Ψώνια: ψωμί", t.run("notes_search", JSONObject().put("query", "ΨΩΜΙ")).forModel)
     }
 
     @Test fun badArgumentsAndUnknownToolsAnswerTheModelNotCrash() {
@@ -204,6 +204,32 @@ class AssistantTest {
         assertEquals("Forgot: Ελένη Δημητρίου as the user's Spouse.", run("relation_forget", "relation" to "Spouse"))
         assertTrue(run("contacts_find", "relation" to "Spouse").startsWith("No Spouse is saved"))
         assertEquals("1. Μαρία Κωστοπούλου", run("contacts_find", "relation" to "Sister")) // the sister stayed
+    }
+
+    @Test fun aRoleFindsTheContactAndTheDefaultNumberIsTheOneCalled() {
+        val dir = ContactsFiles.root(tetra)
+        ContactsFiles.save(dir, null, ContactInfo(formatted = "Στέλλα κούρεμα", phones = listOf(VField("Mobile", "+306900000011"), VField("Work", "+302100000011")),
+            defaultPhone = "+302100000011"))
+        ContactsFiles.save(dir, null, ContactInfo(formatted = "Νίκος Παπάς", org = "Υδραυλικές εργασίες", phones = listOf(VField("Mobile", "+306900000012"), VField("Home", "+302100000012"))))
+        val t = AssistantTools(tetra, "Phone", zone, { now })
+        fun find(vararg k: String) = t.run("contacts_find", JSONObject().put("keywords", JSONArray(k.toList()))).forModel
+        assertEquals("1. Στέλλα κούρεμα", find("κομμωτ", "κουρε", "hair")) // only the default number: no "which one"
+        assertEquals("1. Νίκος Παπάς (Mobile)\n2. Νίκος Παπάς (Home)", find("υδραυλ")) // none marked: both offered
+        assertEquals("The call to Στέλλα κούρεμα waits for the user's yes (a button on the screen).",
+            t.run("contacts_find", JSONObject().put("keywords", JSONArray(listOf("κουρε")))).let { t.run("contact_call", JSONObject().put("choice", 1)).forModel })
+        assertEquals(PendingCall("Στέλλα κούρεμα", "+302100000011"), t.run("contact_call", JSONObject().put("choice", 1)).call)
+    }
+
+    @Test fun aDictatedNoteIsFoundByWhatItSaysAndOpens() {
+        val t = AssistantTools(tetra, "Phone", zone, { now })
+        assertEquals("Saved the note in Notes.", t.run("note_new", JSONObject().put("text", "Ο κωδικός της αποθήκης είναι στο συρτάρι.\nΚαι το κλειδί του κήπου.")).forModel)
+        assertEquals("1. Ο κωδικός της αποθήκης είναι στο συρτάρι: Και το κλειδί του κήπου.", t.run("notes_search", JSONObject().put("query", "κλειδι")).forModel)
+        assertTrue(t.run("note_open", JSONObject().put("choice", 1)).go!!.startsWith("note:"))
+        assertEquals("youtube:Σαββόπουλος Ζήτω το ελληνικό τραγούδι", t.run("youtube", JSONObject().put("query", "Σαββόπουλος Ζήτω το ελληνικό τραγούδι")).go)
+        // no map installed here: Maps opens on a search; a contact with no address says so
+        assertEquals("maps-search:Ερμού 10, Αθήνα", t.run("navigate", JSONObject().put("place", "Ερμού 10, Αθήνα")).go)
+        ContactsFiles.save(ContactsFiles.root(tetra), null, ContactInfo(formatted = "Άννα Λουκά"))
+        assertEquals("No address is saved for Άννα Λουκά.", t.run("navigate", JSONObject().put("contact", "Άννα Λουκά")).forModel)
     }
 
     @Test fun vadEndsAPhraseAtAPauseAndWavIsWellFormed() {

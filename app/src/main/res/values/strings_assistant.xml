@@ -56,4 +56,10 @@
     <string name="assistant_spent_reset">Reset</string>
     <string name="assistant_spent_reset_ask">Reset? The history stays.</string>
     <string name="assistant_spent_past" translatable="false">%1$s → %2$s</string>
+    <string name="assistant_pause">Pause time</string>
+    <string name="assistant_pause_note">How long you can stop to think before AI Assist takes what you said (walkie-talkie, the sheet and live).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Make AI Assist your assistant</string>
+    <string name="assistant_default_hint">On the page that opens, tap Digital assistant app (or Default assistant) and choose Tetra. Then holding the power button opens AI Assist.</string>
+    <string name="assistant_default_xiaomi">On Xiaomi also: Settings › Additional settings › Gesture shortcuts › Press and hold the power button › Assistant.</string>
 </resources>

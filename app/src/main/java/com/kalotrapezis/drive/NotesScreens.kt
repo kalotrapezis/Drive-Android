@@ -123,7 +123,7 @@ private fun searchText(n: Note) = fold(listOf(n.title, n.content, n.labels.joinT
 /** `start`: true opens a new checklist, false a new note, null the list (the home card's three doors). */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, grant: () -> Unit) {
+internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, grant: () -> Unit, openId: String? = null) {
     val store = remember { notesStore() }
     val scope = rememberCoroutineScope()
     var version by remember { mutableIntStateOf(0) }
@@ -166,6 +166,7 @@ internal fun NotesTab(back: () -> Unit, start: Boolean?, hasAccess: Boolean, gra
         open = withContext(Dispatchers.IO) { store.create(checklist, listOfNotNull(label)) }
     }
     LaunchedEffect(start) { if (hasAccess && start != null) create(start) }
+    LaunchedEffect(openId) { if (hasAccess && openId != null) withContext(Dispatchers.IO) { store.get(openId) }?.let { open = it } }
     // Export as Markdown (the user, 27 Oct): every note, into a new folder at the top of Files, so nothing is written over
     fun exportAll() = scope.launch {
         message = withContext(Dispatchers.IO) { runCatching {

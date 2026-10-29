@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">I alt fra starten</string>
     <string name="assistant_spent_reset">Nulstil</string>
     <string name="assistant_spent_reset_ask">Nulstil? Historikken bliver.</string>
+    <string name="assistant_pause">Pausetid</string>
+    <string name="assistant_pause_note">Hvor længe du kan stoppe op og tænke, før AI Assist tager det, du sagde (walkie-talkie, panelet og live).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Gør AI Assist til din assistent</string>
+    <string name="assistant_default_hint">På siden, der åbner, tryk på App til digital assistent og vælg Tetra. Så åbner et langt tryk på afbryderknappen AI Assist.</string>
+    <string name="assistant_default_xiaomi">På Xiaomi også: Indstillinger › Yderligere indstillinger › Bevægelsesgenveje › Tryk og hold afbryderknappen › Assistent.</string>
 </resources>

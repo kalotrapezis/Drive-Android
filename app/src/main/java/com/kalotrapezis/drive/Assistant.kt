@@ -23,16 +23,16 @@ import java.time.format.DateTimeFormatter
 /** A call the model asked for, waiting for the user's yes. */
 internal data class PendingCall(val name: String, val number: String)
 
-/** Something the screen offers to tap: a contact to call or a file to open. */
-internal data class AssistantChoice(val label: String, val call: PendingCall? = null, val file: File? = null)
+/** Something the screen offers to tap: a contact to call, a file to open, or a place in Tetra to go ([go]). */
+internal data class AssistantChoice(val label: String, val call: PendingCall? = null, val file: File? = null, val go: String? = null)
 
 /** What a tool hands back: words for the model (as few as it needs), and what the screen shows besides. */
 internal data class ToolResult(val forModel: String, val choices: List<AssistantChoice> = emptyList(), val call: PendingCall? = null,
-    val image: File? = null, val open: File? = null)
+    val image: File? = null, val open: File? = null, val go: String? = null, val photos: List<File> = emptyList())
 
 /** The model's answer to one turn, with everything the tools left for the screen. */
 internal data class AssistantReply(val text: String, val choices: List<AssistantChoice> = emptyList(), val call: PendingCall? = null,
-    val images: List<File> = emptyList(), val open: File? = null)
+    val images: List<File> = emptyList(), val open: File? = null, val go: String? = null)
 
 /**
  * What a conversation has cost so far, in US dollars by Mistral's list prices (the user: "the bill came"; shown in the
@@ -176,9 +176,12 @@ internal class AssistantTools(
     /** The UID of the user's own card in Contacts (Apple's "My Card"), where their relations are kept; asked once. */
     private val me: () -> String? = { null },
     private val setMe: (String) -> Unit = {},
+    /** The library's photos taken at a place: by the place name each keeps, else near where [at] finds it. */
+    private val photos: (place: String, at: () -> Pair<Double, Double>?) -> List<File> = { _, _ -> emptyList() },
 ) {
     private var contacts = emptyList<PendingCall>()
     private var files = emptyList<File>()
+    private var notesFound = emptyList<Note>()
 
     fun run(name: String, args: JSONObject): ToolResult = runCatching {
         when (name) {
@@ -189,6 +192,11 @@ internal class AssistantTools(
             "timer_list" -> timerList()
             "timer_stop" -> timerStop(args)
             "notes_search" -> notesSearch(args)
+            "note_new" -> noteNew(args)
+            "note_open" -> pick(notesFound, args) { n -> ToolResult("Opened the note.", go = "note:${n.id}") }
+            "navigate" -> navigate(args)
+            "photos_place" -> photosPlace(args)
+            "youtube" -> args.getString("query").trim().let { q -> ToolResult("YouTube is open on a search for \"$q\".", go = "youtube:$q") }
             "shopping_list" -> shoppingList(args)
             "files_find" -> filesFind(args)
             "file_open" -> pick(files, args) { f -> ToolResult("Opened ${f.name}.", open = f) }
@@ -234,7 +242,8 @@ internal class AssistantTools(
         val found = CalendarFiles.occurrences(calendars(), from.toInstant(), to.toInstant())
         if (found.isEmpty()) return ToolResult("Nothing in the calendar then.")
         return ToolResult(found.take(30).joinToString("\n") { o ->
-            (if (o.allDay) o.start.toLocalDate().toString() + " all day" else o.start.withZoneSameInstant(zone).format(SHOWN) + "–" + o.end.withZoneSameInstant(zone).toLocalTime().format(HM)) + ": " + o.event.title
+            (if (o.allDay) o.start.toLocalDate().toString() + " all day" else o.start.withZoneSameInstant(zone).format(SHOWN) + "–" + o.end.withZoneSameInstant(zone).toLocalTime().format(HM)) + ": " + o.event.title +
+                o.event.place.takeIf { it.isNotBlank() }?.let { " @ $it" }.orEmpty()
         })
     }
 
@@ -285,15 +294,55 @@ internal class AssistantTools(
     // ---- Notes ----
     private fun notes() = NotesStore(File(tetra, ".notes"), "tetra-assistant")
 
-    // shortcut: searches what the list keeps of each note (its first lines), not every line of a long one; read whole notes if that misses
+    // shortcut: reads every note whole for each search (the user: find what a note has inside); an on-disk text index past a few thousand notes
     private fun notesSearch(a: JSONObject): ToolResult {
         val q = ContactsFiles.plain(a.getString("query"))
-        val hits = notes().list().filter { it.trashedAt == null && ContactsFiles.plain(it.title + "\n" + it.content + "\n" + it.items.joinToString("\n") { i -> i.text }).contains(q) }
+        val store = notes()
+        val hits = store.whole(store.list().filter { it.trashedAt == null }.map { it.id })
+            .filter { ContactsFiles.plain(it.title + "\n" + it.content + "\n" + it.items.joinToString("\n") { i -> i.text }).contains(q) }
+            .sortedByDescending { it.updatedAt }.take(9)
+        notesFound = hits
         if (hits.isEmpty()) return ToolResult("No note has that.")
-        return ToolResult(hits.take(10).joinToString("\n") { n ->
-            val line = (n.content.lines() + n.items.map { it.text }).firstOrNull { ContactsFiles.plain(it).contains(q) }.orEmpty().take(80)
-            "- ${n.title.ifBlank { "(untitled)" }}" + if (line.isNotBlank()) ": $line" else ""
-        })
+        fun title(n: Note) = n.title.ifBlank { n.content.lineSequence().firstOrNull { it.isNotBlank() }?.take(40) ?: "(untitled)" }
+        return ToolResult(hits.mapIndexed { i, n ->
+            val line = (n.content.lines() + n.items.map { it.text }).firstOrNull { ContactsFiles.plain(it).contains(q) }.orEmpty().trim().take(80)
+            "${i + 1}. ${title(n)}" + if (line.isNotBlank()) ": $line" else ""
+        }.joinToString("\n"), choices = hits.map { AssistantChoice(title(it), go = "note:${it.id}") })
+    }
+
+    private fun noteNew(a: JSONObject): ToolResult {
+        val text = a.getString("text").trim().ifEmpty { return ToolResult("Say what the note says.") }
+        val store = notes()
+        val n = store.create(checklist = false)
+        store.setText(n.id, a.optString("title").trim(), text, null)
+        changed("notes")
+        return ToolResult("Saved the note in Notes.", choices = listOf(AssistantChoice(a.optString("title").ifBlank { text.take(40) }, go = "note:${n.id}")))
+    }
+
+    // ---- Maps and Photos: the installed map, offline ----
+    // shortcut: ranks matches from the middle of Greece, not from where the phone is; pass the fix when "the nearest Lidl" matters
+    private fun locate(text: String): Place? {
+        val root = MapsFiles.root(tetra)
+        val pois = runCatching { MapsSearch.load(root) }.getOrDefault(emptyList())
+        runCatching { MapsAddresses.locate(root, text, pois) }.getOrNull()?.let { (lat, lng) -> return Place("", text, lat, lng) }
+        return MapsSearch.search(pois, text, 38.4, 23.8, limit = 1).firstOrNull()?.let { Place("", it.name, it.lat, it.lng) }
+    }
+
+    private fun navigate(a: JSONObject): ToolResult {
+        val contact = a.optString("contact").trim()
+        // a contact's address stays on the phone: the model says whose, Tetra looks it up
+        val where = if (contact.isNotEmpty()) named(contact).firstNotNullOfOrNull { it.addresses.firstOrNull()?.text()?.takeIf { t -> t.isNotBlank() } }
+            ?: return ToolResult("No address is saved for $contact.")
+            else a.optString("place").trim().ifEmpty { return ToolResult("Say where to.") }
+        val p = locate(where) ?: return ToolResult("Not on the map; Tetra Maps is open on a search for it.", go = "maps-search:$where")
+        return ToolResult("Directions to ${if (contact.isNotEmpty()) contact else p.name} started in Tetra Maps.", go = "maps-go:${p.lat},${p.lng},${p.name}")
+    }
+
+    private fun photosPlace(a: JSONObject): ToolResult {
+        val place = a.getString("place").trim()
+        val found = photos(place) { locate(place)?.let { it.lat to it.lng } }
+        if (found.isEmpty()) return ToolResult("No photo from $place.")
+        return ToolResult("${found.size} photos from $place; the newest are on the screen.", photos = found.take(SHOWN_PHOTOS))
     }
 
     private fun shoppingList(a: JSONObject): ToolResult {
@@ -327,17 +376,23 @@ internal class AssistantTools(
             names.flatMap { n -> named(n) }.distinct().filter { it.phones.isNotEmpty() }
                 .ifEmpty { return ToolResult("The user's $relation is ${names.joinToString(", ")}, but no contact by that name has a phone number.") }
         } else {
-            val q = a.optString("name").ifBlank { return ToolResult("Say a name or a relation.") }
+            val keys = a.optJSONArray("keywords")?.let { k -> (0 until k.length()).map { ContactsFiles.plain(k.optString(it)).trim() } }.orEmpty().filter { it.length >= 3 }
+            val q = a.optString("name").ifBlank { if (keys.isEmpty()) return ToolResult("Say a name, a relation or some words.") else "" }
             val words = ContactsFiles.plain(q).split(' ').filter { it.isNotBlank() }
-            ContactsFiles.all(ContactsFiles.root(tetra)).map { it.info }
-                .filter { i -> i.phones.isNotEmpty() && words.all { w -> ContactsFiles.matches(i, w) } }
-                .sortedBy { ContactsFiles.sortKey(it, false) }.take(9)
+            val all = allContacts().map { it.info }
+            val byName = if (words.isEmpty()) emptyList() else all.filter { i -> i.phones.isNotEmpty() && words.all { w -> ContactsFiles.matches(i, w) } }
+            // "η κομμώτρια": the words the model gives (κομμωτ, κουρε, hair) in anything the card says, and the user's own relations' labels
+            byName.ifEmpty {
+                val mine = myContact()?.info?.related.orEmpty().filter { r -> keys.any { ContactsFiles.plain(r.label).contains(it) } }.flatMap { named(it.value) }
+                (mine + all.filter { i -> keys.any { about(i).contains(it) } }).distinct().filter { it.phones.isNotEmpty() }
+            }.sortedBy { ContactsFiles.sortKey(it, false) }.take(9)
         }
         contacts = found.flatMap { i ->
-            val phones = i.phones.sortedByDescending { it.value == i.defaultPhone }
+            // the number marked as the default is the one called, without asking (the user); all of them only when none is
+            val phones = i.phones.filter { it.value == i.defaultPhone }.ifEmpty { i.phones }
             phones.map { p -> PendingCall(if (phones.size > 1) "${i.name} (${p.label.ifBlank { "phone" }})" else i.name, p.value) }
         }
-        if (contacts.isEmpty()) return ToolResult("No contact called ${a.optString("name")} with a phone number.")
+        if (contacts.isEmpty()) return ToolResult("No contact like that with a phone number.")
         return ToolResult(contacts.mapIndexed { n, c -> "${n + 1}. ${c.name}" }.joinToString("\n"),
             choices = contacts.map { AssistantChoice(it.name, call = it) })
     }
@@ -347,6 +402,9 @@ internal class AssistantTools(
     private fun allContacts() = ContactsFiles.all(ContactsFiles.root(tetra))
     private fun myContact() = me()?.let { uid -> allContacts().firstOrNull { it.info.uid == uid } }
     private fun sameLabel(a: String, b: String) = ContactsFiles.plain(a) == ContactsFiles.plain(b)
+    /** All a card says about who someone is, without accents: what keywords are looked for in. */
+    private fun about(i: ContactInfo) = ContactsFiles.plain((listOf(i.name, i.nickname, i.org, i.department, i.title, i.note) + i.categories +
+        i.related.flatMap { listOf(it.label, it.value) }).joinToString("\n"))
 
     /** The contacts a name means: the one with that very name, else those with all its words. */
     private fun named(name: String): List<ContactInfo> {
@@ -398,6 +456,7 @@ internal class AssistantTools(
         private val HM = DateTimeFormatter.ofPattern("HH:mm")
         private val DAY_FROM = LocalTime.of(8, 0)
         private val DAY_TO = LocalTime.of(21, 0)
+        private const val SHOWN_PHOTOS = 6
 
         private fun fn(name: String, what: String, required: List<String>, vararg props: Pair<String, JSONObject>) = JSONObject().put("type", "function")
             .put("function", JSONObject().put("name", name).put("description", what).put("parameters", JSONObject().put("type", "object")
@@ -422,30 +481,44 @@ internal class AssistantTools(
                 "minutes" to p("integer", "Minutes."), "seconds" to p("integer", "Seconds, besides the minutes."), "label" to p("string", "What it is for, if said.")),
             fn("timer_list", "The running and paused timers and the time left.", emptyList()),
             fn("timer_stop", "Stop a timer from the last timer_list, or all of them.", emptyList(), "choice" to p("integer", "Its number in timer_list; leave out to stop all.")),
-            fn("notes_search", "Find notes that contain some words; answers titles and the matching line.", listOf("query"), "query" to p("string", "Words to look for.")),
+            fn("notes_search", "Find notes with some words anywhere in them; answers a numbered list of titles and the matching line.", listOf("query"), "query" to p("string", "Words to look for.")),
+            fn("note_open", "Open a note from the last notes_search list in Tetra's Notes.", listOf("choice"), CHOICE),
+            fn("note_new", "Make a new text note with what the user dictates.", listOf("text"),
+                "text" to p("string", "The note's text, as said."), "title" to p("string", "A title, only if the user gave one.")),
             fn("shopping_list", "Make a new checklist note (a shopping list).", listOf("items"),
                 "title" to p("string", "The note's title; Ψώνια if not said."), "items" to JSONObject().put("type", "array").put("items", JSONObject().put("type", "string")).put("description", "One entry per item.")),
             fn("files_find", "Find files in Tetra whose name contains some words; answers a numbered list.", listOf("query"), "query" to p("string", "Part of the file's name.")),
             fn("file_open", "Open a file from the last files_find list.", listOf("choice"), CHOICE),
-            fn("contacts_find", "Find the user's contacts by name, or by their relation to the user (\"my sister\"); answers a numbered list of names (with the kind of number when one has several).", emptyList(),
-                "name" to p("string", "The name as said."), "relation" to p("string", RELATION)),
+            fn("contacts_find", "Find the user's contacts by name, by their relation to the user (\"my sister\"), or by what they do (keywords); answers a numbered list of names (with the kind of number when one has several).", emptyList(),
+                "name" to p("string", "The name as said."), "relation" to p("string", RELATION),
+                "keywords" to JSONObject().put("type", "array").put("items", JSONObject().put("type", "string"))
+                    .put("description", "For a person known by a job or a role (η κομμώτρια, ο υδραυλικός): several related words and stems in Greek and English (κομμωτ, κουρε, κομμωτηριο, hair), looked for in names, companies, notes and labels.")),
             fn("relation_remember", "Save who someone is to the user (\"Maria K. is my sister\") on the user's own card in Contacts. No need to ask first.", listOf("relation", "name"),
                 "relation" to p("string", RELATION), "name" to p("string", "The contact's name.")),
             fn("relation_forget", "Forget a saved relation.", listOf("relation"), "relation" to p("string", RELATION), "name" to p("string", "Only this person, when several have the relation.")),
             fn("my_card", "Say which contact is the user themself, once, when a relation tool asks for it.", listOf("name"), "name" to p("string", "The user's own name as in Contacts.")),
             fn("contact_call", "Ask to call a contact from the last contacts_find list. The phone asks the user to confirm; it does not call by itself.", listOf("choice"), CHOICE),
+            fn("navigate", "Start driving directions in Tetra Maps (offline map), to a place or to a contact's saved address.", emptyList(),
+                "place" to p("string", "A place, a town or an address (\"Ερμού 10, Αθήνα\")."), "contact" to p("string", "A contact's name, to go to their address.")),
+            fn("photos_place", "Show the user's photos taken at a place.", listOf("place"), "place" to p("string", "A town or a place.")),
+            fn("youtube", "Open YouTube on a search for a song or a video.", listOf("query"), "query" to p("string", "The song or video, with the artist if said.")),
             fn("web_search", "Search the web for current facts, news, opening hours, prices.", listOf("query"), "query" to p("string", "What to search for.")),
             fn("make_image", "Draw a picture from a description.", listOf("prompt"), "prompt" to p("string", "What the picture shows, in detail.")),
         ))
 
         fun system(now: ZonedDateTime) = """
-            You are Tetra Assistant, on the user's Android phone, inside the app Tetra (calendar, timers, notes, files, contacts).
+            You are Tetra Assistant, on the user's Android phone, inside the app Tetra (calendar, timers, notes, files, contacts, maps, photos).
             Now: ${now.format(DateTimeFormatter.ofPattern("EEEE yyyy-MM-dd HH:mm"))} (${now.zone}).
             Answer in the user's language (usually Greek), in one or two short plain sentences: answers are often read aloud. No markdown.
             Use the tools for anything about the user's own calendar, timers, notes, files or contacts; never invent what they hold.
             When a search finds several, say how many and ask which one (the screen shows the numbered list); "the first", "η δεύτερη" mean that list's numbers.
             A call is never placed by you: after contact_call say that the call waits for their yes.
             "My sister", "ο μπαμπάς μου", "η γυναίκα μου": contacts_find with that relation. When the user says who someone is to them, relation_remember it.
+            Someone known by a job or role ("πάρε την κομμώτρια"): contacts_find by relation, and if none, by keywords.
+            "Ψάξε στο internet", "google it", news, prices, opening hours, anything current: always web_search.
+            "Κλείσε ραντεβού" without a time: calendar_free first, offer two or three times, then calendar_add the one chosen.
+            "Πάμε εκεί", "βάλε προορισμό": navigate; "there" is the last place in this conversation (an event's place, a search result); for a contact's home, navigate with contact.
+            A song or a video: youtube. "Κάνε σημείωση": note_new.
             Work out dates yourself from today's date ("αύριο", "την Πέμπτη").
         """.trimIndent()
     }
@@ -467,23 +540,23 @@ internal class AssistantChat(private val api: Mistral, private val tools: Assist
         lastAt = at
         messages += JSONObject().put("role", "user").put("content", text)
         val choices = mutableListOf<AssistantChoice>(); val images = mutableListOf<File>()
-        var call: PendingCall? = null; var open: File? = null
+        var call: PendingCall? = null; var open: File? = null; var go: String? = null
         repeat(ROUNDS) {
             val m = api.chat(JSONArray(listOf(JSONObject().put("role", "system").put("content", AssistantTools.system(now()))) + messages), AssistantTools.SCHEMA, onText)
             val calls = m.optJSONArray("tool_calls")
             messages += JSONObject().put("role", "assistant").put("content", m.opt("content")?.takeIf { it != JSONObject.NULL } ?: "")
                 .apply { if (calls != null && calls.length() > 0) put("tool_calls", calls) }
-            if (calls == null || calls.length() == 0) return AssistantReply(text(m), choices, call, images, open)
+            if (calls == null || calls.length() == 0) return AssistantReply(text(m), choices, call, images, open, go)
             for (i in 0 until calls.length()) {
                 val c = calls.getJSONObject(i); val f = c.getJSONObject("function")
                 val args = when (val a = f.opt("arguments")) { is JSONObject -> a; is String -> runCatching { JSONObject(a.ifBlank { "{}" }) }.getOrDefault(JSONObject()); else -> JSONObject() }
                 val r = tools.run(f.getString("name"), args)
                 if (r.choices.isNotEmpty()) { choices.clear(); choices += r.choices }
-                r.call?.let { call = it }; r.image?.let { images += it }; r.open?.let { open = it }
+                r.call?.let { call = it }; r.image?.let { images += it }; images += r.photos; r.open?.let { open = it }; r.go?.let { go = it }
                 messages += JSONObject().put("role", "tool").put("name", f.getString("name")).put("tool_call_id", c.optString("id")).put("content", r.forModel)
             }
         }
-        return AssistantReply("", choices, call, images, open)
+        return AssistantReply("", choices, call, images, open, go)
     }
 
     fun clear() { messages.clear(); bill.reset() }

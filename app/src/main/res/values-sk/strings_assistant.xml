@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Spolu od začiatku</string>
     <string name="assistant_spent_reset">Vynulovať</string>
     <string name="assistant_spent_reset_ask">Vynulovať? História zostane.</string>
+    <string name="assistant_pause">Čas pauzy</string>
+    <string name="assistant_pause_note">Ako dlho sa môžeš zastaviť a premýšľať, kým AI Assist vezme, čo si povedal (vysielačka, panel aj naživo).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Nastav AI Assist ako asistenta</string>
+    <string name="assistant_default_hint">Na stránke, ktorá sa otvorí, ťukni na Aplikácia digitálneho asistenta a vyber Tetra. Potom podržanie vypínača otvorí AI Assist.</string>
+    <string name="assistant_default_xiaomi">Na Xiaomi tiež: Nastavenia › Ďalšie nastavenia › Skratky gest › Podržanie vypínača › Asistent.</string>
 </resources>

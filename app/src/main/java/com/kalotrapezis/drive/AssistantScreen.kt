@@ -130,6 +130,11 @@ private fun AssistantApp(sheet: Boolean, close: () -> Unit) {
         val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.extension.lowercase(Locale.ROOT)) ?: "application/octet-stream"
         context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
     }.onFailure { WriterLog.e("Assistant: could not open ${f.name}", it); say(context.getString(R.string.assistant_cannot_open), true) }
+    fun go(v: String) = runCatching {
+        if (v.startsWith("youtube:")) openYouTube(context, v.removePrefix("youtube:"))
+        else context.startActivity(Intent(context, MainActivity::class.java).putExtra(Applet.EXTRA, v)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+    }.onFailure { WriterLog.e("Assistant: could not open $v", it); say(context.getString(R.string.assistant_cannot_open), true) }
     fun call(p: PendingCall) {
         pending = null
         endLive()
@@ -137,7 +142,7 @@ private fun AssistantApp(sheet: Boolean, close: () -> Unit) {
         if (!placePhoneCall(context, p.number)) context.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", p.number, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         if (sheet) close()
     }
-    fun choose(c: AssistantChoice) { c.call?.let(::call); c.file?.let { open(it); if (sheet) close() } }
+    fun choose(c: AssistantChoice) { c.call?.let(::call); c.file?.let { open(it); if (sheet) close() }; c.go?.let { go(it); if (sheet) close() } }
 
     fun send(text: String) = scope.launch {
         if (text.isBlank()) return@launch
@@ -165,6 +170,8 @@ private fun AssistantApp(sheet: Boolean, close: () -> Unit) {
         reply.open?.let(::open)
         if (inLive && liveAi.isBlank()) liveAi = reply.text
         speech?.await(); spent = chat.bill.usd // Mistral's voice is billed as it reads
+        // Maps, a note, YouTube: once the answer is said, there (live ends: it is paid by the minute)
+        reply.go?.let { if (inLive) endLive(); go(it); if (sheet) close(); return@launch }
         if (inLive) { listenAgain(); return@launch }
         if (!sheet) return@launch
         // the sheet: a question or a list waits for the answer by voice (a few seconds); anything else is done
@@ -180,7 +187,7 @@ private fun AssistantApp(sheet: Boolean, close: () -> Unit) {
         if (!hasKey) return@launch
         if (!hasMic(context)) { askMic.launch(Manifest.permission.RECORD_AUDIO); return@launch }
         hush(); stopNow.set(false); phase = Phase.Listening
-        val pcm = withContext(Dispatchers.IO) { runCatching { listen(waitMs, { stopNow.get() || !isActive }) { hearing = it } }.getOrNull() }
+        val pcm = withContext(Dispatchers.IO) { runCatching { listen(waitMs, { stopNow.get() || !isActive }, { hearing = it }, AssistantPause.ms(context), AssistantAudio.mic(context)) }.getOrNull() }
         hearing = false
         if (pcm == null) { phase = Phase.Idle; if (sheet && pending == null && bubbles.lastOrNull()?.images.isNullOrEmpty()) close(); return@launch }
         phase = Phase.Thinking
@@ -204,6 +211,7 @@ private fun AssistantApp(sheet: Boolean, close: () -> Unit) {
             turn = { t -> scope.launch { send(t) } },
             level = { liveLevel = it },
             failed = { e -> scope.launch { say(e.shownMessage(context) ?: "", true); endLive() } },
+            pauseMs = AssistantPause.ms(context), mic = withContext(Dispatchers.IO) { AssistantAudio.mic(context) },
         ).also { it.start(); livePhase = LivePhase.Listening }
         WriterLog.i("AI Assist: live on")
     }
@@ -227,6 +235,7 @@ private fun AssistantApp(sheet: Boolean, close: () -> Unit) {
         LaunchedEffect(bubbles.size) { if (bubbles.isNotEmpty()) state.animateScrollToItem(bubbles.size - 1) }
         LazyColumn(m, state = state, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!hasKey) item { AssistantKeyField { hasKey = true; if (sheet) hear(8_000) } }
+            if (!sheet && hasKey) item { DefaultAssistantCard() }
             itemsIndexed(bubbles) { i, b -> BubbleView(b, pending.takeIf { i == bubbles.size - 1 }, ::choose, ::call, { pending = null; say(context.getString(R.string.assistant_call_cancelled)) }, ::open) }
         }
     }
@@ -507,7 +516,11 @@ private fun BubbleView(b: Bubble, pending: PendingCall?, choose: (AssistantChoic
             }
         }
         b.images.forEach { f ->
-            val bmp = remember(f) { runCatching { BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = 2 })?.asImageBitmap() }.getOrNull() }
+            val bmp = remember(f) { runCatching {
+                // a camera photo is 12 MP or more: read at about a screen's width
+                val w = BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { BitmapFactory.decodeFile(f.path, it) }.outWidth
+                BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = Integer.highestOneBit((w / 1080).coerceAtLeast(1)) })?.asImageBitmap()
+            }.getOrNull() }
             bmp?.let { Image(it, contentDescription = f.name, Modifier.padding(top = 6.dp).widthIn(max = 360.dp).clip(RoundedCornerShape(16.dp)).clickable { open(f) }, contentScale = ContentScale.FillWidth) }
         }
         if (pending != null && b.call == pending) Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -517,6 +530,20 @@ private fun BubbleView(b: Bubble, pending: PendingCall?, choose: (AssistantChoic
             }
             TextButton(onClick = cancel) { Text(stringResource(R.string.common_cancel), maxLines = 1) }
         }
+    }
+}
+
+/** Until Tetra is the phone's assistant (the user: a clear button, so the power button opens the sheet); then nothing. */
+@Composable
+internal fun DefaultAssistantCard() {
+    val context = LocalContext.current
+    val version = resumes()
+    if (remember(version.intValue) { isDefaultAssistant(context) }) return
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primaryContainer).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.assistant_default_make), style = MaterialTheme.typography.titleMedium)
+        Text(defaultAssistantHint(context), style = MaterialTheme.typography.bodySmall)
+        Button(onClick = { openAssistantChoice(context) }) { Text(stringResource(R.string.assistant_choose), maxLines = 1) }
     }
 }
 

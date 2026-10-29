@@ -44,6 +44,13 @@ How to write here:
       Then (the user, 29 Oct evening): a **money counter** in Settings › AI Assist, a trip meter beside an odometer: "Since <date>"
       with Reset (asks once, keeps the history), the total since the start, the past trips listed. Every Bill also counts into
       AssistantMeter (prefs "assistant_meter", apart from the chats), including the keyboard's voice input and the voice samples.
+      Then (the user, after a day's use: "the commands work very well"): the voice and the mic on the phone when the only Bluetooth
+      sound device is Tetra's own computer (AssistantAudio; it had played on the PC through the call relay's link); a **pause time**
+      (Settings, 1–6 s, 2.5 by default; live's turn detection min_silence_ms too); a "make it the assistant" card on the screen
+      until it is; calls take the number marked default; **new tools**: note_new, note_open (notes_search now reads whole notes),
+      navigate (Tetra Maps, offline: a place, an address or a contact's address kept on the phone), photos_place (Photos' place
+      names, else 15 km around the map's match), youtube (the app on a search); contacts_find by keywords (κομμωτ, κουρε → "Στέλλα
+      κούρεμα") and the user's own custom relations. MainActivity takes "note:", "maps-go:", "maps-search:" in Applet.EXTRA.
       Later: photos, send-to-PC, an offline model, keeping chats; the "me" card in the card itself once the computer needs it.
 - [x] (data-refresh session, 29 Oct; branch `claude/data-background-refresh`, merged into `claude/assistant`) **Data refreshes and sends with the
       app closed** (the user: Data "never refreshes or sends unless I open it"): SyncJob's 30-minute job runs DataStats.refresh (the screen's look)

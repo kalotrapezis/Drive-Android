@@ -82,8 +82,8 @@ internal class ReadAloud(context: android.content.Context) {
     init {
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(id: String) { at = id.toIntOrNull() ?: at }
-            override fun onDone(id: String) { if (id.toIntOrNull() == last) { speaking = false; at = -1 } }
-            @Deprecated("Deprecated in Java") override fun onError(id: String) { speaking = false }
+            override fun onDone(id: String) { files.remove(id)?.invoke(true); if (id.toIntOrNull() == last) { speaking = false; at = -1 } }
+            @Deprecated("Deprecated in Java") override fun onError(id: String) { files.remove(id)?.invoke(false) ?: run { speaking = false } }
         })
     }
 
@@ -116,6 +116,18 @@ internal class ReadAloud(context: android.content.Context) {
         speaking = true
         tts.speak(text, TextToSpeech.QUEUE_ADD, null, last.toString())
         return true
+    }
+    private val files = java.util.concurrent.ConcurrentHashMap<String, (Boolean) -> Unit>()
+
+    /** [text] made into [file] (a wave) and not played, [done] when it is: AI Assist plays it on the speaker it picks. */
+    fun toFile(text: String, file: java.io.File, done: (Boolean) -> Unit): Boolean {
+        if (!ready || text.isBlank()) return false
+        tts.setSpeechRate(speed)
+        tts.language = languageOf(text)
+        val id = "file${++added}"
+        files[id] = done
+        if (tts.synthesizeToFile(text, null, file, id) == TextToSpeech.SUCCESS) return true
+        files.remove(id); return false
     }
     fun stop() { tts.stop(); speaking = false; at = -1 }
     fun shutdown() { tts.stop(); tts.shutdown() }

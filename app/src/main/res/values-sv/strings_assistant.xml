@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Totalt från början</string>
     <string name="assistant_spent_reset">Nollställ</string>
     <string name="assistant_spent_reset_ask">Nollställa? Historiken finns kvar.</string>
+    <string name="assistant_pause">Paustid</string>
+    <string name="assistant_pause_note">Hur länge du kan stanna och tänka innan AI Assist tar det du sa (walkie-talkie, panelen och live).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Gör AI Assist till din assistent</string>
+    <string name="assistant_default_hint">Tryck på App för digital assistent på sidan som öppnas och välj Tetra. Sedan öppnar ett långt tryck på strömknappen AI Assist.</string>
+    <string name="assistant_default_xiaomi">På Xiaomi även: Inställningar › Ytterligare inställningar › Genvägar för gester › Håll in strömknappen › Assistent.</string>
 </resources>

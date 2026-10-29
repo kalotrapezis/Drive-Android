@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Σύνολο από την αρχή</string>
     <string name="assistant_spent_reset">Μηδενισμός</string>
     <string name="assistant_spent_reset_ask">Μηδενισμός; Το ιστορικό μένει.</string>
+    <string name="assistant_pause">Χρόνος παύσης</string>
+    <string name="assistant_pause_note">Πόσο μπορείς να σταματήσεις να σκεφτείς πριν το AI Assist πάρει ό,τι είπες (walkie-talkie, το παράθυρο και live).</string>
+    <string name="assistant_pause_value">%1$s δευτ.</string>
+    <string name="assistant_default_make">Κάνε το AI Assist βοηθό σου</string>
+    <string name="assistant_default_hint">Στη σελίδα που ανοίγει, πάτα Εφαρμογή ψηφιακού βοηθού (ή Προεπιλεγμένος βοηθός) και διάλεξε Tetra. Μετά το κράτημα του κουμπιού λειτουργίας ανοίγει το AI Assist.</string>
+    <string name="assistant_default_xiaomi">Στα Xiaomi επίσης: Ρυθμίσεις › Πρόσθετες ρυθμίσεις › Συντομεύσεις χειρονομιών › Πάτημα και κράτημα κουμπιού λειτουργίας › Βοηθός.</string>
 </resources>

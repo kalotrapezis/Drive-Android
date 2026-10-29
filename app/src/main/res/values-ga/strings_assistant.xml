@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Iomlán ón tús</string>
     <string name="assistant_spent_reset">Athshocraigh</string>
     <string name="assistant_spent_reset_ask">Athshocrú? Fanann an stair.</string>
+    <string name="assistant_pause">Am sosa</string>
+    <string name="assistant_pause_note">Cé chomh fada is féidir leat stopadh chun smaoineamh sula nglacann AI Assist a dúirt tú (siúlscéalaí, an painéal agus beo).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Déan do chúntóir de AI Assist</string>
+    <string name="assistant_default_hint">Ar an leathanach a osclaíonn, tapáil Aip chúntóra dhigitigh agus roghnaigh Tetra. Ansin osclaíonn brú fada ar an gcnaipe cumhachta AI Assist.</string>
+    <string name="assistant_default_xiaomi">Ar Xiaomi freisin: Socruithe › Socruithe breise › Aicearraí gotha › Brúigh agus coinnigh an cnaipe cumhachta › Cúntóir.</string>
 </resources>

@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Total de la început</string>
     <string name="assistant_spent_reset">Resetează</string>
     <string name="assistant_spent_reset_ask">Resetezi? Istoricul rămâne.</string>
+    <string name="assistant_pause">Timp de pauză</string>
+    <string name="assistant_pause_note">Cât poți să te oprești să te gândești înainte ca AI Assist să ia ce ai spus (walkie-talkie, panoul și live).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Fă din AI Assist asistentul tău</string>
+    <string name="assistant_default_hint">Pe pagina care se deschide, atinge Aplicația de asistent digital și alege Tetra. Apoi apăsarea lungă a butonului de pornire deschide AI Assist.</string>
+    <string name="assistant_default_xiaomi">Pe Xiaomi și: Setări › Setări suplimentare › Comenzi rapide prin gesturi › Apăsare lungă pe butonul de pornire › Asistent.</string>
 </resources>

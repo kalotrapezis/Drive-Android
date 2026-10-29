@@ -405,6 +405,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
     var settingsStart by remember { mutableStateOf<SettingsPage?>(null) } // a notification's Settings page (MapsAge)
     var guideAt by remember { mutableStateOf(if (screen == Screen.Guide) 0 else null) } // the guide's step; docked under the screen when screen isn't Guide
     var notesStart by remember { mutableStateOf<Boolean?>(null) }
+    var notesOpen by remember { mutableStateOf<String?>(null) } // a note AI Assist found: open on it
     var mapsGo by remember { mutableStateOf<Place?>(null) } // a place on Home's Maps card: directions to it start at once
     var contactsOpen by remember { mutableStateOf<String?>(null) }
     var contactsNew by remember { mutableStateOf<String?>(null) } // a number from the Phone: Contacts opens a new contact with it
@@ -713,6 +714,17 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             if (v.startsWith("contact:")) { contactsOpen = v.removePrefix("contact:"); contactsNew = null } else { contactsOpen = null; contactsNew = v.removePrefix("contact-new:") }
             screen = Screen.Contacts; return@LaunchedEffect
         }
+        // AI Assist's tools (AssistantTools): a note it found, directions in Maps, or Maps' search on a place it could not find
+        applet.value?.takeIf { (it.startsWith("note:") || it.startsWith("maps-go:") || it.startsWith("maps-search:")) && screen != Screen.Guide }?.let { v ->
+            applet.value = null
+            when {
+                v.startsWith("note:") -> { notesStart = null; notesOpen = v.removePrefix("note:"); screen = Screen.Notes }
+                v.startsWith("maps-go:") -> v.removePrefix("maps-go:").split(",", limit = 3).takeIf { it.size == 3 }?.let { (lat, lng, name) ->
+                    mapsGo = Place("", name, lat.toDouble(), lng.toDouble()); mapsSearch = null; mapsBack = Screen.Home; screen = Screen.Maps }
+                else -> { mapsGo = null; mapsSearch = v.removePrefix("maps-search:"); mapsBack = Screen.Home; screen = Screen.Maps }
+            }
+            return@LaunchedEffect
+        }
         val a = Applet.of(applet.value) ?: return@LaunchedEffect
         applet.value = null
         if (screen == Screen.Guide) return@LaunchedEffect
@@ -923,7 +935,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 Screen.Timer -> TimerScreen(back = { screen = Screen.Home }, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
-                Screen.Notes -> NotesTab(back = { screen = Screen.Home }, start = notesStart, hasAccess = hasAllFilesAccess(), grant = {
+                Screen.Notes -> NotesTab(back = { notesOpen = null; screen = Screen.Home }, start = notesStart, openId = notesOpen, hasAccess = hasAllFilesAccess(), grant = {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 })
                 Screen.Scanner -> CameraScanTab(

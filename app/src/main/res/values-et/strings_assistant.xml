@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Kokku algusest</string>
     <string name="assistant_spent_reset">Nulli</string>
     <string name="assistant_spent_reset_ask">Nullida? Ajalugu jääb alles.</string>
+    <string name="assistant_pause">Pausi aeg</string>
+    <string name="assistant_pause_note">Kui kaua võid peatuda ja mõelda, enne kui AI Assist öeldu võtab (raadiosaatja, paneel ja otse).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">Tee AI Assist oma assistendiks</string>
+    <string name="assistant_default_hint">Avanevas lehel puuduta Digitaalse assistendi rakendus ja vali Tetra. Siis avab toitenupu all hoidmine AI Assisti.</string>
+    <string name="assistant_default_xiaomi">Xiaomil ka: Seaded › Lisaseaded › Žestide otseteed › Toitenupu all hoidmine › Assistent.</string>
 </resources>

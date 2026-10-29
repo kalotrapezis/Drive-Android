@@ -53,4 +53,10 @@
     <string name="assistant_spent_total">Gesamt seit Beginn</string>
     <string name="assistant_spent_reset">Zurücksetzen</string>
     <string name="assistant_spent_reset_ask">Zurücksetzen? Der Verlauf bleibt.</string>
+    <string name="assistant_pause">Pausenzeit</string>
+    <string name="assistant_pause_note">Wie lange du innehalten und nachdenken kannst, bevor AI Assist das Gesagte nimmt (Walkie-Talkie, Leiste und live).</string>
+    <string name="assistant_pause_value">%1$s s</string>
+    <string name="assistant_default_make">AI Assist als Assistenten festlegen</string>
+    <string name="assistant_default_hint">Tippe auf der Seite, die sich öffnet, auf App für digitalen Assistenten und wähle Tetra. Danach öffnet langes Drücken der Ein-/Aus-Taste AI Assist.</string>
+    <string name="assistant_default_xiaomi">Auf Xiaomi außerdem: Einstellungen › Weitere Einstellungen › Gestenverknüpfungen › Ein-/Aus-Taste gedrückt halten › Assistent.</string>
 </resources>

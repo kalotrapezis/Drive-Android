@@ -110,7 +110,7 @@ private fun DataApp(start: String?, back: () -> Unit) {
     val all by produceState(lastData, version) {
         if (value.isEmpty()) value = withContext(Dispatchers.IO) { DataFiles.all() }
         value = withContext(Dispatchers.IO) {
-            runCatching { DataStats.record(context); DataStats.checkRoaming(context) }.onFailure { WriterLog.w("Data: ${it.message}") }
+            DataStats.refresh(context)
             DataStats.schedule(context); DataStats.watchUsage(context); DataSignal.watch(context)
             DataFiles.all()
         }.also { lastData = it }

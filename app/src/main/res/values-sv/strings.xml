@@ -1925,6 +1925,8 @@
     <string name="phone_merge">Slå ihop</string>
     <string name="phone_end_this">Avsluta samtalet</string>
     <string name="phone_computer_device">Dator · %1$s</string>
+    <string name="phone_to_computer">Till datorn</string>
+    <string name="phone_to_phone">Till telefonen</string>
     <string name="phone_call_with">Samtal med %1$s</string>
     <string name="phone_no_sims">Telefonen angav inte vilka SIM-kort den har.</string>
     <string name="phone_no_calls_here">Den här enheten har inga egna samtal: dess Telefon ringer via din telefon, genom datorn, och visar telefonens samtal när de ringer. Rösten stannar på telefonen.</string>

@@ -2039,6 +2039,8 @@
     <string name="phone_merge">Ħallat</string>
     <string name="phone_end_this">Ispiċċa din is-sejħa</string>
     <string name="phone_computer_device">Kompjuter · %1$s</string>
+    <string name="phone_to_computer">Għall-kompjuter</string>
+    <string name="phone_to_phone">Għat-telefon</string>
     <string name="phone_call_with">Sejħa ma’ %1$s</string>
     <string name="phone_no_sims">It-telefon ma qalx liema SIM għandu.</string>
     <string name="phone_no_calls_here">Dan l-apparat m’għandux sejħiet tiegħu: is-sejħiet tat-Telefon tiegħu jgħaddu mit-telefon tiegħek, permezz tal-kompjuter, u juru s-sejħiet tat-telefon hekk kif iċċempel. Il-vuċi tibqa’ fuq it-telefon.</string>

@@ -1925,6 +1925,8 @@
     <string name="phone_merge">Samenvoegen</string>
     <string name="phone_end_this">Dit gesprek beëindigen</string>
     <string name="phone_computer_device">Computer · %1$s</string>
+    <string name="phone_to_computer">Naar de computer</string>
+    <string name="phone_to_phone">Naar de telefoon</string>
     <string name="phone_call_with">Bellen met %1$s</string>
     <string name="phone_no_sims">De telefoon heeft niet gezegd welke simkaarten hij heeft.</string>
     <string name="phone_no_calls_here">Dit apparaat heeft geen eigen gesprekken: Telefoon hier belt via je telefoon, via de computer, en toont de gesprekken van de telefoon als ze overgaan. Het geluid blijft op de telefoon.</string>

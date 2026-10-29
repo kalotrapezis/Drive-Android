@@ -1925,6 +1925,8 @@
     <string name="phone_merge">Yhdistä</string>
     <string name="phone_end_this">Lopeta tämä puhelu</string>
     <string name="phone_computer_device">Tietokone · %1$s</string>
+    <string name="phone_to_computer">Tietokoneelle</string>
+    <string name="phone_to_phone">Puhelimeen</string>
     <string name="phone_call_with">Puhelu: %1$s</string>
     <string name="phone_no_sims">Puhelin ei kertonut, mitä SIM-kortteja siinä on.</string>
     <string name="phone_no_calls_here">Tällä laitteella ei ole omia puheluita: sen Puhelin soittaa puhelimesi kautta tietokoneen välityksellä ja näyttää puhelimen puhelut niiden soidessa. Ääni pysyy puhelimessa.</string>

@@ -1925,6 +1925,8 @@
     <string name="phone_merge">Összevonás</string>
     <string name="phone_end_this">Hívás befejezése</string>
     <string name="phone_computer_device">Számítógép · %1$s</string>
+    <string name="phone_to_computer">A számítógépre</string>
+    <string name="phone_to_phone">A telefonra</string>
     <string name="phone_call_with">Hívás vele: %1$s</string>
     <string name="phone_no_sims">A telefon nem jelezte, milyen SIM-kártyái vannak.</string>
     <string name="phone_no_calls_here">Ennek az eszköznek nincs saját hívása: a Telefonja a telefonodon keresztül hív, a számítógép közvetítésével, és csörgéskor mutatja a telefon hívásait. A hang a telefonon marad.</string>

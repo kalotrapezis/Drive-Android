@@ -1982,6 +1982,8 @@
     <string name="phone_merge">Apvienot</string>
     <string name="phone_end_this">Beigt šo zvanu</string>
     <string name="phone_computer_device">Dators · %1$s</string>
+    <string name="phone_to_computer">Uz datoru</string>
+    <string name="phone_to_phone">Uz tālruni</string>
     <string name="phone_call_with">Zvans ar %1$s</string>
     <string name="phone_no_sims">Tālrunis nepateica, kādas SIM kartes tam ir.</string>
     <string name="phone_no_calls_here">Šai ierīcei nav savu zvanu: tās Tālrunis zvana caur jūsu tālruni ar datora starpniecību un rāda tālruņa zvanus, kad tie zvana. Balss paliek tālrunī.</string>

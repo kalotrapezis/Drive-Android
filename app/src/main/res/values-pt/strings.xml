@@ -1982,6 +1982,8 @@
     <string name="phone_merge">Juntar</string>
     <string name="phone_end_this">Terminar esta chamada</string>
     <string name="phone_computer_device">Computador · %1$s</string>
+    <string name="phone_to_computer">Para o computador</string>
+    <string name="phone_to_phone">Para o telemóvel</string>
     <string name="phone_call_with">Ligar com %1$s</string>
     <string name="phone_no_sims">O telemóvel não indicou que SIMs tem.</string>
     <string name="phone_no_calls_here">Este dispositivo não tem chamadas próprias: o Telefone dele liga através do seu telemóvel, por intermédio do computador, e mostra as chamadas do telemóvel quando tocam. A voz fica no telemóvel.</string>

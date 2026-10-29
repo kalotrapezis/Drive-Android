@@ -1925,6 +1925,8 @@
     <string name="phone_merge">Unisci</string>
     <string name="phone_end_this">Chiudi questa chiamata</string>
     <string name="phone_computer_device">Computer · %1$s</string>
+    <string name="phone_to_computer">Al computer</string>
+    <string name="phone_to_phone">Al telefono</string>
     <string name="phone_call_with">Chiamata con %1$s</string>
     <string name="phone_no_sims">Il telefono non ha indicato quali SIM ha.</string>
     <string name="phone_no_calls_here">Questo dispositivo non ha chiamate proprie: il suo Telefono chiama tramite il tuo telefono, passando dal computer, e mostra le chiamate del telefono mentre squillano. La voce resta sul telefono.</string>

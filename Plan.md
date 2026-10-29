@@ -12,6 +12,19 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (call-sound session, 29 Oct; branches `claude/call-sound-where-answered` here and `call-sound-where-answered` in Drive; not merged, not pushed)
+      **A call's sound where it was answered** (the user: "where I answer the call, the sound goes there"). Cause: the computer holds the
+      phone on its Bluetooth as a hands-free kit (calls) **and** as a speaker (A2DP media), so Android sent every call and all media there.
+      Phone (Tetra the phone app): PhoneCalls remembers where a call was taken (its screen, notification, raise-to-ear, dialled → phone;
+      the bubble's Answer, a call the computer placed → computer) and keep() moves the sound there (up to 3 tries a call; earbuds/car win
+      over the earpiece; a way picked by hand wins over all). The computer is told apart by its Bluetooth name = a paired peer's name
+      (PhoneRoutes.isComputer; BLUETOOTH_CONNECT now asked with the other call permissions). Call screen: "To the computer" / "To the phone"
+      above the buttons while the computer is on the phone's Bluetooth; the bubble: the same as an icon (`phone`/`computer` actions,
+      route "computer" in /call/state; echo canceller only while the sound is here). Media: the desktop drops the phone's A2DP Audio
+      Source (bluetoothctl disconnect <mac> 0000110a-…) on connect and each 30 s look; tried by hand on the real pair 29 Oct: A2DP off,
+      Handsfree kept, media on the phone's speaker, not back after 45 s. Tablet: cannot take a call's sound (no app can be a hands-free
+      kit; the Wi-Fi relay is computer-to-computer only), so no "To the tablet". **Open:** no real call tried (no build installed: the
+      phone has release beta.4); without Tetra as the phone app nothing moves a call's sound (no public lever), only the media fix holds.
 - [~] (system-folder session, 27 Oct; branches `system-folder` in Drive and `claude/system-folder` here; not merged, not pushed)
       **One hidden ~/Tetra/.System** (the user: "gather all of these under one system folder, and make it hidden: .System"; "every
       app/data, app/core, app/user"; "the builder … clean up after itself, every time the same way"). Desktop system.js makes every

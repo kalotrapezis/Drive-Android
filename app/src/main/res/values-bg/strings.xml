@@ -1925,6 +1925,8 @@
     <string name="phone_merge">Обедини</string>
     <string name="phone_end_this">Прекрати това обаждане</string>
     <string name="phone_computer_device">Компютър · %1$s</string>
+    <string name="phone_to_computer">Към компютъра</string>
+    <string name="phone_to_phone">Към телефона</string>
     <string name="phone_call_with">Обаждане със %1$s</string>
     <string name="phone_no_sims">Телефонът не съобщи какви SIM карти има.</string>
     <string name="phone_no_calls_here">Това устройство няма собствени обаждания: Телефон на него се обажда чрез телефона ви, през компютъра, и показва обажданията на телефона, докато звънят. Гласът остава на телефона.</string>

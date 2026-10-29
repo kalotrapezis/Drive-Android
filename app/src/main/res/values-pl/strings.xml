@@ -2039,6 +2039,8 @@
     <string name="phone_merge">Scal</string>
     <string name="phone_end_this">Zakończ to połączenie</string>
     <string name="phone_computer_device">Komputer · %1$s</string>
+    <string name="phone_to_computer">Na komputer</string>
+    <string name="phone_to_phone">Na telefon</string>
     <string name="phone_call_with">Połączenie z %1$s</string>
     <string name="phone_no_sims">Telefon nie podał, jakie ma karty SIM.</string>
     <string name="phone_no_calls_here">To urządzenie nie ma własnych połączeń: jego Telefon dzwoni przez Twój telefon, za pośrednictwem komputera, i pokazuje połączenia telefonu, gdy dzwonią. Głos zostaje w telefonie.</string>

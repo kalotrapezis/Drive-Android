@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Asistent</string>
+    <string name="home_label_assistant">Tetra Asistent</string>
+    <string name="assistant_home_detail">Spýtaj sa alebo to povedz: kalendár, časovače, poznámky, hovory</string>
+    <string name="settings_assistant_summary">Kľúč Mistral, predvolený asistent</string>
+    <string name="assistant_hint">Spýtaj sa na čokoľvek</string>
+    <string name="assistant_listening">Počúvam…</string>
+    <string name="assistant_hearing">Počujem ťa…</string>
+    <string name="assistant_thinking">Premýšľam…</string>
+    <string name="assistant_tap_to_talk">Ťukni a hovor</string>
+    <string name="assistant_new_chat">Nový chat</string>
+    <string name="assistant_read_aloud">Čítať odpovede nahlas</string>
+    <string name="assistant_call">Zavolať: %1$s</string>
+    <string name="assistant_call_cancelled">Hovor bol zrušený.</string>
+    <string name="assistant_cannot_open">Súbor sa nepodarilo otvoriť.</string>
+    <string name="assistant_mic_needed">Tetra potrebuje mikrofón, aby ťa počula.</string>
+    <string name="assistant_heard_nothing">Nepodarilo sa mi to zachytiť. Skús to znova.</string>
+    <string name="assistant_key">Kľúč API Mistral</string>
+    <string name="assistant_key_hint">Vlož kľúč</string>
+    <string name="assistant_key_saved">Uložený v tomto telefóne</string>
+    <string name="assistant_key_missing">Zatiaľ nenastavený</string>
+    <string name="assistant_key_note">Vytvor si ho na console.mistral.ai › API Keys. V telefóne je uložený zašifrovaný. To, čo povieš, tvoje otázky a krátke odpovede nástrojov (mená, názvy) idú do Mistralu; tvoje súbory zostávajú tu.</string>
+    <string name="assistant_default">Predvolený asistent</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Iná aplikácia</string>
+    <string name="assistant_choose">Vybrať</string>
+    <string name="assistant_default_note">Vyber Tetra ako aplikáciu digitálneho asistenta. Potom podrž vypínač, potiahni prstom nahor zo spodného rohu alebo podrž Home: Tetra začne hneď počúvať a odpovie, keď prestaneš hovoriť. Ak telefón vyhradzuje vypínač pre Google, zapni Tetra Asistent v ponuke Vzhľad › Ikony aplikácií a použi jeho ikonu.</string>
+    <string name="assistant_open">Otvoriť asistenta</string>
+    <string name="assistant_offline">Nie je pripojenie na internet.</string>
+    <string name="assistant_bad_key">Kľúč Mistral je nesprávny. Skontroluj ho v ponuke Nastavenia › Asistent.</string>
+    <string name="assistant_busy">Mistral je zaneprázdnený alebo kľúč už nemá kredit. Skús to znova o minútu.</string>
+    <string name="assistant_server">Mistral odpovedal chybou (%1$d).</string>
+    <string name="assistant_no_key">Najprv pridaj svoj kľúč API Mistral: Nastavenia › Asistent.</string>
+</resources>

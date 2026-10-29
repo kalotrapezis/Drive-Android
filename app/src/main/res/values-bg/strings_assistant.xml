@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Асистент</string>
+    <string name="home_label_assistant">Tetra Асистент</string>
+    <string name="assistant_home_detail">Питай или кажи: календар, таймери, бележки, обаждания</string>
+    <string name="settings_assistant_summary">Ключ за Mistral, асистент по подразбиране</string>
+    <string name="assistant_hint">Питай каквото искаш</string>
+    <string name="assistant_listening">Слушам…</string>
+    <string name="assistant_hearing">Чувам те…</string>
+    <string name="assistant_thinking">Мисля…</string>
+    <string name="assistant_tap_to_talk">Докосни, за да говориш</string>
+    <string name="assistant_new_chat">Нов чат</string>
+    <string name="assistant_read_aloud">Четене на отговорите на глас</string>
+    <string name="assistant_call">Обаждане на %1$s</string>
+    <string name="assistant_call_cancelled">Обаждането е отменено.</string>
+    <string name="assistant_cannot_open">Файлът не можа да се отвори.</string>
+    <string name="assistant_mic_needed">Tetra се нуждае от микрофона, за да те чува.</string>
+    <string name="assistant_heard_nothing">Не те чух добре. Опитай отново.</string>
+    <string name="assistant_key">API ключ за Mistral</string>
+    <string name="assistant_key_hint">Постави ключа</string>
+    <string name="assistant_key_saved">Запазен на този телефон</string>
+    <string name="assistant_key_missing">Още не е зададен</string>
+    <string name="assistant_key_note">Създай ключ на console.mistral.ai › API Keys. Пази се криптиран на този телефон. Каквото кажеш, въпросите ти и кратките отговори на инструментите (имена, заглавия) отиват към Mistral; файловете ти остават тук.</string>
+    <string name="assistant_default">Асистент по подразбиране</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Друго приложение</string>
+    <string name="assistant_choose">Избор</string>
+    <string name="assistant_default_note">Избери Tetra за приложение за дигитален асистент. После задръж бутона за захранване, плъзни нагоре от долен ъгъл или задръж Home: Tetra слуша веднага и отговаря, когато спреш да говориш. Ако телефонът ти пази бутона за захранване за Google, включи Tetra Асистент в Облик › Икони на приложенията и използвай иконата му.</string>
+    <string name="assistant_open">Отваряне на асистента</string>
+    <string name="assistant_offline">Няма връзка с интернет.</string>
+    <string name="assistant_bad_key">Ключът за Mistral е грешен. Провери го в Настройки › Асистент.</string>
+    <string name="assistant_busy">Mistral е заета или ключът няма повече кредит. Опитай пак след минута.</string>
+    <string name="assistant_server">Mistral отговори с грешка (%1$d).</string>
+    <string name="assistant_no_key">Първо добави API ключа за Mistral: Настройки › Асистент.</string>
+</resources>

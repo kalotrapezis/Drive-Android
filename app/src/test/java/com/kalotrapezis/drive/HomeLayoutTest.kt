@@ -15,7 +15,7 @@ class HomeLayoutTest {
         assertEquals(2, HomeLayout.height(tablet, 8))
         // a phone: four across, Settings last
         val phone = HomeLayout.place(HomeLayout.parse(null, HomeLayout.NARROW), 4)
-        assertEquals(0 to 0, at(phone)["sync"]); assertEquals(1 to 0, at(phone)["gallery"]); assertEquals(2 to 3, at(phone)["settings"])
+        assertEquals(0 to 0, at(phone)["sync"]); assertEquals(1 to 0, at(phone)["gallery"]); assertEquals(3 to 3, at(phone)["settings"])
     }
 
     @Test fun aSavedLayoutComesBackAsItWas() {

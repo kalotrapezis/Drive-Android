@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Asistentas</string>
+    <string name="home_label_assistant">Tetra Asistentas</string>
+    <string name="assistant_home_detail">Paklausk arba pasakyk: kalendorius, laikmačiai, užrašai, skambučiai</string>
+    <string name="settings_assistant_summary">Mistral raktas, numatytasis asistentas</string>
+    <string name="assistant_hint">Klausk bet ko</string>
+    <string name="assistant_listening">Klausau…</string>
+    <string name="assistant_hearing">Girdžiu tave…</string>
+    <string name="assistant_thinking">Galvoju…</string>
+    <string name="assistant_tap_to_talk">Palieski ir kalbėk</string>
+    <string name="assistant_new_chat">Naujas pokalbis</string>
+    <string name="assistant_read_aloud">Skaityti atsakymus garsiai</string>
+    <string name="assistant_call">Skambinti: %1$s</string>
+    <string name="assistant_call_cancelled">Skambutis atšauktas.</string>
+    <string name="assistant_cannot_open">Nepavyko atidaryti failo.</string>
+    <string name="assistant_mic_needed">Tetra reikia mikrofono, kad tave girdėtų.</string>
+    <string name="assistant_heard_nothing">Neišgirdau. Pabandyk dar kartą.</string>
+    <string name="assistant_key">Mistral API raktas</string>
+    <string name="assistant_key_hint">Įklijuok raktą</string>
+    <string name="assistant_key_saved">Išsaugota šiame telefone</string>
+    <string name="assistant_key_missing">Dar nenustatyta</string>
+    <string name="assistant_key_note">Susikurk jį console.mistral.ai › API Keys. Jis laikomas užšifruotas šiame telefone. Tai, ką sakai, tavo klausimai ir trumpi įrankių atsakymai (vardai, pavadinimai) siunčiami Mistral; tavo failai lieka čia.</string>
+    <string name="assistant_default">Numatytasis asistentas</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Kita programa</string>
+    <string name="assistant_choose">Pasirinkti</string>
+    <string name="assistant_default_note">Pasirink Tetra kaip skaitmeninio asistento programą. Tada palaikyk paspaudęs maitinimo mygtuką, perbrauk aukštyn iš apatinio kampo arba palaikyk Home: Tetra klauso iškart ir atsako, kai nustoji kalbėti. Jei telefonas maitinimo mygtuką rezervuoja Google, įjunk Tetra Asistentas skiltyje Išvaizda › Programų piktogramos ir naudok jo piktogramą.</string>
+    <string name="assistant_open">Atidaryti asistentą</string>
+    <string name="assistant_offline">Nėra interneto ryšio.</string>
+    <string name="assistant_bad_key">Mistral raktas neteisingas. Patikrink jį skiltyje Nustatymai › Asistentas.</string>
+    <string name="assistant_busy">Mistral užimtas arba rakte nebėra kredito. Pabandyk dar kartą po minutės.</string>
+    <string name="assistant_server">Mistral atsakė klaida (%1$d).</string>
+    <string name="assistant_no_key">Pirmiausia pridėk savo Mistral API raktą: Nustatymai › Asistentas.</string>
+</resources>

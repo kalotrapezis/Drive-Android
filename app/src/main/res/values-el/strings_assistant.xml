@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Βοηθός</string>
+    <string name="home_label_assistant">Tetra Βοηθός</string>
+    <string name="assistant_home_detail">Ρώτα ή πες το: ημερολόγιο, χρονόμετρα, σημειώσεις, κλήσεις</string>
+    <string name="settings_assistant_summary">Κλειδί Mistral, προεπιλεγμένος βοηθός</string>
+    <string name="assistant_hint">Ρώτα ό,τι θέλεις</string>
+    <string name="assistant_listening">Ακούω…</string>
+    <string name="assistant_hearing">Σε ακούω…</string>
+    <string name="assistant_thinking">Σκέφτομαι…</string>
+    <string name="assistant_tap_to_talk">Πάτα για να μιλήσεις</string>
+    <string name="assistant_new_chat">Νέα συζήτηση</string>
+    <string name="assistant_read_aloud">Ανάγνωση απαντήσεων</string>
+    <string name="assistant_call">Κλήση: %1$s</string>
+    <string name="assistant_call_cancelled">Η κλήση ακυρώθηκε.</string>
+    <string name="assistant_cannot_open">Το αρχείο δεν άνοιξε.</string>
+    <string name="assistant_mic_needed">Το Tetra χρειάζεται το μικρόφωνο για να σε ακούσει.</string>
+    <string name="assistant_heard_nothing">Δεν άκουσα καλά. Πες το ξανά.</string>
+    <string name="assistant_key">Κλειδί API της Mistral</string>
+    <string name="assistant_key_hint">Επικόλλησε το κλειδί</string>
+    <string name="assistant_key_saved">Αποθηκεύτηκε σε αυτό το κινητό</string>
+    <string name="assistant_key_missing">Δεν έχει οριστεί</string>
+    <string name="assistant_key_note">Φτιάξε ένα στο console.mistral.ai › API Keys. Μένει κρυπτογραφημένο σε αυτό το κινητό. Ό,τι λες, οι ερωτήσεις σου και οι σύντομες απαντήσεις των εργαλείων (ονόματα, τίτλοι) πάνε στη Mistral· τα αρχεία σου μένουν εδώ.</string>
+    <string name="assistant_default">Προεπιλεγμένος βοηθός</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Άλλη εφαρμογή</string>
+    <string name="assistant_choose">Επιλογή</string>
+    <string name="assistant_default_note">Διάλεξε το Tetra ως εφαρμογή ψηφιακού βοηθού. Μετά κράτα πατημένο το κουμπί λειτουργίας, σύρε προς τα πάνω από μια κάτω γωνία ή κράτα το Home: το Tetra ακούει αμέσως και απαντά όταν σταματήσεις να μιλάς. Αν το κινητό κρατά το κουμπί λειτουργίας για τη Google, άνοιξε το Tetra Βοηθός στο Εμφάνιση › Εικονίδια εφαρμογών και πάτα το εικονίδιό του.</string>
+    <string name="assistant_open">Άνοιγμα του βοηθού</string>
+    <string name="assistant_offline">Δεν υπάρχει σύνδεση στο διαδίκτυο.</string>
+    <string name="assistant_bad_key">Λάθος κλειδί Mistral. Έλεγξέ το στις Ρυθμίσεις › Βοηθός.</string>
+    <string name="assistant_busy">Η Mistral είναι απασχολημένη ή το κλειδί δεν έχει άλλη πίστωση. Δοκίμασε ξανά σε ένα λεπτό.</string>
+    <string name="assistant_server">Η Mistral απάντησε με σφάλμα (%1$d).</string>
+    <string name="assistant_no_key">Πρόσθεσε πρώτα το κλειδί API της Mistral: Ρυθμίσεις › Βοηθός.</string>
+</resources>

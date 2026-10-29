@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Asistent</string>
+    <string name="home_label_assistant">Tetra Asistent</string>
+    <string name="assistant_home_detail">Pitaj ili reci: kalendar, tajmeri, bilješke, pozivi</string>
+    <string name="settings_assistant_summary">Mistral ključ, zadani asistent</string>
+    <string name="assistant_hint">Pitaj što god želiš</string>
+    <string name="assistant_listening">Slušam…</string>
+    <string name="assistant_hearing">Čujem te…</string>
+    <string name="assistant_thinking">Razmišljam…</string>
+    <string name="assistant_tap_to_talk">Dodirni za govor</string>
+    <string name="assistant_new_chat">Novi razgovor</string>
+    <string name="assistant_read_aloud">Čitaj odgovore naglas</string>
+    <string name="assistant_call">Nazovi %1$s</string>
+    <string name="assistant_call_cancelled">Poziv je otkazan.</string>
+    <string name="assistant_cannot_open">Datoteku nije bilo moguće otvoriti.</string>
+    <string name="assistant_mic_needed">Tetra treba mikrofon da te čuje.</string>
+    <string name="assistant_heard_nothing">Nije mi uspjelo razumjeti. Pokušaj ponovno.</string>
+    <string name="assistant_key">Mistral API ključ</string>
+    <string name="assistant_key_hint">Zalijepi ključ</string>
+    <string name="assistant_key_saved">Spremljeno na ovom telefonu</string>
+    <string name="assistant_key_missing">Još nije postavljen</string>
+    <string name="assistant_key_note">Napravi ga na console.mistral.ai › API Keys. Čuva se šifriran na ovom telefonu. Ono što kažeš, tvoja pitanja i kratki odgovori alata (imena, naslovi) idu Mistralu; tvoje datoteke ostaju ovdje.</string>
+    <string name="assistant_default">Zadani asistent</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Druga aplikacija</string>
+    <string name="assistant_choose">Odaberi</string>
+    <string name="assistant_default_note">Odaberi Tetra kao aplikaciju digitalnog asistenta. Zatim drži tipku za uključivanje, povuci prema gore iz donjeg kuta ili drži Home: Tetra odmah sluša i odgovara kad prestaneš govoriti. Ako tvoj telefon tipku za uključivanje čuva za Google, uključi Tetra Asistent u Izgled › Ikone aplikacija i koristi njegovu ikonu.</string>
+    <string name="assistant_open">Otvori asistenta</string>
+    <string name="assistant_offline">Nema internetske veze.</string>
+    <string name="assistant_bad_key">Mistral ključ nije ispravan. Provjeri ga pod Postavke › Asistent.</string>
+    <string name="assistant_busy">Mistral je zauzet ili ključ nema više kredita. Pokušaj ponovno za minutu.</string>
+    <string name="assistant_server">Mistral je odgovorio pogreškom (%1$d).</string>
+    <string name="assistant_no_key">Prvo dodaj svoj Mistral API ključ: Postavke › Asistent.</string>
+</resources>

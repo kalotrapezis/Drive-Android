@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Assistent</string>
+    <string name="home_label_assistant">Tetra Assistent</string>
+    <string name="assistant_home_detail">Staqsi jew għidha: kalendarju, timers, noti, sejħiet</string>
+    <string name="settings_assistant_summary">Ċavetta ta\' Mistral, assistent predefinit</string>
+    <string name="assistant_hint">Staqsi kull ma tixtieq</string>
+    <string name="assistant_listening">Qed nisma\'…</string>
+    <string name="assistant_hearing">Qed nisimgħek…</string>
+    <string name="assistant_thinking">Qed naħseb…</string>
+    <string name="assistant_tap_to_talk">Ħabbat biex titkellem</string>
+    <string name="assistant_new_chat">Chat ġdida</string>
+    <string name="assistant_read_aloud">Aqra t-tweġibiet b\'leħen għoli</string>
+    <string name="assistant_call">Ċempel lil %1$s</string>
+    <string name="assistant_call_cancelled">Is-sejħa ġiet ikkanċellata.</string>
+    <string name="assistant_cannot_open">Il-fajl ma setax jinfetaħ.</string>
+    <string name="assistant_mic_needed">Tetra teħtieġ il-mikrofonu biex tisimgħek.</string>
+    <string name="assistant_heard_nothing">Ma smajtx sew. Erġa\' pprova.</string>
+    <string name="assistant_key">Ċavetta API ta\' Mistral</string>
+    <string name="assistant_key_hint">Waħħal iċ-ċavetta</string>
+    <string name="assistant_key_saved">Salvata fuq dan it-telefon</string>
+    <string name="assistant_key_missing">Għadha mhix issettjata</string>
+    <string name="assistant_key_note">Oħloq waħda fuq console.mistral.ai › API Keys. Tinżamm ikkriptata fuq dan it-telefon. Dak li tgħid, il-mistoqsijiet tiegħek u t-tweġibiet qosra tal-għodod (ismijiet, titoli) imorru għand Mistral; il-fajls tiegħek jibqgħu hawn.</string>
+    <string name="assistant_default">Assistent predefinit</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">App oħra</string>
+    <string name="assistant_choose">Agħżel</string>
+    <string name="assistant_default_note">Agħżel Tetra bħala l-app tal-assistent diġitali. Imbagħad żomm il-buttuna tal-power, ċaqlaq \'il fuq minn kantuniera t\'isfel jew żomm Home: Tetra tisma\' minnufih u twieġeb meta tieqaf titkellem. Jekk it-telefon tiegħek iżomm il-buttuna tal-power għal Google, ixgħel Tetra Assistent f\'Dehra › Ikoni tal-applikazzjonijiet u uża l-ikona tiegħu.</string>
+    <string name="assistant_open">Iftaħ l-assistent</string>
+    <string name="assistant_offline">M\'hemm l-ebda konnessjoni mal-internet.</string>
+    <string name="assistant_bad_key">Iċ-ċavetta ta\' Mistral hija ħażina. Iċċekkja f\'Settings › Assistent.</string>
+    <string name="assistant_busy">Mistral huwa okkupat, jew iċ-ċavetta m\'għandhiex kreditu. Erġa\' pprova f\'minuta.</string>
+    <string name="assistant_server">Mistral wieġeb b\'żball (%1$d).</string>
+    <string name="assistant_no_key">Żid l-ewwel iċ-ċavetta API ta\' Mistral tiegħek: Settings › Assistent.</string>
+</resources>

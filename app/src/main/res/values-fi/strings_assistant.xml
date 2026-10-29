@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Avustaja</string>
+    <string name="home_label_assistant">Tetra Avustaja</string>
+    <string name="assistant_home_detail">Kysy tai sano: kalenteri, ajastimet, muistiinpanot, puhelut</string>
+    <string name="settings_assistant_summary">Mistral-avain, oletusavustaja</string>
+    <string name="assistant_hint">Kysy mitä vain</string>
+    <string name="assistant_listening">Kuuntelen…</string>
+    <string name="assistant_hearing">Kuulen sinut…</string>
+    <string name="assistant_thinking">Mietin…</string>
+    <string name="assistant_tap_to_talk">Puhu napauttamalla</string>
+    <string name="assistant_new_chat">Uusi keskustelu</string>
+    <string name="assistant_read_aloud">Lue vastaukset ääneen</string>
+    <string name="assistant_call">Soita: %1$s</string>
+    <string name="assistant_call_cancelled">Puhelu peruttiin.</string>
+    <string name="assistant_cannot_open">Tiedostoa ei voitu avata.</string>
+    <string name="assistant_mic_needed">Tetra tarvitsee mikrofonin kuullakseen sinut.</string>
+    <string name="assistant_heard_nothing">En saanut selvää. Yritä uudelleen.</string>
+    <string name="assistant_key">Mistralin API-avain</string>
+    <string name="assistant_key_hint">Liitä avain</string>
+    <string name="assistant_key_saved">Tallennettu tähän puhelimeen</string>
+    <string name="assistant_key_missing">Ei vielä asetettu</string>
+    <string name="assistant_key_note">Luo avain osoitteessa console.mistral.ai › API Keys. Se säilytetään salattuna tässä puhelimessa. Se, mitä sanot, kysymyksesi ja työkalujen lyhyet vastaukset (nimet, otsikot) menevät Mistralille; tiedostosi pysyvät täällä.</string>
+    <string name="assistant_default">Oletusavustaja</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Toinen sovellus</string>
+    <string name="assistant_choose">Valitse</string>
+    <string name="assistant_default_note">Valitse Tetra digitaaliseksi avustajasovellukseksi. Pidä sitten virtapainiketta painettuna, pyyhkäise ylös alakulmasta tai pidä Home painettuna: Tetra alkaa kuunnella heti ja vastaa, kun lopetat puhumisen. Jos puhelimesi varaa virtapainikkeen Googlelle, ota Tetra Avustaja käyttöön kohdassa Ulkoasu › Sovelluskuvakkeet ja käytä sen kuvaketta.</string>
+    <string name="assistant_open">Avaa avustaja</string>
+    <string name="assistant_offline">Ei internetyhteyttä.</string>
+    <string name="assistant_bad_key">Mistral-avain on väärä. Tarkista se kohdassa Asetukset › Avustaja.</string>
+    <string name="assistant_busy">Mistral on kiireinen tai avaimen krediitti on loppu. Yritä uudelleen minuutin kuluttua.</string>
+    <string name="assistant_server">Mistral vastasi virheellä (%1$d).</string>
+    <string name="assistant_no_key">Lisää ensin Mistral-API-avaimesi: Asetukset › Avustaja.</string>
+</resources>

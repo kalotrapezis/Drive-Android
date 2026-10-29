@@ -23,6 +23,7 @@
     <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -179,6 +180,23 @@
         <activity-alias android:name=".AppData" android:targetActivity=".DataActivity" android:enabled="false" android:exported="true" android:label="@string/home_label_data" android:icon="@mipmap/applet_data" android:roundIcon="@mipmap/applet_data">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
+        <activity-alias android:name=".AppAssistant" android:targetActivity=".AssistantSheetActivity" android:enabled="false" android:exported="true" android:label="@string/home_label_assistant" android:icon="@mipmap/applet_assistant" android:roundIcon="@mipmap/applet_assistant">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity-alias>
+        <!-- Tetra Assistant (Assistant.kt): the chat, and the sheet the phone's assistant gesture opens over any app -->
+        <activity android:name=".AssistantActivity" android:exported="false" android:label="@string/app_assistant" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".AssistantSheetActivity" android:exported="true" android:label="@string/home_label_assistant" android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true" android:launchMode="singleTask" android:taskAffinity="com.kalotrapezis.drive.assistant" android:windowSoftInputMode="adjustResize">
+            <intent-filter><action android:name="android.intent.action.ASSIST" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
+        </activity>
+        <service android:name=".AssistantService" android:exported="true" android:label="@string/home_label_assistant" android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data android:name="android.voice_interaction" android:resource="@xml/assistant_interaction" />
+            <intent-filter><action android:name="android.service.voice.VoiceInteractionService" /></intent-filter>
+        </service>
+        <service android:name=".AssistantSessionService" android:exported="true" android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <service android:name=".AssistantRecognition" android:exported="true" android:label="@string/home_label_assistant">
+            <intent-filter><action android:name="android.speech.RecognitionService" /></intent-filter>
+        </service>
         <!-- Calendar: an .ics from any app (Open with › Tetra Calendar) is imported -->
         <activity-alias android:name=".CalendarOpen" android:targetActivity=".MainActivity" android:exported="true" android:label="@string/home_label_calendar" android:icon="@mipmap/applet_calendar">
             <intent-filter>

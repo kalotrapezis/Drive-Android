@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Assistent</string>
+    <string name="home_label_assistant">Tetra Assistent</string>
+    <string name="assistant_home_detail">Spørg eller sig det: kalender, timere, noter, opkald</string>
+    <string name="settings_assistant_summary">Mistral-nøgle, standardassistent</string>
+    <string name="assistant_hint">Spørg om hvad som helst</string>
+    <string name="assistant_listening">Lytter…</string>
+    <string name="assistant_hearing">Jeg hører dig…</string>
+    <string name="assistant_thinking">Tænker…</string>
+    <string name="assistant_tap_to_talk">Tryk for at tale</string>
+    <string name="assistant_new_chat">Ny chat</string>
+    <string name="assistant_read_aloud">Læs svar højt</string>
+    <string name="assistant_call">Ring til %1$s</string>
+    <string name="assistant_call_cancelled">Opkaldet blev annulleret.</string>
+    <string name="assistant_cannot_open">Filen kunne ikke åbnes.</string>
+    <string name="assistant_mic_needed">Tetra har brug for mikrofonen for at kunne høre dig.</string>
+    <string name="assistant_heard_nothing">Jeg fangede det ikke. Prøv igen.</string>
+    <string name="assistant_key">Mistral API-nøgle</string>
+    <string name="assistant_key_hint">Indsæt nøglen</string>
+    <string name="assistant_key_saved">Gemt på denne telefon</string>
+    <string name="assistant_key_missing">Ikke angivet endnu</string>
+    <string name="assistant_key_note">Opret en på console.mistral.ai › API Keys. Den opbevares krypteret på denne telefon. Det, du siger, dine spørgsmål og værktøjernes korte svar (navne, titler) sendes til Mistral; dine filer bliver her.</string>
+    <string name="assistant_default">Standardassistent</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Anden app</string>
+    <string name="assistant_choose">Vælg</string>
+    <string name="assistant_default_note">Vælg Tetra som digital assistent-app. Hold derefter tænd/sluk-knappen inde, stryg op fra et hjørne forneden eller hold Home inde: Tetra lytter med det samme og svarer, når du holder op med at tale. Hvis din telefon bruger tænd/sluk-knappen til Google, så slå Tetra Assistent til i Udseende › Appikoner og brug dens ikon.</string>
+    <string name="assistant_open">Åbn assistenten</string>
+    <string name="assistant_offline">Ingen internetforbindelse.</string>
+    <string name="assistant_bad_key">Mistral-nøglen er forkert. Tjek den i Indstillinger › Assistent.</string>
+    <string name="assistant_busy">Mistral har travlt, eller nøglen har ikke mere kredit. Prøv igen om et minut.</string>
+    <string name="assistant_server">Mistral svarede med en fejl (%1$d).</string>
+    <string name="assistant_no_key">Tilføj først din Mistral API-nøgle: Indstillinger › Assistent.</string>
+</resources>

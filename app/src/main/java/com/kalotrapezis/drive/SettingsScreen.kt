@@ -68,6 +68,7 @@ internal enum class SettingsPage(@androidx.annotation.StringRes val title: Int, 
         R.string.settings_silence_unknown, R.string.settings_decline_hidden, R.string.settings_pc_calls, R.string.settings_phone_permission, R.string.settings_open_phone)),
     Data(R.string.app_data, Category.Data.icon, Category.Data.color, R.string.settings_data_summary, listOf(R.string.settings_data_setup, R.string.settings_usage_access, R.string.settings_your_plan, R.string.settings_warnings, R.string.settings_roaming,
         R.string.settings_live_speed, R.string.settings_signal_drops, R.string.settings_wifi_around, R.string.settings_open_data)),
+    Assistant(R.string.app_assistant, R.drawable.ic_chat, ASSISTANT_COLOR, R.string.settings_assistant_summary, listOf(R.string.assistant_key, R.string.assistant_default, R.string.assistant_open)),
 }
 
 @Composable
@@ -165,6 +166,7 @@ internal fun SettingsTab(
                     SettingsPage.Contacts -> ContactsPage()
                     SettingsPage.Phone -> PhonePage()
                     SettingsPage.Data -> DataPage()
+                    SettingsPage.Assistant -> AssistantPage()
                 } }
             }
         }
@@ -394,6 +396,21 @@ internal fun SettingsTab(
  * Settings › Calendar (the user, 18 Oct: "We need more permisions in the settings. A calendar section with the import
  * expot"): each permission reminders need, its state and a button to it; the reminders switch; Import and Export all.
  */
+@Composable private fun AssistantPage() {
+    val context = LocalContext.current
+    val version = resumes()
+    val held = remember(version.intValue) { context.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) }
+    SettingsSection { AssistantKeyField() }
+    // Android lets no app ask for the assistant role itself (it is not "requestable"): the user picks it on Android's page
+    SettingsSection(stringResource(R.string.assistant_default), stringResource(R.string.assistant_default_note)) {
+        StatusRow(stringResource(R.string.assistant_default), stringResource(if (held) R.string.assistant_default_yes else R.string.assistant_default_no), held, stringResource(R.string.assistant_choose)) {
+            listOf(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS, android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+                .firstOrNull { runCatching { context.startActivity(Intent(it).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess }
+        }
+        SettingRow(stringResource(R.string.assistant_open), onClick = { openAssistant(context) }) { Chevron() }
+    }
+}
+
 @Composable private fun CalendarPage() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Assistente</string>
+    <string name="home_label_assistant">Tetra Assistente</string>
+    <string name="assistant_home_detail">Pergunta ou diz: calendário, temporizadores, notas, chamadas</string>
+    <string name="settings_assistant_summary">Chave da Mistral, assistente predefinido</string>
+    <string name="assistant_hint">Pergunta o que quiseres</string>
+    <string name="assistant_listening">A ouvir…</string>
+    <string name="assistant_hearing">A ouvir-te…</string>
+    <string name="assistant_thinking">A pensar…</string>
+    <string name="assistant_tap_to_talk">Toca para falar</string>
+    <string name="assistant_new_chat">Nova conversa</string>
+    <string name="assistant_read_aloud">Ler as respostas em voz alta</string>
+    <string name="assistant_call">Ligar a %1$s</string>
+    <string name="assistant_call_cancelled">Chamada cancelada.</string>
+    <string name="assistant_cannot_open">Não foi possível abrir esse ficheiro.</string>
+    <string name="assistant_mic_needed">O Tetra precisa do microfone para te ouvir.</string>
+    <string name="assistant_heard_nothing">Não percebi. Tenta outra vez.</string>
+    <string name="assistant_key">Chave API da Mistral</string>
+    <string name="assistant_key_hint">Cola a chave</string>
+    <string name="assistant_key_saved">Guardada neste telemóvel</string>
+    <string name="assistant_key_missing">Ainda não definida</string>
+    <string name="assistant_key_note">Cria uma em console.mistral.ai › API Keys. Fica guardada cifrada neste telemóvel. O que dizes, as tuas perguntas e as respostas curtas das ferramentas (nomes, títulos) vão para a Mistral; os teus ficheiros ficam aqui.</string>
+    <string name="assistant_default">Assistente predefinido</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Outra app</string>
+    <string name="assistant_choose">Escolher</string>
+    <string name="assistant_default_note">Escolhe o Tetra como app de assistente digital. Depois mantém premido o botão de ligar, desliza para cima a partir de um canto inferior ou mantém premido Home: o Tetra ouve logo e responde quando deixas de falar. Se o telemóvel reserva o botão de ligar para a Google, ativa o Tetra Assistente em Aspeto › Ícones das apps e usa o respetivo ícone.</string>
+    <string name="assistant_open">Abrir o assistente</string>
+    <string name="assistant_offline">Sem ligação à internet.</string>
+    <string name="assistant_bad_key">A chave da Mistral está errada. Verifica-a em Definições › Assistente.</string>
+    <string name="assistant_busy">A Mistral está ocupada ou a chave já não tem crédito. Tenta outra vez dentro de um minuto.</string>
+    <string name="assistant_server">A Mistral respondeu com um erro (%1$d).</string>
+    <string name="assistant_no_key">Adiciona primeiro a tua chave API da Mistral: Definições › Assistente.</string>
+</resources>

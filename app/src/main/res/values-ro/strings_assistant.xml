@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Asistent</string>
+    <string name="home_label_assistant">Tetra Asistent</string>
+    <string name="assistant_home_detail">Întreabă sau spune: calendar, temporizatoare, notițe, apeluri</string>
+    <string name="settings_assistant_summary">Cheie Mistral, asistent implicit</string>
+    <string name="assistant_hint">Întreabă orice</string>
+    <string name="assistant_listening">Ascult…</string>
+    <string name="assistant_hearing">Te aud…</string>
+    <string name="assistant_thinking">Mă gândesc…</string>
+    <string name="assistant_tap_to_talk">Atinge pentru a vorbi</string>
+    <string name="assistant_new_chat">Conversație nouă</string>
+    <string name="assistant_read_aloud">Citește răspunsurile cu voce tare</string>
+    <string name="assistant_call">Apelează %1$s</string>
+    <string name="assistant_call_cancelled">Apel anulat.</string>
+    <string name="assistant_cannot_open">Fișierul nu a putut fi deschis.</string>
+    <string name="assistant_mic_needed">Tetra are nevoie de microfon ca să te audă.</string>
+    <string name="assistant_heard_nothing">Nu am înțeles. Încearcă din nou.</string>
+    <string name="assistant_key">Cheie API Mistral</string>
+    <string name="assistant_key_hint">Lipește cheia</string>
+    <string name="assistant_key_saved">Salvată pe acest telefon</string>
+    <string name="assistant_key_missing">Nu este setată încă</string>
+    <string name="assistant_key_note">Creează una la console.mistral.ai › API Keys. Este păstrată criptat pe acest telefon. Ce spui, întrebările tale și răspunsurile scurte ale instrumentelor (nume, titluri) ajung la Mistral; fișierele tale rămân aici.</string>
+    <string name="assistant_default">Asistent implicit</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Altă aplicație</string>
+    <string name="assistant_choose">Alege</string>
+    <string name="assistant_default_note">Alege Tetra ca aplicație de asistent digital. Apoi ține apăsat butonul de pornire, glisează în sus dintr-un colț de jos sau ține apăsat Home: Tetra ascultă imediat și răspunde când nu mai vorbești. Dacă telefonul rezervă butonul de pornire pentru Google, activează Tetra Asistent în Aspect › Pictograme aplicații și folosește pictograma lui.</string>
+    <string name="assistant_open">Deschide asistentul</string>
+    <string name="assistant_offline">Nu există conexiune la internet.</string>
+    <string name="assistant_bad_key">Cheia Mistral este greșită. Verific-o în Setări › Asistent.</string>
+    <string name="assistant_busy">Mistral este ocupat sau cheia nu mai are credit. Încearcă din nou peste un minut.</string>
+    <string name="assistant_server">Mistral a răspuns cu o eroare (%1$d).</string>
+    <string name="assistant_no_key">Adaugă mai întâi cheia ta API Mistral: Setări › Asistent.</string>
+</resources>

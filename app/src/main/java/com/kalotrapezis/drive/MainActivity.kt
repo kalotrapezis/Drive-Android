@@ -731,6 +731,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
             Applet.Contacts -> { contactsOpen = null; screen = Screen.Contacts }
             Applet.Phone -> openPhone(context)
             Applet.Data -> openData(context)
+            Applet.Assistant -> openAssistant(context)
         }
     }
     // a file another app opened here: in Words, Tables, Slides or the PDF viewer, its back to Office
@@ -1165,6 +1166,7 @@ private fun Home(
         "contacts" -> HomeContactsGroup(openContacts)
         "phone" -> HomePhoneGroup()
         "data" -> HomeDataGroup()
+        "assistant" -> HomeWideCard(stringResource(R.string.app_assistant), stringResource(R.string.assistant_home_detail), R.drawable.assistant_art, { openAssistant(context) })
         "maps" -> HomeMapsGroup(wide, openMaps)
     } }
     // each part small: just its icon, as a launcher's (Scanner and Codes are two apps, so two icons)
@@ -1182,6 +1184,7 @@ private fun Home(
         "contacts" -> listOf(HomeIcon(R.string.app_contacts, R.drawable.contacts_art, { openContacts(null) }))
         "phone" -> listOf(HomeIcon(R.string.app_phone, R.drawable.phone_art, { openPhone(context) }))
         "data" -> listOf(HomeIcon(R.string.app_data, R.drawable.data_art, { openData(context) }))
+        "assistant" -> listOf(HomeIcon(R.string.app_assistant, R.drawable.assistant_art, { openAssistant(context) }))
         "maps" -> listOf(HomeIcon(R.string.app_maps, R.drawable.maps_art, { openMaps(null) }))
         else -> emptyList()
     }

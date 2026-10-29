@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tetra Assistant (Assistant.kt, AssistantScreen.kt) -->
+<resources>
+    <string name="app_assistant">Assistant</string>
+    <string name="home_label_assistant">Tetra Assistant</string>
+    <string name="assistant_home_detail">Ask, or say it: calendar, timers, notes, calls</string>
+    <string name="settings_assistant_summary">Mistral key, default assistant</string>
+    <string name="assistant_hint">Ask anything</string>
+    <string name="assistant_listening">Listening…</string>
+    <string name="assistant_hearing">Hearing you…</string>
+    <string name="assistant_thinking">Thinking…</string>
+    <string name="assistant_tap_to_talk">Tap to talk</string>
+    <string name="assistant_new_chat">New chat</string>
+    <string name="assistant_read_aloud">Read answers aloud</string>
+    <string name="assistant_call">Call %1$s</string>
+    <string name="assistant_call_cancelled">Call cancelled.</string>
+    <string name="assistant_cannot_open">That file could not be opened.</string>
+    <string name="assistant_mic_needed">Tetra needs the microphone to hear you.</string>
+    <string name="assistant_heard_nothing">I did not catch that. Try again.</string>
+    <string name="assistant_key">Mistral API key</string>
+    <string name="assistant_key_hint">Paste the key</string>
+    <string name="assistant_key_saved">Saved on this phone</string>
+    <string name="assistant_key_missing">Not set yet</string>
+    <string name="assistant_key_note">Make one at console.mistral.ai › API Keys. It is kept encrypted on this phone. What you say, your questions and the tools\' short answers (names, titles) go to Mistral; your files stay here.</string>
+    <string name="assistant_default">Default assistant</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Another app</string>
+    <string name="assistant_choose">Choose</string>
+    <string name="assistant_default_note">Choose Tetra as the digital assistant app. Then hold the power button, swipe up from a bottom corner or hold Home: Tetra listens at once and answers when you stop talking. If your phone keeps the power button for Google, turn on Tetra Assistant in Appearance › App icons and use its icon.</string>
+    <string name="assistant_open">Open the assistant</string>
+    <string name="assistant_offline">No internet connection.</string>
+    <string name="assistant_bad_key">The Mistral key is wrong. Check it in Settings › Assistant.</string>
+    <string name="assistant_busy">Mistral is busy, or the key has no credit left. Try again in a minute.</string>
+    <string name="assistant_server">Mistral answered with an error (%1$d).</string>
+    <string name="assistant_no_key">Add your Mistral API key first: Settings › Assistant.</string>
+</resources>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Assistent</string>
+    <string name="home_label_assistant">Tetra Assistent</string>
+    <string name="assistant_home_detail">Vraag of zeg het: agenda, timers, notities, bellen</string>
+    <string name="settings_assistant_summary">Mistral-sleutel, standaardassistent</string>
+    <string name="assistant_hint">Vraag maar raak</string>
+    <string name="assistant_listening">Ik luister…</string>
+    <string name="assistant_hearing">Ik hoor je…</string>
+    <string name="assistant_thinking">Ik denk na…</string>
+    <string name="assistant_tap_to_talk">Tik om te praten</string>
+    <string name="assistant_new_chat">Nieuwe chat</string>
+    <string name="assistant_read_aloud">Antwoorden voorlezen</string>
+    <string name="assistant_call">Bel %1$s</string>
+    <string name="assistant_call_cancelled">Gesprek geannuleerd.</string>
+    <string name="assistant_cannot_open">Dat bestand kon niet worden geopend.</string>
+    <string name="assistant_mic_needed">Tetra heeft de microfoon nodig om je te horen.</string>
+    <string name="assistant_heard_nothing">Dat heb ik niet verstaan. Probeer het opnieuw.</string>
+    <string name="assistant_key">Mistral-API-sleutel</string>
+    <string name="assistant_key_hint">Plak de sleutel</string>
+    <string name="assistant_key_saved">Opgeslagen op deze telefoon</string>
+    <string name="assistant_key_missing">Nog niet ingesteld</string>
+    <string name="assistant_key_note">Maak er een aan op console.mistral.ai › API Keys. Hij wordt versleuteld op deze telefoon bewaard. Wat je zegt, je vragen en de korte antwoorden van de tools (namen, titels) gaan naar Mistral; je bestanden blijven hier.</string>
+    <string name="assistant_default">Standaardassistent</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Een andere app</string>
+    <string name="assistant_choose">Kiezen</string>
+    <string name="assistant_default_note">Kies Tetra als app voor de digitale assistent. Houd daarna de aan-uitknop ingedrukt, veeg omhoog vanuit een hoek onderaan of houd Home ingedrukt: Tetra luistert meteen en antwoordt zodra je stopt met praten. Als je telefoon de aan-uitknop voor Google gebruikt, zet dan Tetra Assistent aan bij Weergave › App-iconen en gebruik het icoon ervan.</string>
+    <string name="assistant_open">Open de assistent</string>
+    <string name="assistant_offline">Geen internetverbinding.</string>
+    <string name="assistant_bad_key">De Mistral-sleutel klopt niet. Controleer hem in Instellingen › Assistent.</string>
+    <string name="assistant_busy">Mistral is druk bezig, of de sleutel heeft geen tegoed meer. Probeer het over een minuut opnieuw.</string>
+    <string name="assistant_server">Mistral antwoordde met een fout (%1$d).</string>
+    <string name="assistant_no_key">Voeg eerst je Mistral-API-sleutel toe: Instellingen › Assistent.</string>
+</resources>

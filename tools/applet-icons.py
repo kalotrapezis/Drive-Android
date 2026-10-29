@@ -21,7 +21,7 @@ for src, out in [("DocScan", "scanner_art"), ("QRScan", "codes_art"), ("Files", 
             ImageDraw.floodfill(a, c, (0, 0, 0, 0), thresh=60)
     a.resize((627, 627), Image.LANCZOS).save(f"{nodpi}/{out}.png", optimize=True)
 apps = [("photos", "gallery_art"), ("files", "files_art"), ("notes", "notes_art"), ("scanner", "scanner_art"),
-        ("codes", "codes_art"), ("office", "office_art"), ("text_editor", "text_editor_art"), ("calendar", "calendar_art"), ("contacts", "contacts_art"), ("phone", "phone_art"), ("maps", "maps_art"), ("timer", "timer_art"), ("data", "data_art")]
+        ("codes", "codes_art"), ("office", "office_art"), ("text_editor", "text_editor_art"), ("calendar", "calendar_art"), ("contacts", "contacts_art"), ("phone", "phone_art"), ("maps", "maps_art"), ("timer", "timer_art"), ("data", "data_art"), ("assistant", "assistant_art")]
 for f in glob.glob(f"{res}/drawable/applet_*_fg.xml"): os.remove(f)
 colors = ['<?xml version="1.0" encoding="utf-8"?>', "<!-- The applet icons' backgrounds: each art's own edge colour, so its tile's corners blend in (tools/applet-icons.py). -->", "<resources>"]
 for name, art in apps:

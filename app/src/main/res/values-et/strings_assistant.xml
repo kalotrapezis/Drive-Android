@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_assistant">Assistent</string>
+    <string name="home_label_assistant">Tetra Assistent</string>
+    <string name="assistant_home_detail">Küsi või ütle: kalender, taimerid, märkmed, kõned</string>
+    <string name="settings_assistant_summary">Mistrali võti, vaikeassistent</string>
+    <string name="assistant_hint">Küsi mida tahes</string>
+    <string name="assistant_listening">Kuulan…</string>
+    <string name="assistant_hearing">Kuulen sind…</string>
+    <string name="assistant_thinking">Mõtlen…</string>
+    <string name="assistant_tap_to_talk">Puuduta rääkimiseks</string>
+    <string name="assistant_new_chat">Uus vestlus</string>
+    <string name="assistant_read_aloud">Loe vastused ette</string>
+    <string name="assistant_call">Helista: %1$s</string>
+    <string name="assistant_call_cancelled">Kõne tühistati.</string>
+    <string name="assistant_cannot_open">Seda faili ei saanud avada.</string>
+    <string name="assistant_mic_needed">Tetra vajab mikrofoni, et sind kuulda.</string>
+    <string name="assistant_heard_nothing">Ma ei saanud aru. Proovi uuesti.</string>
+    <string name="assistant_key">Mistrali API võti</string>
+    <string name="assistant_key_hint">Kleebi võti</string>
+    <string name="assistant_key_saved">Salvestatud sellesse telefoni</string>
+    <string name="assistant_key_missing">Pole veel määratud</string>
+    <string name="assistant_key_note">Tee see aadressil console.mistral.ai › API Keys. See hoitakse selles telefonis krüpteerituna. Mida sa ütled, sinu küsimused ja tööriistade lühivastused (nimed, pealkirjad) lähevad Mistralile; sinu failid jäävad siia.</string>
+    <string name="assistant_default">Vaikeassistent</string>
+    <string name="assistant_default_yes">Tetra</string>
+    <string name="assistant_default_no">Muu rakendus</string>
+    <string name="assistant_choose">Vali</string>
+    <string name="assistant_default_note">Vali Tetra digitaalse assistendi rakenduseks. Seejärel hoia all toitenuppu, libista alumisest nurgast üles või hoia all Home: Tetra hakkab kohe kuulama ja vastab, kui oled rääkimise lõpetanud. Kui telefon hoiab toitenuppu Google\'i jaoks, lülita jaotises Välimus › Rakenduste ikoonid sisse Tetra Assistent ja kasuta selle ikooni.</string>
+    <string name="assistant_open">Ava assistent</string>
+    <string name="assistant_offline">Internetiühendust pole.</string>
+    <string name="assistant_bad_key">Mistrali võti on vale. Kontrolli seda jaotises Seaded › Assistent.</string>
+    <string name="assistant_busy">Mistral on hõivatud või võtmel pole enam krediiti. Proovi minuti pärast uuesti.</string>
+    <string name="assistant_server">Mistral vastas veaga (%1$d).</string>
+    <string name="assistant_no_key">Lisa kõigepealt oma Mistrali API võti: Seaded › Assistent.</string>
+</resources>

@@ -12,6 +12,21 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (assistant session, 29 Oct; branch `claude/assistant`, worktree Drive-Android-worktrees/assistant; not merged) **Tetra Assistant**
+      (the user: a phone voice assistant in place of ChatGPT and the keyboard, acting on Tetra's own data; walkie-talkie, not live; no
+      cloud connectors: the model is online, the tools run on the phone). Assistant.kt: Mistral chat (`mistral-small-latest`) with 14
+      function tools that bridge into CalendarFiles, TimerFiles, NotesStore, DriveRules.allItems and ContactsFiles; tools answer the
+      model names/titles only (never numbers, bodies or whole lists); web search and pictures through Mistral's Conversations API
+      (`web_search`, `image_generation`, store=false; the chat API does not run them), pictures saved in Tetra/Assistant. Voxtral
+      (`voxtral-small-transcribe-3`, el) for speech, an energy VAD ported from the VOICE app. A call waits for a tap or a spoken "ναι"
+      heard by the phone, never the model. AssistantScreen.kt: the chat (Home › Assistant, read aloud on the speaker button) and the
+      sheet over any app (AssistantSheetActivity, translucent): listens at once, answers aloud, re-opens the mic for a question or a
+      list, closes; the sheet's conversation is forgotten a minute after the last words. AssistantVoice.kt: the key (AndroidKeyStore
+      AES-GCM), HTTPS with Greek errors, VoiceInteractionService + session service + a Voxtral RecognitionService (Android requires one
+      of an assistant), Settings › Assistant (the role cannot be requested: the button opens Android's page). App icon "Tetra
+      Assistant" (Settings › App icons) opens the sheet: the fallback where the power button stays Google's. Strings in all 24 languages
+      (22 by a Sonnet helper, unchecked by native readers). AssistantTest (9). **Not tried on a device or against Mistral** (no key here).
+      Later: photos, send-to-PC, live mode, an offline model, contact names as Voxtral's context_bias, keeping chats.
 - [~] (system-folder session, 27 Oct; branches `system-folder` in Drive and `claude/system-folder` here; not merged, not pushed)
       **One hidden ~/Tetra/.System** (the user: "gather all of these under one system folder, and make it hidden: .System"; "every
       app/data, app/core, app/user"; "the builder … clean up after itself, every time the same way"). Desktop system.js makes every

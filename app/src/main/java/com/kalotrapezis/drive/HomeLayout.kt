@@ -22,15 +22,15 @@ internal data class HomeItem(val id: String, val size: HomeSize = HomeSize.Large
  */
 internal object HomeLayout {
     const val SETTINGS = "settings"
-    private val CARDS = setOf("sync", SETTINGS) // one row high
+    private val CARDS = setOf("sync", SETTINGS, "assistant") // one row high
     // today's order: a tablet pairs Sync with Settings at the top; a phone has Maps before Contacts and Settings last
-    val WIDE = listOf("sync", SETTINGS, "gallery", "files", "notes", "scanner", "office", "text", "calendar", "timer", "contacts", "phone", "maps", "data")
-    val NARROW = listOf("sync", "gallery", "files", "notes", "scanner", "office", "text", "calendar", "timer", "maps", "contacts", "phone", "data", SETTINGS)
+    val WIDE = listOf("sync", SETTINGS, "gallery", "files", "notes", "scanner", "office", "text", "calendar", "timer", "contacts", "phone", "maps", "data", "assistant")
+    val NARROW = listOf("sync", "gallery", "files", "notes", "scanner", "office", "text", "calendar", "timer", "maps", "contacts", "phone", "data", "assistant", SETTINGS)
 
     /** Each part's name (a string resource). */
     val NAMES = mapOf("sync" to R.string.home_local_sync, SETTINGS to R.string.common_settings, "gallery" to R.string.app_photos, "files" to R.string.app_files, "notes" to R.string.app_notes,
         "scanner" to R.string.home_scanner_codes, "office" to R.string.app_office, "text" to R.string.app_text_editor, "calendar" to R.string.app_calendar, "timer" to R.string.app_timer,
-        "contacts" to R.string.app_contacts, "phone" to R.string.app_phone, "maps" to R.string.app_maps, "data" to R.string.app_data)
+        "contacts" to R.string.app_contacts, "phone" to R.string.app_phone, "maps" to R.string.app_maps, "data" to R.string.app_data, "assistant" to R.string.app_assistant)
 
     fun columns(wide: Boolean) = if (wide) 8 else 4
     private fun prefs(c: Context) = c.getSharedPreferences("home", Context.MODE_PRIVATE)

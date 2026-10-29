@@ -345,7 +345,7 @@
     <string name="settings_exported">Izvoženo</string>
     <string name="settings_not_exported">Ni izvoženo: %1$s</string>
     <string name="settings_your_calendars">Vaši koledarji</string>
-    <string name="settings_your_calendars_note">Vaši koledarji so mape v Tetra/Calendar: sinhronizirajo se z računalnikom, Claude pa jih lahko tam upravlja.</string>
+    <string name="settings_your_calendars_note">Vaši koledarji so mape v Tetra/.System/Calendar/Shared: sinhronizirajo se z računalnikom, Claude pa jih lahko tam upravlja.</string>
     <string name="settings_calendar_import_summary">Datoteka .ics ali zip iz Google Takeout; vsak koledar v tistega z enakim imenom, dogodek, ki že obstaja, se posodobi</string>
     <string name="settings_export_all_summary">Vsak koledar kot .ics, v zipu</string>
     <string name="settings_map_summary">Lastna svetla ali temna, neodvisno od teme Tetre</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Uvoženo</string>
     <string name="settings_imported_shared">Krajev: %1$d, dodatkov na zemljevidu: %2$d; %3$d jih že obstaja ali so brez lokacije.</string>
     <string name="settings_not_placed">Teh ni bilo mogoče umestiti – poiščite jih v Zemljevidih in Shranite:</string>
-    <string name="settings_installed_maps_note">Zemljevid vsake države nastane v računalniku, v Tetra v računalniku › Nastavitve › Zemljevidi › Dodaj zemljevid. Sinhronizacija ga prenese sem, v Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Zemljevid vsake države nastane v računalniku, v Tetra v računalniku › Nastavitve › Zemljevidi › Dodaj zemljevid. Sinhronizacija ga prenese sem, v Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Težave</string>
     <string name="settings_send_log_summary">Dnevnik Tetre in sledi vaših voženj v zadnjih 7 dneh, kot en zip; ostanejo v tej napravi, dokler jih ne pošljete</string>
-    <string name="settings_contacts_note">Vaši stiki so datoteke v Tetra/Contacts, ena na osebo: sinhronizirajo se z računalnikom, kjer jih prikazujejo tudi Stiki.</string>
+    <string name="settings_contacts_note">Vaši stiki so datoteke v Tetra/.System/Contacts/Shared, ena na osebo: sinhronizirajo se z računalnikom, kjer jih prikazujejo tudi Stiki.</string>
     <string name="settings_in_phone_contacts_on">Klicalnik, Viber, WhatsApp in avto prikazujejo ta imena in fotografije (kopija samo za branje, račun Tetra)</string>
     <string name="settings_in_phone_contacts_off">Vaše stike prikazuje samo Tetra</string>
     <string name="settings_no_calendars">Koledarjev še ni</string>
@@ -1409,7 +1409,7 @@
     <string name="calendar_delete_note">Mapa koledarja in vsi njegovi dogodki gredo v Koš Tetre, v vseh napravah po naslednji sinhronizaciji. Iz Koša jih je mogoče obnoviti.</string>
     <string name="calendar_moved_to_trash">%1$s premaknjen v Koš</string>
     <string name="calendar_my_calendars">Moji koledarji</string>
-    <string name="calendar_none_yet">Koledarjev še ni. Vsaka mapa v Tetra/Calendar je en koledar.</string>
+    <string name="calendar_none_yet">Koledarjev še ni. Vsaka mapa v Tetra/.System/Calendar/Shared je en koledar.</string>
     <string name="calendar_options">%1$s: barva, ime, brisanje</string>
     <string name="calendar_new_calendar">Nov koledar</string>
     <string name="calendar_export_all">Izvozi vse</string>
@@ -1659,7 +1659,7 @@
     <string name="maps_search_near">Išči blizu %1$s</string>
     <string name="maps_search_hint">Iskanje krajev in mest</string>
     <string name="maps_search_loading">Nalaganje seznama za iskanje…</string>
-    <string name="maps_search_missing">Seznama za iskanje še ni v tej napravi: tools/maps-greece.sh v računalniku izdela greece-places.tsv, Sinhronizacija pa ga prinese v Tetra/Maps.</string>
+    <string name="maps_search_missing">Seznama za iskanje še ni v tej napravi: tools/maps-greece.sh v računalniku izdela greece-places.tsv, Sinhronizacija pa ga prinese v Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Vnesite ime ali kraj ali izberite vrsto: najbližji sredini zemljevida so prvi.</string>
     <string name="maps_nothing_found">Tukaj ni nič najdenega.</string>
     <string name="maps_amea_to_place">♿ Invalidska mesta za umestitev (%1$d)</string>
@@ -1711,7 +1711,7 @@
     <string name="car_no_gps">Ni GPS</string>
     <string name="car_next">Naslednji: %1$s</string>
     <string name="car_waiting_gps">Čakanje na GPS</string>
-    <string name="car_no_graph">Grafa za usmerjanje še ni v Tetra/Maps</string>
+    <string name="car_no_graph">Grafa za usmerjanje še ni v Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Pot ni najdena</string>
     <string name="car_pin">Žebljica</string>
     <string name="car_no_other_places">Ni drugih shranjenih krajev</string>

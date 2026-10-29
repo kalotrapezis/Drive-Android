@@ -345,7 +345,7 @@
     <string name="settings_exported">Viety</string>
     <string name="settings_not_exported">Ei viety: %1$s</string>
     <string name="settings_your_calendars">Kalenterisi</string>
-    <string name="settings_your_calendars_note">Kalenterisi ovat Tetra/Calendar-kansion kansioita: ne synkronoituvat tietokoneen kanssa, ja Claude voi hallita niitä siellä.</string>
+    <string name="settings_your_calendars_note">Kalenterisi ovat Tetra/.System/Calendar/Shared-kansion kansioita: ne synkronoituvat tietokoneen kanssa, ja Claude voi hallita niitä siellä.</string>
     <string name="settings_calendar_import_summary">.ics-tiedosto tai Google Takeoutin zip; kukin kalenteri samannimiseen, jo olemassa oleva tapahtuma päivitetään</string>
     <string name="settings_export_all_summary">Jokainen kalenteri .ics-tiedostona zipissä</string>
     <string name="settings_map_summary">Oma vaalea tai tumma, Tetran teemasta riippumatta</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Tuotu</string>
     <string name="settings_imported_shared">%1$d paikkaa ja %2$d karttalisäystä; %3$d oli jo täällä tai ilman sijaintia.</string>
     <string name="settings_not_placed">Näitä ei voitu sijoittaa – hae ne Kartoista ja tallenna:</string>
-    <string name="settings_installed_maps_note">Jokaisen maan kartta tehdään tietokoneella kohdassa Tetra tietokoneella › Asetukset › Kartat › Lisää kartta. Synkronointi tuo sen tänne, kansioon Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Jokaisen maan kartta tehdään tietokoneella kohdassa Tetra tietokoneella › Asetukset › Kartat › Lisää kartta. Synkronointi tuo sen tänne, kansioon Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Ongelmat</string>
     <string name="settings_send_log_summary">Tetran loki ja viimeisen 7 päivän ajojesi jäljet yhtenä zipinä; ne pysyvät tällä laitteella, kunnes lähetät ne</string>
-    <string name="settings_contacts_note">Yhteystietosi ovat tiedostoja kansiossa Tetra/Contacts, yksi henkilöä kohden: ne synkronoituvat tietokoneen kanssa, jossa Yhteystiedot näyttää ne myös.</string>
+    <string name="settings_contacts_note">Yhteystietosi ovat tiedostoja kansiossa Tetra/.System/Contacts/Shared, yksi henkilöä kohden: ne synkronoituvat tietokoneen kanssa, jossa Yhteystiedot näyttää ne myös.</string>
     <string name="settings_in_phone_contacts_on">Puhelinsovellus, Viber, WhatsApp ja auto näyttävät nämä nimet ja kuvat (vain luku -kopio, tili Tetra)</string>
     <string name="settings_in_phone_contacts_off">Vain Tetra näyttää yhteystietosi</string>
     <string name="settings_no_calendars">Ei vielä kalentereita</string>
@@ -1329,7 +1329,7 @@
     <string name="calendar_delete_note">Kalenterin kansio ja kaikki sen tapahtumat menevät Tetran roskakoriin jokaisella laitteella seuraavan synkronoinnin jälkeen. Ne voi palauttaa roskakorista.</string>
     <string name="calendar_moved_to_trash">%1$s siirretty roskakoriin</string>
     <string name="calendar_my_calendars">Omat kalenterit</string>
-    <string name="calendar_none_yet">Ei vielä kalentereita. Jokainen Tetra/Calendar-kansion kansio on kalenteri.</string>
+    <string name="calendar_none_yet">Ei vielä kalentereita. Jokainen Tetra/.System/Calendar/Shared-kansion kansio on kalenteri.</string>
     <string name="calendar_options">%1$s: väri, nimi, poisto</string>
     <string name="calendar_new_calendar">Uusi kalenteri</string>
     <string name="calendar_export_all">Vie kaikki</string>
@@ -1573,7 +1573,7 @@
     <string name="maps_search_near">Hae läheltä: %1$s</string>
     <string name="maps_search_hint">Hae paikkoja ja kaupunkeja</string>
     <string name="maps_search_loading">Ladataan hakulistaa…</string>
-    <string name="maps_search_missing">Hakulista ei ole vielä tällä laitteella: tools/maps-greece.sh tekee tietokoneella tiedoston greece-places.tsv, ja synkronointi tuo sen kansioon Tetra/Maps.</string>
+    <string name="maps_search_missing">Hakulista ei ole vielä tällä laitteella: tools/maps-greece.sh tekee tietokoneella tiedoston greece-places.tsv, ja synkronointi tuo sen kansioon Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Kirjoita nimi tai kaupunki tai valitse tyyppi: lähimmät kartan keskikohtaa näytetään ensin.</string>
     <string name="maps_nothing_found">Täältä ei löytynyt mitään.</string>
     <string name="maps_amea_to_place">♿ Sijoitettavia invapaikkoja (%1$d)</string>
@@ -1625,7 +1625,7 @@
     <string name="car_no_gps">Ei GPS:ää</string>
     <string name="car_next">Seuraava: %1$s</string>
     <string name="car_waiting_gps">Odotetaan GPS:ää</string>
-    <string name="car_no_graph">Reititysverkkoa ei vielä ole kansiossa Tetra/Maps</string>
+    <string name="car_no_graph">Reititysverkkoa ei vielä ole kansiossa Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Reittiä ei löytynyt</string>
     <string name="car_pin">Nasta</string>
     <string name="car_no_other_places">Ei muita tallennettuja paikkoja</string>

@@ -34,7 +34,7 @@ internal data class Route(val mode: String, val lats: DoubleArray, val lngs: Dou
 
 /**
  * Offline routing on the phone: the graph the computer built (tools/maps-greece.sh, tools/maps-graph.yml) opened read-only
- * from Tetra/Maps/greece-gh with GraphHopper 10.2. GraphHopper turns a profile's custom model into Java bytecode with Janino
+ * from Tetra/.System/Maps/Shared/greece-gh with GraphHopper 10.2. GraphHopper turns a profile's custom model into Java bytecode with Janino
  * at run time, which Android cannot load, so the three custom models are written out here by hand (TetraWeightings) —
  * the same rules as GraphHopper's car.json, foot.json and bike.json, which the graph's shortcuts were made with.
  */

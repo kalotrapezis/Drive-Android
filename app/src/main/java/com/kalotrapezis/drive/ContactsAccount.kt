@@ -19,7 +19,7 @@ import android.provider.ContactsContract.CommonDataKinds as K
 
 /**
  * Tetra's contacts seen by every app (Plan.md § Contacts, step 6; the user said yes, 23 Oct): Tetra's own account
- * ("Tetra") holds a copy of Tetra/Contacts in the phone's contacts, written one way from the files — the dialer's caller ID,
+ * ("Tetra") holds a copy of Tetra/.System/Contacts/Shared in the phone's contacts, written one way from the files — the dialer's caller ID,
  * Viber's and WhatsApp's names, Android Auto's calls know them; Android joins each with the same person from Google. The
  * copy is read-only elsewhere; edits are made in Tetra. Turned off, the account and its copy go.
  */

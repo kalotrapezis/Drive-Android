@@ -345,7 +345,7 @@
     <string name="settings_exported">Ġie esportat</string>
     <string name="settings_not_exported">Ma ġiex esportat: %1$s</string>
     <string name="settings_your_calendars">Il-kalendarji tiegħek</string>
-    <string name="settings_your_calendars_note">Il-kalendarji tiegħek huma l-kartelli fit-Tetra/Calendar: jisinkronizzaw mal-kompjuter, u Claude jista’ jimmaniġġahom hemm.</string>
+    <string name="settings_your_calendars_note">Il-kalendarji tiegħek huma l-kartelli fit-Tetra/.System/Calendar/Shared: jisinkronizzaw mal-kompjuter, u Claude jista’ jimmaniġġahom hemm.</string>
     <string name="settings_calendar_import_summary">Fajl .ics jew iż-zip ta’ Google Takeout; kull kalendarju jmur fl-wieħed bl-istess isem, u avveniment diġà hemm jiġi aġġornat</string>
     <string name="settings_export_all_summary">Kull kalendarju bħala .ics, f’zip</string>
     <string name="settings_map_summary">Ċar jew skur tiegħu stess, separat mit-tema ta’ Tetra</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Ġie importat</string>
     <string name="settings_imported_shared">%1$d postijiet u %2$d żidiet tal-mappa; %3$d diġà hemm jew mingħajr pożizzjoni.</string>
     <string name="settings_not_placed">Dawn ma setgħux jitqiegħdu — fittexhom fil-Mappi u Ħżen:</string>
-    <string name="settings_installed_maps_note">Il-mappa ta\' kull pajjiż issir fuq il-kompjuter, f\'Tetra tal-kompjuter › Settings › Mapep › Żid mappa. Sinkronizza iġibha hawn, f\'Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Il-mappa ta\' kull pajjiż issir fuq il-kompjuter, f\'Tetra tal-kompjuter › Settings › Mapep › Żid mappa. Sinkronizza iġibha hawn, f\'Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problemi</string>
     <string name="settings_send_log_summary">Il-log ta’ Tetra u t-traċċi tal-vjaġġi tiegħek tal-aħħar 7 ijiem, f’zip wieħed; jibqgħu f’dan l-apparat sakemm tibgħathom</string>
-    <string name="settings_contacts_note">Il-kuntatti tiegħek huma fajls fit-Tetra/Contacts, wieħed għal kull persuna: jisinkronizzaw mal-kompjuter, fejn il-Kuntatti juruhom ukoll.</string>
+    <string name="settings_contacts_note">Il-kuntatti tiegħek huma fajls fit-Tetra/.System/Contacts/Shared, wieħed għal kull persuna: jisinkronizzaw mal-kompjuter, fejn il-Kuntatti juruhom ukoll.</string>
     <string name="settings_in_phone_contacts_on">Id-dialer, Viber, WhatsApp u l-karozza juru dawn l-ismijiet u r-ritratti (kopja għall-qari biss, kont Tetra)</string>
     <string name="settings_in_phone_contacts_off">Tetra biss juri l-kuntatti tiegħek</string>
     <string name="settings_no_calendars">Għadu m’hemm l-ebda kalendarju</string>
@@ -1409,7 +1409,7 @@
     <string name="calendar_delete_note">Il-kartella tal-kalendarju u l-avvenimenti kollha tagħha jmorru fl-Iskart ta’ Tetra, fuq kull apparat wara s-sinkronizzazzjoni li jmiss. Jistgħu jerġgħu jitpoġġew mill-Iskart.</string>
     <string name="calendar_moved_to_trash">%1$s mexxa fl-Iskart</string>
     <string name="calendar_my_calendars">Il-kalendarji tiegħi</string>
-    <string name="calendar_none_yet">Għadu m’hemm l-ebda kalendarju. Kull kartella fit-Tetra/Calendar hija wieħed.</string>
+    <string name="calendar_none_yet">Għadu m’hemm l-ebda kalendarju. Kull kartella fit-Tetra/.System/Calendar/Shared hija wieħed.</string>
     <string name="calendar_options">%1$s: kulur, isem, ħassar</string>
     <string name="calendar_new_calendar">Kalendarju ġdid</string>
     <string name="calendar_export_all">Esporta kollox</string>
@@ -1659,7 +1659,7 @@
     <string name="maps_search_near">Fittex qrib %1$s</string>
     <string name="maps_search_hint">Fittex postijiet u rħula</string>
     <string name="maps_search_loading">Qed titgħabba l-lista tat-tfittix…</string>
-    <string name="maps_search_missing">Il-lista tat-tfittix għadha mhix fuq dan l-apparat: tools/maps-greece.sh jagħmel greece-places.tsv fuq il-kompjuter, u s-sinkronizzazzjoni lokali tgħaddiha f’Tetra/Maps.</string>
+    <string name="maps_search_missing">Il-lista tat-tfittix għadha mhix fuq dan l-apparat: tools/maps-greece.sh jagħmel greece-places.tsv fuq il-kompjuter, u s-sinkronizzazzjoni lokali tgħaddiha f’Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Ikteb isem jew raħal, jew agħżel tip: dawk l-eqreb għan-nofs tal-mappa jidhru l-ewwel.</string>
     <string name="maps_nothing_found">Xejn ma nstab hawn.</string>
     <string name="maps_amea_to_place">♿ Persuni b’diżabilità sa post (%1$d)</string>
@@ -1711,7 +1711,7 @@
     <string name="car_no_gps">Ebda GPS</string>
     <string name="car_next">Li jmiss: %1$s</string>
     <string name="car_waiting_gps">Qed nistenna l-GPS</string>
-    <string name="car_no_graph">Għadu m’hemm l-ebda graff tal-instradar f’Tetra/Maps</string>
+    <string name="car_no_graph">Għadu m’hemm l-ebda graff tal-instradar f’Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Ma nstabet l-ebda triq</string>
     <string name="car_pin">Pin</string>
     <string name="car_no_other_places">Ebda post ieħor imħażen</string>

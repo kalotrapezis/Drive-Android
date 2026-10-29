@@ -345,7 +345,7 @@
     <string name="settings_exported">Izvezeno</string>
     <string name="settings_not_exported">Nije izvezeno: %1$s</string>
     <string name="settings_your_calendars">Vaši kalendari</string>
-    <string name="settings_your_calendars_note">Vaši kalendari su mape u Tetra/Calendar: sinkroniziraju se s računalom, a Claude njima ondje može upravljati.</string>
+    <string name="settings_your_calendars_note">Vaši kalendari su mape u Tetra/.System/Calendar/Shared: sinkroniziraju se s računalom, a Claude njima ondje može upravljati.</string>
     <string name="settings_calendar_import_summary">Datoteka .ics ili zip iz Google Takeouta; svaki kalendar u onaj istog naziva, a događaj koji već postoji se ažurira</string>
     <string name="settings_export_all_summary">Svaki kalendar kao .ics, u zipu</string>
     <string name="settings_map_summary">Vlastita svijetla ili tamna, neovisno o temi Tetre</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Uvezeno</string>
     <string name="settings_imported_shared">Mjesta: %1$d, dodaci karti: %2$d; %3$d već postoji ili nema položaj.</string>
     <string name="settings_not_placed">Ova se nisu mogla smjestiti — potražite ih u Kartama i spremite:</string>
-    <string name="settings_installed_maps_note">Karta svake države izrađuje se na računalu, u Tetra na računalu › Postavke › Karte › Dodaj kartu. Sinkronizacija je donosi ovamo, u Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Karta svake države izrađuje se na računalu, u Tetra na računalu › Postavke › Karte › Dodaj kartu. Sinkronizacija je donosi ovamo, u Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problemi</string>
     <string name="settings_send_log_summary">Zapisnik Tetre i tragovi vaših vožnji u zadnjih 7 dana, kao jedan zip; ostaju na ovom uređaju dok ih ne pošaljete</string>
-    <string name="settings_contacts_note">Vaši kontakti su datoteke u Tetra/Contacts, jedna po osobi: sinkroniziraju se s računalom, gdje ih Kontakti također prikazuju.</string>
+    <string name="settings_contacts_note">Vaši kontakti su datoteke u Tetra/.System/Contacts/Shared, jedna po osobi: sinkroniziraju se s računalom, gdje ih Kontakti također prikazuju.</string>
     <string name="settings_in_phone_contacts_on">Biranje brojeva, Viber, WhatsApp i automobil prikazuju ta imena i fotografije (kopija samo za čitanje, račun Tetra)</string>
     <string name="settings_in_phone_contacts_off">Samo Tetra prikazuje vaše kontakte</string>
     <string name="settings_no_calendars">Još nema kalendara</string>
@@ -1369,7 +1369,7 @@
     <string name="calendar_delete_note">Mapa kalendara i svi njegovi događaji idu u Otpad Tetre, na svakom uređaju nakon sljedeće sinkronizacije. Mogu se vratiti iz Otpada.</string>
     <string name="calendar_moved_to_trash">%1$s premješten u Otpad</string>
     <string name="calendar_my_calendars">Moji kalendari</string>
-    <string name="calendar_none_yet">Još nema kalendara. Svaka mapa u Tetra/Calendar jedan je kalendar.</string>
+    <string name="calendar_none_yet">Još nema kalendara. Svaka mapa u Tetra/.System/Calendar/Shared jedan je kalendar.</string>
     <string name="calendar_options">%1$s: boja, naziv, brisanje</string>
     <string name="calendar_new_calendar">Novi kalendar</string>
     <string name="calendar_export_all">Izvezi sve</string>
@@ -1616,7 +1616,7 @@
     <string name="maps_search_near">Traži u blizini: %1$s</string>
     <string name="maps_search_hint">Traži mjesta i gradove</string>
     <string name="maps_search_loading">Učitavanje popisa za pretraživanje…</string>
-    <string name="maps_search_missing">Popis za pretraživanje još nije na ovom uređaju: tools/maps-greece.sh izrađuje greece-places.tsv na računalu, a Sinkronizacija ga donosi u Tetra/Maps.</string>
+    <string name="maps_search_missing">Popis za pretraživanje još nije na ovom uređaju: tools/maps-greece.sh izrađuje greece-places.tsv na računalu, a Sinkronizacija ga donosi u Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Upišite naziv ili grad ili odaberite vrstu: prvo dolaze najbliži sredini karte.</string>
     <string name="maps_nothing_found">Ovdje ništa nije pronađeno.</string>
     <string name="maps_amea_to_place">♿ OSI za smjestiti (%1$d)</string>
@@ -1668,7 +1668,7 @@
     <string name="car_no_gps">Nema GPS-a</string>
     <string name="car_next">Sljedeće: %1$s</string>
     <string name="car_waiting_gps">Čeka se GPS</string>
-    <string name="car_no_graph">Još nema grafa usmjeravanja u Tetra/Maps</string>
+    <string name="car_no_graph">Još nema grafa usmjeravanja u Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Put nije pronađen</string>
     <string name="car_pin">Oznaka</string>
     <string name="car_no_other_places">Nema drugih spremljenih mjesta</string>

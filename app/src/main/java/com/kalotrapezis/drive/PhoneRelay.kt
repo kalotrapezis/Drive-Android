@@ -61,7 +61,7 @@ internal object PhoneRelay {
         runCatching { nm.notify(NOTE, b.build()) }.onFailure { WriterLog.w("Phone: the call from the computer was not shown (${it.message})") }
     }
 
-    /** The phone's calls as the computer has them (Tetra/Phone/calls-*.jsonl), newest first, for the tablet's Recents. */
+    /** The phone's calls as the computer has them (Tetra/.System/Phone/Shared/calls-*.jsonl), newest first, for the tablet's Recents. */
     fun calls(): List<LoggedCall> = phoneRoot().listFiles { f -> f.name.matches(Regex("""calls-\d{4}-\d{2}\.jsonl""")) }.orEmpty()
         .sortedByDescending { it.name }.flatMap { f -> runCatching { f.readLines() }.getOrDefault(emptyList()).reversed() }
         .mapNotNull { l -> runCatching {

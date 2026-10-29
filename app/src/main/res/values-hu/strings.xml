@@ -345,7 +345,7 @@
     <string name="settings_exported">Exportálva</string>
     <string name="settings_not_exported">Nincs exportálva: %1$s</string>
     <string name="settings_your_calendars">Naptáraid</string>
-    <string name="settings_your_calendars_note">A naptáraid a Tetra/Calendar mappái: szinkronizálódnak a számítógéppel, és ott a Claude is kezelheti őket.</string>
+    <string name="settings_your_calendars_note">A naptáraid a Tetra/.System/Calendar/Shared mappái: szinkronizálódnak a számítógéppel, és ott a Claude is kezelheti őket.</string>
     <string name="settings_calendar_import_summary">Egy .ics fájl vagy a Google Takeout zip-je; minden naptár az azonos nevűbe kerül, a már ott lévő esemény frissül</string>
     <string name="settings_export_all_summary">Minden naptár .ics fájlként, egy zip-ben</string>
     <string name="settings_map_summary">Saját világos vagy sötét téma, a Tetra témájától függetlenül</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Importálva</string>
     <string name="settings_imported_shared">%1$d hely és %2$d térképkiegészítés; %3$d már megvolt vagy nincs helye.</string>
     <string name="settings_not_placed">Ezeket nem sikerült elhelyezni – keresd meg őket a Térképekben, és mentsd:</string>
-    <string name="settings_installed_maps_note">Minden ország térképét a számítógépen készítheted el, itt: Tetra a számítógépen › Beállítások › Térképek › Térkép hozzáadása. A(z) Szinkron idehozza, a Tetra/Maps mappába.</string>
+    <string name="settings_installed_maps_note">Minden ország térképét a számítógépen készítheted el, itt: Tetra a számítógépen › Beállítások › Térképek › Térkép hozzáadása. A(z) Szinkron idehozza, a Tetra/.System/Maps/Shared mappába.</string>
     <string name="settings_problems">Problémák</string>
     <string name="settings_send_log_summary">A Tetra naplója és az elmúlt 7 nap vezetéseinek nyomvonalai egy zip-ben; ezen az eszközön maradnak, amíg el nem küldöd őket</string>
-    <string name="settings_contacts_note">A névjegyeid fájlok a Tetra/Contacts mappában, személyenként egy: szinkronizálódnak a számítógéppel, ahol a Névjegyek is megjeleníti őket.</string>
+    <string name="settings_contacts_note">A névjegyeid fájlok a Tetra/.System/Contacts/Shared mappában, személyenként egy: szinkronizálódnak a számítógéppel, ahol a Névjegyek is megjeleníti őket.</string>
     <string name="settings_in_phone_contacts_on">A tárcsázó, a Viber, a WhatsApp és az autó ezeket a neveket és fotókat mutatja (csak olvasható másolat, Tetra fiók)</string>
     <string name="settings_in_phone_contacts_off">Csak a Tetra mutatja a névjegyeidet</string>
     <string name="settings_no_calendars">Még nincs naptár</string>
@@ -1329,7 +1329,7 @@
     <string name="calendar_delete_note">A naptár mappája és minden eseménye a Tetra Kukájába kerül, a következő szinkron után minden eszközön. A Kukából visszaállíthatók.</string>
     <string name="calendar_moved_to_trash">%1$s a Kukába helyezve</string>
     <string name="calendar_my_calendars">Saját naptárak</string>
-    <string name="calendar_none_yet">Még nincs naptár. A Tetra/Calendar minden mappája egy naptár.</string>
+    <string name="calendar_none_yet">Még nincs naptár. A Tetra/.System/Calendar/Shared minden mappája egy naptár.</string>
     <string name="calendar_options">%1$s: szín, név, törlés</string>
     <string name="calendar_new_calendar">Új naptár</string>
     <string name="calendar_export_all">Összes exportálása</string>
@@ -1573,7 +1573,7 @@
     <string name="maps_search_near">Keresés %1$s közelében</string>
     <string name="maps_search_hint">Helyek és települések keresése</string>
     <string name="maps_search_loading">Keresési lista betöltése…</string>
-    <string name="maps_search_missing">A keresési lista még nincs ezen az eszközön: a tools/maps-greece.sh a számítógépen elkészíti a greece-places.tsv fájlt, a Szinkron pedig idehozza a Tetra/Maps mappába.</string>
+    <string name="maps_search_missing">A keresési lista még nincs ezen az eszközön: a tools/maps-greece.sh a számítógépen elkészíti a greece-places.tsv fájlt, a Szinkron pedig idehozza a Tetra/.System/Maps/Shared mappába.</string>
     <string name="maps_search_how">Írj be egy nevet vagy települést, vagy válassz típust: a térkép közepéhez legközelebbiek jönnek először.</string>
     <string name="maps_nothing_found">Itt nincs találat.</string>
     <string name="maps_amea_to_place">♿ Elhelyezendő mozgáskorlátozott helyek (%1$d)</string>
@@ -1625,7 +1625,7 @@
     <string name="car_no_gps">Nincs GPS</string>
     <string name="car_next">Következő: %1$s</string>
     <string name="car_waiting_gps">Várakozás a GPS-re</string>
-    <string name="car_no_graph">Még nincs útvonalgráf a Tetra/Maps mappában</string>
+    <string name="car_no_graph">Még nincs útvonalgráf a Tetra/.System/Maps/Shared mappában</string>
     <string name="car_no_way">Nincs útvonal</string>
     <string name="car_pin">Jelölő</string>
     <string name="car_no_other_places">Nincs más mentett hely</string>

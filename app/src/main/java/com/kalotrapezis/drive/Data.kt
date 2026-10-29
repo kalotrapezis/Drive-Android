@@ -16,7 +16,7 @@ import kotlin.math.max
 import kotlin.math.pow
 
 /**
- * Data (Plan.md § Data): the mobile plan, its cycle, and what is left of it. The plan is Tetra/Data/plan.json, the same
+ * Data (Plan.md § Data): the mobile plan, its cycle, and what is left of it. The plan is Tetra/.System/Data/Shared/plan.json, the same
  * on the phone, the tablet and the computer (the highest `rev` wins, as a timer's), so any of them may change it.
  */
 internal data class DataPlan(
@@ -254,14 +254,14 @@ internal data class DataHour(val hour: String, val net: String, val bytes: Long)
 
 internal data class DataEvent(val at: String, val kind: String, val secs: Long = 0, val note: String = "") // a drop, a roaming country, Tetra's own sync
 
-/** A device's month of counts: the lines of Tetra/Data/usage/<yyyy-mm>.<device>.jsonl; [at] when it was counted (ms, 0 = before 25 Oct). */
+/** A device's month of counts: the lines of Tetra/.System/Data/Shared/usage/<yyyy-mm>.<device>.jsonl; [at] when it was counted (ms, 0 = before 25 Oct). */
 internal data class DataMonth(val device: String, val days: List<DataDay>, val apps: List<DataApp>, val hours: List<DataHour>, val events: List<DataEvent>, val name: String = "",
     val at: Long = 0)
 
-/** Tetra/Data: the plan, and each device's counts in files of its own (Timer's rule: nobody writes another's file). */
+/** Tetra/.System/Data/Shared: the plan, and each device's counts in files of its own (Timer's rule: nobody writes another's file). */
 internal object DataFiles {
     const val FOLDER = "Data"
-    fun root() = File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), FOLDER)
+    fun root() = File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), TetraSystem.onDisk(FOLDER))
     fun device() = (Build.MODEL ?: "Android").filter { it.isLetterOrDigit() || it == '-' || it == '_' }.ifEmpty { "Android" }
     /** The name the user gave this device ("Xiaomi 15"), for the others' screens; the file names keep [device]. */
     fun deviceName(c: Context): String = listOf(android.provider.Settings.Global.getString(c.contentResolver, android.provider.Settings.Global.DEVICE_NAME),

@@ -345,7 +345,7 @@
     <string name="settings_exported">Έγινε εξαγωγή</string>
     <string name="settings_not_exported">Δεν έγινε εξαγωγή: %1$s</string>
     <string name="settings_your_calendars">Τα ημερολόγιά σας</string>
-    <string name="settings_your_calendars_note">Τα ημερολόγιά σας είναι οι φάκελοι στο Tetra/Calendar: συγχρονίζονται με τον υπολογιστή και το Claude μπορεί να τα διαχειρίζεται εκεί.</string>
+    <string name="settings_your_calendars_note">Τα ημερολόγιά σας είναι οι φάκελοι στο Tetra/.System/Calendar/Shared: συγχρονίζονται με τον υπολογιστή και το Claude μπορεί να τα διαχειρίζεται εκεί.</string>
     <string name="settings_calendar_import_summary">Ένα αρχείο .ics ή το zip του Google Takeout· κάθε ημερολόγιο στο ομώνυμό του, και ένα συμβάν που υπάρχει ήδη ενημερώνεται</string>
     <string name="settings_export_all_summary">Κάθε ημερολόγιο ως .ics, σε ένα zip</string>
     <string name="settings_map_summary">Δικό του φωτεινό ή σκούρο, χωριστά από το θέμα του Tetra</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Έγινε εισαγωγή</string>
     <string name="settings_imported_shared">%1$d μέρη και %2$d προσθήκες χάρτη· %3$d υπήρχαν ήδη ή δεν είχαν θέση.</string>
     <string name="settings_not_placed">Αυτά δεν τοποθετήθηκαν — αναζητήστε τα στους Χάρτες και πατήστε Αποθήκευση:</string>
-    <string name="settings_installed_maps_note">Ο χάρτης κάθε χώρας φτιάχνεται στον υπολογιστή, στο Tetra του υπολογιστή › Ρυθμίσεις › Χάρτες › Προσθήκη χάρτη. Ο Τοπικός συγχρονισμός τον φέρνει εδώ, στο Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Ο χάρτης κάθε χώρας φτιάχνεται στον υπολογιστή, στο Tetra του υπολογιστή › Ρυθμίσεις › Χάρτες › Προσθήκη χάρτη. Ο Τοπικός συγχρονισμός τον φέρνει εδώ, στο Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Προβλήματα</string>
     <string name="settings_send_log_summary">Το αρχείο καταγραφής του Tetra και τα ίχνη των διαδρομών σας των τελευταίων 7 ημερών, σε ένα zip· μένουν σε αυτή τη συσκευή μέχρι να τα στείλετε</string>
-    <string name="settings_contacts_note">Οι επαφές σας είναι αρχεία στο Tetra/Contacts, ένα για κάθε άτομο: συγχρονίζονται με τον υπολογιστή, όπου τις δείχνουν και οι Επαφές.</string>
+    <string name="settings_contacts_note">Οι επαφές σας είναι αρχεία στο Tetra/.System/Contacts/Shared, ένα για κάθε άτομο: συγχρονίζονται με τον υπολογιστή, όπου τις δείχνουν και οι Επαφές.</string>
     <string name="settings_in_phone_contacts_on">Το τηλέφωνο, το Viber, το WhatsApp και το αυτοκίνητο δείχνουν αυτά τα ονόματα και τις φωτογραφίες (αντίγραφο μόνο για ανάγνωση, λογαριασμός Tetra)</string>
     <string name="settings_in_phone_contacts_off">Μόνο το Tetra δείχνει τις επαφές σας</string>
     <string name="settings_no_calendars">Δεν υπάρχουν ακόμη ημερολόγια</string>
@@ -1328,7 +1328,7 @@
     <string name="calendar_delete_note">Ο φάκελος του ημερολογίου και όλα τα συμβάντα του μεταφέρονται στον κάδο του Tetra, σε κάθε συσκευή μετά τον επόμενο συγχρονισμό. Μπορούν να επανέλθουν από τον κάδο.</string>
     <string name="calendar_moved_to_trash">Το %1$s μεταφέρθηκε στον κάδο</string>
     <string name="calendar_my_calendars">Τα ημερολόγιά μου</string>
-    <string name="calendar_none_yet">Δεν υπάρχουν ημερολόγια ακόμα. Κάθε φάκελος στο Tetra/Calendar είναι ένα.</string>
+    <string name="calendar_none_yet">Δεν υπάρχουν ημερολόγια ακόμα. Κάθε φάκελος στο Tetra/.System/Calendar/Shared είναι ένα.</string>
     <string name="calendar_options">%1$s: χρώμα, όνομα, διαγραφή</string>
     <string name="calendar_new_calendar">Νέο ημερολόγιο</string>
     <string name="calendar_export_all">Εξαγωγή όλων</string>
@@ -1572,7 +1572,7 @@
     <string name="maps_search_near">Αναζήτηση κοντά σε: %1$s</string>
     <string name="maps_search_hint">Αναζήτηση μερών και πόλεων</string>
     <string name="maps_search_loading">Φόρτωση της λίστας αναζήτησης…</string>
-    <string name="maps_search_missing">Η λίστα αναζήτησης δεν είναι ακόμη σε αυτή τη συσκευή: το tools/maps-greece.sh φτιάχνει το greece-places.tsv στον υπολογιστή και ο Τοπικός συγχρονισμός το φέρνει στο Tetra/Maps.</string>
+    <string name="maps_search_missing">Η λίστα αναζήτησης δεν είναι ακόμη σε αυτή τη συσκευή: το tools/maps-greece.sh φτιάχνει το greece-places.tsv στον υπολογιστή και ο Τοπικός συγχρονισμός το φέρνει στο Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Γράψτε ένα όνομα ή μια πόλη ή διαλέξτε είδος: πρώτα έρχονται τα πιο κοντινά στο κέντρο του χάρτη.</string>
     <string name="maps_nothing_found">Δεν βρέθηκε τίποτα εδώ.</string>
     <string name="maps_amea_to_place">♿ ΑμεΑ για τοποθέτηση (%1$d)</string>
@@ -1624,7 +1624,7 @@
     <string name="car_no_gps">Χωρίς GPS</string>
     <string name="car_next">Επόμενη: %1$s</string>
     <string name="car_waiting_gps">Αναμονή για το GPS</string>
-    <string name="car_no_graph">Δεν υπάρχει ακόμη γράφος διαδρομών στο Tetra/Maps</string>
+    <string name="car_no_graph">Δεν υπάρχει ακόμη γράφος διαδρομών στο Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Δεν βρέθηκε διαδρομή</string>
     <string name="car_pin">Σημείο</string>
     <string name="car_no_other_places">Δεν υπάρχουν άλλα αποθηκευμένα μέρη</string>

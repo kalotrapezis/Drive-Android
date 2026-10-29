@@ -26,7 +26,7 @@ import java.time.format.DateTimeFormatter
 
 /**
  * Data's counts (Plan.md § Data): Android's own per-app network statistics (NetworkStatsManager, with the user's Usage
- * access) copied hourly into this device's files in Tetra/Data/usage, so the history outlives Android's ~90 days and the
+ * access) copied hourly into this device's files in Tetra/.System/Data/Shared/usage, so the history outlives Android's ~90 days and the
  * computer and the tablet see it; then the plan's warnings and the roaming notices.
  */
 internal object DataStats {
@@ -43,7 +43,7 @@ internal object DataStats {
             else mode == AppOpsManager.MODE_ALLOWED
     }
 
-    /** Data is in use here once it is set up or may count: only then does Tetra watch, look hourly, and write Tetra/Data. */
+    /** Data is in use here once it is set up or may count: only then does Tetra watch, look hourly, and write Tetra/.System/Data/Shared. */
     fun inUse(c: Context) = hasAccess(c) || DataFiles.plan() != null
 
     /** Everything Data runs in the background, started when Tetra opens or its listening service starts. */

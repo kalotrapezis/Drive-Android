@@ -247,7 +247,7 @@ private fun QuickReply(call: Call, done: () -> Unit) {
         })
 }
 
-/** A note typed during the call, kept with it (Tetra/Phone/notes.jsonl; Recents shows it under the call). */
+/** A note typed during the call, kept with it (Tetra/.System/Phone/Shared/notes.jsonl; Recents shows it under the call). */
 @Composable
 private fun CallNoteDialog(call: Call, done: () -> Unit) {
     val context = LocalContext.current

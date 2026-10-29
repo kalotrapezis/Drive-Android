@@ -11,7 +11,7 @@ import java.util.UUID
 /*
  * Tetra's Contacts (Plan.md § Contacts). One contact is one vCard 3.0 file (RFC 2426), so Claude, any app or a person can
  * read and change it:
- *   Tetra/Contacts/<name>-<6 hex>.vcf    the file name means nothing; the UID inside is the contact
+ *   Tetra/.System/Contacts/Shared/<name>-<6 hex>.vcf    the file name means nothing; the UID inside is the contact
  * Read forgiving (2.1's QUOTED-PRINTABLE and CHARSET, 3.0, 4.0; Samsung's, Google's, Apple's and Android's own), written
  * strict (CRLF, folded at 75 octets). As the Calendar's files: a line Tetra does not understand is kept as it was, and an
  * edit changes only the lines of what changed. Files sync carries the folder as everything else; nothing here talks to sync.
@@ -390,7 +390,7 @@ object VCard {
 object ContactsFiles {
     const val FOLDER = "Contacts"
 
-    fun root(tetra: File) = File(tetra, FOLDER)
+    fun root(tetra: File) = File(tetra, TetraSystem.onDisk(FOLDER))
 
     private fun vcfs(dir: File) = (dir.listFiles() ?: emptyArray()).filter { it.isFile && it.name.endsWith(".vcf", true) && !it.name.startsWith(".") }
 
@@ -468,13 +468,13 @@ object ContactsFiles {
     }
 
     /** A contact to Tetra's Trash (sync never deletes; a move into Trash crosses as a move), its "(2)" copies with it. */
-    fun trash(dir: File, c: Contact): List<String> = (listOfNotNull(c.file) + copies(dir, c)).map { DriveRules.moveToTrash(dir.parentFile!!, it.relativeTo(dir.parentFile!!).path) }
+    fun trash(dir: File, c: Contact): List<String> = TetraSystem.tetraOf(dir).let { tetra -> (listOfNotNull(c.file) + copies(dir, c)).map { DriveRules.moveToTrash(tetra, DriveRules.relative(tetra, it)) } }
 
     /** The other files of the same contact: sync's "(2)" copies, for "Keep this one". */
     fun copies(dir: File, c: Contact): List<File> = vcfs(dir).filter { it != c.file && read(it).info.uid == c.info.uid && c.info.uid.isNotEmpty() }
 
     /** The contacts in Tetra's Trash, newest first, for Restore. */
-    fun trashed(dir: File): List<Contact> = vcfs(File(dir.parentFile, "Trash")).map(::read).filter { it.lines.isNotEmpty() }
+    fun trashed(dir: File): List<Contact> = vcfs(File(TetraSystem.tetraOf(dir), TetraSystem.onDisk("Trash"))).map(::read).filter { it.lines.isNotEmpty() }
         .sortedByDescending { runCatching { android.system.Os.lstat(it.file!!.path).st_ctime * 1000 }.getOrDefault(it.file!!.lastModified()) }
 
     fun restore(dir: File, c: Contact): File {

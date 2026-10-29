@@ -103,7 +103,7 @@ internal object CarLink {
 /** The map, the next turn over it while directions run, and Places / Nearby / Stop. */
 private class MapsCarScreen(car: CarContext) : Screen(car), DefaultLifecycleObserver {
     private val root = MapsFiles.root(TetraFolder.root(Environment.getExternalStorageDirectory()))
-    /** The roads of the map a spot is on (Tetra/Maps can hold several countries'). */
+    /** The roads of the map a spot is on (Tetra/.System/Maps/Shared can hold several countries'). */
     private fun graphAt(lat: Double, lng: Double) = MapsFiles.graphAt(root, lat, lng)
     private val words = MapsPrefs.words(car)
     private val navigation = car.getCarService(NavigationManager::class.java)

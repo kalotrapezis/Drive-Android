@@ -29,7 +29,7 @@ class DriveFilesTest {
         val root = File(base, "Tetra").apply { mkdirs() }
         val outside = File(base, "outside").apply { mkdirs() }
         File(outside, "private.txt").writeText("private")
-        val trashed = File(root, "Trash/folder").apply { mkdirs() }
+        val trashed = File(root, TetraSystem.onDisk("Trash/folder")).apply { mkdirs() }
         File(trashed, "keep.txt").writeText("keep")
         Files.createSymbolicLink(File(trashed, "escape").toPath(), outside.toPath())
         assertThrows(IllegalArgumentException::class.java) { DriveRules.emptyTrash(root) }
@@ -79,7 +79,7 @@ class DriveFilesTest {
         )) try { attempt(); fail("a system folder moved") } catch (_: IllegalArgumentException) {}
         File(root, "Documents/Scanned Documents/scan.pdf").writeText("x")
         DriveRules.moveToTrash(root, "Documents/Scanned Documents/scan.pdf")
-        assertTrue(File(root, "Trash/scan.pdf").exists())
+        assertTrue(File(root, TetraSystem.onDisk("Trash/scan.pdf")).exists())
         assertTrue(File(root, "Documents/Scanned Documents").isDirectory)
     }
 
@@ -106,7 +106,7 @@ class DriveFilesTest {
             assertEquals("Live", moved["Music/Live"])
             assertFalse(File(root, "Music").exists())
             assertEquals(listOf("Work" to "Trash/Work"), DriveRules.clearLeftOut(root, "Work", toTrash = true))
-            assertTrue(File(root, "Trash/Work/plan.pdf").exists())
+            assertTrue(File(root, TetraSystem.onDisk("Trash/Work/plan.pdf")).exists())
             DriveRules.clearLeftOut(root, "Books", toTrash = true)
             assertFalse(File(root, "Books").exists())
             DriveRules.chosenFolders = setOf("AI")
@@ -125,8 +125,8 @@ class DriveFilesTest {
     @Test fun aNameAlreadyInTrashNeverBlocksADelete() {
         val root = Files.createTempDirectory("drive-root").toFile()
         repeat(2) { File(root, "QA").mkdirs(); File(root, "a.txt").writeText("x") ; DriveRules.moveToTrash(root, "QA"); DriveRules.moveToTrash(root, "a.txt") }
-        assertTrue(File(root, "Trash/QA (2)").isDirectory)
-        assertTrue(File(root, "Trash/a (2).txt").exists())
+        assertTrue(File(root, TetraSystem.onDisk("Trash/QA (2)")).isDirectory)
+        assertTrue(File(root, TetraSystem.onDisk("Trash/a (2).txt")).exists())
         assertFalse(File(root, "QA").exists())
     }
 
@@ -214,8 +214,8 @@ class DriveFilesTest {
         val root = Files.createTempDirectory("drive-space").toFile()
         File(root, "note.md").writeText("abc")
         File(root, "photo.jpg").writeText("12345")
-        File(root, "Trash").apply { mkdirs() }
-        File(root, "Trash/old.pdf").writeText("1234567")
+        File(root, TetraSystem.onDisk("Trash")).apply { mkdirs() }
+        File(root, TetraSystem.onDisk("Trash/old.pdf")).writeText("1234567")
         assertEquals(setOf("note.md", "photo.jpg"), DriveRules.allItems(root).map { it.relativePath }.toSet())
         assertEquals(3L, DriveRules.spaceUsage(root).bytesByType["Text"])
         assertEquals(5L, DriveRules.spaceUsage(root).bytesByType["Pictures"])
@@ -234,7 +234,7 @@ class DriveFilesTest {
         assertEquals("nested/copy.txt", DriveRules.rename(root, "nested/two.txt", "copy.txt"))
         assertEquals("copy.txt", DriveRules.copy(root, "nested/copy.txt", ""))
         assertEquals("Trash/copy.txt", DriveRules.moveToTrash(root, "copy.txt"))
-        assertTrue(File(root, "Trash/copy.txt").isFile)
+        assertTrue(File(root, TetraSystem.onDisk("Trash/copy.txt")).isFile)
 
         try {
             DriveRules.move(root, "nested", "nested")
@@ -250,11 +250,11 @@ class DriveFilesTest {
     @Test fun emptyTrashPermanentlyDeletesOnlyItsContents() {
         val root = Files.createTempDirectory("drive-trash").toFile()
         File(root, "keep.txt").writeText("keep")
-        File(root, "Trash").mkdirs()
-        File(root, "Trash/delete.txt").writeText("delete")
+        File(root, TetraSystem.onDisk("Trash")).mkdirs()
+        File(root, TetraSystem.onDisk("Trash/delete.txt")).writeText("delete")
         assertEquals(1, DriveRules.emptyTrash(root))
         assertTrue(File(root, "keep.txt").exists())
-        assertTrue(File(root, "Trash").isDirectory)
-        assertFalse(File(root, "Trash/delete.txt").exists())
+        assertTrue(File(root, TetraSystem.onDisk("Trash")).isDirectory)
+        assertFalse(File(root, TetraSystem.onDisk("Trash/delete.txt")).exists())
     }
 }

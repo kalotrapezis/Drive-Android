@@ -346,7 +346,7 @@
     <string name="settings_exported">Exported</string>
     <string name="settings_not_exported">Not exported: %1$s</string>
     <string name="settings_your_calendars">Your calendars</string>
-    <string name="settings_your_calendars_note">Your calendars are the folders in Tetra/Calendar: they sync with the computer, and Claude can manage them there.</string>
+    <string name="settings_your_calendars_note">Your calendars are the folders in Tetra/.System/Calendar/Shared: they sync with the computer, and Claude can manage them there.</string>
     <string name="settings_calendar_import_summary">An .ics file or Google Takeout\'s zip; each calendar into the one of its name, an event already there updated</string>
     <string name="settings_export_all_summary">Every calendar as an .ics, in a zip</string>
     <string name="settings_map_summary">Its own light or dark, apart from Tetra\'s theme</string>
@@ -385,10 +385,10 @@
     <string name="settings_imported">Imported</string>
     <string name="settings_imported_shared">%1$d places and %2$d map additions; %3$d already here or without a position.</string>
     <string name="settings_not_placed">These could not be placed — search for them in Maps and Save:</string>
-    <string name="settings_installed_maps_note">Each country\'s map is made on the computer, in desktop Tetra › Settings › Maps › Add a map. Local Sync brings it here, into Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Each country\'s map is made on the computer, in desktop Tetra › Settings › Maps › Add a map. Local Sync brings it here, into Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problems</string>
     <string name="settings_send_log_summary">Tetra\'s log and the traces of your drives of the last 7 days, as one zip; they stay on this device until you send them</string>
-    <string name="settings_contacts_note">Your contacts are files in Tetra/Contacts, one per person: they sync with the computer, where Contacts shows them too.</string>
+    <string name="settings_contacts_note">Your contacts are files in Tetra/.System/Contacts/Shared, one per person: they sync with the computer, where Contacts shows them too.</string>
     <string name="settings_in_phone_contacts_on">The dialer, Viber, WhatsApp and the car show these names and photos (a read-only copy, account Tetra)</string>
     <string name="settings_in_phone_contacts_off">Only Tetra shows your contacts</string>
     <string name="settings_no_calendars">No calendars yet</string>
@@ -1330,7 +1330,7 @@
     <string name="calendar_delete_note">The calendar\'s folder and all its events go to Tetra\'s Trash, on every device after the next sync. They can be restored from the Trash.</string>
     <string name="calendar_moved_to_trash">%1$s moved to the Trash</string>
     <string name="calendar_my_calendars">My calendars</string>
-    <string name="calendar_none_yet">No calendars yet. Each folder in Tetra/Calendar is one.</string>
+    <string name="calendar_none_yet">No calendars yet. Each folder in Tetra/.System/Calendar/Shared is one.</string>
     <string name="calendar_options">%1$s: colour, name, delete</string>
     <string name="calendar_new_calendar">New calendar</string>
     <string name="calendar_export_all">Export all</string>
@@ -1574,7 +1574,7 @@
     <string name="maps_search_near">Search near %1$s</string>
     <string name="maps_search_hint">Search places and towns</string>
     <string name="maps_search_loading">Loading the search list…</string>
-    <string name="maps_search_missing">The search list is not on this device yet: tools/maps-greece.sh makes greece-places.tsv on the computer, and Local Sync brings it into Tetra/Maps.</string>
+    <string name="maps_search_missing">The search list is not on this device yet: tools/maps-greece.sh makes greece-places.tsv on the computer, and Local Sync brings it into Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Type a name or a town, or pick a kind: the nearest to the middle of the map come first.</string>
     <string name="maps_nothing_found">Nothing found here.</string>
     <string name="maps_amea_to_place">♿ ΑμεΑ to place (%1$d)</string>
@@ -1626,7 +1626,7 @@
     <string name="car_no_gps">No GPS</string>
     <string name="car_next">Next: %1$s</string>
     <string name="car_waiting_gps">Waiting for the GPS</string>
-    <string name="car_no_graph">No routing graph yet in Tetra/Maps</string>
+    <string name="car_no_graph">No routing graph yet in Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">No way found</string>
     <string name="car_pin">Pin</string>
     <string name="car_no_other_places">No other saved places</string>

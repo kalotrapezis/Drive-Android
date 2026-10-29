@@ -345,7 +345,7 @@
     <string name="settings_exported">Exporté</string>
     <string name="settings_not_exported">Non exporté : %1$s</string>
     <string name="settings_your_calendars">Vos agendas</string>
-    <string name="settings_your_calendars_note">Vos agendas sont les dossiers de Tetra/Calendar : ils se synchronisent avec l’ordinateur, et Claude peut les gérer là-bas.</string>
+    <string name="settings_your_calendars_note">Vos agendas sont les dossiers de Tetra/.System/Calendar/Shared : ils se synchronisent avec l’ordinateur, et Claude peut les gérer là-bas.</string>
     <string name="settings_calendar_import_summary">Un fichier .ics ou le zip de Google Takeout ; chaque agenda va dans celui du même nom, un événement déjà présent est mis à jour</string>
     <string name="settings_export_all_summary">Chaque agenda en .ics, dans un zip</string>
     <string name="settings_map_summary">Son propre clair ou sombre, indépendant du thème de Tetra</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Importé</string>
     <string name="settings_imported_shared">%1$d lieux et %2$d ajouts à la carte ; %3$d déjà présents ou sans position.</string>
     <string name="settings_not_placed">Ceux-ci n’ont pas pu être placés — cherchez-les dans Cartes et enregistrez-les :</string>
-    <string name="settings_installed_maps_note">La carte de chaque pays se crée sur l\'ordinateur, dans Tetra sur ordinateur › Paramètres › Cartes › Ajouter une carte. Synchro l\'apporte ici, dans Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">La carte de chaque pays se crée sur l\'ordinateur, dans Tetra sur ordinateur › Paramètres › Cartes › Ajouter une carte. Synchro l\'apporte ici, dans Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problèmes</string>
     <string name="settings_send_log_summary">Le journal de Tetra et les traces de vos trajets des 7 derniers jours, en un zip ; ils restent sur cet appareil jusqu’à leur envoi</string>
-    <string name="settings_contacts_note">Vos contacts sont des fichiers dans Tetra/Contacts, un par personne : ils se synchronisent avec l’ordinateur, où Contacts les affiche aussi.</string>
+    <string name="settings_contacts_note">Vos contacts sont des fichiers dans Tetra/.System/Contacts/Shared, un par personne : ils se synchronisent avec l’ordinateur, où Contacts les affiche aussi.</string>
     <string name="settings_in_phone_contacts_on">Le clavier, Viber, WhatsApp et la voiture affichent ces noms et photos (copie en lecture seule, compte Tetra)</string>
     <string name="settings_in_phone_contacts_off">Seul Tetra affiche vos contacts</string>
     <string name="settings_no_calendars">Aucun agenda</string>
@@ -1369,7 +1369,7 @@
     <string name="calendar_delete_note">Le dossier de l’agenda et tous ses événements vont dans la corbeille de Tetra, sur chaque appareil après la prochaine synchro. Ils peuvent être restaurés depuis la corbeille.</string>
     <string name="calendar_moved_to_trash">%1$s mis à la corbeille</string>
     <string name="calendar_my_calendars">Mes agendas</string>
-    <string name="calendar_none_yet">Aucun agenda. Chaque dossier de Tetra/Calendar en est un.</string>
+    <string name="calendar_none_yet">Aucun agenda. Chaque dossier de Tetra/.System/Calendar/Shared en est un.</string>
     <string name="calendar_options">%1$s : couleur, nom, supprimer</string>
     <string name="calendar_new_calendar">Nouvel agenda</string>
     <string name="calendar_export_all">Tout exporter</string>
@@ -1616,7 +1616,7 @@
     <string name="maps_search_near">Rechercher près de %1$s</string>
     <string name="maps_search_hint">Rechercher des lieux et des villes</string>
     <string name="maps_search_loading">Chargement de la liste de recherche…</string>
-    <string name="maps_search_missing">La liste de recherche n’est pas encore sur cet appareil : tools/maps-greece.sh crée greece-places.tsv sur l’ordinateur, et Synchro l’apporte dans Tetra/Maps.</string>
+    <string name="maps_search_missing">La liste de recherche n’est pas encore sur cet appareil : tools/maps-greece.sh crée greece-places.tsv sur l’ordinateur, et Synchro l’apporte dans Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Tapez un nom ou une ville, ou choisissez un type : les plus proches du centre de la carte viennent en premier.</string>
     <string name="maps_nothing_found">Rien trouvé ici.</string>
     <string name="maps_amea_to_place">♿ PMR à placer (%1$d)</string>
@@ -1668,7 +1668,7 @@
     <string name="car_no_gps">Pas de GPS</string>
     <string name="car_next">Ensuite : %1$s</string>
     <string name="car_waiting_gps">En attente du GPS</string>
-    <string name="car_no_graph">Pas encore de graphe de routage dans Tetra/Maps</string>
+    <string name="car_no_graph">Pas encore de graphe de routage dans Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Aucun itinéraire trouvé</string>
     <string name="car_pin">Repère</string>
     <string name="car_no_other_places">Aucun autre lieu enregistré</string>

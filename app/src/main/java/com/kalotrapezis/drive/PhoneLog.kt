@@ -179,7 +179,7 @@ internal object PhoneArea {
 
 /**
  * The call history for the computer and any AI (Plan.md § Phone step 5): Android's call log copied, a month a file, as
- * Tetra/Phone/calls-2026-10.jsonl — one line per call, oldest first:
+ * Tetra/.System/Phone/Shared/calls-2026-10.jsonl — one line per call, oldest first:
  * {"at":"2026-10-24T15:36:02+03:00","number":"+3069…","dir":"in|out|missed|declined|blocked|voicemail","secs":124,"contact":"<UID>","name":"Μαρία","note":"…"}.
  * Written by the phone only, while Tetra is the phone app (Google Play allows the call log to the phone app); the call log
  * stays Android's. A month whose calls were all deleted becomes an empty file (nothing is deleted, so nothing goes to Trash).

@@ -345,7 +345,7 @@
     <string name="settings_exported">Easpórtáladh</string>
     <string name="settings_not_exported">Níor easpórtáladh: %1$s</string>
     <string name="settings_your_calendars">Do fhéilirí</string>
-    <string name="settings_your_calendars_note">Is iad na fillteáin i Tetra/Calendar do fhéilirí: sioncrónaíonn siad leis an ríomhaire, agus is féidir le Claude iad a bhainistiú ansin.</string>
+    <string name="settings_your_calendars_note">Is iad na fillteáin i Tetra/.System/Calendar/Shared do fhéilirí: sioncrónaíonn siad leis an ríomhaire, agus is féidir le Claude iad a bhainistiú ansin.</string>
     <string name="settings_calendar_import_summary">Comhad .ics nó comhad zip ó Google Takeout; gach féilire isteach sa cheann a bhfuil an t-ainm céanna air, imeacht atá ann cheana leasaítear é</string>
     <string name="settings_export_all_summary">Gach féilire mar .ics, i gcomhad zip</string>
     <string name="settings_map_summary">Soiléir nó dorcha dá féin, ar leith ó théama Tetra</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Iompórtáladh</string>
     <string name="settings_imported_shared">%1$d áit agus %2$d breiseanna léarscáile; %3$d cheana féin anseo nó gan suíomh.</string>
     <string name="settings_not_placed">Níorbh fhéidir na cinn seo a chur ar an léarscáil — cuardaigh iad i Léarscáileanna agus Sábháil:</string>
-    <string name="settings_installed_maps_note">Déantar léarscáil gach tíre ar an ríomhaire, in Tetra ar an ríomhaire › Socruithe › Léarscáileanna › Cuir léarscáil leis. Tugann Sioncrónú anseo í, isteach i Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Déantar léarscáil gach tíre ar an ríomhaire, in Tetra ar an ríomhaire › Socruithe › Léarscáileanna › Cuir léarscáil leis. Tugann Sioncrónú anseo í, isteach i Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Fadhbanna</string>
     <string name="settings_send_log_summary">Logaí Tetra agus rianta do thiomáintí le 7 lá anuas, mar chomhad zip amháin; fanann siad ar an ngléas seo go dtí go seolann tú iad</string>
-    <string name="settings_contacts_note">Is comhaid iad do theagmhálacha i Tetra/Contacts, ceann in aghaidh an duine: sioncrónaíonn siad leis an ríomhaire, áit a dtaispeánann Teagmhálacha iad freisin.</string>
+    <string name="settings_contacts_note">Is comhaid iad do theagmhálacha i Tetra/.System/Contacts/Shared, ceann in aghaidh an duine: sioncrónaíonn siad leis an ríomhaire, áit a dtaispeánann Teagmhálacha iad freisin.</string>
     <string name="settings_in_phone_contacts_on">Taispeánann an glaoire, Viber, WhatsApp agus an carr na hainmneacha agus na grianghraif seo (cóip inléite amháin, cuntas Tetra)</string>
     <string name="settings_in_phone_contacts_off">Ní thaispeánann ach Tetra do theagmhálacha</string>
     <string name="settings_no_calendars">Níl féilirí fós</string>
@@ -1449,7 +1449,7 @@
     <string name="calendar_delete_note">Téann fillteán an fhéilire agus a imeachtaí go léir chuig Bruscar Tetra, ar gach gléas tar éis an chéad sioncrónaithe eile. Is féidir iad a athchóiriú ón mbruscar.</string>
     <string name="calendar_moved_to_trash">Bogadh %1$s chuig an mbruscar</string>
     <string name="calendar_my_calendars">Mo chuid féilirí</string>
-    <string name="calendar_none_yet">Níl féilirí fós. Is ceann é gach fillteán i Tetra/Calendar.</string>
+    <string name="calendar_none_yet">Níl féilirí fós. Is ceann é gach fillteán i Tetra/.System/Calendar/Shared.</string>
     <string name="calendar_options">%1$s: dath, ainm, scrios</string>
     <string name="calendar_new_calendar">Féilire nua</string>
     <string name="calendar_export_all">Easpórtáil uile</string>
@@ -1702,7 +1702,7 @@
     <string name="maps_search_near">Cuardaigh gar do %1$s</string>
     <string name="maps_search_hint">Cuardaigh áiteanna agus bailte</string>
     <string name="maps_search_loading">Liosta cuardaigh á lódáil…</string>
-    <string name="maps_search_missing">Níl liosta an chuardaigh ar an ngléas seo fós: cruthaíonn tools/maps-greece.sh greece-places.tsv ar an ríomhaire, agus tugann Sioncrónú Áitiúil isteach i Tetra/Maps é.</string>
+    <string name="maps_search_missing">Níl liosta an chuardaigh ar an ngléas seo fós: cruthaíonn tools/maps-greece.sh greece-places.tsv ar an ríomhaire, agus tugann Sioncrónú Áitiúil isteach i Tetra/.System/Maps/Shared é.</string>
     <string name="maps_search_how">Scríobh ainm nó baile, nó roghnaigh cineál: tagann an ceann is gaire do lár na léarscáile ar dtús.</string>
     <string name="maps_nothing_found">Níor aimsíodh faic anseo.</string>
     <string name="maps_amea_to_place">♿ Páirceáil do dhaoine faoi mhíchumas a chur (%1$d)</string>
@@ -1754,7 +1754,7 @@
     <string name="car_no_gps">Gan GPS</string>
     <string name="car_next">Ar aghaidh: %1$s</string>
     <string name="car_waiting_gps">Ag fanacht leis an GPS</string>
-    <string name="car_no_graph">Níl graf bealaí i Tetra/Maps fós</string>
+    <string name="car_no_graph">Níl graf bealaí i Tetra/.System/Maps/Shared fós</string>
     <string name="car_no_way">Níor aimsíodh bealach</string>
     <string name="car_pin">Greamaigh</string>
     <string name="car_no_other_places">Níl áiteanna eile sábháilte</string>

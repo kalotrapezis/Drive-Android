@@ -345,7 +345,7 @@
     <string name="settings_exported">Exportado</string>
     <string name="settings_not_exported">Não exportado: %1$s</string>
     <string name="settings_your_calendars">Os seus calendários</string>
-    <string name="settings_your_calendars_note">Os seus calendários são as pastas em Tetra/Calendar: sincronizam com o computador e o Claude pode geri-los lá.</string>
+    <string name="settings_your_calendars_note">Os seus calendários são as pastas em Tetra/.System/Calendar/Shared: sincronizam com o computador e o Claude pode geri-los lá.</string>
     <string name="settings_calendar_import_summary">Um ficheiro .ics ou o zip do Google Takeout; cada calendário vai para o do mesmo nome, e um evento que já lá esteja é atualizado</string>
     <string name="settings_export_all_summary">Todos os calendários como .ics, num zip</string>
     <string name="settings_map_summary">O seu próprio claro ou escuro, à parte do tema do Tetra</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Importado</string>
     <string name="settings_imported_shared">%1$d locais e %2$d adições ao mapa; %3$d já cá estavam ou não tinham posição.</string>
     <string name="settings_not_placed">Não foi possível posicionar estes — procure-os nos Mapas e Guarde:</string>
-    <string name="settings_installed_maps_note">O mapa de cada país é feito no computador, em Tetra do computador › Definições › Mapas › Adicionar um mapa. Sincronizar traz-o para aqui, para Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">O mapa de cada país é feito no computador, em Tetra do computador › Definições › Mapas › Adicionar um mapa. Sincronizar traz-o para aqui, para Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problemas</string>
     <string name="settings_send_log_summary">O registo do Tetra e os traçados das suas viagens dos últimos 7 dias, num só zip; ficam neste dispositivo até os enviar</string>
-    <string name="settings_contacts_note">Os seus contactos são ficheiros em Tetra/Contacts, um por pessoa: sincronizam com o computador, onde os Contactos também os mostram.</string>
+    <string name="settings_contacts_note">Os seus contactos são ficheiros em Tetra/.System/Contacts/Shared, um por pessoa: sincronizam com o computador, onde os Contactos também os mostram.</string>
     <string name="settings_in_phone_contacts_on">O marcador, o Viber, o WhatsApp e o carro mostram estes nomes e fotos (uma cópia só de leitura, conta Tetra)</string>
     <string name="settings_in_phone_contacts_off">Só o Tetra mostra os seus contactos</string>
     <string name="settings_no_calendars">Ainda não há calendários</string>
@@ -1369,7 +1369,7 @@
     <string name="calendar_delete_note">A pasta do calendário e todos os eventos vão para o Lixo do Tetra, em todos os dispositivos após a próxima sincronização. Podem ser restaurados a partir do Lixo.</string>
     <string name="calendar_moved_to_trash">%1$s movido para o Lixo</string>
     <string name="calendar_my_calendars">Os meus calendários</string>
-    <string name="calendar_none_yet">Ainda não há calendários. Cada pasta em Tetra/Calendar é um.</string>
+    <string name="calendar_none_yet">Ainda não há calendários. Cada pasta em Tetra/.System/Calendar/Shared é um.</string>
     <string name="calendar_options">%1$s: cor, nome, eliminar</string>
     <string name="calendar_new_calendar">Novo calendário</string>
     <string name="calendar_export_all">Exportar tudo</string>
@@ -1616,7 +1616,7 @@
     <string name="maps_search_near">Pesquisar perto de %1$s</string>
     <string name="maps_search_hint">Pesquisar locais e localidades</string>
     <string name="maps_search_loading">A carregar a lista de pesquisa…</string>
-    <string name="maps_search_missing">A lista de pesquisa ainda não está neste dispositivo: tools/maps-greece.sh cria greece-places.tsv no computador e Sincronizar trá-la para Tetra/Maps.</string>
+    <string name="maps_search_missing">A lista de pesquisa ainda não está neste dispositivo: tools/maps-greece.sh cria greece-places.tsv no computador e Sincronizar trá-la para Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Escreva um nome ou uma localidade, ou escolha um tipo: os mais próximos do centro do mapa aparecem primeiro.</string>
     <string name="maps_nothing_found">Nada encontrado aqui.</string>
     <string name="maps_amea_to_place">♿ Lugares para deficientes a colocar (%1$d)</string>
@@ -1668,7 +1668,7 @@
     <string name="car_no_gps">Sem GPS</string>
     <string name="car_next">Seguinte: %1$s</string>
     <string name="car_waiting_gps">À espera do GPS</string>
-    <string name="car_no_graph">Ainda não há grafo de encaminhamento em Tetra/Maps</string>
+    <string name="car_no_graph">Ainda não há grafo de encaminhamento em Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Nenhum caminho encontrado</string>
     <string name="car_pin">Pin</string>
     <string name="car_no_other_places">Não há outros locais guardados</string>

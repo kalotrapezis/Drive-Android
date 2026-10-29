@@ -77,7 +77,7 @@ class AssistantTest {
     @Test fun aShoppingListIsAChecklistNote() {
         val t = tools()
         t.run("shopping_list", JSONObject().put("items", JSONArray(listOf("γάλα", "ψωμί", " "))))
-        val note = NotesStore(File(tetra, ".notes")).list().single()
+        val note = NotesStore(TetraSystem.dir(tetra, "Notes", "Shared")).list().single()
         assertTrue(note.checklist); assertEquals("Ψώνια", note.title)
         assertEquals(listOf("γάλα", "ψωμί"), note.items.map { it.text })
         assertEquals("1. Ψώνια: ψωμί", t.run("notes_search", JSONObject().put("query", "ΨΩΜΙ")).forModel)

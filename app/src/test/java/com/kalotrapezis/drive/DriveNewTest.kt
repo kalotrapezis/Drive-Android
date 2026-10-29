@@ -10,7 +10,7 @@ class DriveNewTest {
     @Test fun `new folders, template copies and Writer's own files, never over what is there`() {
         val root = Files.createTempDirectory("tetra").toFile().canonicalFile
         File(root, "Documents").mkdir()
-        File(root, ".templates").mkdir(); File(root, ".templates/Νέο αρχείο.txt").writeText("hello")
+        TetraSystem.dir(root, "Office", "Data").mkdirs(); File(TetraSystem.dir(root, "Office", "Data"), "Νέο αρχείο.txt").writeText("hello")
         val kinds = DriveRules.newKinds(root)
         assertEquals(listOf("Folder", "Νέο αρχείο", "Words document", "Tables spreadsheet"), kinds.map { it.label }) // the template stands in for the text file
         assertEquals("Documents/Notes", DriveRules.create(root, "Documents", kinds[0], "Notes"))

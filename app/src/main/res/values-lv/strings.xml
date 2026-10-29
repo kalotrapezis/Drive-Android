@@ -345,7 +345,7 @@
     <string name="settings_exported">Eksportēts</string>
     <string name="settings_not_exported">Nav eksportēts: %1$s</string>
     <string name="settings_your_calendars">Jūsu kalendāri</string>
-    <string name="settings_your_calendars_note">Jūsu kalendāri ir mapes Tetra/Calendar: tie sinhronizējas ar datoru, un Claude tos var tur pārvaldīt.</string>
+    <string name="settings_your_calendars_note">Jūsu kalendāri ir mapes Tetra/.System/Calendar/Shared: tie sinhronizējas ar datoru, un Claude tos var tur pārvaldīt.</string>
     <string name="settings_calendar_import_summary">.ics fails vai Google Takeout zip; katrs kalendārs tiek ievietots tāda paša nosaukuma kalendārā, jau esošs notikums tiek atjaunināts</string>
     <string name="settings_export_all_summary">Katrs kalendārs kā .ics, vienā zip</string>
     <string name="settings_map_summary">Savs gaišais vai tumšais, neatkarīgi no Tetra motīva</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Importēts</string>
     <string name="settings_imported_shared">Vietas: %1$d, kartes papildinājumi: %2$d; %3$d jau ir šeit vai bez atrašanās vietas.</string>
     <string name="settings_not_placed">Šīs neizdevās novietot — meklējiet tās Kartēs un saglabājiet:</string>
-    <string name="settings_installed_maps_note">Katras valsts karte tiek izveidota datorā, sadaļā Tetra datorā › Iestatījumi › Kartes › Pievienot karti. Sinhronizācija to atnes šeit, mapē Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Katras valsts karte tiek izveidota datorā, sadaļā Tetra datorā › Iestatījumi › Kartes › Pievienot karti. Sinhronizācija to atnes šeit, mapē Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problēmas</string>
     <string name="settings_send_log_summary">Tetra žurnāls un jūsu braucienu pēdas par pēdējām 7 dienām vienā zip; tie paliek šajā ierīcē, līdz tos nosūtāt</string>
-    <string name="settings_contacts_note">Jūsu kontakti ir faili mapē Tetra/Contacts, pa vienam katrai personai: tie sinhronizējas ar datoru, kur tos rāda arī Kontakti.</string>
+    <string name="settings_contacts_note">Jūsu kontakti ir faili mapē Tetra/.System/Contacts/Shared, pa vienam katrai personai: tie sinhronizējas ar datoru, kur tos rāda arī Kontakti.</string>
     <string name="settings_in_phone_contacts_on">Numura sastādītājs, Viber, WhatsApp un auto rāda šos vārdus un fotoattēlus (tikai lasāma kopija, konts Tetra)</string>
     <string name="settings_in_phone_contacts_off">Jūsu kontaktus rāda tikai Tetra</string>
     <string name="settings_no_calendars">Kalendāru vēl nav</string>
@@ -1369,7 +1369,7 @@
     <string name="calendar_delete_note">Kalendāra mape un visi tā notikumi nonāk Tetra miskastē, visās ierīcēs pēc nākamās sinhronizācijas. Tos var atjaunot no miskastes.</string>
     <string name="calendar_moved_to_trash">%1$s pārvietots uz miskasti</string>
     <string name="calendar_my_calendars">Mani kalendāri</string>
-    <string name="calendar_none_yet">Kalendāru vēl nav. Katra mape Tetra/Calendar ir viens kalendārs.</string>
+    <string name="calendar_none_yet">Kalendāru vēl nav. Katra mape Tetra/.System/Calendar/Shared ir viens kalendārs.</string>
     <string name="calendar_options">%1$s: krāsa, nosaukums, dzēšana</string>
     <string name="calendar_new_calendar">Jauns kalendārs</string>
     <string name="calendar_export_all">Eksportēt visu</string>
@@ -1616,7 +1616,7 @@
     <string name="maps_search_near">Meklēt pie %1$s</string>
     <string name="maps_search_hint">Meklēt vietas un pilsētas</string>
     <string name="maps_search_loading">Ielādē meklēšanas sarakstu…</string>
-    <string name="maps_search_missing">Meklēšanas saraksts šajā ierīcē vēl nav: tools/maps-greece.sh datorā izveido greece-places.tsv, un sinhronizācija to atnes uz Tetra/Maps.</string>
+    <string name="maps_search_missing">Meklēšanas saraksts šajā ierīcē vēl nav: tools/maps-greece.sh datorā izveido greece-places.tsv, un sinhronizācija to atnes uz Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Ierakstiet nosaukumu vai pilsētu vai izvēlieties veidu: vispirms tiek rādīti tuvākie kartes vidum.</string>
     <string name="maps_nothing_found">Šeit nekas nav atrasts.</string>
     <string name="maps_amea_to_place">♿ vietas novietošanai (%1$d)</string>
@@ -1668,7 +1668,7 @@
     <string name="car_no_gps">Nav GPS</string>
     <string name="car_next">Nākamais: %1$s</string>
     <string name="car_waiting_gps">Gaida GPS</string>
-    <string name="car_no_graph">Tetra/Maps vēl nav maršrutēšanas grafa</string>
+    <string name="car_no_graph">Tetra/.System/Maps/Shared vēl nav maršrutēšanas grafa</string>
     <string name="car_no_way">Ceļš nav atrasts</string>
     <string name="car_pin">Sprauste</string>
     <string name="car_no_other_places">Citu saglabātu vietu nav</string>

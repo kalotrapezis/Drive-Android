@@ -108,7 +108,7 @@ internal data class AppWay(val app: String, val way: Way, val number: String, va
 internal data class CallEntry(val number: String, val at: Long, val seconds: Long, val type: Int)
 
 /**
- * A contact's call recordings, newest first: those the computer made in Tetra/Phone/Recordings, named
+ * A contact's call recordings, newest first: those the computer made in Tetra/.System/Phone/Shared/Recordings, named
  * "2026-10-25 12.04 <the contact's name, or the number>.ogg" (desktop calls.js recorder), matched by that name or number.
  */
 internal object ContactsRecordings {

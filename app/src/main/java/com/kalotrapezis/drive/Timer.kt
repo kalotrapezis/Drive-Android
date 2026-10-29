@@ -5,7 +5,7 @@ import java.io.File
 import java.time.Instant
 
 /*
- * Tetra's Timer (Plan.md § Timer). A timer is one small JSON file in Tetra/Timer (~/Tetra/Files/Timer on the computer),
+ * Tetra's Timer (Plan.md § Timer). A timer is one small JSON file in Tetra/.System/Timer/Shared (~/Tetra/Files/Timer on the computer),
  * synced as files are, at once (DriveScope "timer"). Each device counts down by itself from the end time in it, so they
  * all show the same time left without any traffic while it runs; Start, Pause, Resume, Stop and OK each write the file
  * once and push it. The same format on the desktop (desktop/timer.js), so Claude can read or start one by hand:
@@ -86,7 +86,7 @@ internal data class TimerRecord(
 internal object TimerFiles {
     const val FOLDER = "Timer"
 
-    fun root(tetra: File) = File(tetra, FOLDER)
+    fun root(tetra: File) = File(tetra, TetraSystem.onDisk(FOLDER))
 
     fun read(dir: File): List<TimerRecord> = TimerRecord.winners(dir.listFiles().orEmpty()
         .filter { it.isFile && !it.name.startsWith(".") && it.name.endsWith(".json", true) }

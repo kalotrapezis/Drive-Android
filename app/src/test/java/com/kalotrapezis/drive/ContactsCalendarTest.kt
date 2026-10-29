@@ -18,7 +18,7 @@ class ContactsCalendarTest {
 
     private fun setUp(): Triple<File, File, CalendarInfo> {
         val tetra = scratchDir("tetra")
-        val calRoot = File(tetra, CalendarFiles.FOLDER)
+        val calRoot = CalendarFiles.root(tetra)
         val cal = CalendarFiles.newCalendar(calRoot, "Γενέθλια", 0xFF8E24AA.toInt())
         CalendarFiles.newCalendar(calRoot, "Personal", 0xFFE91E63.toInt())
         return Triple(calRoot, File(tetra, ContactsFiles.FOLDER), cal)
@@ -51,7 +51,7 @@ class ContactsCalendarTest {
         val moved = have.single().master!!
         assertEquals(LocalDate.of(2026, 3, 15), moved.start.toLocalDate())
         assertTrue(!have.single().file.readText().contains("X-TETRA-BIRTH-YEAR"))
-        assertEquals(1, File(calRoot.parentFile, "Trash").listFiles()!!.size) // the anniversary's event: in the Trash, not deleted
+        assertEquals(1, File(TetraSystem.tetraOf(calRoot), TetraSystem.onDisk("Trash")).listFiles()!!.size) // the anniversary's event: in the Trash, not deleted
         // the contact to the Trash: its event too
         ContactsBirthdays.sync(calRoot, c.info, null, have, gone = true)
         assertNull(ContactsBirthdays.linked(calRoot)[c.info.uid])

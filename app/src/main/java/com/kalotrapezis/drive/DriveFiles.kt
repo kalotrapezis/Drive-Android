@@ -54,8 +54,130 @@ object TetraFolder {
         val root = File(storage, "Tetra")
         val old = File(storage, "Drive")
         if (!root.exists() && old.isDirectory) old.renameTo(root)
-        return if (!root.exists() && old.isDirectory) old else root // the rename refused: keep using where it all is
+        return (if (!root.exists() && old.isDirectory) old else root) // the rename refused: keep using where it all is
+            .also(TetraSystem::migrateOnce)
     }
+}
+
+/**
+ * /sdcard/Tetra/.System: everything Tetra keeps for its own use, the phone's side of the computer's ~/Tetra/.System (Drive's
+ * desktop/system.js and SYSTEM.md, which say who may delete what). Files hold only the user's own files (the user, 29 Oct
+ * 2026: "Make Tetra process everything from the system folder; Files and Photos to be userspace only").
+ *
+ * Sync still names an app's files as before ("Calendar/…", "Trash/…"): [SHARED] says which .System/<App>/Shared each of
+ * those names lives in, so a device on an older version sends and gets the same paths. The computer's system.SHARED is the
+ * same list.
+ */
+object TetraSystem {
+    const val NAME = ".System"
+    val SHARED = mapOf("Calendar" to "Calendar", "Contacts" to "Contacts", "Data" to "Data", "Phone" to "Phone", "Timer" to "Timer", "Maps" to "Maps", "Trash" to "Trash")
+
+    /** `<tetra>/.System/<app>/<kind>`, kind one of Data, Tools, Cache, Temp, Shared. */
+    fun dir(tetra: File, app: String, kind: String) = File(tetra, "$NAME/$app/$kind")
+    /** Where a path of Files is under the Tetra folder: an app's ("Calendar/…") in .System/<App>/Shared, any other as it is. */
+    fun onDisk(relative: String): String {
+        val top = relative.substringBefore('/')
+        val app = SHARED[top] ?: return relative
+        return "$NAME/$app/Shared${relative.removePrefix(top)}"
+    }
+    /** The reverse of [onDisk]: the path sync and Files know a file by. */
+    fun fromDisk(relative: String): String {
+        val p = relative.split('/')
+        if (p.size < 3 || p[0] != NAME || p[2] != "Shared") return relative
+        val top = SHARED.entries.firstOrNull { it.value == p[1] }?.key ?: return relative
+        return (listOf(top) + p.drop(3)).joinToString("/")
+    }
+    /** The Tetra folder an app's folder is in ([onDisk]'s .System/<App>/Shared; a plain one beside the others, as tests make). */
+    fun tetraOf(appRoot: File): File = appRoot.absoluteFile.let { if (it.name == "Shared" && it.parentFile?.parentFile?.name == NAME) it.parentFile!!.parentFile!!.parentFile!! else it.parentFile!! }
+
+    @Volatile private var migrated: String? = null
+    /** [migrate] once a process, before anything reads those folders (every one of them comes through [TetraFolder.root]); the copies then, on their own thread. */
+    fun migrateOnce(tetra: File) {
+        if (migrated == tetra.path) return
+        synchronized(this) {
+            if (migrated == tetra.path) return
+            migrated = tetra.path
+            val (moved, failed) = migrate(tetra)
+            if (moved.isNotEmpty()) android.util.Log.i("TetraSystem", "moved ${moved.joinToString("; ")}")
+            failed.forEach { android.util.Log.w("TetraSystem", "not moved: $it") }
+        }
+        val done = File(dir(tetra, "Backups", "Data"), "Sync copies/.set-aside")
+        if (!done.exists()) Thread {
+            runCatching {
+                val r = setAsideCopies(tetra)
+                android.util.Log.i("TetraSystem", "sync copies: ${r.moved.size} set aside, ${r.left.size} left where they are: ${r.left.joinToString("; ")}")
+                r.failed.forEach { android.util.Log.w("TetraSystem", "not moved: $it") }
+                done.parentFile?.mkdirs(); done.writeText(System.currentTimeMillis().toString())
+            }.onFailure { android.util.Log.w("TetraSystem", "sync copies: ${it.message}") }
+        }.start()
+    }
+
+    /**
+     * Tetra's own folders into .System, by renaming (one storage: instant, nothing copied or deleted), every file keeping
+     * its name, so sync sees nothing change: Calendar → Calendar/Shared and the rest of [SHARED], .notes → Notes/Shared,
+     * .templates → Office/Data. A file already at the target is left, both kept, and said; run again, it finishes what an
+     * interruption left. (moved, failed).
+     */
+    fun migrate(tetra: File): Pair<List<String>, List<String>> {
+        val moved = mutableListOf<String>(); val failed = mutableListOf<String>()
+        SHARED.forEach { (name, app) -> moveInto(File(tetra, name), dir(tetra, app, "Shared"), moved, failed) }
+        moveInto(File(tetra, ".notes"), dir(tetra, "Notes", "Shared"), moved, failed)
+        moveInto(File(tetra, ".templates"), dir(tetra, "Office", "Data"), moved, failed)
+        return moved to failed
+    }
+
+    /** [from] to [to] by renaming; into a folder already there, each thing in it on its own. */
+    fun moveInto(from: File, to: File, moved: MutableList<String>, failed: MutableList<String>) {
+        if (!Files.exists(from.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return
+        if (!Files.exists(to.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            runCatching { to.parentFile?.mkdirs(); Files.move(from.toPath(), to.toPath()) }
+                .onSuccess { moved += "$from → $to" }.onFailure { failed += "$from → $to: ${it.message}" }
+            return
+        }
+        if (!from.isDirectory || !to.isDirectory) { failed += "$from: $to is there already, so it was left"; return }
+        from.listFiles().orEmpty().forEach { moveInto(it, File(to, it.name), moved, failed) }
+        from.delete() // only an emptied folder goes; one still holding something stays
+    }
+
+    class Copies(val moved: List<String>, val left: List<String>, val failed: List<String>)
+    /**
+     * Sync's leftover copies, "name (2).ext" beside "name.ext" (made before the computer's fix of 29 Oct 2026): one holding
+     * the same bytes moves to Backups/Data/Sync copies/<date>/, under the path sync knows it by; one that differs, or has no
+     * original, stays and is listed (List.txt there, and [Copies.left]). Nothing is deleted. The computer's system.setAsideCopies.
+     */
+    fun setAsideCopies(tetra: File, today: String = java.time.LocalDate.now().toString(), dryRun: Boolean = false): Copies {
+        val moved = mutableListOf<String>(); val left = mutableListOf<String>(); val failed = mutableListOf<String>()
+        val to = File(dir(tetra, "Backups", "Data"), "Sync copies/$today")
+        val copy = Regex("^(.+) \\(\\d+\\)(\\.[^.]+)?$")
+        fun walk(folder: File, rel: String, top: Boolean) {
+            for (f in folder.listFiles().orEmpty().sortedBy { it.name }) {
+                if (f.name.startsWith(".") || Files.isSymbolicLink(f.toPath()) || (top && f.name in SHARED)) continue
+                val r = if (rel.isEmpty()) f.name else "$rel/${f.name}"
+                if (f.isDirectory) { walk(f, r, false); continue }
+                val m = copy.matchEntire(f.name) ?: continue
+                val original = File(folder, m.groupValues[1] + m.groupValues[2])
+                if (!original.isFile || original.length() != f.length() || runCatching { !sameBytes(f, original) }.getOrDefault(true)) { left += r; continue }
+                if (dryRun) { moved += r; continue }
+                moveInto(f, File(to, r), mutableListOf(), failed)
+                if (!f.exists()) moved += r
+            }
+        }
+        walk(tetra, "", true)
+        // not the Trash: its "(2)"s are its own, a name already there when something was deleted
+        SHARED.forEach { (name, app) -> if (name != "Trash") walk(dir(tetra, app, "Shared"), name, false) }
+        if (!dryRun && (moved.isNotEmpty() || left.isNotEmpty())) runCatching {
+            to.mkdirs()
+            File(to, "List.txt").writeText("Moved here (the same bytes as the file beside them):\n${moved.joinToString("\n")}\n\n" +
+                "Left where they are (they differ from the file beside them, or it is not there):\n${left.joinToString("\n")}\n")
+        }.onFailure { failed += "List.txt: ${it.message}" }
+        return Copies(moved, left, failed)
+    }
+
+    private fun sameBytes(a: File, b: File): Boolean = a.inputStream().buffered().use { x -> b.inputStream().buffered().use { y ->
+        var c: Int; var d: Int
+        do { c = x.read(); d = y.read() } while (c == d && c >= 0)
+        c == d
+    } }
 }
 
 /** Files tools › System folders, kept in the "drive" preferences with when each folder was chosen or left out, for sync. */
@@ -99,9 +221,9 @@ object DriveRules {
     val SYSTEM_FOLDERS get() = REQUIRED_FOLDERS + OPTIONAL_FOLDERS.filter { it in chosenFolders }
     fun isSystem(relativePath: String) = relativePath in SYSTEM_FOLDERS
     /**
-     * The Calendar's, the Timer's, Maps' and Contacts' folders: synced as files (a dot name would not sync), but kept out of Files'
-     * lists, search and Move (the user, 18 Oct: "can we hide the folders of the calendar and the timer"). The computer hides the
-     * same.
+     * The apps' folders' names (TetraSystem.SHARED): in .System since 29 Oct 2026, synced under these names. One of them left at
+     * the top of Tetra (a move that failed) is kept out of Files' lists, search and Move, as they all were since 18 Oct ("can we
+     * hide the folders of the calendar and the timer"). The computer hides the same.
      */
     private val APP_FOLDERS = listOf(CalendarFiles.FOLDER, TimerFiles.FOLDER, MapsFiles.FOLDER, ContactsFiles.FOLDER, PhoneHistory.FOLDER, DataFiles.FOLDER)
     fun isAppFolder(relativePath: String) = APP_FOLDERS.any { relativePath == it || relativePath.startsWith("$it/") }
@@ -111,7 +233,7 @@ object DriveRules {
      * and one left out on either side is not undone by the other (SYNC_PLAN.md 6g).
      */
     fun incomingChoiceWins(localChosen: Boolean, localAt: Long, chosen: Boolean, at: Long) = at > localAt || (at == localAt && chosen && !localChosen)
-    fun ensureSystemFolders(root: File) = SYSTEM_FOLDERS.forEach { File(root, it).mkdirs() }
+    fun ensureSystemFolders(root: File) = SYSTEM_FOLDERS.forEach { File(root, TetraSystem.onDisk(it)).mkdirs() }
     private fun requireMovable(relativePath: String) = relativePath.substringAfterLast('/').let { name -> need(!isSystem(relativePath), R.string.files_error_system_folder, name) { "$name is a system folder and stays where it is." } }
 
     fun inside(root: File, candidate: File): Boolean {
@@ -122,14 +244,14 @@ object DriveRules {
 
     fun folder(root: File, relativePath: String): File {
         need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_folder) { "Invalid Drive folder." }
-        return File(root, relativePath).canonicalFile.also {
+        return File(root, TetraSystem.onDisk(relativePath)).canonicalFile.also {
             need(inside(root, it) && it.isDirectory, R.string.files_error_folder_outside) { "Folder is outside Drive." }
         }
     }
 
     fun file(root: File, relativePath: String): File {
         need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_file) { "Invalid Drive file." }
-        return File(root, relativePath).canonicalFile.also {
+        return File(root, TetraSystem.onDisk(relativePath)).canonicalFile.also {
             need(inside(root, it) && it.isFile, R.string.files_error_file_outside) { "File is outside Drive." }
         }
     }
@@ -140,7 +262,7 @@ object DriveRules {
      */
     fun newFile(root: File, relativePath: String): File {
         need(relativePath.isSafeDriveRelativePath() && relativePath.isNotEmpty(), R.string.files_error_bad_file) { "Invalid Drive file." }
-        val wanted = File(root, relativePath).canonicalFile
+        val wanted = File(root, TetraSystem.onDisk(relativePath)).canonicalFile
         need(inside(root, wanted), R.string.files_error_file_outside) { "File is outside Drive." }
         if (!wanted.exists()) return wanted
         val base = wanted.name.substringBeforeLast('.', wanted.name)
@@ -155,14 +277,14 @@ object DriveRules {
 
     fun item(root: File, relativePath: String): File {
         need(relativePath.isSafeDriveRelativePath(), R.string.files_error_bad_item) { "Invalid Drive item." }
-        return File(root, relativePath).canonicalFile.also {
+        return File(root, TetraSystem.onDisk(relativePath)).canonicalFile.also {
             need(inside(root, it) && it.exists(), R.string.files_error_item_outside) { "Item is outside Drive." }
         }
     }
 
     fun relative(root: File, file: File): String {
         need(inside(root, file), R.string.files_error_item_outside) { "Item is outside Drive." }
-        return file.canonicalFile.relativeTo(root.canonicalFile).invariantSeparatorsPath
+        return TetraSystem.fromDisk(file.canonicalFile.relativeTo(root.canonicalFile).invariantSeparatorsPath)
     }
 
     fun parent(relativePath: String): String = relativePath.substringBeforeLast('/', "")
@@ -196,11 +318,11 @@ object DriveRules {
     }
 
     /**
-     * What New can make (asked 14 Oct): a folder, each file in Drive's hidden .templates (copied as it is), and a text
-     * file and a Word document of Writer's own where .templates has none of that kind.
+     * What New can make (asked 14 Oct): a folder, each file in .System/Office/Data (Drive's hidden .templates until 29 Oct
+     * 2026; copied as it is), and a text file and a Word document of Writer's own where it has none of that kind.
      */
     fun newKinds(root: File, blankDeck: ByteArray? = null): List<DriveNew> {
-        val templates = File(root, TEMPLATES_FOLDER).listFiles().orEmpty().filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name.lowercase(Locale.ROOT) }
+        val templates = TetraSystem.dir(root, "Office", "Data").listFiles().orEmpty().filter { it.isFile && !it.name.startsWith(".") }.sortedBy { it.name.lowercase(Locale.ROOT) }
             .map { DriveNew(it.nameWithoutExtension, it.extension, it) }
         val built = listOfNotNull(DriveNew("Text file", "txt", shown = R.string.files_new_text), DriveNew("Words document", "docx", shown = R.string.files_new_words),
             DriveNew("Tables spreadsheet", "xlsx", shown = R.string.files_new_tables), blankDeck?.let { DriveNew("Slides presentation", "pptx", bytes = it, shown = R.string.files_new_slides) }).filter { b -> templates.none { it.extension.equals(b.extension, ignoreCase = true) } }
@@ -254,7 +376,7 @@ object DriveRules {
         for (start in folders) {
             var rel = start
             while (rel.isNotEmpty() && !isSystem(rel) && rel != TRASH_FOLDER && !rel.startsWith("$TRASH_FOLDER/")) {
-                val dir = File(root, rel).canonicalFile
+                val dir = File(root, TetraSystem.onDisk(rel)).canonicalFile
                 if (!inside(root, dir) || !dir.isDirectory || dir.list().orEmpty().isNotEmpty() || !dir.delete()) break
                 rel = parent(rel)
             }
@@ -262,7 +384,7 @@ object DriveRules {
     }
 
     fun moveToTrash(root: File, relativePath: String): String {
-        val trash = File(root, TRASH_FOLDER).canonicalFile
+        val trash = File(root, TetraSystem.onDisk(TRASH_FOLDER)).canonicalFile
         need(inside(root, trash), R.string.files_error_trash_outside) { "Trash is outside Drive." }
         if (!trash.exists()) need(trash.mkdirs(), R.string.files_error_make_trash) { "Could not create Trash." }
         requireMovable(relativePath)
@@ -304,7 +426,7 @@ object DriveRules {
     }
 
     fun emptyTrash(root: File): Int {
-        val trash = File(root, TRASH_FOLDER).canonicalFile
+        val trash = File(root, TetraSystem.onDisk(TRASH_FOLDER)).canonicalFile
         need(inside(root, trash), R.string.files_error_trash_outside) { "Trash is outside Drive." }
         if (!trash.exists()) return 0
         val items = trash.listFiles().orEmpty()
@@ -341,7 +463,6 @@ private fun String.isSafeDriveName(): Boolean = isNotBlank() && trim() == this &
     this !in setOf(".", "..") && '/' !in this && '\\' !in this
 
 private const val TRASH_FOLDER = "Trash"
-private const val TEMPLATES_FOLDER = ".templates"
 
 /** Something New makes: a folder ([extension] null), a copy of [template], or Writer's own empty file of [extension]. */
 data class DriveNew(val label: String, val extension: String?, val template: File? = null, /** the file's bytes as made (the app's empty deck) */ val bytes: ByteArray? = null,
@@ -362,7 +483,7 @@ fun listDriveFolder(root: File, relativePath: String): List<DriveItem> {
     val folder = DriveRules.folder(root, relativePath) // its real path, inside Tetra
     val prefix = DriveRules.relative(root, folder).let { if (it.isEmpty()) "" else "$it/" }
     return folder.listFiles().orEmpty()
-        // Dot folders (.notes, .templates) are the apps' own, hidden as in file managers and on the desktop.
+        // Dot folders (.System, the apps' own) are hidden as in file managers and on the desktop.
         .filter { !it.name.startsWith(".") }
         // Trash has its own way in; as a folder in the list it is just something to open by accident.
         .filterNot { relativePath.isEmpty() && (it.name == TRASH_FOLDER || DriveRules.isAppFolder(it.name)) }
@@ -651,12 +772,14 @@ class DriveManifest(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("drive_hashes", Context.MODE_PRIVATE)
 
     /** Every file under [root], or only those [keep] takes (a scoped sync: nothing else is read or hashed). */
-    fun entries(root: File, keep: (String) -> Boolean = { true }): List<DriveFileEntry> = walk(root, root)
+    fun entries(root: File, keep: (String) -> Boolean = { true }): List<DriveFileEntry> =
+        (TetraSystem.SHARED.keys.flatMap { walk(root, File(root, TetraSystem.onDisk(it))) } + walk(root, root))
         .map { it to DriveRules.relative(root, it) }.filter { (_, relative) -> keep(relative) }
         .map { (file, relative) -> DriveFileEntry(relative, file.length(), file.lastModified(), hash(relative, file)) }
 
+    /** The apps' folders are walked where they are (.System): one of those names left at the top of Tetra (a move that failed) is not theirs. */
     private fun walk(root: File, folder: File): List<File> = folder.listFiles().orEmpty()
-        .filter { DriveRules.inside(root, it) && !it.name.startsWith(".") }
+        .filter { DriveRules.inside(root, it) && !it.name.startsWith(".") && !(folder == root && it.name in TetraSystem.SHARED) }
         .flatMap { if (it.isDirectory) walk(root, it) else listOf(it) }
 
     /** What was just put at [relativePath] is [sha256]: its date is the sender's, so size and date alone could match an older version. */

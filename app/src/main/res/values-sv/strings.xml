@@ -345,7 +345,7 @@
     <string name="settings_exported">Exporterat</string>
     <string name="settings_not_exported">Inte exporterat: %1$s</string>
     <string name="settings_your_calendars">Dina kalendrar</string>
-    <string name="settings_your_calendars_note">Dina kalendrar är mapparna i Tetra/Calendar: de synkas med datorn, och Claude kan hantera dem där.</string>
+    <string name="settings_your_calendars_note">Dina kalendrar är mapparna i Tetra/.System/Calendar/Shared: de synkas med datorn, och Claude kan hantera dem där.</string>
     <string name="settings_calendar_import_summary">En .ics-fil eller zip-filen från Google Takeout; varje kalender till den med samma namn, en händelse som redan finns uppdateras</string>
     <string name="settings_export_all_summary">Varje kalender som .ics, i en zip</string>
     <string name="settings_map_summary">Eget ljust eller mörkt, oberoende av Tetras tema</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Importerat</string>
     <string name="settings_imported_shared">%1$d platser och %2$d karttillägg; %3$d fanns redan eller saknar position.</string>
     <string name="settings_not_placed">Dessa kunde inte placeras – sök efter dem i Kartor och Spara:</string>
-    <string name="settings_installed_maps_note">Varje lands karta görs på datorn, i Tetra på datorn › Inställningar › Kartor › Lägg till en karta. Synk för den hit, till Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Varje lands karta görs på datorn, i Tetra på datorn › Inställningar › Kartor › Lägg till en karta. Synk för den hit, till Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problem</string>
     <string name="settings_send_log_summary">Tetras logg och spåren från dina körningar de senaste 7 dagarna, som en zip; de stannar på enheten tills du skickar dem</string>
-    <string name="settings_contacts_note">Dina kontakter är filer i Tetra/Contacts, en per person: de synkas med datorn, där Kontakter också visar dem.</string>
+    <string name="settings_contacts_note">Dina kontakter är filer i Tetra/.System/Contacts/Shared, en per person: de synkas med datorn, där Kontakter också visar dem.</string>
     <string name="settings_in_phone_contacts_on">Telefonappen, Viber, WhatsApp och bilen visar dessa namn och foton (en skrivskyddad kopia, kontot Tetra)</string>
     <string name="settings_in_phone_contacts_off">Bara Tetra visar dina kontakter</string>
     <string name="settings_no_calendars">Inga kalendrar än</string>
@@ -1329,7 +1329,7 @@
     <string name="calendar_delete_note">Kalenderns mapp och alla dess händelser flyttas till Tetras papperskorg, på alla enheter efter nästa synk. De kan återställas från Papperskorgen.</string>
     <string name="calendar_moved_to_trash">%1$s flyttad till Papperskorgen</string>
     <string name="calendar_my_calendars">Mina kalendrar</string>
-    <string name="calendar_none_yet">Inga kalendrar än. Varje mapp i Tetra/Calendar är en.</string>
+    <string name="calendar_none_yet">Inga kalendrar än. Varje mapp i Tetra/.System/Calendar/Shared är en.</string>
     <string name="calendar_options">%1$s: färg, namn, ta bort</string>
     <string name="calendar_new_calendar">Ny kalender</string>
     <string name="calendar_export_all">Exportera alla</string>
@@ -1573,7 +1573,7 @@
     <string name="maps_search_near">Sök nära %1$s</string>
     <string name="maps_search_hint">Sök platser och orter</string>
     <string name="maps_search_loading">Läser in söklistan…</string>
-    <string name="maps_search_missing">Söklistan finns inte på enheten än: tools/maps-greece.sh skapar greece-places.tsv på datorn, och Synk för den till Tetra/Maps.</string>
+    <string name="maps_search_missing">Söklistan finns inte på enheten än: tools/maps-greece.sh skapar greece-places.tsv på datorn, och Synk för den till Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Skriv ett namn eller en ort, eller välj en typ: de närmast kartans mitt visas först.</string>
     <string name="maps_nothing_found">Inget hittades här.</string>
     <string name="maps_amea_to_place">♿ Handikapplatser att placera (%1$d)</string>
@@ -1625,7 +1625,7 @@
     <string name="car_no_gps">Ingen GPS</string>
     <string name="car_next">Nästa: %1$s</string>
     <string name="car_waiting_gps">Väntar på GPS</string>
-    <string name="car_no_graph">Inget vägnät än i Tetra/Maps</string>
+    <string name="car_no_graph">Inget vägnät än i Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Ingen väg hittades</string>
     <string name="car_pin">Nål</string>
     <string name="car_no_other_places">Inga andra sparade platser</string>

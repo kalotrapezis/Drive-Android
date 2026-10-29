@@ -99,7 +99,7 @@ import kotlinx.coroutines.withContext
 /*
  * The Calendar's screens (Plan.md § Calendar › Screens). A big screen as Google Calendar on the web: a side panel
  * (a small month, the calendars with their coloured boxes) and a month, week or day grid. A phone as Outlook: the week
- * row (pulled down: the month) over the agenda of the days. Everything is read from Tetra/Calendar's files.
+ * row (pulled down: the month) over the agenda of the days. Everything is read from Tetra/.System/Calendar/Shared's files.
  */
 
 internal enum class CalView(@androidx.annotation.StringRes val label: Int) { Agenda(R.string.calendar_view_agenda), Day(R.string.calendar_view_day), ThreeDays(R.string.calendar_view_three_days), Week(R.string.calendar_view_week), Month(R.string.calendar_view_month), Year(R.string.calendar_view_year) }
@@ -679,7 +679,7 @@ internal fun CalendarScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> U
     deleteCal?.let { c ->
         androidx.compose.material3.AlertDialog(onDismissRequest = { deleteCal = null }, title = { Text(stringResource(R.string.calendar_delete_title, c.name)) },
             text = { Text(stringResource(R.string.calendar_delete_note)) },
-            confirmButton = { TextButton(onClick = { deleteCal = null; write(context.getString(R.string.calendar_moved_to_trash, c.name)) { DriveRules.moveToTrash(root.parentFile!!, c.dir.relativeTo(root.parentFile!!).path) } }) { Text(stringResource(R.string.common_delete), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            confirmButton = { TextButton(onClick = { deleteCal = null; write(context.getString(R.string.calendar_moved_to_trash, c.name)) { TetraSystem.tetraOf(root).let { DriveRules.moveToTrash(it, DriveRules.relative(it, c.dir)) } } }) { Text(stringResource(R.string.common_delete), maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             dismissButton = { TextButton(onClick = { deleteCal = null }) { Text(stringResource(R.string.common_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis) } })
     }
 }

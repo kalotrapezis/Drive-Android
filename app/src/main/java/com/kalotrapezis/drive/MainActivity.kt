@@ -490,7 +490,7 @@ private fun LocalDriveApp(external: ExternalMedia? = null, office: ExternalMedia
                 val root = driveRoot()
                 check((root.exists() && root.isDirectory) || root.mkdirs()) { context.getString(R.string.home_drive_not_created) }
                 DriveRules.ensureSystemFolders(root)
-                if (folder == "Trash" && !File(root, folder).exists()) emptyList() else listDriveFolder(root, folder)
+                if (folder == "Trash" && !File(root, TetraSystem.onDisk(folder)).exists()) emptyList() else listDriveFolder(root, folder)
             }
             (context as MainActivity).runOnUiThread {
                 if (quiet && folder != driveFolder) return@runOnUiThread // moved on while it read; that folder loads itself

@@ -104,8 +104,8 @@ internal fun openInContacts(c: Context, uid: String? = null, newNumber: String? 
     .putExtra(Applet.EXTRA, if (uid != null) "contact:$uid" else "contact-new:${newNumber.orEmpty()}")
     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
 
-/** The Phone's own folder, Tetra/Phone: the recordings made on the computer land in Recordings (Plan.md § Phone). */
-internal fun phoneRoot() = java.io.File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), PhoneHistory.FOLDER)
+/** The Phone's own folder, Tetra/.System/Phone/Shared: the recordings made on the computer land in Recordings (Plan.md § Phone). */
+internal fun phoneRoot() = java.io.File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), TetraSystem.onDisk(PhoneHistory.FOLDER))
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -437,7 +437,7 @@ private fun PhoneContacts(contacts: List<ContactInfo>, query: String, pad: Paddi
     }
 }
 
-/** The calls recorded on the computer (Plan.md § Phone › Call recording), synced here: Tetra/Phone/Recordings, newest first. */
+/** The calls recorded on the computer (Plan.md § Phone › Call recording), synced here: Tetra/.System/Phone/Shared/Recordings, newest first. */
 @Composable
 private fun Recordings(query: String, pad: PaddingValues, version: Int) {
     val files by produceState(emptyList<java.io.File>(), version) {
@@ -725,7 +725,7 @@ private fun NumberActions(number: String, changed: () -> Unit) {
     }
 }
 
-/** The spam list (Tetra/Phone/spam.txt): each line with Remove, and a number or range (69800*) to add. */
+/** The spam list (Tetra/.System/Phone/Shared/spam.txt): each line with Remove, and a number or range (69800*) to add. */
 @Composable
 private fun SpamSettings(changed: () -> Unit) {
     val context = LocalContext.current

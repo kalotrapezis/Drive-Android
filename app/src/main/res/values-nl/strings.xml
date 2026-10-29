@@ -345,7 +345,7 @@
     <string name="settings_exported">Geëxporteerd</string>
     <string name="settings_not_exported">Niet geëxporteerd: %1$s</string>
     <string name="settings_your_calendars">Je agenda\'s</string>
-    <string name="settings_your_calendars_note">Je agenda\'s zijn de mappen in Tetra/Calendar: ze synchroniseren met de computer en Claude kan ze daar beheren.</string>
+    <string name="settings_your_calendars_note">Je agenda\'s zijn de mappen in Tetra/.System/Calendar/Shared: ze synchroniseren met de computer en Claude kan ze daar beheren.</string>
     <string name="settings_calendar_import_summary">Een .ics-bestand of de zip van Google Takeout; elke agenda in die met dezelfde naam, een bestaande afspraak wordt bijgewerkt</string>
     <string name="settings_export_all_summary">Elke agenda als .ics, in een zip</string>
     <string name="settings_map_summary">Eigen licht of donker, los van het thema van Tetra</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Geïmporteerd</string>
     <string name="settings_imported_shared">%1$d plaatsen en %2$d kaarttoevoegingen; %3$d al aanwezig of zonder positie.</string>
     <string name="settings_not_placed">Deze konden niet worden geplaatst — zoek ze in Kaarten en kies Opslaan:</string>
-    <string name="settings_installed_maps_note">De kaart van elk land wordt op de computer gemaakt, in Tetra op de computer › Instellingen › Kaarten › Kaart toevoegen. Sync brengt hem hierheen, naar Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">De kaart van elk land wordt op de computer gemaakt, in Tetra op de computer › Instellingen › Kaarten › Kaart toevoegen. Sync brengt hem hierheen, naar Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problemen</string>
     <string name="settings_send_log_summary">Het log van Tetra en de sporen van je ritten van de afgelopen 7 dagen, als één zip; ze blijven op dit apparaat tot je ze verzendt</string>
-    <string name="settings_contacts_note">Je contacten zijn bestanden in Tetra/Contacts, één per persoon: ze synchroniseren met de computer, waar Contacten ze ook toont.</string>
+    <string name="settings_contacts_note">Je contacten zijn bestanden in Tetra/.System/Contacts/Shared, één per persoon: ze synchroniseren met de computer, waar Contacten ze ook toont.</string>
     <string name="settings_in_phone_contacts_on">De kiezer, Viber, WhatsApp en de auto tonen deze namen en foto\'s (een alleen-lezen kopie, account Tetra)</string>
     <string name="settings_in_phone_contacts_off">Alleen Tetra toont je contacten</string>
     <string name="settings_no_calendars">Nog geen agenda\'s</string>
@@ -1329,7 +1329,7 @@
     <string name="calendar_delete_note">De map van de agenda en al zijn afspraken gaan naar de prullenbak van Tetra, op elk apparaat na de volgende sync. Ze kunnen worden teruggezet uit de prullenbak.</string>
     <string name="calendar_moved_to_trash">%1$s naar de prullenbak verplaatst</string>
     <string name="calendar_my_calendars">Mijn agenda\'s</string>
-    <string name="calendar_none_yet">Nog geen agenda\'s. Elke map in Tetra/Calendar is er een.</string>
+    <string name="calendar_none_yet">Nog geen agenda\'s. Elke map in Tetra/.System/Calendar/Shared is er een.</string>
     <string name="calendar_options">%1$s: kleur, naam, verwijderen</string>
     <string name="calendar_new_calendar">Nieuwe agenda</string>
     <string name="calendar_export_all">Alles exporteren</string>
@@ -1573,7 +1573,7 @@
     <string name="maps_search_near">Zoeken bij %1$s</string>
     <string name="maps_search_hint">Plaatsen en steden zoeken</string>
     <string name="maps_search_loading">Zoeklijst laden…</string>
-    <string name="maps_search_missing">De zoeklijst staat nog niet op dit apparaat: tools/maps-greece.sh maakt greece-places.tsv op de computer, en Sync brengt het naar Tetra/Maps.</string>
+    <string name="maps_search_missing">De zoeklijst staat nog niet op dit apparaat: tools/maps-greece.sh maakt greece-places.tsv op de computer, en Sync brengt het naar Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Typ een naam of plaats, of kies een soort: de dichtstbijzijnde bij het midden van de kaart komen eerst.</string>
     <string name="maps_nothing_found">Hier niets gevonden.</string>
     <string name="maps_amea_to_place">♿ Invalidenplekken te plaatsen (%1$d)</string>
@@ -1625,7 +1625,7 @@
     <string name="car_no_gps">Geen gps</string>
     <string name="car_next">Volgende: %1$s</string>
     <string name="car_waiting_gps">Wachten op gps</string>
-    <string name="car_no_graph">Nog geen routeringsgraaf in Tetra/Maps</string>
+    <string name="car_no_graph">Nog geen routeringsgraaf in Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Geen route gevonden</string>
     <string name="car_pin">Speld</string>
     <string name="car_no_other_places">Geen andere opgeslagen plaatsen</string>

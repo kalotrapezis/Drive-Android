@@ -345,7 +345,7 @@
     <string name="settings_exported">Eksporditud</string>
     <string name="settings_not_exported">Ei eksporditud: %1$s</string>
     <string name="settings_your_calendars">Teie kalendrid</string>
-    <string name="settings_your_calendars_note">Teie kalendrid on kaustad kaustas Tetra/Calendar: need sünkroonitakse arvutiga ja Claude saab neid seal hallata.</string>
+    <string name="settings_your_calendars_note">Teie kalendrid on kaustad kaustas Tetra/.System/Calendar/Shared: need sünkroonitakse arvutiga ja Claude saab neid seal hallata.</string>
     <string name="settings_calendar_import_summary">.ics-fail või Google Takeouti zip; iga kalender samanimelisse, juba olemasolev sündmus uuendatakse</string>
     <string name="settings_export_all_summary">Iga kalender .ics-failina, zipis</string>
     <string name="settings_map_summary">Oma hele või tume, Tetra teemast eraldi</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Imporditud</string>
     <string name="settings_imported_shared">%1$d kohta ja %2$d kaardilisandust; %3$d juba siin või asukohata.</string>
     <string name="settings_not_placed">Neid ei õnnestunud paigutada – otsige neid Kaartides ja salvestage:</string>
-    <string name="settings_installed_maps_note">Iga riigi kaart tehakse arvutis, jaotises Tetra arvutis › Seaded › Kaardid › Lisa kaart. Sünkroonimine toob selle siia, kausta Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Iga riigi kaart tehakse arvutis, jaotises Tetra arvutis › Seaded › Kaardid › Lisa kaart. Sünkroonimine toob selle siia, kausta Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Probleemid</string>
     <string name="settings_send_log_summary">Tetra logi ja teie viimase 7 päeva sõitude jäljed ühe zipina; need jäävad sellesse seadmesse, kuni need saadate</string>
-    <string name="settings_contacts_note">Teie kontaktid on failid kaustas Tetra/Contacts, üks inimese kohta: need sünkroonitakse arvutiga, kus Kontaktid neid samuti näitab.</string>
+    <string name="settings_contacts_note">Teie kontaktid on failid kaustas Tetra/.System/Contacts/Shared, üks inimese kohta: need sünkroonitakse arvutiga, kus Kontaktid neid samuti näitab.</string>
     <string name="settings_in_phone_contacts_on">Valija, Viber, WhatsApp ja auto näitavad neid nimesid ja fotosid (kirjutuskaitstud koopia, konto Tetra)</string>
     <string name="settings_in_phone_contacts_off">Teie kontakte näitab ainult Tetra</string>
     <string name="settings_no_calendars">Kalendreid veel pole</string>
@@ -1329,7 +1329,7 @@
     <string name="calendar_delete_note">Kalendri kaust ja kõik selle sündmused lähevad Tetra prügikasti, pärast järgmist sünkroonimist igas seadmes. Neid saab prügikastist taastada.</string>
     <string name="calendar_moved_to_trash">%1$s teisaldati prügikasti</string>
     <string name="calendar_my_calendars">Minu kalendrid</string>
-    <string name="calendar_none_yet">Kalendreid veel pole. Iga kaust kaustas Tetra/Calendar on üks kalender.</string>
+    <string name="calendar_none_yet">Kalendreid veel pole. Iga kaust kaustas Tetra/.System/Calendar/Shared on üks kalender.</string>
     <string name="calendar_options">%1$s: värv, nimi, kustutamine</string>
     <string name="calendar_new_calendar">Uus kalender</string>
     <string name="calendar_export_all">Ekspordi kõik</string>
@@ -1573,7 +1573,7 @@
     <string name="maps_search_near">Otsi %1$s lähedalt</string>
     <string name="maps_search_hint">Otsi kohti ja linnu</string>
     <string name="maps_search_loading">Otsinguloendi laadimine…</string>
-    <string name="maps_search_missing">Otsinguloendit pole veel selles seadmes: tools/maps-greece.sh teeb arvutis faili greece-places.tsv ja sünkroonimine toob selle kausta Tetra/Maps.</string>
+    <string name="maps_search_missing">Otsinguloendit pole veel selles seadmes: tools/maps-greece.sh teeb arvutis faili greece-places.tsv ja sünkroonimine toob selle kausta Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Tippige nimi või linn või valige liik: kaardi keskpunktile lähimad tulevad esimesena.</string>
     <string name="maps_nothing_found">Siit ei leitud midagi.</string>
     <string name="maps_amea_to_place">♿ Paigutamata invakohad (%1$d)</string>
@@ -1625,7 +1625,7 @@
     <string name="car_no_gps">GPS puudub</string>
     <string name="car_next">Järgmine: %1$s</string>
     <string name="car_waiting_gps">GPS-i ootamine</string>
-    <string name="car_no_graph">Kaustas Tetra/Maps pole veel marsruutimisgraafi</string>
+    <string name="car_no_graph">Kaustas Tetra/.System/Maps/Shared pole veel marsruutimisgraafi</string>
     <string name="car_no_way">Teed ei leitud</string>
     <string name="car_pin">Nööpnõel</string>
     <string name="car_no_other_places">Teisi salvestatud kohti pole</string>

@@ -21,7 +21,7 @@ class PhoneScreening : CallScreeningService() {
         val number = details.handle?.schemeSpecificPart?.takeIf { it.isNotBlank() && details.handlePresentation == TelecomManager.PRESENTATION_ALLOWED }
         val spam = number?.let { PhoneSpam.matches(PhoneSpam.read(), it, PhoneCountry.of(this)) }
         val response = when {
-            // spam and unwanted (Tetra/Phone/spam.txt, the same list on every device): declined before it rings, no notice; Recents keeps it
+            // spam and unwanted (Tetra/.System/Phone/Shared/spam.txt, the same list on every device): declined before it rings, no notice; Recents keeps it
             spam != null -> CallResponse.Builder().setDisallowCall(true).setRejectCall(true).setSkipNotification(true).build()
             number == null && PhonePrefs.declineHidden(this) -> CallResponse.Builder().setDisallowCall(true).setRejectCall(true).build()
             number != null && PhonePrefs.silenceUnknown(this) && PhoneCalls.contactFor(number) == null -> CallResponse.Builder().setSilenceCall(true).build()
@@ -50,7 +50,7 @@ internal object PhoneBlockedNote {
 
 /**
  * Spam and unwanted callers (the user, 24 Oct: "a list; when they call and are in it, the call is closed and never rings"):
- * Tetra/Phone/spam.txt, plain text any AI can read — one number a line, a note after #, a * at the end for every number
+ * Tetra/.System/Phone/Shared/spam.txt, plain text any AI can read — one number a line, a note after #, a * at the end for every number
  * that starts so (69800* for a whole range). The same file on the phone, the tablet and the computer (scope phone); the
  * phone app's screening declines a match before it rings. Marking on the phone also puts the number in Android's own
  * blocked list (its SMS are blocked too).

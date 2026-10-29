@@ -300,7 +300,7 @@ internal object PhoneCalls {
     fun hangUp(call: Call) = if (call.state == Call.STATE_RINGING) call.reject(false, null) else call.disconnect()
 }
 
-/** Notes typed during calls: Tetra/Phone/notes.jsonl, one line per note ({"at", "number", "note"}), the last line for a call wins. */
+/** Notes typed during calls: Tetra/.System/Phone/Shared/notes.jsonl, one line per note ({"at", "number", "note"}), the last line for a call wins. */
 internal object PhoneNotes {
     private fun file() = java.io.File(phoneRoot(), "notes.jsonl")
     private fun near(at: Long, other: Long) = kotlin.math.abs(at - other) < 15_000

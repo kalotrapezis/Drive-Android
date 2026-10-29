@@ -10,7 +10,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 /*
- * The Timer's alarms and stopwatch (Plan.md § Timer › Alarms and stopwatch), files beside the timers in Tetra/Timer and
+ * The Timer's alarms and stopwatch (Plan.md § Timer › Alarms and stopwatch), files beside the timers in Tetra/.System/Timer/Shared and
  * kept by the same rules: one file per item per device (`<id>.<device>.json`, written beside then renamed), the highest
  * `rev` among an id's files is it. A `kind` tells them from timers; their states are words the timers' readers (older
  * builds, desktop/timer.js) do not know, so those skip them rather than show them as timers.

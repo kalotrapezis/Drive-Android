@@ -26,7 +26,7 @@ internal object MapsLanes {
     fun parse(lanes: String): List<List<String>> =
         lanes.split('|').map { l -> l.split(';').map { it.trim() }.map { if (it.isEmpty() || it == "none") "through" else it }.distinct() }
 
-    /** The lanes files in [dir] (Tetra/Maps), read once and again when one changes; nothing when there are none. */
+    /** The lanes files in [dir] (Tetra/.System/Maps/Shared), read once and again when one changes; nothing when there are none. */
     @Synchronized private fun load(dir: File): Map<Long, List<End>> {
         val files = MapsFiles.lists(dir, "lanes")
         if (files.isEmpty()) return emptyMap()

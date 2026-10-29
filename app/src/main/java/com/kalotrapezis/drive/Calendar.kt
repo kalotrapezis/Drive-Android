@@ -15,8 +15,8 @@ import org.dmfs.rfc5545.recur.RecurrenceRule
 
 /*
  * Tetra's Calendar (Plan.md § Calendar). The calendars are files, so Claude or any person can change them:
- *   Tetra/Calendar/<calendar>/color         one line, #RRGGBB (vdir's own convention, as khal and vdirsyncer)
- *   Tetra/Calendar/<calendar>/<event>.ics   one iCalendar (RFC 5545) file per event, its changed days inside it
+ *   Tetra/.System/Calendar/Shared/<calendar>/color         one line, #RRGGBB (vdir's own convention, as khal and vdirsyncer)
+ *   Tetra/.System/Calendar/Shared/<calendar>/<event>.ics   one iCalendar (RFC 5545) file per event, its changed days inside it
  * Files sync carries the folder as it carries everything else; nothing here talks to sync.
  */
 
@@ -225,7 +225,7 @@ object CalendarFiles {
     val PALETTE = listOf(0xFFE91E63, 0xFFD50000, 0xFFE67C73, 0xFFF4511E, 0xFFF6BF26, 0xFF33B679, 0xFF0B8043,
         0xFF039BE5, 0xFF3F51B5, 0xFF7986CB, 0xFF8E24AA, 0xFF616161).map { it.toInt() }
 
-    fun root(tetra: File) = File(tetra, FOLDER)
+    fun root(tetra: File) = File(tetra, TetraSystem.onDisk(FOLDER))
 
     fun calendars(root: File): List<CalendarInfo> = (root.listFiles() ?: emptyArray())
         .filter { it.isDirectory && !it.name.startsWith(".") }
@@ -512,13 +512,13 @@ object CalendarFiles {
 
     /** An event file to Tetra's Trash (sync never deletes; a move into Trash crosses as a move). Returns where it went. */
     fun trash(calendarRoot: File, file: File): String =
-        DriveRules.moveToTrash(calendarRoot.parentFile!!, file.relativeTo(calendarRoot.parentFile!!).path)
+        TetraSystem.tetraOf(calendarRoot).let { DriveRules.moveToTrash(it, DriveRules.relative(it, file)) }
 
     /**
      * The Calendar's part of Tetra's Trash (asked 18 Oct): its event files and when each went in, newest first. A move
      * into Trash/ changes the ctime only, as sync's 30-day sweep reads it (SyncClient, purgatory.js).
      */
-    fun trashed(calendarRoot: File): List<Pair<CalFile, Long>> = (File(calendarRoot.parentFile, "Trash").listFiles() ?: emptyArray())
+    fun trashed(calendarRoot: File): List<Pair<CalFile, Long>> = (File(TetraSystem.tetraOf(calendarRoot), TetraSystem.onDisk("Trash")).listFiles() ?: emptyArray())
         .filter { it.isFile && it.name.endsWith(".ics", true) && !it.name.startsWith(".") }
         .map { read(it) to runCatching { android.system.Os.lstat(it.path).st_ctime * 1000 }.getOrDefault(it.lastModified()) }
         .sortedByDescending { it.second }

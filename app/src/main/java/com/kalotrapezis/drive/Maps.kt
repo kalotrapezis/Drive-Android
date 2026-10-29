@@ -4,7 +4,7 @@ import org.json.JSONObject
 import java.io.File
 
 /*
- * Tetra's Maps (Plan.md § Maps). Everything is a file in Tetra/Maps (~/Tetra/Files/Maps on the computer, hidden in
+ * Tetra's Maps (Plan.md § Maps). Everything is a file in Tetra/.System/Maps/Shared (~/Tetra/Files/Maps on the computer, hidden in
  * Files like the Calendar and the Timer, synced): the computer makes them (tools/maps-greece.sh) and sync carries them,
  * so the desktop can use the same ones later.
  *
@@ -76,7 +76,7 @@ internal data class Place(
 /**
  * A trip: stops gone to in order, A, B, C… (the user, 22 Oct: "a plan mode for the phone … how many stops you will do 5,
  * point to the 1st stop, the second stop … can be saved as a trip. When we continue from a stop … start automaticaly for
- * the next"). A file in Tetra/Maps/Trips, so it syncs and desktop Tetra can read it.
+ * the next"). A file in Tetra/.System/Maps/Shared/Trips, so it syncs and desktop Tetra can read it.
  */
 internal data class Trip(val id: String, val name: String, val stops: List<Place>) {
     fun json(): String = JSONObject().put("id", id).put("name", name).put("stops", org.json.JSONArray(stops.map {
@@ -110,7 +110,7 @@ internal object MapsFiles {
     /** Where the car is: one place with this id ("My car"), saved over by the next parking. */
     const val PARKING = "parking"
 
-    fun root(tetra: File) = File(tetra, FOLDER)
+    fun root(tetra: File) = File(tetra, TetraSystem.onDisk(FOLDER))
     /** The first map (a map is there when it is a file); [maps] are all of them. */
     fun map(root: File) = ids(root).firstOrNull()?.let { File(root, "$it.pmtiles") } ?: File(root, MAP)
     fun graph(root: File) = File(root, GRAPH)
@@ -280,9 +280,9 @@ internal object MapsFiles {
     private fun files(root: File, id: String) = File(root, PLACES).listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".json", true) }
         .filter { f -> f.nameWithoutExtension == id || runCatching { Place.parse(f.readText(), f)?.id }.getOrNull() == id }
 
-    /** To Tetra/Trash, never deleted: a synced file's removal crosses as a move, and it can be put back. */
+    /** To Tetra/.System/Trash/Shared, never deleted: a synced file's removal crosses as a move, and it can be put back. */
     private fun trash(root: File, f: File) {
-        runCatching { DriveRules.moveToTrash(root.parentFile!!, f.relativeTo(root.parentFile!!).path) }
+        runCatching { TetraSystem.tetraOf(root).let { DriveRules.moveToTrash(it, DriveRules.relative(it, f)) } }
     }
 
     private fun write(dir: File, p: Place): Place {
@@ -299,7 +299,7 @@ internal object MapsFiles {
     /** A map in Settings › Maps: [about] "128 MB · with roads · 27 Oct 2026", [old] when it is due to be remade. */
     class Installed(val id: String, val name: String, val about: String, val old: Boolean)
 
-    /** What is in Tetra/Maps, for Settings › Maps. */
+    /** What is in Tetra/.System/Maps/Shared, for Settings › Maps. */
     fun installed(context: android.content.Context, root: File): List<Installed> {
         val today = java.time.LocalDate.now()
         val day = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.getDefault())

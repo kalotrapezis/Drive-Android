@@ -345,7 +345,7 @@
     <string name="settings_exported">Exportováno</string>
     <string name="settings_not_exported">Neexportováno: %1$s</string>
     <string name="settings_your_calendars">Vaše kalendáře</string>
-    <string name="settings_your_calendars_note">Vaše kalendáře jsou složky v Tetra/Calendar: synchronizují se s počítačem a Claude je tam může spravovat.</string>
+    <string name="settings_your_calendars_note">Vaše kalendáře jsou složky v Tetra/.System/Calendar/Shared: synchronizují se s počítačem a Claude je tam může spravovat.</string>
     <string name="settings_calendar_import_summary">Soubor .ics nebo zip z Google Takeout; každý kalendář do toho se stejným názvem, existující událost se aktualizuje</string>
     <string name="settings_export_all_summary">Každý kalendář jako .ics v jednom zipu</string>
     <string name="settings_map_summary">Vlastní světlý nebo tmavý, nezávisle na motivu Tetry</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Importováno</string>
     <string name="settings_imported_shared">Míst: %1$d, doplňků mapy: %2$d; %3$d už tu bylo nebo nemá polohu.</string>
     <string name="settings_not_placed">Tato se nepodařilo umístit — vyhledejte je v Mapách a uložte:</string>
-    <string name="settings_installed_maps_note">Mapa každé země se vytváří v počítači, v Tetra v počítači › Nastavení › Mapy › Přidat mapu. Synchronizace ji sem přenese, do Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Mapa každé země se vytváří v počítači, v Tetra v počítači › Nastavení › Mapy › Přidat mapu. Synchronizace ji sem přenese, do Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problémy</string>
     <string name="settings_send_log_summary">Protokol Tetry a záznamy vašich jízd za posledních 7 dní v jednom zipu; zůstávají na tomto zařízení, dokud je neodešlete</string>
-    <string name="settings_contacts_note">Vaše kontakty jsou soubory v Tetra/Contacts, jeden na osobu: synchronizují se s počítačem, kde je zobrazují i Kontakty.</string>
+    <string name="settings_contacts_note">Vaše kontakty jsou soubory v Tetra/.System/Contacts/Shared, jeden na osobu: synchronizují se s počítačem, kde je zobrazují i Kontakty.</string>
     <string name="settings_in_phone_contacts_on">Vytáčení, Viber, WhatsApp a auto zobrazí tato jména a fotky (kopie jen pro čtení, účet Tetra)</string>
     <string name="settings_in_phone_contacts_off">Vaše kontakty zobrazuje jen Tetra</string>
     <string name="settings_no_calendars">Zatím žádné kalendáře</string>
@@ -1409,7 +1409,7 @@
     <string name="calendar_delete_note">Složka kalendáře a všechny jeho události půjdou do Koše Tetry, po další synchronizaci na každém zařízení. Z Koše je lze obnovit.</string>
     <string name="calendar_moved_to_trash">%1$s přesunut do Koše</string>
     <string name="calendar_my_calendars">Moje kalendáře</string>
-    <string name="calendar_none_yet">Zatím žádné kalendáře. Každá složka v Tetra/Calendar je jeden.</string>
+    <string name="calendar_none_yet">Zatím žádné kalendáře. Každá složka v Tetra/.System/Calendar/Shared je jeden.</string>
     <string name="calendar_options">%1$s: barva, název, smazat</string>
     <string name="calendar_new_calendar">Nový kalendář</string>
     <string name="calendar_export_all">Exportovat vše</string>
@@ -1659,7 +1659,7 @@
     <string name="maps_search_near">Hledat poblíž %1$s</string>
     <string name="maps_search_hint">Hledat místa a města</string>
     <string name="maps_search_loading">Načítání seznamu pro hledání…</string>
-    <string name="maps_search_missing">Seznam pro hledání v tomto zařízení zatím není: tools/maps-greece.sh vytvoří na počítači greece-places.tsv a Synchronizace ho přenese do Tetra/Maps.</string>
+    <string name="maps_search_missing">Seznam pro hledání v tomto zařízení zatím není: tools/maps-greece.sh vytvoří na počítači greece-places.tsv a Synchronizace ho přenese do Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Napište název nebo město, nebo vyberte druh: nejbližší ke středu mapy jsou první.</string>
     <string name="maps_nothing_found">Tady nic nenalezeno.</string>
     <string name="maps_amea_to_place">♿ ZTP k umístění (%1$d)</string>
@@ -1711,7 +1711,7 @@
     <string name="car_no_gps">Bez GPS</string>
     <string name="car_next">Další: %1$s</string>
     <string name="car_waiting_gps">Čekání na GPS</string>
-    <string name="car_no_graph">Zatím žádný graf tras v Tetra/Maps</string>
+    <string name="car_no_graph">Zatím žádný graf tras v Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Cesta nenalezena</string>
     <string name="car_pin">Špendlík</string>
     <string name="car_no_other_places">Žádná další uložená místa</string>

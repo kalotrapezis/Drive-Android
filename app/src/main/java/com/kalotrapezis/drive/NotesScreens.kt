@@ -109,7 +109,7 @@ private val InkOnColor = Color(0xFF1B1D1F)
 // Sheets are solid: over a page of coloured notes a see-through one was hard to read (asked 2026-09-26).
 internal val SheetColor = Color(0xFF16191A)
 
-internal fun notesStore() = NotesStore(File(TetraFolder.root(Environment.getExternalStorageDirectory()), ".notes"))
+internal fun notesStore() = NotesStore(TetraSystem.dir(TetraFolder.root(Environment.getExternalStorageDirectory()), "Notes", "Shared"))
 
 private fun inView(n: Note, v: NotesView) = when (v) {
     NotesView.Trash -> n.trashedAt != null

@@ -333,7 +333,7 @@ internal class AssistantTools(
     }
 
     // ---- Notes ----
-    private fun notes() = NotesStore(File(tetra, ".notes"), "tetra-assistant")
+    private fun notes() = NotesStore(TetraSystem.dir(tetra, "Notes", "Shared"), "tetra-assistant")
 
     // shortcut: reads every note whole for each search (the user: find what a note has inside); an on-disk text index past a few thousand notes
     private fun notesSearch(a: JSONObject): ToolResult {

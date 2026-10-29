@@ -345,7 +345,7 @@
     <string name="settings_exported">Експортирано</string>
     <string name="settings_not_exported">Не е експортирано: %1$s</string>
     <string name="settings_your_calendars">Вашите календари</string>
-    <string name="settings_your_calendars_note">Вашите календари са папките в Tetra/Calendar: синхронизират се с компютъра и Claude може да ги управлява там.</string>
+    <string name="settings_your_calendars_note">Вашите календари са папките в Tetra/.System/Calendar/Shared: синхронизират се с компютъра и Claude може да ги управлява там.</string>
     <string name="settings_calendar_import_summary">Файл .ics или zip от Google Takeout; всеки календар в този със същото име, вече съществуващо събитие се обновява</string>
     <string name="settings_export_all_summary">Всеки календар като .ics, в zip</string>
     <string name="settings_map_summary">Собствена светла или тъмна, отделно от темата на Tetra</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Импортирано</string>
     <string name="settings_imported_shared">%1$d места и %2$d добавки към картата; %3$d вече са тук или без позиция.</string>
     <string name="settings_not_placed">Тези не можаха да бъдат поставени — потърсете ги в Карти и Запишете:</string>
-    <string name="settings_installed_maps_note">Картата на всяка държава се създава на компютъра, в Tetra на компютъра › Настройки › Карти › Добавяне на карта. Синхронизация я донася тук, в Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Картата на всяка държава се създава на компютъра, в Tetra на компютъра › Настройки › Карти › Добавяне на карта. Синхронизация я донася тук, в Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Проблеми</string>
     <string name="settings_send_log_summary">Дневникът на Tetra и следите от пътуванията ви през последните 7 дни, в един zip; остават на това устройство, докато не ги изпратите</string>
-    <string name="settings_contacts_note">Контактите ви са файлове в Tetra/Contacts, по един на човек: синхронизират се с компютъра, където Контакти също ги показва.</string>
+    <string name="settings_contacts_note">Контактите ви са файлове в Tetra/.System/Contacts/Shared, по един на човек: синхронизират се с компютъра, където Контакти също ги показва.</string>
     <string name="settings_in_phone_contacts_on">Набирачът, Viber, WhatsApp и колата показват тези имена и снимки (копие само за четене, акаунт Tetra)</string>
     <string name="settings_in_phone_contacts_off">Само Tetra показва контактите ви</string>
     <string name="settings_no_calendars">Все още няма календари</string>
@@ -1329,7 +1329,7 @@
     <string name="calendar_delete_note">Папката на календара и всички негови събития отиват в Кошчето на Tetra, на всяко устройство след следващата синхронизация. Могат да се възстановят от Кошчето.</string>
     <string name="calendar_moved_to_trash">%1$s е преместен в Кошчето</string>
     <string name="calendar_my_calendars">Моите календари</string>
-    <string name="calendar_none_yet">Все още няма календари. Всяка папка в Tetra/Calendar е един календар.</string>
+    <string name="calendar_none_yet">Все още няма календари. Всяка папка в Tetra/.System/Calendar/Shared е един календар.</string>
     <string name="calendar_options">%1$s: цвят, име, изтриване</string>
     <string name="calendar_new_calendar">Нов календар</string>
     <string name="calendar_export_all">Експортирай всички</string>
@@ -1573,7 +1573,7 @@
     <string name="maps_search_near">Търсене близо до %1$s</string>
     <string name="maps_search_hint">Търсене на места и градове</string>
     <string name="maps_search_loading">Зареждане на списъка за търсене…</string>
-    <string name="maps_search_missing">Списъкът за търсене все още не е на това устройство: tools/maps-greece.sh създава greece-places.tsv на компютъра, а Синхронизация го донася в Tetra/Maps.</string>
+    <string name="maps_search_missing">Списъкът за търсене все още не е на това устройство: tools/maps-greece.sh създава greece-places.tsv на компютъра, а Синхронизация го донася в Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Въведете име или град, или изберете вид: най-близките до средата на картата са първи.</string>
     <string name="maps_nothing_found">Нищо не е намерено тук.</string>
     <string name="maps_amea_to_place">♿ места за поставяне (%1$d)</string>
@@ -1625,7 +1625,7 @@
     <string name="car_no_gps">Няма GPS</string>
     <string name="car_next">Следваща: %1$s</string>
     <string name="car_waiting_gps">Изчакване на GPS</string>
-    <string name="car_no_graph">Все още няма граф за маршрути в Tetra/Maps</string>
+    <string name="car_no_graph">Все още няма граф за маршрути в Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Няма намерен маршрут</string>
     <string name="car_pin">Карфица</string>
     <string name="car_no_other_places">Няма други запазени места</string>

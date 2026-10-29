@@ -1,6 +1,6 @@
 ---
 name: tetra-timer
-description: Read, start, pause, resume or stop the user's timers, alarms and stopwatch in Tetra — each is a small JSON file in ~/Tetra/Files/Timer that syncs to their phone and tablet, where it counts down, rings or counts up. Use whenever the user asks to set a timer, start a countdown, remind them in N minutes, set, list, switch off or delete an alarm (wake me at 7, every weekday at 7:30), start, pause, read or reset the stopwatch, see what timers are running or how long is left, or pause, resume, stop or delete a timer.
+description: Read, start, pause, resume or stop the user's timers, alarms and stopwatch in Tetra — each is a small JSON file in ~/Tetra/.System/Timer/Shared that syncs to their phone and tablet, where it counts down, rings or counts up. Use whenever the user asks to set a timer, start a countdown, remind them in N minutes, set, list, switch off or delete an alarm (wake me at 7, every weekday at 7:30), start, pause, read or reset the stopwatch, see what timers are running or how long is left, or pause, resume, stop or delete a timer.
 ---
 
 # Tetra's timers, alarms and stopwatch
@@ -9,10 +9,13 @@ The user's timers are **files**: Tetra (their own app, on Android and the PC) co
 end, and syncs the folder to their phone and tablet within seconds. You manage them by writing the files.
 
 ```
-~/Tetra/Files/Timer/                   (/sdcard/Tetra/Timer on a phone)
+~/Tetra/.System/Timer/Shared/   (/sdcard/Tetra/.System/Timer/Shared on a phone)
   k3f9a2.24091RPADG.json               one file per timer per device: <id>.<device>.json
   k3f9a2.theologos-82xm.json           the same timer, changed on the computer
 ```
+
+Tetra keeps it in its hidden system folder since 29 Oct 2026 (it was `~/Tetra/Files/Timer` before; `tetra_timer.py` still
+finds that one on a computer whose Tetra has not moved it yet, so prefer the helper over hard-coded paths).
 
 ## Use the helper first
 
@@ -51,7 +54,7 @@ A file:
 - **Write only your own file**: `<id>.claude.json` with `"by":"claude"`. Never edit or delete another device's file;
   a higher `rev` in yours overrides it.
 - Write beside, then rename, so a sync never reads half a file:
-  `printf '%s\n' "$JSON" > ~/Tetra/Files/Timer/.k3f9a2.claude.json.part && mv ~/Tetra/Files/Timer/.k3f9a2.claude.json.part ~/Tetra/Files/Timer/k3f9a2.claude.json`
+  `printf '%s\n' "$JSON" > ~/Tetra/.System/Timer/Shared/.k3f9a2.claude.json.part && mv ~/Tetra/.System/Timer/Shared/.k3f9a2.claude.json.part ~/Tetra/.System/Timer/Shared/k3f9a2.claude.json`
 - Times in `ends` are UTC with a `Z`: `date -u -d '+10 min' +%Y-%m-%dT%H:%M:%SZ`. Never work them out by hand.
 
 ## Doing things by hand
@@ -63,7 +66,7 @@ A file:
 python3 - <<'EOF'
 import json, glob, os, datetime as d
 now = d.datetime.now(d.timezone.utc); best = {}
-for f in glob.glob(os.path.expanduser('~/Tetra/Files/Timer/*.json')):
+for f in glob.glob(os.path.expanduser('~/Tetra/.System/Timer/Shared/*.json')):
     try: t = json.load(open(f))
     except Exception: continue
     t.setdefault('id', os.path.basename(f).split('.')[0])

@@ -12,6 +12,15 @@ How to write here:
 - The user's own original wishlist (Sept 2026) is at the bottom, unchanged.
 
 ## Now — who is doing what
+- [~] (system-userspace session, 29 Oct; branches `claude/system-userspace` here and `system-userspace` in Drive; not merged, not pushed,
+      not installed, the move not run on the real folders) **Files and Photos are the user's own** (the user: "Make Tetra process
+      everything from the system folder; Files and Photos to be userspace only"). Calendar, Contacts, Data, Phone, Timer, Maps (all
+      of it) and Files' Trash → `.System/<App>/Shared`; .notes → Notes/Shared; the phone's .templates → Office/Data; From computer,
+      From phone and AI Assist's pictures stay in Files (they are the user's). Sync's names unchanged ("Calendar/…"), each device
+      maps them to its disk, so mixed versions sync in any order (SYNC_PLAN.md 6av). The move: by renaming, once a device, at the
+      first start (Android: the first TetraFolder.root). Sync's identical "(n)" copies → `.System/Backups/Data/Sync copies/<date>/`,
+      the rest listed there. Reset backs up and deletes the apps' Shared as it did their Files folders. Skills read the new place
+      (the old one until Tetra moved it). Table: Drive's desktop/SYSTEM.md. Tests: TetraSystemTest, desktop system/files/sync tests.
 - [~] (assistant session, 29 Oct; branch `claude/assistant`, worktree Drive-Android-worktrees/assistant; not merged) **Tetra Assistant**
       (the user: a phone voice assistant in place of ChatGPT and the keyboard, acting on Tetra's own data; walkie-talkie, not live; no
       cloud connectors: the model is online, the tools run on the phone). Assistant.kt: Mistral chat (`mistral-small-latest`) with 14

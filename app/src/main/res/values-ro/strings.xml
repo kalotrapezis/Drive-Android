@@ -345,7 +345,7 @@
     <string name="settings_exported">Exportat</string>
     <string name="settings_not_exported">Neexportat: %1$s</string>
     <string name="settings_your_calendars">Calendarele tale</string>
-    <string name="settings_your_calendars_note">Calendarele tale sunt dosarele din Tetra/Calendar: se sincronizează cu computerul, iar Claude le poate gestiona acolo.</string>
+    <string name="settings_your_calendars_note">Calendarele tale sunt dosarele din Tetra/.System/Calendar/Shared: se sincronizează cu computerul, iar Claude le poate gestiona acolo.</string>
     <string name="settings_calendar_import_summary">Un fișier .ics sau arhiva zip din Google Takeout; fiecare calendar în cel cu numele său, un eveniment deja existent actualizat</string>
     <string name="settings_export_all_summary">Fiecare calendar ca .ics, într-un zip</string>
     <string name="settings_map_summary">Propriul mod luminos sau întunecat, separat de tema Tetra</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Importat</string>
     <string name="settings_imported_shared">%1$d locuri și %2$d adăugiri pe hartă; %3$d deja aici sau fără poziție.</string>
     <string name="settings_not_placed">Acestea nu au putut fi plasate – caută-le în Hărți și salvează-le:</string>
-    <string name="settings_installed_maps_note">Harta fiecărei țări se face pe computer, în Tetra de pe computer › Setări › Hărți › Adaugă o hartă. Sincronizare o aduce aici, în Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Harta fiecărei țări se face pe computer, în Tetra de pe computer › Setări › Hărți › Adaugă o hartă. Sincronizare o aduce aici, în Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Probleme</string>
     <string name="settings_send_log_summary">Jurnalul Tetra și traseele condusului din ultimele 7 zile, într-un zip; rămân pe acest dispozitiv până le trimiți</string>
-    <string name="settings_contacts_note">Contactele tale sunt fișiere în Tetra/Contacts, unul pentru fiecare persoană: se sincronizează cu computerul, unde le afișează și Contacte.</string>
+    <string name="settings_contacts_note">Contactele tale sunt fișiere în Tetra/.System/Contacts/Shared, unul pentru fiecare persoană: se sincronizează cu computerul, unde le afișează și Contacte.</string>
     <string name="settings_in_phone_contacts_on">Formatorul, Viber, WhatsApp și mașina afișează aceste nume și fotografii (o copie doar în citire, contul Tetra)</string>
     <string name="settings_in_phone_contacts_off">Doar Tetra îți afișează contactele</string>
     <string name="settings_no_calendars">Niciun calendar încă</string>
@@ -1369,7 +1369,7 @@
     <string name="calendar_delete_note">Dosarul calendarului și toate evenimentele sale merg în Coșul de gunoi Tetra, pe fiecare dispozitiv după următoarea sincronizare. Pot fi restaurate din Coșul de gunoi.</string>
     <string name="calendar_moved_to_trash">%1$s a fost mutat în Coșul de gunoi</string>
     <string name="calendar_my_calendars">Calendarele mele</string>
-    <string name="calendar_none_yet">Niciun calendar încă. Fiecare dosar din Tetra/Calendar este unul.</string>
+    <string name="calendar_none_yet">Niciun calendar încă. Fiecare dosar din Tetra/.System/Calendar/Shared este unul.</string>
     <string name="calendar_options">%1$s: culoare, nume, ștergere</string>
     <string name="calendar_new_calendar">Calendar nou</string>
     <string name="calendar_export_all">Exportă tot</string>
@@ -1616,7 +1616,7 @@
     <string name="maps_search_near">Caută lângă %1$s</string>
     <string name="maps_search_hint">Caută locuri și orașe</string>
     <string name="maps_search_loading">Se încarcă lista de căutare…</string>
-    <string name="maps_search_missing">Lista de căutare nu este încă pe acest dispozitiv: tools/maps-greece.sh creează greece-places.tsv pe computer, iar Sincronizarea o aduce în Tetra/Maps.</string>
+    <string name="maps_search_missing">Lista de căutare nu este încă pe acest dispozitiv: tools/maps-greece.sh creează greece-places.tsv pe computer, iar Sincronizarea o aduce în Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Scrie un nume sau un oraș ori alege un tip: cele mai apropiate de centrul hărții apar primele.</string>
     <string name="maps_nothing_found">Nu s-a găsit nimic aici.</string>
     <string name="maps_amea_to_place">♿ Locuri de plasat (%1$d)</string>
@@ -1668,7 +1668,7 @@
     <string name="car_no_gps">Fără GPS</string>
     <string name="car_next">Următoarea: %1$s</string>
     <string name="car_waiting_gps">Se așteaptă GPS-ul</string>
-    <string name="car_no_graph">Niciun graf de rutare încă în Tetra/Maps</string>
+    <string name="car_no_graph">Niciun graf de rutare încă în Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Nu s-a găsit niciun drum</string>
     <string name="car_pin">Pin</string>
     <string name="car_no_other_places">Niciun alt loc salvat</string>

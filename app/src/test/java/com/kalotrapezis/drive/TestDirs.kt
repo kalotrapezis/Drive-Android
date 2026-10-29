@@ -27,3 +27,6 @@ internal fun soffice(to: String, outDir: String, file: String): Int {
     if (code != 0 || !made) throw AssertionError("LibreOffice (exit $code) made no $stem.$ext from ${File(file).name}: ${said.trim()}")
     return code
 }
+
+/** The computer's installed maps for the tests that read them: ~/Tetra/.System/Maps/Shared, or ~/Tetra/Files/Maps before Tetra moved them (29 Oct). */
+internal fun userMaps(): File = File(System.getProperty("user.home"), "Tetra").let { t -> File(t, ".System/Maps/Shared").takeIf { it.isDirectory } ?: File(t, "Files/Maps") }

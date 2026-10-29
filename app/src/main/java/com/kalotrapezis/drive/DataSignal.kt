@@ -112,7 +112,7 @@ internal object DataSignal {
 
     fun located(c: Context) = c.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-    // ---- spots: Tetra/Data/spots/<device>.jsonl ----
+    // ---- spots: Tetra/.System/Data/Shared/spots/<device>.jsonl ----
 
     private fun spotsFile(device: String = DataFiles.device()) = File(File(DataFiles.root(), "spots"), "$device.jsonl")
 

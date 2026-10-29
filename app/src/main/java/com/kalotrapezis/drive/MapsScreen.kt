@@ -303,7 +303,7 @@ internal fun hasLocation(context: Context) = ContextCompat.checkSelfPermission(c
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 /**
- * Maps (Plan.md § Maps): Greece offline (Tetra/Maps/greece.pmtiles, Protomaps' light or dark style with Greek names), where you are,
+ * Maps (Plan.md § Maps): Greece offline (Tetra/.System/Maps/Shared/greece.pmtiles, Protomaps' light or dark style with Greek names), where you are,
  * your saved places (long-press the map to save one), and turn-by-turn directions by car, on foot or by bike, worked out
  * on the phone (MapsRouting) and spoken in Greek. [go] (a place on Home's card) starts its directions as soon as there is a fix.
  */

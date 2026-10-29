@@ -18,7 +18,7 @@ private val en = testWords("en")
 /** Maps (Plan.md § Maps): saved places as files, Home's six slots, and offline routing on the computer's graph. */
 class MapsTest {
     @Test fun places() {
-        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps") // its Trash beside it, as in Tetra
+        val root = MapsFiles.root(Files.createTempDirectory("tetra").toFile()) // its Trash beside it, as in Tetra
         val home = MapsFiles.save(root, Place("a1", "Home", 37.97, 23.72, "home", slot = 1))
         MapsFiles.save(root, Place("b2", "Work", 38.0, 23.8, "work", slot = 2, mode = "foot"))
         assertEquals(listOf("Home", "Work"), MapsFiles.places(root).map { it.name })
@@ -39,7 +39,7 @@ class MapsTest {
 
     /** Two devices each put a place into slot 7 while apart: the newer keeps it, the other moves to the first free slot. */
     @Test fun slotsAfterSync() {
-        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps") // its Trash beside it, as in Tetra
+        val root = MapsFiles.root(Files.createTempDirectory("tetra").toFile()) // its Trash beside it, as in Tetra
         val dir = File(root, "Places").apply { mkdirs() }
         fun put(name: String, p: Place, at: Long) = File(dir, name).apply { writeText(p.json()); setLastModified(at) }
         val day = 1_792_700_000_000L
@@ -57,7 +57,7 @@ class MapsTest {
         // the one moved can be put back: taking slot 7 frees it on home
         MapsFiles.save(root, MapsFiles.places(root).first { it.id == "market" }.copy(slot = 7))
         assertEquals(listOf("market", null), MapsFiles.slots(MapsFiles.places(root)).let { listOf(it[6]?.id, it[5]?.id) })
-        assertEquals(listOf("home (2).json"), File(root.parentFile, "Trash").list()!!.toList())
+        assertEquals(listOf("home (2).json"), File(TetraSystem.tetraOf(root), TetraSystem.onDisk("Trash")).list()!!.toList())
         // a save is the place even when an older copy's date is the same or later (the phone, 23 Oct): its copies go
         put("market (2).json", Place("market", "My Market", 37.35, 22.58, "shop", slot = 9), System.currentTimeMillis() + 60_000)
         MapsFiles.save(root, Place("market", "My Market", 37.35, 22.58, "shop", slot = 8))
@@ -71,7 +71,7 @@ class MapsTest {
 
     /** On the computer's graph (tools/maps-greece.sh), when it is there: Syntagma to the Acropolis, each way to go. */
     @Test fun route() {
-        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+        val dir = File(userMaps(), "greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         for (mode in Place.MODES) {
             val r = MapsRouting.route(dir, 37.9755, 23.7348, 37.9715, 23.7257, mode, el)
@@ -131,7 +131,7 @@ class MapsImportTest {
         val g = MapsImport.geojson("Starred places", gj)
         assertEquals(2, g.size); assertEquals(37.9715, g[0].lat!!, 1e-9); assertNull(g[1].lat)
         // into Tetra: the unplaced one found by its exact name in the search list, the other missed
-        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps")
+        val root = MapsFiles.root(Files.createTempDirectory("tetra").toFile())
         val r = MapsImport.into(root, listOf(Poi("pharmacy", 41.13, 24.88, "Φαρμακείο Χ")), es + g)
         assertEquals(4, r.places); assertEquals(listOf("Nowhere (Starred places)"), r.missed)
         assertEquals(setOf("Want to go", "Starred places"), MapsFiles.lists(root).map { it.name }.toSet())
@@ -165,7 +165,7 @@ class MapsWarningTest {
 class MapsMotorwayTest {
     /** Σχηματάρι to Ναύπλιο on the computer's graph, when it is there: the on-ramp to Olympia Odos names the road it leads onto. */
     @Test fun aRampSaysWhereItLeads() {
-        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+        val dir = File(userMaps(), "greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         val r = MapsRouting.route(dir, 37.346366, 22.580585, 37.565923, 22.806878, "car", el)
         r.steps.forEach { println("${it.sign}\t${it.metres.toInt()} m\t${it.text}\t[${it.ref}] ${it.street}") }
@@ -204,7 +204,7 @@ class MapsTakeoutRunTest {
     @Test fun importARealTakeout() {
         val zip = System.getenv("TETRA_TAKEOUT"); val out = System.getenv("TETRA_IMPORT_OUT")
         assumeTrue(zip != null && out != null)
-        val maps = File(System.getProperty("user.home"), "Tetra/Files/Maps")
+        val maps = userMaps()
         val root = File(out!!).apply { mkdirs() }
         listOf("greece-places.tsv", MapsSearch.EOPYY, "greece-addresses.tsv").forEach { n -> File(maps, n).takeIf { it.isFile }?.copyTo(File(root, n), overwrite = true) }
         File(root, "greece.pmtiles").createNewFile() // a map's lists are read beside its map
@@ -218,7 +218,7 @@ class MapsTakeoutRunTest {
 class MapsLimitFerryTest {
     /** On the computer's graph, when it is there: a motorway's limit, and the ferry to Samothraki said as a ferry. */
     @Test fun limitsAndFerries() {
-        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+        val dir = File(userMaps(), "greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         // Egnatia near Kavala, and Panepistimiou in Athens
         val r = MapsRouting.route(dir, 41.149912, 24.146884, 40.475293, 25.473550, "car", el)
@@ -235,7 +235,7 @@ class MapsLimitFerryTest {
 class MapsAlternativesTest {
     /** Άγιος Λουκάς to the 2nd school of Κρεώνας, beside Google's two (21 Oct): the motorway and the local roads, no tracks, fastest first. */
     @Ignore("its places were made up before publishing; put your own back locally to run it") @Test fun twoWaysThere() {
-        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+        val dir = File(userMaps(), "greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         val rs = MapsRouting.routes(dir, 37.277768, 22.585572, 37.3713423, 22.4651517, "car", el)
         rs.forEach { println("${it.millis / 60000} min ${(it.metres / 100).toInt() / 10.0} km ${it.roads}") }
@@ -243,7 +243,7 @@ class MapsAlternativesTest {
         assertEquals(rs.sortedBy { it.millis }, rs)
         assertTrue(rs.any { it.roads == "motorway" } && rs.any { it.roads != "motorway" })
         // the tolls on each: the motorway passes OSM's toll stations, the local roads none
-        val all = MapsSearch.load(File(System.getProperty("user.home"), "Tetra/Files/Maps"))
+        val all = MapsSearch.load(userMaps())
         assumeTrue(all.any { it.kind == "toll" })
         // (OSM has no toll station near Σχηματάρι or Οινόφυτα: the local roads have none, the motorway none known)
         assertTrue(rs.all { r -> tollsOn(r, cumulative(r), all).isEmpty() })
@@ -309,9 +309,9 @@ class MapsEdgeCaseTest {
     private data class Case(val name: String, val from: Pair<Double, Double>, val to: Pair<Double, Double>, val mode: String = "car", val expectRoute: Boolean = true)
 
     @Test fun edgeCases() {
-        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+        val dir = File(userMaps(), "greece-gh")
         assumeTrue(File(dir, "properties").isFile)
-        val all = MapsSearch.load(File(System.getProperty("user.home"), "Tetra/Files/Maps"))
+        val all = MapsSearch.load(userMaps())
         val cases = listOf(
             Case("Άγιος Λουκάς → Χαλκίδα (time ~30 min)", 37.277768 to 22.585572, 38.462274 to 23.594611),
             Case("same point", 37.2777 to 22.5855, 37.2777 to 22.5855),
@@ -398,7 +398,7 @@ class MapsTripTest {
 
     /** A moving car's new route goes on the way it faces, not back (the user, 23 Oct, near Σκάλα: "a new route" every 11 s for 3 km). */
     @Test fun headed() {
-        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+        val dir = File(userMaps(), "greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         fun bearing(r: Route): Double { // of the route's first ~50 m
             var k = 1; while (k < r.lats.size - 1 && metresBetween(r.lats[0], r.lngs[0], r.lats[k], r.lngs[k]) < 50) k++
@@ -462,7 +462,7 @@ class MapsBendTest {
 class MapsJunctionTest {
     /** On the computer's graph: a turn's crossing from the graph — the way in behind, the way on another road. */
     @Test fun crossings() {
-        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+        val dir = File(userMaps(), "greece-gh")
         assumeTrue(File(dir, "properties").isFile)
         val drives = listOf("Δράμα" to doubleArrayOf(41.1440, 24.1300, 41.1570, 24.1600), "Ομόνοια" to doubleArrayOf(37.9890, 23.7200, 37.9800, 23.7330),
             "Χαλκίδα" to doubleArrayOf(38.4700, 23.5900, 38.4500, 23.6200),
@@ -508,7 +508,7 @@ class MapsLanesTest {
 
     /** On the computer's graph and lanes file: the turns where the user met them (23 Oct). */
     @Test fun lanesOnRealRoutes() {
-        val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+        val dir = File(userMaps(), "greece-gh")
         assumeTrue(File(dir, "properties").isFile && File(dir.parentFile, "greece-lanes.tsv").isFile)
         val tripoli = MapsRouting.route(dir, 37.9838, 23.7275, 37.5100, 22.3720, "car", el)
         val corinth = tripoli.steps.first { "Τρίπολη" in it.text && it.sign == -7 }
@@ -531,7 +531,7 @@ class MapsLanesTest {
  * screen takes them, a new route from the fix where it says so — with the car's heading or, to compare, without.
  */
 class MapsReplayTest {
-    private val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+    private val dir = File(userMaps(), "greece-gh")
 
     data class Played(val reroutes: Int, val said: List<String>, val arrived: Boolean)
 
@@ -607,7 +607,7 @@ class MapsReplayTest {
 class MapsAddressTest {
     /** The user's house in Άγιος Λουκάς (23 Oct): no house there has a number, so its street and the village's postcode. */
     @Ignore("its places were made up before publishing; put your own back locally to run it") @Test fun aVillageWithoutNumbers() {
-        val root = File(System.getProperty("user.home"), "Tetra/Files/Maps")
+        val root = userMaps()
         assumeTrue(File(root, "greece-addresses.tsv").isFile && File(root, "greece-streets.tsv").isFile)
         val pois = MapsSearch.load(root)
         assertEquals("Οδός Παραδείγματος, 12345 Άγιος Λουκάς", MapsAddresses.describe(root, pois, 37.27642, 22.58903))
@@ -617,7 +617,7 @@ class MapsAddressTest {
 
     /** A sync's copies of the parked car ("parking (2).json") leave one car: the newest; deleting a place takes its copies. */
     @Test fun oneCar() {
-        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps") // its Trash beside it, as in Tetra
+        val root = MapsFiles.root(Files.createTempDirectory("tetra").toFile()) // its Trash beside it, as in Tetra
         val dir = File(root, "Places").apply { mkdirs() }
         fun car(file: String, lat: Double, at: Long) = File(dir, file).apply {
             writeText("""{"id":"parking","name":"My car","lat":$lat,"lng":23.5,"icon":"parking"}"""); setLastModified(at)
@@ -631,7 +631,7 @@ class MapsAddressTest {
         MapsFiles.delete(root, places.first { it.id == "parking" })
         assertEquals(setOf("home.json"), dir.list()!!.toSet())
         // to Tetra's Trash, never deleted
-        assertEquals(setOf("parking.json", "parking (2).json", "parking (3).json"), File(root.parentFile, "Trash").list()!!.toSet())
+        assertEquals(setOf("parking.json", "parking (2).json", "parking (3).json"), File(TetraSystem.tetraOf(root), TetraSystem.onDisk("Trash")).list()!!.toSet())
     }
 }
 
@@ -640,7 +640,7 @@ class MapsAddressTest {
  * path … even if that means a road that falls off a cliff"), on the computer's graph when it is there.
  */
 class MapsMainRoadsTest {
-    private val dir = File(System.getProperty("user.home"), "Tetra/Files/Maps/greece-gh")
+    private val dir = File(userMaps(), "greece-gh")
 
     /** Kilometres of each road class along the way from → to, as the phone asks it. */
     private fun classes(from: Pair<Double, Double>, to: Pair<Double, Double>, main: Boolean): Map<String, Double> {
@@ -682,7 +682,7 @@ class MapsPacksTest {
     }
 
     @Test fun twoCountries() {
-        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps").apply { mkdirs() }
+        val root = MapsFiles.root(Files.createTempDirectory("tetra").toFile()).apply { mkdirs() }
         pmtiles(File(root, "greece.pmtiles"), 18.97, 34.59, 29.66, 41.75)
         pmtiles(File(root, "cyprus.pmtiles"), 31.0, 34.0, 35.0, 36.0)
         File(root, "cyprus.json").writeText("""{"name":"Cyprus","bounds":[32.2,34.5,34.7,35.8],"drive":"left"}""")
@@ -704,12 +704,12 @@ class MapsPacksTest {
         MapsFiles.removeMap(root, "cyprus")
         assertEquals(listOf("greece"), MapsFiles.ids(root))
         assertEquals(setOf("added-places.tsv", "greece-places.tsv", "greece.pmtiles", "lisbon-places.tsv"), root.list()!!.toSet())
-        assertTrue(File(root.parentFile, "Trash/cyprus-gh/properties").isFile) // to the Trash, so the phone and tablet follow
+        assertTrue(File(TetraSystem.tetraOf(root), TetraSystem.onDisk("Trash/cyprus-gh/properties")).isFile) // to the Trash, so the phone and tablet follow
     }
 
     /** Across borders: each map's own roads to a crossing and on from there, the fastest crossing; a map's removal takes its crossings. */
     @Test fun acrossBorders() {
-        val root = File(Files.createTempDirectory("tetra").toFile(), "Maps").apply { mkdirs() }
+        val root = MapsFiles.root(Files.createTempDirectory("tetra").toFile()).apply { mkdirs() }
         pmtiles(File(root, "greece.pmtiles"), 18.97, 34.59, 29.66, 41.75)
         pmtiles(File(root, "macedonia.pmtiles"), 20.45, 40.85, 23.04, 42.37)
         pmtiles(File(root, "serbia.pmtiles"), 18.8, 42.2, 23.0, 46.2)
@@ -757,7 +757,7 @@ class MapsPacksTest {
  */
 class MapsBorderTest {
     @Test fun acrossBorders() {
-        val root = File(System.getenv("TETRA_MAPS") ?: (System.getProperty("user.home") + "/Tetra/Files/Maps"))
+        val root = System.getenv("TETRA_MAPS")?.let(::File) ?: userMaps()
         assumeTrue(MapsFiles.crossings(root, "greece", "macedonia").isNotEmpty())
         val w = testWords("en")
         fun go(fromLat: Double, fromLng: Double, toLat: Double, toLng: Double): Route {

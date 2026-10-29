@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tetra's timers from the command line (standard library only).
 
-Each timer is a JSON file per device in ~/Tetra/Files/Timer (<id>.<device>.json); the highest rev wins.
+Each timer is a JSON file per device in ~/Tetra/.System/Timer/Shared (~/Tetra/Files/Timer before 29 Oct 2026) (<id>.<device>.json); the highest rev wins.
     tetra_timer.py list                                 the timers now: id, label, state, time left
     tetra_timer.py start 10m [--label Pasta] [--pin]    a new running timer (10m, 1h30m, 90s or plain seconds)
     tetra_timer.py pause|resume|stop|delete|again WHO   WHO = a timer's id or its label (again: start a pinned one anew)
@@ -14,7 +14,13 @@ Each timer is a JSON file per device in ~/Tetra/Files/Timer (<id>.<device>.json)
 """
 import argparse, datetime as dt, glob, json, os, re, secrets, sys
 
-ROOT = os.environ.get("TETRA_TIMER", os.path.expanduser("~/Tetra/Files/Timer"))
+
+def default_root(app):
+    """Tetra's .System/<app>/Shared (since 29 Oct 2026); Files/<app> on a computer whose Tetra has not moved it there yet."""
+    new, old = os.path.expanduser(f"~/Tetra/.System/{app}/Shared"), os.path.expanduser(f"~/Tetra/Files/{app}")
+    return new if os.path.isdir(new) or not os.path.isdir(old) else old
+
+ROOT = os.environ.get("TETRA_TIMER", default_root("Timer"))
 ORDER = ["running", "paused", "stopped"]  # equal rev: stopped beats paused beats running
 
 

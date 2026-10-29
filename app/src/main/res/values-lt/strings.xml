@@ -345,7 +345,7 @@
     <string name="settings_exported">Eksportuota</string>
     <string name="settings_not_exported">Neeksportuota: %1$s</string>
     <string name="settings_your_calendars">Jūsų kalendoriai</string>
-    <string name="settings_your_calendars_note">Jūsų kalendoriai – tai aplankai Tetra/Calendar: jie sinchronizuojami su kompiuteriu, ir Claude gali juos ten tvarkyti.</string>
+    <string name="settings_your_calendars_note">Jūsų kalendoriai – tai aplankai Tetra/.System/Calendar/Shared: jie sinchronizuojami su kompiuteriu, ir Claude gali juos ten tvarkyti.</string>
     <string name="settings_calendar_import_summary">.ics failas arba Google Takeout zip; kiekvienas kalendorius į to paties pavadinimo kalendorių, jau esantis įvykis atnaujinamas</string>
     <string name="settings_export_all_summary">Kiekvienas kalendorius kaip .ics, zip faile</string>
     <string name="settings_map_summary">Atskira šviesi ar tamsi, nepriklausomai nuo Tetra temos</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Importuota</string>
     <string name="settings_imported_shared">Vietų: %1$d, žemėlapio papildymų: %2$d; %3$d jau yra arba be padėties.</string>
     <string name="settings_not_placed">Šių nepavyko padėti – ieškokite jų Žemėlapiuose ir įrašykite:</string>
-    <string name="settings_installed_maps_note">Kiekvienos šalies žemėlapis sukuriamas kompiuteryje, skiltyje Tetra kompiuteryje › Nustatymai › Žemėlapiai › Pridėti žemėlapį. Sinchronizavimas jį atneša čia, į Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Kiekvienos šalies žemėlapis sukuriamas kompiuteryje, skiltyje Tetra kompiuteryje › Nustatymai › Žemėlapiai › Pridėti žemėlapį. Sinchronizavimas jį atneša čia, į Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Problemos</string>
     <string name="settings_send_log_summary">Tetra žurnalas ir jūsų kelionių per paskutines 7 dienas pėdsakai viename zip faile; jie lieka šiame įrenginyje, kol juos išsiųsite</string>
-    <string name="settings_contacts_note">Jūsų kontaktai yra failai aplanke Tetra/Contacts, po vieną kiekvienam žmogui: jie sinchronizuojami su kompiuteriu, kur juos irgi rodo Kontaktai.</string>
+    <string name="settings_contacts_note">Jūsų kontaktai yra failai aplanke Tetra/.System/Contacts/Shared, po vieną kiekvienam žmogui: jie sinchronizuojami su kompiuteriu, kur juos irgi rodo Kontaktai.</string>
     <string name="settings_in_phone_contacts_on">Rinkiklis, Viber, WhatsApp ir automobilis rodo šiuos vardus ir nuotraukas (tik skaitoma kopija, paskyra Tetra)</string>
     <string name="settings_in_phone_contacts_off">Jūsų kontaktus rodo tik Tetra</string>
     <string name="settings_no_calendars">Kalendorių dar nėra</string>
@@ -1409,7 +1409,7 @@
     <string name="calendar_delete_note">Kalendoriaus aplankas ir visi jo įvykiai perkeliami į Tetra šiukšlinę, po kito sinchronizavimo – visuose įrenginiuose. Juos galima atkurti iš šiukšlinės.</string>
     <string name="calendar_moved_to_trash">%1$s perkeltas į šiukšlinę</string>
     <string name="calendar_my_calendars">Mano kalendoriai</string>
-    <string name="calendar_none_yet">Kalendorių dar nėra. Kiekvienas aplankas Tetra/Calendar yra kalendorius.</string>
+    <string name="calendar_none_yet">Kalendorių dar nėra. Kiekvienas aplankas Tetra/.System/Calendar/Shared yra kalendorius.</string>
     <string name="calendar_options">%1$s: spalva, pavadinimas, ištrynimas</string>
     <string name="calendar_new_calendar">Naujas kalendorius</string>
     <string name="calendar_export_all">Eksportuoti viską</string>
@@ -1659,7 +1659,7 @@
     <string name="maps_search_near">Ieškoti netoli %1$s</string>
     <string name="maps_search_hint">Ieškoti vietų ir miestų</string>
     <string name="maps_search_loading">Įkeliamas paieškos sąrašas…</string>
-    <string name="maps_search_missing">Paieškos sąrašo šiame įrenginyje dar nėra: tools/maps-greece.sh kompiuteryje sukuria greece-places.tsv, o Sinchronizavimas atneša jį į Tetra/Maps.</string>
+    <string name="maps_search_missing">Paieškos sąrašo šiame įrenginyje dar nėra: tools/maps-greece.sh kompiuteryje sukuria greece-places.tsv, o Sinchronizavimas atneša jį į Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Įveskite pavadinimą ar miestą arba pasirinkite rūšį: pirmiausia rodomi arčiausiai žemėlapio vidurio.</string>
     <string name="maps_nothing_found">Čia nieko nerasta.</string>
     <string name="maps_amea_to_place">♿ Neįgaliųjų vietos pažymėti (%1$d)</string>
@@ -1711,7 +1711,7 @@
     <string name="car_no_gps">Nėra GPS</string>
     <string name="car_next">Kitas: %1$s</string>
     <string name="car_waiting_gps">Laukiama GPS</string>
-    <string name="car_no_graph">Tetra/Maps dar nėra maršrutų grafo</string>
+    <string name="car_no_graph">Tetra/.System/Maps/Shared dar nėra maršrutų grafo</string>
     <string name="car_no_way">Kelio nerasta</string>
     <string name="car_pin">Smeigtukas</string>
     <string name="car_no_other_places">Kitų įrašytų vietų nėra</string>

@@ -345,7 +345,7 @@
     <string name="settings_exported">Exportiert</string>
     <string name="settings_not_exported">Nicht exportiert: %1$s</string>
     <string name="settings_your_calendars">Deine Kalender</string>
-    <string name="settings_your_calendars_note">Deine Kalender sind die Ordner in Tetra/Calendar: Sie werden mit dem Computer synchronisiert, und Claude kann sie dort verwalten.</string>
+    <string name="settings_your_calendars_note">Deine Kalender sind die Ordner in Tetra/.System/Calendar/Shared: Sie werden mit dem Computer synchronisiert, und Claude kann sie dort verwalten.</string>
     <string name="settings_calendar_import_summary">Eine .ics-Datei oder die ZIP von Google Takeout; jeder Kalender in den gleichnamigen, ein vorhandener Termin wird aktualisiert</string>
     <string name="settings_export_all_summary">Jeder Kalender als .ics, in einer ZIP</string>
     <string name="settings_map_summary">Eigenes Hell oder Dunkel, unabhängig vom Design von Tetra</string>
@@ -384,10 +384,10 @@
     <string name="settings_imported">Importiert</string>
     <string name="settings_imported_shared">%1$d Orte und %2$d Kartenergänzungen; %3$d schon vorhanden oder ohne Position.</string>
     <string name="settings_not_placed">Diese konnten nicht platziert werden – suche sie in Karten und speichere sie:</string>
-    <string name="settings_installed_maps_note">Die Karte jedes Landes wird am Computer erstellt, unter Tetra am Computer › Einstellungen › Karten › Karte hinzufügen. Sync bringt sie hierher, nach Tetra/Maps.</string>
+    <string name="settings_installed_maps_note">Die Karte jedes Landes wird am Computer erstellt, unter Tetra am Computer › Einstellungen › Karten › Karte hinzufügen. Sync bringt sie hierher, nach Tetra/.System/Maps/Shared.</string>
     <string name="settings_problems">Probleme</string>
     <string name="settings_send_log_summary">Das Protokoll von Tetra und die Aufzeichnungen deiner Fahrten der letzten 7 Tage als eine ZIP; sie bleiben auf diesem Gerät, bis du sie sendest</string>
-    <string name="settings_contacts_note">Deine Kontakte sind Dateien in Tetra/Contacts, eine pro Person: Sie werden mit dem Computer synchronisiert, wo Kontakte sie ebenfalls zeigt.</string>
+    <string name="settings_contacts_note">Deine Kontakte sind Dateien in Tetra/.System/Contacts/Shared, eine pro Person: Sie werden mit dem Computer synchronisiert, wo Kontakte sie ebenfalls zeigt.</string>
     <string name="settings_in_phone_contacts_on">Telefon-App, Viber, WhatsApp und das Auto zeigen diese Namen und Fotos (eine schreibgeschützte Kopie, Konto Tetra)</string>
     <string name="settings_in_phone_contacts_off">Nur Tetra zeigt deine Kontakte</string>
     <string name="settings_no_calendars">Noch keine Kalender</string>
@@ -1329,7 +1329,7 @@
     <string name="calendar_delete_note">Der Ordner des Kalenders und alle seine Termine kommen in den Papierkorb von Tetra, nach der nächsten Synchronisierung auf jedem Gerät. Sie lassen sich aus dem Papierkorb wiederherstellen.</string>
     <string name="calendar_moved_to_trash">%1$s in den Papierkorb verschoben</string>
     <string name="calendar_my_calendars">Meine Kalender</string>
-    <string name="calendar_none_yet">Noch keine Kalender. Jeder Ordner in Tetra/Calendar ist einer.</string>
+    <string name="calendar_none_yet">Noch keine Kalender. Jeder Ordner in Tetra/.System/Calendar/Shared ist einer.</string>
     <string name="calendar_options">%1$s: Farbe, Name, Löschen</string>
     <string name="calendar_new_calendar">Neuer Kalender</string>
     <string name="calendar_export_all">Alle exportieren</string>
@@ -1573,7 +1573,7 @@
     <string name="maps_search_near">Suche nahe %1$s</string>
     <string name="maps_search_hint">Orte und Städte suchen</string>
     <string name="maps_search_loading">Suchliste wird geladen…</string>
-    <string name="maps_search_missing">Die Suchliste ist noch nicht auf diesem Gerät: tools/maps-greece.sh erstellt greece-places.tsv auf dem Computer, und Sync bringt sie in Tetra/Maps.</string>
+    <string name="maps_search_missing">Die Suchliste ist noch nicht auf diesem Gerät: tools/maps-greece.sh erstellt greece-places.tsv auf dem Computer, und Sync bringt sie in Tetra/.System/Maps/Shared.</string>
     <string name="maps_search_how">Gib einen Namen oder eine Stadt ein oder wähle eine Art: die nächsten zur Kartenmitte kommen zuerst.</string>
     <string name="maps_nothing_found">Hier nichts gefunden.</string>
     <string name="maps_amea_to_place">♿ Zu platzieren (%1$d)</string>
@@ -1625,7 +1625,7 @@
     <string name="car_no_gps">Kein GPS</string>
     <string name="car_next">Nächster: %1$s</string>
     <string name="car_waiting_gps">Warte auf GPS</string>
-    <string name="car_no_graph">Noch kein Routing-Graph in Tetra/Maps</string>
+    <string name="car_no_graph">Noch kein Routing-Graph in Tetra/.System/Maps/Shared</string>
     <string name="car_no_way">Keine Route gefunden</string>
     <string name="car_pin">Markierung</string>
     <string name="car_no_other_places">Keine anderen gespeicherten Orte</string>

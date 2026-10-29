@@ -581,7 +581,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             }
         }
         // Files' Trash, by when each item went in (a move into Trash/ changes its ctime and nothing else).
-        val trash = File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), "Trash")
+        val trash = File(TetraFolder.root(android.os.Environment.getExternalStorageDirectory()), TetraSystem.onDisk("Trash"))
         val cutoff = System.currentTimeMillis() / 1000 - FILES_TRASH_DAYS * 86_400L
         if (!noDrive) for (item in trash.listFiles().orEmpty()) {
             if (android.system.Os.lstat(item.path).st_ctime > cutoff) continue
@@ -1034,7 +1034,7 @@ internal class SyncClient(private val context: Context, private val store: SyncS
             val mine = (0 until want.length()).mapNotNull { byPath[want.getString(it)] }
             val sent = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
             eachInParallel(mine, context.getString(R.string.sync_stage_sending_files), checkpoint, progress, failed, { it.relativePath }) { entry ->
-                uploadFile(host, p, entry, File(root, entry.relativePath))
+                uploadFile(host, p, entry, File(root, TetraSystem.onDisk(entry.relativePath)))
                 sent += entry.relativePath
             }
             counts?.let { it[0] += sent.size + (answer.optJSONArray("moved")?.length() ?: 0) }

@@ -142,7 +142,7 @@ class ContactsTest {
     }
 
     @Test fun syncsCopiesShowAsOneAndTheTrashKeepsTheFile() {
-        val dir = File(scratchDir("tetra"), ContactsFiles.FOLDER)
+        val dir = ContactsFiles.root(scratchDir("tetra"))
         val c = ContactsFiles.save(dir, null, ContactInfo(given = "Copy", phones = listOf(VField("Mobile", "1"))), t0)
         val older = File(dir, c.file!!.nameWithoutExtension + " (2).vcf").also { c.file.copyTo(it) }
         ContactsFiles.save(dir, c, c.info.copy(note = "newer"), t0.plusSeconds(5))
@@ -152,7 +152,7 @@ class ContactsTest {
         assertEquals(listOf(older), ContactsFiles.copies(dir, shown))
         ContactsFiles.trash(dir, shown)
         assertTrue(ContactsFiles.all(dir).isEmpty())
-        assertEquals(2, File(dir.parentFile, "Trash").listFiles()!!.size) // moved, never deleted
+        assertEquals(2, File(TetraSystem.tetraOf(dir), TetraSystem.onDisk("Trash")).listFiles()!!.size) // moved, never deleted
     }
 
     @Test fun searchAndLetters() {
@@ -201,7 +201,7 @@ class ContactsTest {
     }
 
     @Test fun mergeKeepsEveryValueAndNotTheSameIsRemembered() {
-        val dir = File(scratchDir("tetra"), ContactsFiles.FOLDER)
+        val dir = ContactsFiles.root(scratchDir("tetra"))
         val a = ContactsFiles.save(dir, null, ContactInfo(given = "Μαρία", family = "Δοκιμή", formatted = "Μαρία Δοκιμή", phones = listOf(VField("Mobile", "+30 690 000 0011")), categories = listOf("Family")))
         val b = ContactsFiles.save(dir, null, ContactInfo(formatted = "Μαρία Δοκιμή", phones = listOf(VField("Mobile", "6900000011"), VField("Work", "2521000011")),
             emails = listOf(VField("Home", "maria@example.com")), birthday = VDate(1980, 2, 3), categories = listOf("School")))
@@ -222,7 +222,7 @@ class ContactsTest {
         assertEquals(VDate(1980, 2, 3), m.birthday)
         assertEquals(setOf("Family", "School"), m.labels.toSet())
         assertEquals(3, ContactsFiles.all(dir).size)
-        assertTrue(File(dir.parentFile, "Trash").listFiles()!!.isNotEmpty())
+        assertTrue(File(TetraSystem.tetraOf(dir), TetraSystem.onDisk("Trash")).listFiles()!!.isNotEmpty())
         // export: one file of cards, a QR's without the photo
         val text = ContactsMerge.export(ContactsFiles.all(dir))
         assertEquals(3, VCard.cards(text).size)

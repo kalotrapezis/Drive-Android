@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="timer_tab_timers">Αντίστροφη</string>
+    <string name="timer_tab_timers">Χρονοδιακόπτης</string>
     <string name="timer_tab_alarms">Ξυπνητήρια</string>
     <string name="stopwatch">Χρονόμετρο</string>
     <string name="stopwatch_counting">Μετράει</string>

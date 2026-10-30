@@ -63,7 +63,7 @@ internal val TIMER_COLOR = Color(0xFF26A69A)
 
 /**
  * The Timer (Plan.md § Timer), as the user drew it (18 Oct): the Calendar's clock (hours on the outer and inner ring, then
- * minutes), Pause and Stop under it, the timers' cards beside it on a big screen, above it on a phone; no island. "Play is
+ * minutes), Pause and Stop under it, the timers' cards beside it on a big screen, above it on a phone; Countdown, Alarms and Stopwatch in the island at the bottom. "Play is
  * not needed as soon as I set a timer starts": the finger lifted from the minutes starts it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -160,7 +160,7 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
         Box(Modifier.fillMaxSize()) {
             if (tab == 1) AlarmsPane(wide)
             else if (tab == 2) StopwatchPane()
-            else if (wide) Row(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(start = 24.dp, end = 24.dp, top = TOP, bottom = 24.dp),
+            else if (wide) Row(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(start = 24.dp, end = 24.dp, top = TOP, bottom = BOTTOM),
                 horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { picker() }
                 Box(Modifier.width(2.dp).fillMaxHeight(0.6f).background(MaterialTheme.colorScheme.surfaceVariant)) // the sketch's line
@@ -168,11 +168,11 @@ internal fun TimerScreen(back: () -> Unit, hasAccess: Boolean, grant: () -> Unit
             } else Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = TOP),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 cards(); picker()
-                Spacer(Modifier.navigationBarsPadding().height(24.dp))
+                Spacer(Modifier.navigationBarsPadding().height(BOTTOM))
             }
             FilesPageHeader(title = stringResource(R.string.app_timer), icon = R.drawable.ic_timer, back = back, island = true,
                 modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp))
-            TimerTabs(tab, { tab = it; lastTab = it }, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp))
+            TimerTabs(tab, { tab = it; lastTab = it }, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 12.dp))
         }
     }
 }

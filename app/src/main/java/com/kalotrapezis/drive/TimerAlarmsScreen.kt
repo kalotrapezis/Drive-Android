@@ -58,19 +58,18 @@ import java.time.format.TextStyle
 
 /** The tab the Timer opened on last, while Tetra runs. */
 internal var lastTab = 0
-/** Under the header and the tabs. */
-internal val TOP = 130.dp
+/** Under the header. */
+internal val TOP = 84.dp
+/** Above the island at the bottom. */
+internal val BOTTOM = 96.dp
 
 /** Timers · Alarms · Stopwatch, an island under the header. */
+/** Countdown, Alarms and Stopwatch: the bottom island, as the other applets' (no handle: the Timer has no drawer). */
 @Composable internal fun TimerTabs(tab: Int, choose: (Int) -> Unit, modifier: Modifier = Modifier) {
-    Surface(color = islandColor(), contentColor = islandContentColor(), shape = CircleShape, modifier = modifier) {
-        Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            listOf(R.string.timer_tab_timers, R.string.timer_tab_alarms, R.string.stopwatch).forEachIndexed { i, label ->
-                Surface(onClick = { choose(i) }, shape = CircleShape, color = if (i == tab) TIMER_COLOR else androidx.compose.ui.graphics.Color.Transparent,
-                    contentColor = if (i == tab) androidx.compose.ui.graphics.Color.White else islandContentColor()) {
-                    Text(stringResource(label), Modifier.padding(horizontal = 14.dp, vertical = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
+    Surface(shape = MaterialTheme.shapes.extraLarge, color = islandColor(), contentColor = islandContentColor(), modifier = modifier) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(R.string.timer_tab_timers to R.drawable.ic_hourglass, R.string.timer_tab_alarms to R.drawable.ic_alarm, R.string.stopwatch to R.drawable.ic_timer)
+                .forEachIndexed { i, (label, icon) -> IslandNavigationItem(stringResource(label), i == tab, icon) { choose(i) } }
         }
     }
 }
@@ -126,7 +125,7 @@ internal val TOP = 130.dp
                     }
                 }
             }
-            Spacer(Modifier.navigationBarsPadding().height(24.dp))
+            Spacer(Modifier.navigationBarsPadding().height(BOTTOM))
         }
     }
     if (adding || editing != null) AlarmDialog(editing, close = { adding = false; editing = null }) { time, days, label ->
@@ -213,6 +212,6 @@ internal val TOP = 130.dp
                 }
             }
         }
-        Spacer(Modifier.navigationBarsPadding().height(24.dp))
+        Spacer(Modifier.navigationBarsPadding().height(BOTTOM))
     }
 }

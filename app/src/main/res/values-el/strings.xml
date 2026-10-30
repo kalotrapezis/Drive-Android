@@ -165,7 +165,7 @@
     <string name="home_label_office">Tetra Office</string>
     <string name="home_label_text">Tetra Κείμενο</string>
     <string name="home_label_calendar">Tetra Ημερολόγιο</string>
-    <string name="home_label_timer">Tetra Χρονόμετρο</string>
+    <string name="home_label_timer">Tetra Ρολόι</string>
     <string name="home_label_contacts">Tetra Επαφές</string>
     <string name="home_label_text_editor">Tetra Κείμενο</string>
     <string name="home_label_send">Αποστολή στον υπολογιστή</string>

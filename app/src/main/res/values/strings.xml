@@ -166,7 +166,7 @@
     <string name="home_label_office">Tetra Office</string>
     <string name="home_label_text">Tetra Text</string>
     <string name="home_label_calendar">Tetra Calendar</string>
-    <string name="home_label_timer">Tetra Timer</string>
+    <string name="home_label_timer">Tetra Clock</string>
     <string name="home_label_contacts">Tetra Contacts</string>
     <string name="home_label_text_editor">Tetra Text editor</string>
     <string name="home_label_send">Send to computer</string>

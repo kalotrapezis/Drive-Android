@@ -165,7 +165,7 @@
     <string name="home_label_office">Tetra Office</string>
     <string name="home_label_text">Tetra Текст</string>
     <string name="home_label_calendar">Tetra Календар</string>
-    <string name="home_label_timer">Tetra Таймер</string>
+    <string name="home_label_timer">Tetra Часовник</string>
     <string name="home_label_contacts">Tetra Контакти</string>
     <string name="home_label_text_editor">Tetra Текст</string>
     <string name="home_label_send">Изпрати към компютъра</string>

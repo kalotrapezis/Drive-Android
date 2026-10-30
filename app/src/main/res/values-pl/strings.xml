@@ -165,7 +165,7 @@
     <string name="home_label_office">Tetra Office</string>
     <string name="home_label_text">Tetra Tekst</string>
     <string name="home_label_calendar">Tetra Kalendarz</string>
-    <string name="home_label_timer">Tetra Minutnik</string>
+    <string name="home_label_timer">Tetra Zegar</string>
     <string name="home_label_contacts">Tetra Kontakty</string>
     <string name="home_label_text_editor">Tetra Edytor tekstu</string>
     <string name="home_label_send">Wyślij na komputer</string>

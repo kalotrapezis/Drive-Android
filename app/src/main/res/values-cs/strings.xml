@@ -165,7 +165,7 @@
     <string name="home_label_office">Tetra Office</string>
     <string name="home_label_text">Tetra Text</string>
     <string name="home_label_calendar">Tetra Kalendář</string>
-    <string name="home_label_timer">Tetra Časovač</string>
+    <string name="home_label_timer">Tetra Hodiny</string>
     <string name="home_label_contacts">Tetra Kontakty</string>
     <string name="home_label_text_editor">Tetra Textový editor</string>
     <string name="home_label_send">Odeslat do počítače</string>

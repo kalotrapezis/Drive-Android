@@ -165,7 +165,7 @@
     <string name="home_label_office">Tetra Office</string>
     <string name="home_label_text">Tetra Szöveg</string>
     <string name="home_label_calendar">Tetra Naptár</string>
-    <string name="home_label_timer">Tetra Időzítő</string>
+    <string name="home_label_timer">Tetra Óra</string>
     <string name="home_label_contacts">Tetra Névjegyek</string>
     <string name="home_label_text_editor">Tetra Szövegszerkesztő</string>
     <string name="home_label_send">Küldés a számítógépre</string>

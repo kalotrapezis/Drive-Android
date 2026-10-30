@@ -165,7 +165,7 @@
     <string name="home_label_office">Tetra Office</string>
     <string name="home_label_text">Tetra Teksti</string>
     <string name="home_label_calendar">Tetra Kalenteri</string>
-    <string name="home_label_timer">Tetra Ajastin</string>
+    <string name="home_label_timer">Tetra Kello</string>
     <string name="home_label_contacts">Tetra Yhteystiedot</string>
     <string name="home_label_text_editor">Tetra Tekstieditori</string>
     <string name="home_label_send">Lähetä tietokoneelle</string>

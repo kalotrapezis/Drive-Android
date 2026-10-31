@@ -4,17 +4,17 @@
 Free software, no account, no cloud: nothing leaves your devices.</p>
 
 <p align="center">
-  <a href="https://github.com/kalotrapezis/Drive-Android/releases/download/v0.6.0-beta.4/Tetra-0.6.0-beta.4-arm64.apk"><img src="Assets/buttons/download-android.png" alt="Download Tetra for Android (APK)" width="440"></a>
-  <a href="https://github.com/kalotrapezis/Drive"><img src="Assets/buttons/get-desktop.png" alt="Tetra for the desktop" width="440"></a>
+  <a href="https://github.com/kalotrapezis/Tetra-mobile/releases/download/v0.6.0-beta.4/Tetra-0.6.0-beta.4-arm64.apk"><img src="Assets/buttons/download-android.png" alt="Download Tetra for Android (APK)" width="440"></a>
+  <a href="https://github.com/kalotrapezis/Tetra"><img src="Assets/buttons/get-desktop.png" alt="Tetra for the desktop" width="440"></a>
 </p>
 
 ![Tetra on a computer, a tablet and a phone](Assets/cards/tetra-devices.jpg)
 
 Photos, Files, Notes, Office, Calendar, Timer, Maps, Contacts, Phone, Data, Scanner, Codes and a Text editor, as
-**applets** of one app that share one folder, `/sdcard/Tetra`. [Tetra for the desktop](https://github.com/kalotrapezis/Drive)
+**applets** of one app that share one folder, `/sdcard/Tetra`. [Tetra for the desktop](https://github.com/kalotrapezis/Tetra)
 has the same applets on Linux, and the two sync over your own Wi-Fi.
 
-**0.6.0 Beta 4** ([what's new](https://github.com/kalotrapezis/Drive-Android/releases/tag/v0.6.0-beta.4)). A beta: keep
+**0.6.0 Beta 4** ([what's new](https://github.com/kalotrapezis/Tetra-mobile/releases/tag/v0.6.0-beta.4)). A beta: keep
 your own backups. Screenshots use invented sample data.
 
 ## What Tetra does for you
@@ -70,7 +70,7 @@ your own backups. Screenshots use invented sample data.
 
 Also inside: **Scanner** (paper to PDF, the page found live and straightened), **Codes** (QR codes, barcodes, text
 in a photo, Greek RF payment codes) and a **Text editor** with tabs. Every applet has a phone and a tablet layout; see
-each one's screenshots, phone, tablet and computer apart, on [the Tetra page](https://kalotrapezis.github.io/Drive-Android/).
+each one's screenshots, phone, tablet and computer apart, on [the Tetra page](https://kalotrapezis.github.io/Tetra/).
 The full list is in [FEATURES.md](FEATURES.md).
 
 ## Fast
@@ -107,7 +107,7 @@ On a tablet with 218 notes, Notes opened in about 450 ms instead of 1000 ms befo
 
 ## Sync with your computer
 
-Pair once with [Tetra for the desktop](https://github.com/kalotrapezis/Drive) by QR code. Each file is checked by
+Pair once with [Tetra for the desktop](https://github.com/kalotrapezis/Tetra) by QR code. Each file is checked by
 SHA-256 on arrival. Rules per device: send only, both ways, or **Move** (keep a month on the phone, the rest lives on
 the computer). The design and every rule's reason are in [SYNC_PLAN.md](SYNC_PLAN.md).
 
@@ -125,11 +125,11 @@ the computer). The design and every rule's reason are in [SYNC_PLAN.md](SYNC_PLA
 
 ## Install
 
-Download the APK from [Releases](https://github.com/kalotrapezis/Drive-Android/releases) (`arm64` for nearly every
+Download the APK from [Releases](https://github.com/kalotrapezis/Tetra-mobile/releases) (`arm64` for nearly every
 phone from the last few years) and open it; Android asks once to allow installs from your browser. Android 11 or
 newer. Updates install over the old version and keep everything.
 
-For your computer: [Tetra for the desktop](https://github.com/kalotrapezis/Drive) (AppImage or .deb).
+For your computer: [Tetra for the desktop](https://github.com/kalotrapezis/Tetra) (AppImage or .deb).
 
 ## Build
 

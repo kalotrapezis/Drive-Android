@@ -90,7 +90,7 @@ How to write here:
       nanoTime temp files from Slides/Writer, *-drafts, writer-history, logs/ and drive traces, filesDir/Files history).
       Waiting: the user's review and merge.
 - [~] (beta-release session, 27 Oct; branches `claude/admiring-pare-6a6a4a` here and `beta-release` in Drive; the site merged and pushed
-      27 Oct at the user's yes, live at kalotrapezis.github.io/Drive-Android in the 24 EU languages. Then .System, the desktop's
+      27 Oct at the user's yes, live at kalotrapezis.github.io/Tetra in the 24 EU languages. Then .System, the desktop's
       Clean up and Notes as Markdown (agents' branches) merged as Android 0.6.0-beta.4 / desktop 0.6.0-beta.32; beta.3/beta.31 never
       went out (rain). The user: upload at 03:00 one file at a time, publish, switch the site; install on the devices in the morning)
       **The next beta for Linux and Android, and the site** (the user: "Are we ready to publish the new Beta For Linux and Android …
@@ -354,7 +354,9 @@ How to write here:
       commit messages; the old history is only local, `refs/backup/pre-scrub-main-20261025`). Three Maps tests that
       drive on the user's own map data (and one desktop test) are skipped now; put real places back locally to run them.
       READMEs of both repos are landing pages with cards (Assets/cards, made on a fresh emulator `tetra_shots` and the
-      desktop from source, all sample data invented), download buttons, the speed tables; docs/ is the Pages site.
+      desktop from source, all sample data invented), download buttons, the speed tables; docs/ was the Pages site. **31 Oct 2026:** the repos are renamed
+      Drive → Tetra and Drive-Android → Tetra-mobile; the site (docs/, tools/site-*) moved to the Tetra repo, live at
+      kalotrapezis.github.io/Tetra (github.com links redirect, the old github.io/Drive-Android address does not).
       Releases: Android v0.6.0-beta.1 (release key), desktop desktop-v0.6.0-beta.21. LICENSE is now the GPL 3.0 or later
       (the user, 25 Oct: "Yes update the license"), which MuPDF's AGPL 3.0 can be combined with; the desktop was GPL 3.0 already.
 - [x] (27 Oct) Notes: Export as Markdown (the user, 25 Oct: "add export as markdown"; 27 Oct: "… categorized by folders with
@@ -3789,7 +3791,7 @@ Send log.
 - And later I would like it to have a photo viewer so I can get rid of my Google Photos as well. so 2 tabs at the bottom files/photos something like that.
 - Did I say on option to set pholder location  at the beginig (on android will be localstorage thing/LocalDrive)
 - Take a look at the nots app and take what you need.
-- I made a git repo https://github.com/kalotrapezis/Drive, https://github.com/kalotrapezis/Drive-Android
+- I made a git repo https://github.com/kalotrapezis/Tetra, https://github.com/kalotrapezis/Tetra-mobile
 - USB drive handling for Android.
 - Automatic Backup ones the app detects a spesific predeterment USB device name.
 - Files tab ( File manager - Local Google Drive) Photos tab (Google Photos Galery with metadeta and basic edditing)
